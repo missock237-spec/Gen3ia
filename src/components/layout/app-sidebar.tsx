@@ -12,12 +12,19 @@ import {
   Shield,
   GitBranch,
   Settings,
+<<<<<<< HEAD
+=======
+  Cpu,
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   LogOut,
   X,
   CheckCircle2,
   BarChart3,
+<<<<<<< HEAD
   Package,
   Link2,
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 } from 'lucide-react';
 import { GenovaLogo } from '@/components/ui/genova-logo';
 
@@ -25,8 +32,11 @@ const navItems = [
   { id: 'dashboard' as const, label: 'Tableau de bord', icon: LayoutDashboard },
   { id: 'agents' as const, label: 'Agents IA', icon: Bot },
   { id: 'automation' as const, label: 'Automatisation', icon: Wand2 },
+<<<<<<< HEAD
   { id: 'integrations' as const, label: 'Intégrations', icon: Package },
   { id: 'connectors' as const, label: 'Connecteurs', icon: Link2 },
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   { id: 'guardrails' as const, label: 'Garde-fous', icon: Shield },
   { id: 'coordination' as const, label: 'Coordination', icon: GitBranch },
   { id: 'approvals' as const, label: 'Approbations', icon: CheckCircle2 },
@@ -37,6 +47,7 @@ const navItems = [
 export function AppSidebar() {
   const { currentView, setCurrentView, sidebarOpen, setSidebarOpen, pendingApprovalCount } = useAppStore();
   const { user, logout } = useAuthStore();
+<<<<<<< HEAD
 
   const handleLogout = async () => {
     try {
@@ -46,6 +57,8 @@ export function AppSidebar() {
       useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
     }
   };
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
   return (
     <>
@@ -66,7 +79,17 @@ export function AppSidebar() {
         {/* Header */}
         <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
+<<<<<<< HEAD
             <GenovaLogo size="sm" showText={true} compact={true} />
+=======
+            <div className="p-1.5 rounded-lg bg-primary/10">
+              <Cpu className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-bold text-sm tracking-tight">AgentOS</h2>
+              <p className="text-[10px] text-muted-foreground">AI Operating System</p>
+            </div>
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
           </div>
           <Button
             variant="ghost"
@@ -127,7 +150,11 @@ export function AppSidebar() {
               variant="ghost"
               size="icon"
               className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive"
+<<<<<<< HEAD
               onClick={handleLogout}
+=======
+              onClick={logout}
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
             >
               <LogOut className="h-4 w-4" />
             </Button>

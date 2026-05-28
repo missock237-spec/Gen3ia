@@ -1,7 +1,14 @@
+<<<<<<< HEAD
 # Backend Implementation - Genova Genova
 
 ## Summary
 Created 27 production-ready backend files for the Genova Genova project, including authentication, session management, security middleware, email service, social accounts, WhatsApp integration, resources management, agent permissions, browser navigation, approvals workflow, and AI-powered agent chat.
+=======
+# Backend Implementation - Genova AgentOS
+
+## Summary
+Created 27 production-ready backend files for the Genova AgentOS project, including authentication, session management, security middleware, email service, social accounts, WhatsApp integration, resources management, agent permissions, browser navigation, approvals workflow, and AI-powered agent chat.
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
 ## Files Created
 

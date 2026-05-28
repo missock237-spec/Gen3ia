@@ -8,6 +8,7 @@ datasource db {
 }
 
 model User {
+<<<<<<< HEAD
   id              String   @id @default(cuid())
   email           String   @unique
   name            String
@@ -20,6 +21,17 @@ model User {
   emailVerified   DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+=======
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  password       String
+  avatar         String?
+  plan           String   @default("free")
+  emailVerified  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
   agents           Agent[]
   workflows        Workflow[]
@@ -32,6 +44,7 @@ model User {
   approvalRequests ApprovalRequest[]
   agentPermissions AgentPermission[]
   agentActionLogs  AgentActionLog[]
+<<<<<<< HEAD
   automations      AgentAutomation[]
   scheduledTasks   ScheduledTask[]
   voiceProfile     VoiceProfile?
@@ -56,11 +69,22 @@ model User {
   emailVerifications EmailVerification[]
   imageGenerations  ImageGeneration[]
   videoGenerations  VideoGeneration[]
+=======
+  browserSessions  BrowserSession[]
+  passwordResets   PasswordReset[]
+  agentUsages      AgentUsage[]
+  aiCosts          AICost[]
+  usageDaily       UsageDaily[]
+  monitoringEvents MonitoringEvent[]
+  emailVerifications EmailVerification[]
+  imageGenerations  ImageGeneration[]
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   memories          AgentMemory[]
   conversations     Conversation[]
   knowledgeEntries  Knowledge[]
   documents         Document[]
   documentChunks    DocumentChunk[]
+<<<<<<< HEAD
   auditLogs         AuditLog[]
   mcpConnectors     MCPConnector[]
   accessKeys        AccessKey[]
@@ -75,6 +99,8 @@ model User {
   @@index([email])
   @@index([role])
   @@map("users")
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 }
 
 model Session {
@@ -84,7 +110,10 @@ model Session {
   refreshToken     String?   @unique
   expiresAt        DateTime
   refreshExpiresAt DateTime?
+<<<<<<< HEAD
   rememberMe       Boolean   @default(false)
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   createdAt        DateTime  @default(now())
   lastAccessedAt   DateTime  @default(now())
   ipAddress        String?
@@ -97,27 +126,49 @@ model Session {
 
 model PasswordReset {
   id        String   @id @default(cuid())
+<<<<<<< HEAD
   token     String   @unique
+=======
+  email     String
+  code      String
+  attempts  Int      @default(0)
+  used      Boolean  @default(false)
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   expiresAt DateTime
   createdAt DateTime @default(now())
   userId    String
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+<<<<<<< HEAD
   @@index([userId])
+=======
+  @@index([email, code])
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   @@map("password_resets")
 }
 
 model EmailVerification {
   id        String   @id @default(cuid())
+<<<<<<< HEAD
   token     String   @unique
+=======
+  email     String
+  code      String
+  attempts  Int      @default(0)
+  used      Boolean  @default(false)
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   expiresAt DateTime
   createdAt DateTime @default(now())
   userId    String
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+<<<<<<< HEAD
   @@index([userId])
+=======
+  @@index([email, code])
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   @@map("email_verifications")
 }
 
@@ -140,11 +191,14 @@ model Agent {
   browserSessions BrowserSession[]
   agentUsages AgentUsage[]
   memories    AgentMemory[]
+<<<<<<< HEAD
   automations AgentAutomation[]
   scheduledTasks ScheduledTask[]
   sharedIn       SharedAgent[]
   browserAutomations BrowserAutomation[]
   multimodalSessions MultimodalSession[]
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
   @@map("agents")
 }
@@ -222,7 +276,11 @@ model WhatsAppConfig {
   id            String   @id @default(cuid())
   phoneNumber   String
   whatsappId    String?
+<<<<<<< HEAD
   phoneNumberId String?
+=======
+  phoneNumberId String?   // WhatsApp Cloud API Phone Number ID (from Meta Business settings)
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   apiToken      String?
   isActive      Boolean  @default(false)
   autoMessage   Boolean  @default(false)
@@ -429,10 +487,20 @@ model MonitoringEvent {
   @@map("monitoring_events")
 }
 
+<<<<<<< HEAD
+=======
+// ============================================================
+// Agent Memory — Per-agent learning database
+// Each agent has its own knowledge base that grows with use,
+// allowing it to better understand user requests over time.
+// ============================================================
+
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 model AgentMemory {
   id            String   @id @default(cuid())
   agentId       String
   userId        String
+<<<<<<< HEAD
   category      String   @default("general")
   content       String
   context       String   @default("{}")
@@ -444,6 +512,19 @@ model AgentMemory {
   createdAt     DateTime @default(now())
   lastAccessedAt DateTime @default(now())
   expiresAt     DateTime?
+=======
+  category      String   @default("general")   // general, preference, episodic, procedural, semantic
+  content       String                          // The learned knowledge
+  context       String   @default("{}")         // JSON: context in which this was learned
+  source        String   @default("interaction") // interaction, observation, feedback, system
+  relevance     Float    @default(0.5)          // 0-1, how important this memory is
+  accessCount   Int      @default(0)            // How often this memory is retrieved
+  tags          String   @default("[]")         // JSON array of tags for categorization
+  embedding     String?                          // Vector embedding for semantic search (JSON)
+  createdAt     DateTime @default(now())
+  lastAccessedAt DateTime @default(now())
+  expiresAt     DateTime?                        // Optional TTL for temporary memories
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
   agent         Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -454,6 +535,7 @@ model AgentMemory {
   @@map("agent_memories")
 }
 
+<<<<<<< HEAD
 model URLBlocklist {
   id          String   @id @default(cuid())
   domain      String   @unique
@@ -463,6 +545,23 @@ model URLBlocklist {
   source      String   @default("system")
   isActive    Boolean  @default(true)
   hits        Int      @default(0)
+=======
+// ============================================================
+// URL Blocklist — Malicious site protection
+// Stores known malicious URLs/domains to protect the system
+// from phishing, malware, and other threats.
+// ============================================================
+
+model URLBlocklist {
+  id          String   @id @default(cuid())
+  domain      String   @unique                    // Domain or URL pattern
+  reason      String                              // Why it's blocked
+  threatType  String   @default("malware")        // malware, phishing, spam, scam, suspicious
+  severity    String   @default("high")           // low, medium, high, critical
+  source      String   @default("system")         // system, user, auto_detected
+  isActive    Boolean  @default(true)
+  hits        Int      @default(0)                // How many times this was triggered
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -471,6 +570,7 @@ model URLBlocklist {
   @@map("url_blocklist")
 }
 
+<<<<<<< HEAD
 model ImageGeneration {
   id              String   @id @default(cuid())
   userId          String
@@ -483,6 +583,24 @@ model ImageGeneration {
   width           Int?
   height          Int?
   metadata        String   @default("{}")
+=======
+// ============================================================
+// Image Generation — Track AI-generated images
+// ============================================================
+
+model ImageGeneration {
+  id              String   @id @default(cuid())
+  userId          String
+  prompt          String                          // The text prompt used
+  model           String                          // Model used for generation
+  provider        String   @default("openrouter") // Provider (openrouter, etc.)
+  imageUrl        String?                         // URL or base64 of generated image
+  status          String   @default("pending")    // pending, completed, failed
+  costUsd         Float    @default(0)
+  width           Int?
+  height          Int?
+  metadata        String   @default("{}")         // JSON metadata
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   createdAt       DateTime @default(now())
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -492,6 +610,7 @@ model ImageGeneration {
   @@map("image_generations")
 }
 
+<<<<<<< HEAD
 model VideoGeneration {
   id              String   @id @default(cuid())
   userId          String
@@ -519,11 +638,20 @@ model VideoGeneration {
   @@index([provider, createdAt])
   @@map("video_generations")
 }
+=======
+// ============================================================
+// Conversation — Chat conversations with agents
+// ============================================================
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
 model Conversation {
   id        String   @id @default(cuid())
   title     String
+<<<<<<< HEAD
   type      String   @default("chat")
+=======
+  type      String   @default("chat")     // chat, automation, support
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   userId    String
   agentId   String?
   createdAt DateTime @default(now())
@@ -536,9 +664,17 @@ model Conversation {
   @@map("conversations")
 }
 
+// ============================================================
+// Message — Individual messages within conversations
+// ============================================================
+
 model Message {
   id             String   @id @default(cuid())
+<<<<<<< HEAD
   role           String
+=======
+  role           String                       // user, assistant, system
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   content        String
   model          String?
   provider       String?
@@ -551,12 +687,22 @@ model Message {
   @@map("messages")
 }
 
+// ============================================================
+// Knowledge — User knowledge base for long-term memory & RAG
+// ============================================================
+
 model Knowledge {
   id        String   @id @default(cuid())
   content   String
+<<<<<<< HEAD
   category  String   @default("general")
   tags      String   @default("[]")
   source    String   @default("manual")
+=======
+  category  String   @default("general")   // preference, project, document, workflow_context, agent_learning, episodic, semantic
+  tags      String   @default("[]")
+  source    String   @default("manual")     // conversation, document, manual, episodic, summarization
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   relevance Float    @default(0.5)
   userId    String
   createdAt DateTime @default(now())
@@ -568,13 +714,21 @@ model Knowledge {
   @@map("knowledge")
 }
 
+// ============================================================
+// Document & DocumentChunk — RAG document storage
+// ============================================================
+
 model Document {
   id        String   @id @default(cuid())
   fileName  String
   fileType  String   @default("unknown")
   fileSize  Int      @default(0)
   content   String   @default("")
+<<<<<<< HEAD
   status    String   @default("processing")
+=======
+  status    String   @default("processing")  // processing, ready, failed
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -604,6 +758,10 @@ model DocumentChunk {
   @@map("document_chunks")
 }
 
+// ============================================================
+// Agent Execution — Execution state persistence for agents
+// ============================================================
+
 model AgentExecution {
   id              String   @id @default(cuid())
   agentId         String
@@ -612,7 +770,11 @@ model AgentExecution {
   steps           String   @default("[]")
   currentStep     Int      @default(0)
   totalSteps      Int      @default(0)
+<<<<<<< HEAD
   status          String   @default("pending")
+=======
+  status          String   @default("pending")    // pending, running, completed, failed, paused
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   totalDuration   Int      @default(0)
   totalTokens     Int      @default(0)
   estimatedCost   Float    @default(0)
@@ -620,7 +782,11 @@ model AgentExecution {
   provider        String?
   result          String?
   error           String?
+<<<<<<< HEAD
   state           String   @default("{}")
+=======
+  state           String   @default("{}")         // JSON execution state
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   completedAt     DateTime?
@@ -629,6 +795,7 @@ model AgentExecution {
   @@index([userId, createdAt])
   @@map("agent_executions")
 }
+<<<<<<< HEAD
 
 model AuditLog {
   id          String   @id @default(cuid())
@@ -1250,3 +1417,5 @@ model BrowserAutomation {
   @@index([status])
   @@map("browser_automations")
 }
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)

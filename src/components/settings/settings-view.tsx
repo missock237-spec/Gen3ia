@@ -666,7 +666,11 @@ function WhatsAppTab() {
     try {
       await apiFetch('/api/whatsapp/send', {
         method: 'POST',
+<<<<<<< HEAD
         body: JSON.stringify({ to: form.phoneNumber, message: 'Message test depuis Genova' }),
+=======
+        body: JSON.stringify({ to: form.phoneNumber, message: 'Message test depuis AgentOS' }),
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
       });
       toast({ title: 'Message envoyé', description: 'Un message test a été envoyé' });
     } catch (err) {

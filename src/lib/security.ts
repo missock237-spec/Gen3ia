@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/session';
+<<<<<<< HEAD
 import { hasRole, isValidRole, UserRole } from '@/lib/auth';
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
 interface RateLimitEntry {
   timestamps: number[];
@@ -87,7 +90,10 @@ export function checkRateLimit(
 
 interface SecurityOptions {
   requireAuth?: boolean;
+<<<<<<< HEAD
   requireRole?: UserRole;
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   rateLimit?: {
     limit: number;
     windowMs: number;
@@ -95,7 +101,11 @@ interface SecurityOptions {
 }
 
 interface SecurityResult {
+<<<<<<< HEAD
   auth: { userId: string; role?: string } | null;
+=======
+  auth: { userId: string } | null;
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   error: NextResponse | null;
 }
 
@@ -145,6 +155,7 @@ export async function applySecurity(
       applyCorsHeaders(response, request.headers.get('origin') || undefined);
       return { auth: null, error: response };
     }
+<<<<<<< HEAD
 
     // RBAC: Check role if required
     if (options.requireRole) {
@@ -159,6 +170,8 @@ export async function applySecurity(
       }
     }
 
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     return { auth, error: null };
   }
 

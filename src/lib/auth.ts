@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /**
  * Auth — Password Hashing, Verification, Token Utilities & RBAC
  *
@@ -28,11 +29,24 @@ const LEGACY_PREFIX = 'sha256:'; // Legacy: sha256:hash (global salt)
 const GLOBAL_SALT_PREFIX = 'gs:'; // Old global-salt format: gs:iterations:hash
 
 function getGlobalSalt(): string {
+=======
+import crypto from 'crypto';
+
+const ITERATIONS = 100000;
+const KEY_LENGTH = 64;
+const DIGEST = 'sha512';
+const LEGACY_DIGEST = 'sha256';
+const PREFIX = 'pbkdf2:';
+const LEGACY_PREFIX = 'sha256:';
+
+function getAuthSalt(): string {
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   const salt = process.env.AUTH_SALT;
   if (!salt) {
     throw new Error('AUTH_SALT environment variable is required');
   }
   return salt;
+<<<<<<< HEAD
 }
 
 /**
@@ -40,6 +54,8 @@ function getGlobalSalt(): string {
  */
 function generateSalt(): string {
   return crypto.randomBytes(SALT_LENGTH).toString('hex');
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 }
 
 /**
@@ -61,6 +77,7 @@ function deriveKey(password: string, salt: string, iterations: number): Promise<
  * The salt is embedded in the hash so no separate storage is needed.
  */
 export async function hashPassword(password: string): Promise<string> {
+<<<<<<< HEAD
   if (!password || password.length === 0) {
     throw new Error('Password must not be empty');
   }
@@ -152,6 +169,57 @@ export async function verifyPassword(
   // Original format: simple SHA-256 + hardcoded salt (most legacy)
   const encoder = new TextEncoder();
   const data = encoder.encode(password + 'genova-salt-2024');
+=======
+  const salt = getAuthSalt();
+  const derivedKey = await new Promise<Buffer>((resolve, reject) => {
+    crypto.pbkdf2(password, salt, ITERATIONS, KEY_LENGTH, DIGEST, (err, key) => {
+      if (err) reject(err);
+      else resolve(key);
+    });
+  });
+  return `${PREFIX}${ITERATIONS}:${derivedKey.toString('hex')}`;
+}
+
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  if (hash.startsWith(PREFIX)) {
+    const parts = hash.slice(PREFIX.length).split(':');
+    const iterations = parseInt(parts[0], 10);
+    const storedKey = parts[1];
+    const salt = getAuthSalt();
+
+    const derivedKey = await new Promise<Buffer>((resolve, reject) => {
+      crypto.pbkdf2(password, salt, iterations, KEY_LENGTH, DIGEST, (err, key) => {
+        if (err) reject(err);
+        else resolve(key);
+      });
+    });
+
+    const storedBuf = Buffer.from(storedKey, 'hex');
+    if (storedBuf.length !== derivedKey.length) return false;
+    return crypto.timingSafeEqual(storedBuf, derivedKey);
+  }
+
+  if (hash.startsWith(LEGACY_PREFIX)) {
+    const storedKey = hash.slice(LEGACY_PREFIX.length);
+    const salt = getAuthSalt();
+
+    const derivedKey = await new Promise<Buffer>((resolve, reject) => {
+      crypto.pbkdf2(password, salt, ITERATIONS, KEY_LENGTH, LEGACY_DIGEST, (err, key) => {
+        if (err) reject(err);
+        else resolve(key);
+      });
+    });
+
+    const legacyBuf = Buffer.from(storedKey, 'hex');
+    const legacyHexBuf = Buffer.from(derivedKey.toString('hex').slice(0, storedKey.length), 'hex');
+    if (legacyBuf.length !== legacyHexBuf.length) return false;
+    return crypto.timingSafeEqual(legacyBuf, legacyHexBuf);
+  }
+
+  // Legacy SHA-256 simple hash (original implementation)
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + 'agentos-salt-2024');
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   const computed = await crypto.subtle.digest('SHA-256', data);
   const computedHex = Array.from(new Uint8Array(computed))
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -159,6 +227,7 @@ export async function verifyPassword(
 
   const hashBuf = Buffer.from(hash, 'hex');
   const computedBuf = Buffer.from(computedHex, 'hex');
+<<<<<<< HEAD
   if (hashBuf.length !== computedBuf.length) return { valid: false, needsMigration: false };
   const valid = crypto.timingSafeEqual(hashBuf, computedBuf);
   return { valid, needsMigration: valid };
@@ -283,4 +352,13 @@ export async function createAuditLog(params: AuditLogParams): Promise<void> {
       error: error instanceof Error ? error.message : 'Unknown',
     });
   }
+=======
+  if (hashBuf.length !== computedBuf.length) return false;
+  return crypto.timingSafeEqual(hashBuf, computedBuf);
+}
+
+export function needsMigration(hash: string): boolean {
+  // Returns true if the hash is from a legacy format that should be re-hashed
+  return !hash.startsWith(PREFIX);
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 }

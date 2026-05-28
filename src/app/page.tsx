@@ -11,6 +11,7 @@ import { GuardrailsView } from '@/components/guardrails/guardrails-view';
 import { CoordinationView } from '@/components/coordination/coordination-view';
 import { SettingsView } from '@/components/settings/settings-view';
 import { AnalyticsView } from '@/components/analytics/analytics-view';
+<<<<<<< HEAD
 import IntegrationsView from '@/components/integrations/integrations-view';
 import ConnectorsView from '@/components/connectors/connectors-view';
 import { ThemeProvider } from 'next-themes';
@@ -33,12 +34,24 @@ function AppContent() {
   const { isAuthenticated, isLoading, user } = useAuthStore();
   const { currentView } = useAppStore();
   const hydrateRef = useRef(false);
+=======
+import { ThemeProvider } from 'next-themes';
+import { Loader2 } from 'lucide-react';
+
+function AppContent() {
+  const { isAuthenticated, user } = useAuthStore();
+  const { currentView } = useAppStore();
+  const hydrateRef = useRef(false);
+  const validateRef = useRef(false);
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   const validatedRef = useRef(false);
 
+  // Hydrate auth from localStorage only once on mount
   useEffect(() => {
     if (!hydrateRef.current) {
       hydrateRef.current = true;
       useAuthStore.getState().hydrate();
+<<<<<<< HEAD
 
       // Immediately validate the session with the server
       (async () => {
@@ -88,9 +101,39 @@ function AppContent() {
       window.location.href = '/login?error=email_not_verified';
     }
     return null;
-  }
+=======
+    }
+  }, []);
 
-  const ViewComponent = viewComponents[currentView];
+  // Validate session once when authenticated
+  useEffect(() => {
+    if (isAuthenticated && !validateRef.current) {
+      validateRef.current = true;
+      (async () => {
+        const valid = await useAuthStore.getState().validateSession();
+        if (valid) {
+          useAppStore.getState().fetchApprovalCount();
+        }
+        validatedRef.current = true;
+      })();
+    }
+  }, [isAuthenticated]);
+
+  // Listen for auth:unauthorized events
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      useAuthStore.getState().logout();
+      validateRef.current = false;
+      validatedRef.current = false;
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, []);
+
+  if (!isAuthenticated) {
+    return <AuthForm />;
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
+  }
 
   return (
     <div className="min-h-screen flex bg-background grid-pattern">
@@ -99,6 +142,9 @@ function AppContent() {
         <AppHeader />
         <div className="flex-1 p-4 sm:p-6 overflow-auto">
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
           {currentView === 'dashboard' && <DashboardView />}
           {currentView === 'agents' && <AgentsView />}
           {currentView === 'automation' && <AutomationView />}
@@ -107,6 +153,7 @@ function AppContent() {
           {currentView === 'settings' && <SettingsView />}
           {currentView === 'approvals' && <SettingsView initialTab="approvals" />}
           {currentView === 'analytics' && <AnalyticsView />}
+<<<<<<< HEAD
           {currentView === 'integrations' && <IntegrationsView />}
           {currentView === 'connectors' && <ConnectorsView />}
 =======
@@ -122,6 +169,8 @@ function AppContent() {
             </motion.div>
           </AnimatePresence>
 >>>>>>> 393da2d (34435f28-a1d4-4c91-9d7c-40c579ff6a46)
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
         </div>
       </main>
     </div>

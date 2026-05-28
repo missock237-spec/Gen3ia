@@ -1,5 +1,9 @@
 import { create } from 'zustand';
+<<<<<<< HEAD
 import { apiFetch, ApiError } from '@/lib/api';
+=======
+import { apiFetch } from '@/lib/api';
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
 interface User {
   id: string;
@@ -25,7 +29,11 @@ interface AuthState {
 }
 
 interface AppState {
+<<<<<<< HEAD
   currentView: 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'approvals' | 'analytics' | 'integrations' | 'connectors';
+=======
+  currentView: 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'approvals' | 'analytics';
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   setCurrentView: (view: AppState['currentView']) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
@@ -39,12 +47,17 @@ const STORAGE_KEY = 'genova_user';
 function getStoredUser(): User | null {
   if (typeof window === 'undefined') return null;
   try {
+<<<<<<< HEAD
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return null;
     const parsed = JSON.parse(saved);
     // Validate essential fields exist
     if (!parsed.id || !parsed.email) return null;
     return parsed;
+=======
+    const saved = localStorage.getItem('agentos_user');
+    return saved ? JSON.parse(saved) : null;
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   } catch {
     return null;
   }
@@ -71,6 +84,7 @@ function persistUser(user: User): void {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
+<<<<<<< HEAD
   isLoading: true,
 
   login: (user: User) => {
@@ -85,6 +99,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch {
       // Even if server logout fails, we must clear client state
       // The session will expire naturally on the server side
+=======
+  login: (user) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('agentos_user', JSON.stringify(user));
+    }
+    set({ user, isAuthenticated: true });
+  },
+  logout: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('agentos_user');
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     }
     clearAuthStorage();
     set({ user: null, isAuthenticated: false, isLoading: false });
@@ -101,6 +126,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   refreshSession: async (): Promise<boolean> => {
     try {
+<<<<<<< HEAD
       await apiFetch('/api/auth/refresh', { method: 'POST' });
       // If refresh succeeded, validate the new session
       return get().validateSession();
@@ -141,7 +167,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // The user might just have a temporary network issue
       set({ isLoading: false });
       return false;
+=======
+      const data = await apiFetch<User>('/api/auth/me');
+      if (data && data.id) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('agentos_user', JSON.stringify(data));
+        }
+        set({ user: data, isAuthenticated: true });
+        return true;
+      }
+    } catch (error: unknown) {
+      // Only clear auth state on 401 (unauthorized), not on network failures
+      const isUnauthorized =
+        typeof error === 'object' && error !== null &&
+        'status' in error && (error as { status: number }).status === 401;
+      if (isUnauthorized) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('agentos_user');
+        }
+        set({ user: null, isAuthenticated: false });
+      }
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     }
+    return false;
   },
 }));
 

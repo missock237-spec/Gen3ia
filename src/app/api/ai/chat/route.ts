@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAIRouter } from '@/lib/ai-router';
 import { applySecurity, secureResponse } from '@/lib/security';
+<<<<<<< HEAD
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ai-chat');
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
 const MAX_HISTORY_LENGTH = 50;
 const MAX_MESSAGE_LENGTH = 5000;
@@ -83,7 +86,11 @@ export async function POST(request: NextRequest) {
     const messages = [
       {
         role: 'system' as const,
+<<<<<<< HEAD
         content: `Tu es l'assistant Genova, un IA qui aide les utilisateurs à contrôler leur système d'agents IA. Tu parles en français. Tu aides à comprendre les commandes en langage naturel et à les transformer en actions. Tu es concis et professionnel. Réponds toujours en français.`,
+=======
+        content: `Tu es l'assistant AgentOS, un IA qui aide les utilisateurs à contrôler leur système d'agents IA. Tu parles en français. Tu aides à comprendre les commandes en langage naturel et à les transformer en actions. Tu es concis et professionnel. Réponds toujours en français.`,
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
       },
       ...validatedHistory.map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -102,6 +109,7 @@ export async function POST(request: NextRequest) {
       costUsd: response.costUsd,
     });
     return secureResponse(res, request);
+<<<<<<< HEAD
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
     log.error('AI chat failed', { error: errMsg });
@@ -109,6 +117,10 @@ export async function POST(request: NextRequest) {
       error: 'Erreur lors de la communication avec l\'IA',
       details: process.env.NODE_ENV === 'development' ? errMsg : undefined,
     }, { status: 500 });
+=======
+  } catch {
+    const res = NextResponse.json({ error: 'Erreur lors de la communication avec l\'IA' }, { status: 500 });
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     return secureResponse(res, request);
   }
 }

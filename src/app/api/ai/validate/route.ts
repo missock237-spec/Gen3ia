@@ -50,7 +50,11 @@ export async function POST(request: NextRequest) {
       [
         {
           role: 'system',
+<<<<<<< HEAD
           content: `Tu es le système de validation Genova. Tu vérifies si une action respecte les garde-fous définis. Réponds TOUJOURS en JSON valide:
+=======
+          content: `Tu es le système de validation AgentOS. Tu vérifies si une action respecte les garde-fous définis. Réponds TOUJOURS en JSON valide:
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 {
   "valid": true/false,
   "message": "Message explicatif",

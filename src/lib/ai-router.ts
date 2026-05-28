@@ -12,6 +12,7 @@
  */
 
 import ZAI from 'z-ai-web-dev-sdk';
+<<<<<<< HEAD
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ai-router');
@@ -20,6 +21,13 @@ const log = createLogger('ai-router');
 // Types
 // ---------------------------------------------------------------------------
 
+=======
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 export interface AIMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -98,6 +106,7 @@ const DEFAULT_CONFIG: AIRouterConfig = {
 // Cost estimation (USD per 1 K tokens — approximate)
 // ---------------------------------------------------------------------------
 
+<<<<<<< HEAD
 // Groq pricing as of 2025 — USD per 1K tokens
 // Source: https://console.groq.com/docs/models
 // llama-3.3-70b-versatile: $0.59/M input, $0.79/M output
@@ -106,6 +115,12 @@ const GROQ_COST_PER_K: Record<string, { prompt: number; completion: number }> = 
   default:   { prompt: 0.00059, completion: 0.00079 },   // llama-3.3-70b-versatile
   fast:      { prompt: 0.00005, completion: 0.00008 },   // llama-3.1-8b-instant
   powerful:  { prompt: 0.00059, completion: 0.00079 },   // llama-3.3-70b-versatile
+=======
+const GROQ_COST_PER_K: Record<string, { prompt: number; completion: number }> = {
+  default:   { prompt: 0, completion: 0 },
+  fast:      { prompt: 0, completion: 0 },
+  powerful:  { prompt: 0, completion: 0 },
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 };
 
 const OPENROUTER_COST_PER_K: Record<string, { prompt: number; completion: number }> = {
@@ -133,12 +148,16 @@ function getCostPerK(
 function isTransientError(error: unknown): boolean {
   if (error instanceof Response) {
     const s = error.status;
+<<<<<<< HEAD
     // Only 429 (rate limit) and 5xx (server errors) are transient
     // 4xx client errors (401, 403, etc.) are NOT transient — retrying won't help
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     return s === 429 || (s >= 500 && s <= 599);
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
+<<<<<<< HEAD
 
     // Check for explicit HTTP status in the error message
     const statusMatch = msg.match(/status[:\s]*(\d{3})/);
@@ -152,16 +171,24 @@ function isTransientError(error: unknown): boolean {
     }
 
     // Network-level / timeout / rate-limit — these are transient
+=======
+    // Network-level / timeout / rate-limit
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     if (
       msg.includes('network') ||
       msg.includes('timeout') ||
       msg.includes('econnreset') ||
       msg.includes('econnrefused') ||
+<<<<<<< HEAD
+=======
+      msg.includes('429') ||
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
       msg.includes('rate limit') ||
       msg.includes('overloaded')
     ) {
       return true;
     }
+<<<<<<< HEAD
 
     // Explicitly check for common API auth failures — NOT transient
     if (
@@ -177,6 +204,17 @@ function isTransientError(error: unknown): boolean {
   }
   // Default to NON-transient — prevents wasteful retries on unknown persistent errors
   return false;
+=======
+    // If the error was caused by a fetch that returned a status, peek at the message
+    const statusMatch = msg.match(/status[:\s]*(\d{3})/);
+    if (statusMatch) {
+      const s = parseInt(statusMatch[1], 10);
+      return s === 429 || (s >= 500 && s <= 599);
+    }
+  }
+  // Default to transient so we can retry — safer for unknown error shapes
+  return true;
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 }
 
 function sleep(ms: number): Promise<void> {
@@ -201,6 +239,7 @@ interface ProviderCallResult {
 /**
  * Call via z-ai-web-dev-sdk (the universal fallback).
  */
+<<<<<<< HEAD
 /**
  * Create a promise that rejects when the AbortController signals.
  * This enables proper timeout cancellation even for SDK calls
@@ -216,6 +255,8 @@ function abortRace(controller: AbortController, timeoutMs: number): Promise<neve
   });
 }
 
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 async function callZAI(
   messages: AIMessage[],
   model: string,
@@ -225,6 +266,7 @@ async function callZAI(
   const zai = await ZAI.create();
 
   const controller = new AbortController();
+<<<<<<< HEAD
 
   try {
     // Race the SDK call against the abort timeout
@@ -236,6 +278,16 @@ async function callZAI(
       }),
       abortRace(controller, timeoutMs),
     ]);
+=======
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const completion = await zai.chat.completions.create({
+      messages,
+      model,
+      stream: false,
+    });
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
     const content = completion.choices?.[0]?.message?.content ?? '';
     const usage = completion.usage ?? {};
@@ -251,10 +303,14 @@ async function callZAI(
       model,
     };
   } finally {
+<<<<<<< HEAD
     // Ensure abort is triggered to clean up any pending race
     if (!controller.signal.aborted) {
       controller.abort();
     }
+=======
+    clearTimeout(timer);
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   }
 }
 
@@ -370,6 +426,7 @@ async function* streamZAI(
   const zai = await ZAI.create();
 
   const controller = new AbortController();
+<<<<<<< HEAD
   // Set up a timeout that aborts the controller for the initial connection
   const connectionTimer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -392,6 +449,19 @@ async function* streamZAI(
       // Check if aborted during streaming
       if (controller.signal.aborted) break;
 
+=======
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let totalDelta = '';
+  try {
+    const completion = await zai.chat.completions.create({
+      messages,
+      model,
+      stream: true,
+    });
+
+    for await (const chunk of completion) {
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
       const delta = chunk.choices?.[0]?.delta?.content ?? '';
       if (delta) {
         totalDelta += delta;
@@ -405,10 +475,14 @@ async function* streamZAI(
       usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     };
   } finally {
+<<<<<<< HEAD
     clearTimeout(connectionTimer);
     if (!controller.signal.aborted) {
       controller.abort();
     }
+=======
+    clearTimeout(timer);
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   }
 }
 
@@ -622,6 +696,7 @@ export class AIRouter {
           };
         } catch (error) {
           lastError = error;
+<<<<<<< HEAD
           const isTransient = isTransientError(error);
 
           log.warn(`Provider ${provider.name}/${model} failed (attempt ${attempt + 1}/${this.config.maxRetries + 1})`, {
@@ -631,6 +706,11 @@ export class AIRouter {
 
           // If not transient, don't retry this provider — skip to next one
           if (!isTransient) break;
+=======
+
+          // If not transient, don't retry this provider
+          if (!isTransientError(error)) break;
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
           // If this was the last retry for this provider, move on
           if (attempt < this.config.maxRetries) {
@@ -747,6 +827,7 @@ export class AIRouter {
     switch (providerName) {
       case 'groq':
         if (process.env.GROQ_API_KEY) {
+<<<<<<< HEAD
           try {
             return await callGroqDirect(messages, model, this.config.timeoutMs);
           } catch (error) {
@@ -782,6 +863,21 @@ export class AIRouter {
 
     // Universal fallback: z-ai-web-dev-sdk
     return callZAI(messages, model, providerName, this.config.timeoutMs);
+=======
+          return callGroqDirect(messages, model, this.config.timeoutMs);
+        }
+        return callZAI(messages, model, providerName, this.config.timeoutMs);
+
+      case 'openrouter':
+        if (process.env.OPENROUTER_API_KEY) {
+          return callOpenRouterDirect(messages, model, this.config.timeoutMs);
+        }
+        return callZAI(messages, model, providerName, this.config.timeoutMs);
+
+      default:
+        return callZAI(messages, model, providerName, this.config.timeoutMs);
+    }
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   }
 
   // -----------------------------------------------------------------------
@@ -839,6 +935,7 @@ export class AIRouter {
       // Analytics module not available yet — silent fail is intentional
     }
 
+<<<<<<< HEAD
     // Structured logging via centralized logger
     log.info('AI request completed', {
       provider,
@@ -848,6 +945,14 @@ export class AIRouter {
       costUsd: costUsd.toFixed(6),
       requestId,
     });
+=======
+    // Also log to console in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(
+        `[AI Router] provider=${provider} model=${model} tokens=${promptTokens}+${completionTokens} cost=$${costUsd.toFixed(6)} requestId=${requestId}`,
+      );
+    }
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   }
 }
 

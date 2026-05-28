@@ -2,6 +2,7 @@ interface ApiFetchOptions extends RequestInit {
   params?: Record<string, string>;
 }
 
+<<<<<<< HEAD
 /**
  * Custom API error class with HTTP status code.
  * Used by apiFetch to provide structured error information.
@@ -26,6 +27,8 @@ export class ApiError extends Error {
  *   session refresh and logout logic centrally)
  * - On other errors: throws ApiError with server error message
  */
+=======
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 export async function apiFetch<T = unknown>(
   path: string,
   options: ApiFetchOptions = {}
@@ -50,6 +53,7 @@ export async function apiFetch<T = unknown>(
   });
 
   if (response.status === 401) {
+<<<<<<< HEAD
     // Throw a structured error — the auth store's validateSession handles
     // refresh logic and logout. We do NOT dispatch events or clear state here
     // to avoid race conditions and duplicate logout triggers.
@@ -70,4 +74,38 @@ export async function apiFetch<T = unknown>(
   }
 
   return response.json() as Promise<T>;
+=======
+    // Clear auth state and redirect to login
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('agentos_user');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    }
+    throw new ApiError('Authentication required', 401);
+  }
+
+  if (!response.ok) {
+    let errorData: unknown;
+    try {
+      errorData = await response.json();
+    } catch {
+      errorData = { error: 'Request failed' };
+    }
+    throw new ApiError(
+      (errorData as { error?: string })?.error || 'Request failed',
+      response.status
+    );
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 }

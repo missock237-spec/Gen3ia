@@ -146,7 +146,11 @@ async function generateWithOpenRouter(
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+<<<<<<< HEAD
       'X-Title': 'Genova Genova',
+=======
+      'X-Title': 'Genova AgentOS',
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     },
     body: JSON.stringify({
       model: modelInfo.id,

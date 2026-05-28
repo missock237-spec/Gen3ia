@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getCurrentSession, extractToken, validateSession } from '@/lib/session';
 
+<<<<<<< HEAD
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     // Try cookie-based session first
@@ -56,23 +57,46 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (!userId) {
       return NextResponse.json({ error: 'Invalid or expired session' }, { status: 401 });
     }
+=======
+export async function OPTIONS(request: NextRequest) {
+  const { error } = await applySecurity(request);
+  if (error) return error;
+  return new NextResponse(null, { status: 204 });
+}
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
+export async function GET(request: NextRequest) {
+  const { auth, error: secError } = await applySecurity(request, {
+    requireAuth: true,
+  });
+  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+
+  try {
     const user = await db.user.findUnique({
+<<<<<<< HEAD
       where: { id: userId },
+=======
+      where: { id: auth.userId },
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
       select: {
         id: true,
         email: true,
         name: true,
         plan: true,
         avatar: true,
+<<<<<<< HEAD
         role: true,
         isEmailVerified: true,
         isActive: true,
+=======
+        emailVerified: true,
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
         createdAt: true,
       },
     });
 
     if (!user) {
+<<<<<<< HEAD
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
@@ -89,5 +113,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 });
+=======
+      const res = NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+      return secureResponse(res, request);
+    }
+
+    const res = NextResponse.json(user);
+    return secureResponse(res, request);
+  } catch {
+    const res = NextResponse.json(
+      { error: 'Failed to fetch user' },
+      { status: 500 }
+    );
+    return secureResponse(res, request);
+>>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   }
 }
