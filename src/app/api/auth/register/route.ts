@@ -39,7 +39,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { hashPassword } from '@/lib/auth';
+import { hashPassword, createAuditLog } from '@/lib/auth';
 import { createSession, setSessionCookie, setRefreshCookie } from '@/lib/session';
 import { sendEmail } from '@/lib/email';
 import { applySecurity, secureResponse } from '@/lib/security';
@@ -182,12 +182,25 @@ export async function POST(request: NextRequest) {
         name: user.name,
         plan: user.plan,
         avatar: user.avatar,
+        role: user.role || 'user',
         emailVerificationRequired: true,
       },
       { status: 201 }
     );
     setSessionCookie(res, token);
     setRefreshCookie(res, refreshToken);
+
+    // Audit log for registration
+    await createAuditLog({
+      userId: user.id,
+      action: 'registration',
+      resource: 'user',
+      resourceId: user.id,
+      ipAddress,
+      userAgent,
+      severity: 'info',
+    });
+
     return secureResponse(res, request);
   } catch {
     const res = NextResponse.json(
