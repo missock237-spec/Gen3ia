@@ -557,7 +557,7 @@ function AddAccessKeyDialog({ services, onAdd }: { services: ServiceDef[]; onAdd
         <div className="space-y-4 py-2">
           <div>
             <Label className="text-sm text-gray-300 mb-1 block">Nom *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: Clé Stripe Production..." className="bg-[#1a1a2e] border-[#2a2a4a] text-white" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: Clé Neero Production..." className="bg-[#1a1a2e] border-[#2a2a4a] text-white" />
           </div>
           <div>
             <Label className="text-sm text-gray-300 mb-1 block">Service *</Label>

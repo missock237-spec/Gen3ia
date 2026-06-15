@@ -15,7 +15,24 @@ const log = createLogger('credits');
 // ---------------------------------------------------------------------------
 
 export type CreditType = 'purchase' | 'usage' | 'refund' | 'bonus' | 'adjustment';
-export type ResourceType = 'agent_run' | 'image_gen' | 'video_gen' | 'voice' | 'token' | 'credit_purchase' | 'plan_upgrade' | 'report_gen';
+export type ResourceType =
+  | 'chat_live'
+  | 'chat_search'
+  | 'image_gen'
+  | 'video_sec'
+  | 'audio_sec'
+  | 'whatsapp_sms'
+  | 'whatsapp_call_min'
+  | 'whatsapp_voice_msg'
+  | 'post_text'
+  | 'post_video_min'
+  | 'agent_run'
+  | 'token'
+  | 'credit_purchase'
+  | 'plan_upgrade'
+  | 'report_gen'
+  | 'video_gen'
+  | 'voice';
 
 export interface CreditCheckResult {
   hasCredits: boolean;
@@ -58,14 +75,23 @@ export interface UsageHistoryEntry {
 // ---------------------------------------------------------------------------
 
 export const CREDIT_COSTS: Record<ResourceType, number> = {
-  agent_run: 5,        // 5 credits per agent run
-  image_gen: 10,       // 10 credits per image
-  video_gen: 50,       // 50 credits per video
-  voice: 3,            // 3 credits per voice operation
-  token: 1,            // 1 credit per 1K tokens
-  credit_purchase: 0,  // No cost (adding credits)
-  plan_upgrade: 0,     // No cost (bonus credits)
-  report_gen: 2,       // 2 credits per report
+  chat_live: 2,             // 2 crédits par message
+  chat_search: 5,           // 5 crédits par message avec recherche
+  image_gen: 10,            // 10 crédits par image
+  video_sec: 5,             // 5 crédits par seconde de vidéo
+  audio_sec: 0.33,          // 0.33 crédit par seconde de voix off
+  whatsapp_sms: 10,         // 10 crédits par SMS
+  whatsapp_call_min: 100,   // 100 crédits par minute d'appel
+  whatsapp_voice_msg: 25,   // 25 crédits par message vocal généré
+  post_text: 50,            // 50 crédits par post texte
+  post_video_min: 200,      // 200 crédits par vidéo 1 minute
+  agent_run: 5,
+  token: 1,
+  credit_purchase: 0,
+  plan_upgrade: 0,
+  report_gen: 2,
+  video_gen: 50,
+  voice: 3,
 };
 
 // ---------------------------------------------------------------------------
@@ -309,17 +335,17 @@ export async function purchaseCredits(
     throw new Error(`Invalid credit package: ${packageId}`);
   }
 
-  // Create a Stripe checkout session for one-time payment
-  const { createCheckoutSession } = await import('./stripe-client');
+  // Create a Neero checkout session for one-time payment
+  const { createCheckoutSession } = await import('./neero-client');
 
   const result = await createCheckoutSession({
     userId,
-    priceId: pkg.stripePriceId,
+    priceId: pkg.neeroPriceId,
     planId: 'credit_purchase',
     mode: 'payment',
   });
 
-  // Store the credit amount in the session metadata (handled by stripe-client)
+  // Store the credit amount in the session metadata (handled by neero-client)
   log.info('Credit purchase initiated', {
     userId,
     packageId,

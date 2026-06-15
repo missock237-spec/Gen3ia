@@ -4,7 +4,7 @@
  * Re-exports all billing modules for convenient imports.
  */
 
-// Stripe Integration
+// Neero Integration
 export {
   createCheckoutSession,
   createPortalSession,
@@ -13,7 +13,7 @@ export {
   type CheckoutSessionInput,
   type PortalSessionInput,
   type SubscriptionInfo,
-} from './stripe-client';
+} from './neero-client';
 
 // Credit System
 export {

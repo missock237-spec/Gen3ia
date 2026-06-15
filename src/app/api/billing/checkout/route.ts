@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
-import { createCheckoutSession } from '@/lib/billing/stripe-client';
+import { createCheckoutSession } from '@/lib/billing/neero-client';
 import { getPlan, type PlanTier } from '@/lib/billing/plans';
 
 export async function OPTIONS() {
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!plan.stripePriceId) {
+    if (!plan.neeroPriceId) {
       return secureResponse(
         NextResponse.json({ error: 'This plan is not available for purchase' }, { status: 400 }),
         request
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     const session = await createCheckoutSession({
       userId: auth.userId,
-      priceId: plan.stripePriceId,
+      priceId: plan.neeroPriceId,
       planId,
       successUrl,
       cancelUrl,

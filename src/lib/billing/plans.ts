@@ -30,7 +30,7 @@ export interface Plan {
   currency: string;
   interval: 'month' | 'year';
   credits: number; // -1 = unlimited
-  stripePriceId: string;
+  neeroPriceId: string;
   features: PlanFeature[];
   limits: {
     agents: number;         // -1 = unlimited
@@ -52,7 +52,7 @@ export interface CreditPackage {
   credits: number;
   price: number;
   currency: string;
-  stripePriceId: string;
+  neeroPriceId: string;
   pricePerCredit: number;
 }
 
@@ -68,7 +68,7 @@ export const PLANS: Plan[] = [
     currency: 'usd',
     interval: 'month',
     credits: 500,
-    stripePriceId: '',
+    neeroPriceId: '',
     features: [
       { name: '2 AI Agents', included: true, limit: 2 },
       { name: '100 credits/month', included: true },
@@ -98,7 +98,7 @@ export const PLANS: Plan[] = [
     currency: 'usd',
     interval: 'month',
     credits: 1000,
-    stripePriceId: process.env.STRIPE_STARTER_PRICE_ID || 'price_starter',
+    neeroPriceId: process.env.NEERO_STARTER_PRICE_ID || 'price_starter',
     features: [
       { name: '5 AI Agents', included: true, limit: 5 },
       { name: '1,000 credits/month', included: true },
@@ -129,7 +129,7 @@ export const PLANS: Plan[] = [
     currency: 'usd',
     interval: 'month',
     credits: 5000,
-    stripePriceId: process.env.STRIPE_PRO_PRICE_ID || 'price_pro',
+    neeroPriceId: process.env.NEERO_PRO_PRICE_ID || 'price_pro',
     highlighted: true,
     badge: 'Most Popular',
     features: [
@@ -162,7 +162,7 @@ export const PLANS: Plan[] = [
     currency: 'usd',
     interval: 'month',
     credits: -1, // Unlimited
-    stripePriceId: process.env.STRIPE_ENTERPRISE_PRICE_ID || 'price_enterprise',
+    neeroPriceId: process.env.NEERO_ENTERPRISE_PRICE_ID || 'price_enterprise',
     badge: 'Best Value',
     features: [
       { name: 'Unlimited AI Agents', included: true },
@@ -195,7 +195,7 @@ export const PLANS: Plan[] = [
     currency: 'usd',
     interval: 'month',
     credits: -1,
-    stripePriceId: '',
+    neeroPriceId: '',
     features: [
       { name: 'Custom agent limit', included: true },
       { name: 'Custom credit allocation', included: true },
@@ -223,40 +223,31 @@ export const PLANS: Plan[] = [
 
 export const CREDIT_PACKAGES: CreditPackage[] = [
   {
-    id: 'credits_100',
-    name: '100 Credits',
-    credits: 500,
-    price: 4.99,
-    currency: 'usd',
-    stripePriceId: process.env.STRIPE_CREDITS_100_PRICE_ID || 'price_credits_100',
-    pricePerCredit: 0.0499,
+    id: 'credits_50',
+    name: '50 Credits',
+    credits: 50,
+    price: 8,
+    currency: 'EUR',
+    neeroPriceId: process.env.NEERO_CREDITS_50_PRICE_ID || 'price_credits_50',
+    pricePerCredit: 0.16,
   },
   {
-    id: 'credits_500',
-    name: '500 Credits',
-    credits: 500,
-    price: 19.99,
-    currency: 'usd',
-    stripePriceId: process.env.STRIPE_CREDITS_500_PRICE_ID || 'price_credits_500',
-    pricePerCredit: 0.04,
+    id: 'credits_250',
+    name: '250 Credits',
+    credits: 250,
+    price: 40,
+    currency: 'EUR',
+    neeroPriceId: process.env.NEERO_CREDITS_250_PRICE_ID || 'price_credits_250',
+    pricePerCredit: 0.16,
   },
   {
-    id: 'credits_2000',
-    name: '2,000 Credits',
-    credits: 2000,
-    price: 59.99,
-    currency: 'usd',
-    stripePriceId: process.env.STRIPE_CREDITS_2000_PRICE_ID || 'price_credits_2000',
-    pricePerCredit: 0.03,
-  },
-  {
-    id: 'credits_5000',
-    name: '5,000 Credits',
-    credits: 5000,
-    price: 129.99,
-    currency: 'usd',
-    stripePriceId: process.env.STRIPE_CREDITS_5000_PRICE_ID || 'price_credits_5000',
-    pricePerCredit: 0.026,
+    id: 'credits_1000',
+    name: '1000 Credits',
+    credits: 1000,
+    price: 160,
+    currency: 'EUR',
+    neeroPriceId: process.env.NEERO_CREDITS_1000_PRICE_ID || 'price_credits_1000',
+    pricePerCredit: 0.16,
   },
 ];
 
@@ -356,14 +347,14 @@ export async function changePlan(
   // For upgrade, create a checkout session
   if (comparison.isUpgrade) {
     const target = getPlan(targetPlan);
-    if (!target?.stripePriceId) {
+    if (!target?.neeroPriceId) {
       return { success: false, message: 'Plan not available for upgrade', newPlan: user.plan };
     }
 
-    const { createCheckoutSession } = await import('./stripe-client');
+    const { createCheckoutSession } = await import('./neero-client');
     const session = await createCheckoutSession({
       userId,
-      priceId: target.stripePriceId,
+      priceId: target.neeroPriceId,
       planId: targetPlan,
     });
 
@@ -387,9 +378,9 @@ export async function changePlan(
       where: { userId, status: 'active' },
     });
 
-    if (subscription?.stripeSubscriptionId) {
+    if (subscription?.neeroSubscriptionId) {
       // Schedule cancellation at period end
-      const stripe = (await import('./stripe-client')).getSubscription;
+      const neero = (await import('./neero-client')).getSubscription;
       // We'll let the user manage this through the portal
     }
 

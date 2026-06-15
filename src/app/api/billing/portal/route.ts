@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
-import { createPortalSession } from '@/lib/billing/stripe-client';
+import { createPortalSession } from '@/lib/billing/neero-client';
 
 export async function OPTIONS() {
   const response = new NextResponse(null, { status: 204 });
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
 
-    if (message.includes('No active Stripe customer')) {
+    if (message.includes('No active customer')) {
       return secureResponse(
         NextResponse.json(
           { error: 'No active subscription found. Please subscribe to a plan first.' },

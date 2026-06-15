@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
-import { getSubscription } from '@/lib/billing/stripe-client';
+import { getSubscription } from '@/lib/billing/neero-client';
 import { changePlan, getPlan, type PlanTier } from '@/lib/billing/plans';
 import { db } from '@/lib/db';
 

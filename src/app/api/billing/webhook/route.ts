@@ -1,16 +1,16 @@
 /**
- * Billing Webhook API — POST: Stripe webhook handler
+ * Billing Webhook API — POST: Neero webhook handler
  *
- * This endpoint receives webhooks from Stripe and processes
+ * This endpoint receives webhooks from Neero and processes
  * subscription lifecycle events.
  *
- * NOTE: This endpoint does NOT use applySecurity because Stripe
+ * NOTE: This endpoint does NOT use applySecurity because Neero
  * webhooks use their own signature verification. No auth cookies
  * or tokens are expected.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { handleWebhook } from '@/lib/billing/stripe-client';
+import { handleWebhook } from '@/lib/billing/neero-client';
 
 export async function OPTIONS() {
   const response = new NextResponse(null, { status: 204 });
@@ -21,17 +21,10 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    const payload = await request.text();
-    const signature = request.headers.get('stripe-signature');
+    const payload = await request.json();
 
-    if (!signature) {
-      return NextResponse.json(
-        { error: 'Missing stripe-signature header' },
-        { status: 400 }
-      );
-    }
-
-    const result = await handleWebhook(payload, signature);
+    // Neero webhook handling
+    const result = await handleWebhook(payload);
 
     return NextResponse.json({
       received: result.received,
@@ -39,14 +32,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-
-    // Distinguish between signature errors and processing errors
-    if (message.includes('signature') || message.includes('Invalid')) {
-      return NextResponse.json(
-        { error: 'Webhook signature verification failed' },
-        { status: 400 }
-      );
-    }
 
     return NextResponse.json(
       { error: 'Webhook processing failed', details: message },

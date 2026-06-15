@@ -950,10 +950,10 @@ model Subscription {
   userId       String
   plan         String    @default("free")
   status       String    @default("active")
-  stripeId     String?   @unique
-  stripeCustomerId String? @unique
-  stripeSubscriptionId String? @unique
-  stripePriceId String?
+  neeroId      String?   @unique
+  neeroCustomerId String? @unique
+  neeroSubscriptionId String? @unique
+  neeroPriceId String?
   currentPeriodStart DateTime?
   currentPeriodEnd DateTime?
   cancelAtPeriodEnd Boolean @default(false)
@@ -971,7 +971,7 @@ model Subscription {
 model Invoice {
   id              String    @id @default(cuid())
   userId          String
-  stripeInvoiceId String    @unique
+  neeroInvoiceId  String    @unique
   subscriptionId  String?
   amount          Float
   currency        String
