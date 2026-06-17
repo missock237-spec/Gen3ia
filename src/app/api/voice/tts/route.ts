@@ -52,6 +52,17 @@ export async function POST(request: NextRequest) {
       language: language || 'en-US',
     });
 
+    // ── 3. Deduct Credits (PRD Requirement 13/14) ───────────────────────────
+    const { deductCredits, calculateCredits } = await import('@/lib/billing/credits');
+    const amount = calculateCredits('audio_sec', { durationSeconds: result.duration });
+
+    await deductCredits({
+      userId: auth.userId,
+      amount,
+      resourceType: 'audio_sec',
+      description: `Synthèse vocale (${result.duration.toFixed(1)}s)`,
+    });
+
     // Return audio as base64
     const res = NextResponse.json({
       audio: result.audioBuffer.toString('base64'),

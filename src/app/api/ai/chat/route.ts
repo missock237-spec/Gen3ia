@@ -94,11 +94,17 @@ export async function POST(request: NextRequest) {
 
     // ── 3. Deduct Credits (PRD Requirement 13/14) ───────────────────────────
     const { deductCredits, CREDIT_COSTS } = await import('@/lib/billing/credits');
+
+    // Check if it's a "search" message or simple "live" message
+    const isSearch = message.toLowerCase().includes('recherche') || message.toLowerCase().includes('search');
+    const creditType = isSearch ? 'chat_search' : 'chat_live';
+    const amount = CREDIT_COSTS[creditType];
+
     const creditCheck = await deductCredits({
       userId: auth.userId,
-      amount: CREDIT_COSTS.token, // 1 credit per 1K tokens (approximate for this simplified call)
-      resourceType: 'token',
-      description: `Chat IA: ${message.slice(0, 30)}...`,
+      amount,
+      resourceType: creditType,
+      description: `Chat IA (${isSearch ? 'Search' : 'Direct'}): ${message.slice(0, 30)}...`,
     });
 
     if (!creditCheck.success) {

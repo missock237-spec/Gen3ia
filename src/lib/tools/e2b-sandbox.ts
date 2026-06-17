@@ -233,7 +233,7 @@ export function createSandbox(type?: SandboxType): SandboxManager {
     case 'e2b':
       return new E2BSandbox();
     case 'docker': {
-      return new DockerSandboxAdapter() as unknown as SandboxManager;
+      return new DockerSandboxAdapter();
     }
     case 'subprocess':
     default:

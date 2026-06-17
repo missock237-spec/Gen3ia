@@ -319,6 +319,26 @@ export async function initializeUserCredits(userId: string): Promise<void> {
 }
 
 /**
+ * Calculate credits for a specific action
+ */
+export function calculateCredits(action: ResourceType, params: Record<string, any> = {}): number {
+  const baseCost = CREDIT_COSTS[action] || 0;
+
+  switch (action) {
+    case 'video_sec':
+      return baseCost * (params.durationSeconds || 0);
+    case 'audio_sec':
+      return baseCost * (params.durationSeconds || 0);
+    case 'whatsapp_call_min':
+      return baseCost * (params.durationMinutes || 1);
+    case 'post_video_min':
+      return baseCost * (params.durationMinutes || 1);
+    default:
+      return baseCost;
+  }
+}
+
+/**
  * Purchase credits package
  */
 export async function purchaseCredits(

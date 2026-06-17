@@ -59,6 +59,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── 3. Deduct Credits (PRD Requirement 13/14) ───────────────────────────
+    const { deductCredits, CREDIT_COSTS } = await import('@/lib/billing/credits');
+    const creditCheck = await deductCredits({
+      userId: auth.userId,
+      amount: CREDIT_COSTS.image_gen, // 10 credits per image
+      resourceType: 'image_gen',
+      description: `Génération d'image: ${prompt.slice(0, 30)}...`,
+    });
+
+    if (!creditCheck.success) {
+      return secureResponse(
+        NextResponse.json({
+          error: 'Crédits insuffisants',
+          message: 'Vous avez épuisé vos crédits. Revenez demain ou passez au plan Pro !'
+        }, { status: 403 }),
+        request
+      );
+    }
+
     // Add to BullMQ queue for async processing (Vercel-safe)
     const queue = getAIJobQueue();
     const jobId = await queue.addImageJob(auth.userId, prompt, {
