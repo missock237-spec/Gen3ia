@@ -29,7 +29,6 @@ function getStripe(): Stripe {
   }
 
   _stripe = new Stripe(key, {
-    apiVersion: '2025-01-27-ac' as any, // Latest stable
     typescript: true,
   });
 

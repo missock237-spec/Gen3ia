@@ -9,8 +9,8 @@ let _stripe: Stripe | null = null;
 function getStripe() {
   if (!_stripe) {
     _stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: '2025-01-27-ac' as any,
-    });
+      typescript: true,
+    } as any);
   }
   return _stripe;
 }

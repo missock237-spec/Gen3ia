@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { refundMarketplaceTransaction } from '@/lib/marketplace/stripe-service';

@@ -13,12 +13,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import dynamic from 'next/dynamic';
 import {
   Search, Star, Download, ShoppingBag, Package, Bot, GitBranch, FileCode, Plug,
   Filter, Plus, StarHalf, ExternalLink, CheckCircle2, Coins, Eye, TrendingUp
 } from 'lucide-react';
-import { SellerDashboard } from './seller-dashboard';
-import { BuyerDashboard } from './buyer-dashboard';
+
+const SellerDashboard = dynamic(() => import('./seller-dashboard').then(m => m.SellerDashboard), {
+  ssr: false,
+  loading: () => <div className="p-8 text-center text-slate-400">Chargement du dashboard vendeur...</div>
+});
+
+const BuyerDashboard = dynamic(() => import('./buyer-dashboard').then(m => m.BuyerDashboard), {
+  ssr: false,
+  loading: () => <div className="p-8 text-center text-slate-400">Chargement de vos achats...</div>
+});
 
 interface Listing {
   id: string;
