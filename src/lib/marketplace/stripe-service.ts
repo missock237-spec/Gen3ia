@@ -18,18 +18,23 @@ const log = createLogger('stripe-marketplace');
 // Stripe Instance
 // ---------------------------------------------------------------------------
 
+let _stripe: Stripe | null = null;
+
 function getStripe(): Stripe {
+  if (_stripe) return _stripe;
+
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set');
   }
-  return new Stripe(key, {
+
+  _stripe = new Stripe(key, {
     apiVersion: '2025-01-27-ac' as any, // Latest stable
     typescript: true,
   });
-}
 
-const stripe = getStripe();
+  return _stripe;
+}
 
 // Commission rate (20%)
 const PLATFORM_FEE_PERCENT = 0.20;
@@ -51,7 +56,7 @@ export async function getOrCreateSellerAccount(userId: string) {
     if (!user) throw new Error('User not found');
 
     // Create Stripe Connect Express account
-    const account = await stripe.accounts.create({
+    const account = await getStripe().accounts.create({
       type: 'express',
       country: 'FR', // Default to FR, but should be configurable
       email: user.email,
@@ -88,7 +93,7 @@ export async function createOnboardingLink(userId: string, returnUrl: string) {
   const profile = await getOrCreateSellerAccount(userId);
   if (!profile.stripeAccountId) throw new Error('No Stripe account ID');
 
-  const accountLink = await stripe.accountLinks.create({
+  const accountLink = await getStripe().accountLinks.create({
     account: profile.stripeAccountId,
     refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/marketplace/seller/onboard?refresh=true`,
     return_url: returnUrl,
@@ -108,7 +113,7 @@ export async function syncSellerAccount(userId: string) {
 
   if (!profile?.stripeAccountId) return null;
 
-  const account = await stripe.accounts.retrieve(profile.stripeAccountId);
+  const account = await getStripe().accounts.retrieve(profile.stripeAccountId);
 
   return await db.sellerProfile.update({
     where: { userId },
@@ -155,7 +160,7 @@ export async function createMarketplaceCheckoutSession(params: {
   const amount = Math.round(listing.price * 100); // Amount in cents
   const platformFee = Math.round(amount * PLATFORM_FEE_PERCENT);
 
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripe().checkout.sessions.create({
     mode: 'payment',
     payment_method_types: ['card'],
     line_items: [
@@ -348,7 +353,7 @@ export async function refundMarketplaceTransaction(transactionId: string, reason
   }
 
   // Create refund in Stripe
-  const refund = await stripe.refunds.create({
+  const refund = await getStripe().refunds.create({
     payment_intent: transaction.stripePaymentIntentId,
     reason: reason as any || 'requested_by_customer',
   });

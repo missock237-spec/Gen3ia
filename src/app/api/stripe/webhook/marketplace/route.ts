@@ -5,9 +5,15 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('marketplace-webhook');
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-01-27-ac' as any,
-});
+let _stripe: Stripe | null = null;
+function getStripe() {
+  if (!_stripe) {
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: '2025-01-27-ac' as any,
+    });
+  }
+  return _stripe;
+}
 
 export async function POST(request: NextRequest) {
   const payload = await request.text();
@@ -21,7 +27,7 @@ export async function POST(request: NextRequest) {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(payload, sig, webhookSecret);
+    event = getStripe().webhooks.constructEvent(payload, sig, webhookSecret);
   } catch (err: any) {
     log.error('Webhook signature verification failed', { error: err.message });
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
