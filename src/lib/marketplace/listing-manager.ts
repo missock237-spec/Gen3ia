@@ -25,6 +25,10 @@ export interface CreateListingOptions {
   currency?: string;
   config?: Record<string, unknown>;
   previewUrl?: string;
+  license?: string;
+  documentation?: string;
+  version?: string;
+  screenshots?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -37,6 +41,10 @@ export interface UpdateListingOptions {
   currency?: string;
   config?: Record<string, unknown>;
   previewUrl?: string;
+  license?: string;
+  documentation?: string;
+  version?: string;
+  screenshots?: string[];
   status?: ListingStatus;
   metadata?: Record<string, unknown>;
 }
@@ -156,9 +164,19 @@ export async function createListing(
 ): Promise<MarketplaceListingResult> {
   const slug = generateSlug(options.name);
 
+  // Get seller profile if it exists
+  const sellerProfile = await db.sellerProfile.findUnique({
+    where: { userId }
+  });
+
+  if (options.price && options.price > 0 && (!sellerProfile || sellerProfile.status !== 'active')) {
+    throw new Error('You must have an active seller account to list items with a price');
+  }
+
   const listing = await db.marketplaceListing.create({
     data: {
       userId,
+      sellerProfileId: sellerProfile?.id,
       type: options.type,
       name: options.name,
       slug,
@@ -169,9 +187,12 @@ export async function createListing(
       currency: options.currency || 'usd',
       config: JSON.stringify(options.config || {}),
       previewUrl: options.previewUrl || null,
+      license: options.license || 'standard',
+      documentation: options.documentation || '',
+      version: options.version || '1.0.0',
+      screenshots: JSON.stringify(options.screenshots || []),
       metadata: JSON.stringify({
         ...(options.metadata || {}),
-        version: '1.0.0',
         changelog: [],
       }),
       status: 'draft',
@@ -206,6 +227,18 @@ export async function updateListing(
   if (options.currency !== undefined) data.currency = options.currency;
   if (options.config !== undefined) data.config = JSON.stringify(options.config);
   if (options.previewUrl !== undefined) data.previewUrl = options.previewUrl;
+  if (options.license !== undefined) data.license = options.license;
+  if (options.documentation !== undefined) data.documentation = options.documentation;
+  if (options.version !== undefined) {
+    const currentMeta = safeParse<Record<string, unknown>>(existing.metadata, {});
+    const changelog = (currentMeta.changelog as any[]) || [];
+    if (options.version !== existing.version) {
+       changelog.push({ version: options.version, date: new Date().toISOString() });
+    }
+    data.version = options.version;
+    data.metadata = JSON.stringify({ ...currentMeta, changelog });
+  }
+  if (options.screenshots !== undefined) data.screenshots = JSON.stringify(options.screenshots);
   if (options.status !== undefined) data.status = options.status;
   if (options.metadata !== undefined) {
     const currentMeta = safeParse<Record<string, unknown>>(existing.metadata, {});

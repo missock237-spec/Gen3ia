@@ -86,6 +86,11 @@ export async function purchaseListing(options: PurchaseOptions): Promise<Purchas
     };
   }
 
+  // If price > 0, we should not allow direct "purchase" here (it goes through Stripe)
+  if (listing.price > 0) {
+    throw new Error('Commercial listings must be purchased via Stripe');
+  }
+
   // Everything is free — complete purchase immediately
   const purchase = await db.marketplacePurchase.create({
     data: {
@@ -135,15 +140,18 @@ export async function verifyAccess(userId: string, listingId: string): Promise<b
   if (!listing) return false;
   if (listing.userId === userId) return true;
 
-  // Free listings are accessible to all
-  if (listing.price === 0) return true;
+  // Commercial verification
+  if (listing.price > 0) {
+    // Check purchase record
+    const purchase = await db.marketplacePurchase.findUnique({
+      where: { userId_listingId: { listingId, userId } },
+    });
 
-  // Check purchase record
-  const purchase = await db.marketplacePurchase.findUnique({
-    where: { userId_listingId: { listingId, userId } },
-  });
+    return purchase !== null && purchase.status === 'completed';
+  }
 
-  return purchase !== null && purchase.status === 'completed';
+  // Free listings (price === 0) are accessible to all registered users
+  return true;
 }
 
 // ---------------------------------------------------------------------------

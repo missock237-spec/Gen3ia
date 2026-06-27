@@ -15,8 +15,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
   Search, Star, Download, ShoppingBag, Package, Bot, GitBranch, FileCode, Plug,
-  Filter, Plus, StarHalf, ExternalLink, CheckCircle2, Coins, Eye
+  Filter, Plus, StarHalf, ExternalLink, CheckCircle2, Coins, Eye, TrendingUp
 } from 'lucide-react';
+import { SellerDashboard } from './seller-dashboard';
+import { BuyerDashboard } from './buyer-dashboard';
 
 interface Listing {
   id: string;
@@ -132,13 +134,24 @@ export function MarketplaceView() {
     }
   };
 
-  const handlePurchase = async (listingId: string) => {
+  const handlePurchase = async (listing: Listing) => {
     try {
-      await apiFetch('/api/marketplace/purchases', {
-        method: 'POST',
-        body: JSON.stringify({ listingId }),
-      });
-      fetchListings();
+      if (listing.price > 0) {
+        // Stripe Commercial Checkout
+        const res = await apiFetch<{ url: string }>('/api/marketplace/checkout', {
+          method: 'POST',
+          body: JSON.stringify({ listingId: listing.id }),
+        });
+        if (res.url) window.location.href = res.url;
+      } else {
+        // Free direct purchase
+        await apiFetch('/api/marketplace/purchases', {
+          method: 'POST',
+          body: JSON.stringify({ listingId: listing.id }),
+        });
+        fetchListings();
+        alert('Produit ajouté à votre espace de travail !');
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Purchase failed';
       alert(message);
@@ -300,8 +313,9 @@ export function MarketplaceView() {
 
       <Tabs defaultValue="browse" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="browse" className="gap-2"><Package className="h-4 w-4" />Browse</TabsTrigger>
-          <TabsTrigger value="purchases" className="gap-2"><ShoppingBag className="h-4 w-4" />My Purchases</TabsTrigger>
+          <TabsTrigger value="browse" className="gap-2"><Package className="h-4 w-4" />Parcourir</TabsTrigger>
+          <TabsTrigger value="purchases" className="gap-2"><ShoppingBag className="h-4 w-4" />Mes Achats</TabsTrigger>
+          <TabsTrigger value="seller" className="gap-2"><TrendingUp className="h-4 w-4" />Vendre</TabsTrigger>
         </TabsList>
 
         <TabsContent value="browse" className="space-y-4">
@@ -355,10 +369,10 @@ export function MarketplaceView() {
                       </div>
                       <div className="flex items-center gap-1">
                         {listing.price === 0 ? (
-                          <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">Free</Badge>
+                          <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">Gratuit</Badge>
                         ) : (
-                          <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">
-                            <Coins className="h-3 w-3 mr-1" />{listing.price}
+                          <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                            {listing.price}€
                           </Badge>
                         )}
                       </div>
@@ -381,7 +395,11 @@ export function MarketplaceView() {
         </TabsContent>
 
         <TabsContent value="purchases">
-          <PurchasesTab />
+          <BuyerDashboard />
+        </TabsContent>
+
+        <TabsContent value="seller">
+          <SellerDashboard />
         </TabsContent>
       </Tabs>
 
@@ -417,15 +435,15 @@ export function MarketplaceView() {
                   <Separator />
                   <div className="flex items-center justify-between">
                     <div className="text-lg font-semibold">
-                      {selectedListing.price === 0 ? 'Free' : `${selectedListing.price} credits`}
+                      {selectedListing.price === 0 ? 'Gratuit' : `${selectedListing.price}€`}
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => setShowReviewDialog(true)}>
-                        <Star className="h-4 w-4 mr-1" />Review
+                        <Star className="h-4 w-4 mr-1" />Avis
                       </Button>
-                      <Button size="sm" onClick={() => handlePurchase(selectedListing.id)}>
+                      <Button size="sm" onClick={() => handlePurchase(selectedListing)}>
                         {selectedListing.price === 0 ? <Download className="h-4 w-4 mr-1" /> : <ShoppingBag className="h-4 w-4 mr-1" />}
-                        {selectedListing.price === 0 ? 'Get Free' : `Buy (${selectedListing.price} credits)`}
+                        {selectedListing.price === 0 ? 'Installer' : `Acheter (${selectedListing.price}€)`}
                       </Button>
                     </div>
                   </div>
