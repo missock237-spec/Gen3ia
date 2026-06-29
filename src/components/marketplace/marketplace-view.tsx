@@ -57,10 +57,9 @@ interface Review {
 }
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  agent: <Bot className="h-5 w-5" />,
-  workflow: <GitBranch className="h-5 w-5" />,
   template: <FileCode className="h-5 w-5" />,
-  plugin: <Plug className="h-5 w-5" />,
+  workflow: <GitBranch className="h-5 w-5" />,
+  api: <Plug className="h-5 w-5" />,
 };
 
 const CATEGORIES = ['all', 'general', 'productivity', 'development', 'marketing', 'sales', 'support', 'research', 'finance', 'hr', 'creative'];
@@ -82,7 +81,7 @@ export function MarketplaceView() {
   // Create listing form
   const [createForm, setCreateForm] = useState({
     name: '',
-    type: 'agent' as string,
+    type: 'template' as string,
     description: '',
     category: 'general',
     price: 0,
@@ -136,7 +135,7 @@ export function MarketplaceView() {
         }),
       });
       setShowCreateDialog(false);
-      setCreateForm({ name: '', type: 'agent', description: '', category: 'general', price: 0, tags: '' });
+      setCreateForm({ name: '', type: 'template', description: '', category: 'general', price: 0, tags: '' });
       fetchListings();
     } catch {
       // Silently fail
@@ -233,10 +232,9 @@ export function MarketplaceView() {
                   <Select value={createForm.type} onValueChange={(v) => setCreateForm({ ...createForm, type: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="agent">Agent</SelectItem>
-                      <SelectItem value="workflow">Workflow</SelectItem>
                       <SelectItem value="template">Template</SelectItem>
-                      <SelectItem value="plugin">Plugin</SelectItem>
+                      <SelectItem value="workflow">Workflow</SelectItem>
+                      <SelectItem value="api">API</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -292,10 +290,9 @@ export function MarketplaceView() {
               <SelectTrigger className="w-[140px]"><SelectValue placeholder="Type" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="agent">Agents</SelectItem>
-                <SelectItem value="workflow">Workflows</SelectItem>
                 <SelectItem value="template">Templates</SelectItem>
-                <SelectItem value="plugin">Plugins</SelectItem>
+                <SelectItem value="workflow">Workflows</SelectItem>
+                <SelectItem value="api">APIs</SelectItem>
               </SelectContent>
             </Select>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>

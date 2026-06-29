@@ -11,7 +11,7 @@ import { db } from '@/lib/db';
 // Types
 // ---------------------------------------------------------------------------
 
-export type ListingType = 'agent' | 'workflow' | 'template' | 'plugin';
+export type ListingType = 'template' | 'workflow' | 'api';
 export type ListingStatus = 'draft' | 'published' | 'archived' | 'suspended';
 export type ListingCategory = 'general' | 'productivity' | 'development' | 'marketing' | 'sales' | 'support' | 'research' | 'finance' | 'hr' | 'creative';
 

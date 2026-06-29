@@ -285,6 +285,14 @@ export async function handleMarketplaceCheckoutCompleted(session: Stripe.Checkou
     data: { downloads: { increment: 1 }, installCount: { increment: 1 } },
   });
 
+  // Automatically install the asset
+  try {
+    const { installListing } = await import('./installer-engine');
+    await installListing(userId, listingId);
+  } catch (err) {
+    log.error('Automatic installation failed', { userId, listingId, error: err });
+  }
+
   // Send notifications
   try {
     const { sendEmail } = await import('@/lib/email');
