@@ -11,6 +11,15 @@ import { GuardrailsView } from '@/components/guardrails/guardrails-view';
 import { CoordinationView } from '@/components/coordination/coordination-view';
 import { SettingsView } from '@/components/settings/settings-view';
 import { AnalyticsView } from '@/components/analytics/analytics-view';
+import { MarketplaceView } from '@/components/marketplace/marketplace-view';
+import { BillingView } from '@/components/billing/billing-view';
+import { KnowledgeView } from '@/components/knowledge/knowledge-view';
+import { AvatarView } from '@/components/avatars/avatar-view';
+import { VoiceView } from '@/components/voice/voice-view';
+import { BrowserView } from '@/components/browser/browser-view';
+import { MultimodalView } from '@/components/multimodal/multimodal-view';
+import { SchedulerView } from '@/components/scheduler/scheduler-view';
+import { ServicesView } from '@/components/services/services-view';
 import IntegrationsView from '@/components/integrations/integrations-view';
 import ConnectorsView from '@/components/connectors/connectors-view';
 import { ThemeProvider } from 'next-themes';
@@ -95,6 +104,15 @@ function AppContent() {
           {currentView === 'analytics' && <AnalyticsView />}
           {currentView === 'integrations' && <IntegrationsView />}
           {currentView === 'connectors' && <ConnectorsView />}
+          {currentView === 'marketplace' && <MarketplaceView />}
+          {currentView === 'billing' && <BillingView />}
+          {currentView === 'knowledge' && <KnowledgeView />}
+          {currentView === 'avatars' && <AvatarView />}
+          {currentView === 'voice' && <VoiceView />}
+          {currentView === 'browser' && <BrowserView />}
+          {currentView === 'multimodal' && <MultimodalView />}
+          {currentView === 'scheduler' && <SchedulerView />}
+          {currentView === 'services' && <ServicesView />}
         </div>
       </main>
     </div>

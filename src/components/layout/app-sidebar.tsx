@@ -18,6 +18,15 @@ import {
   BarChart3,
   Package,
   Link2,
+  ShoppingBag,
+  Database,
+  UserCircle,
+  Mic2,
+  Globe,
+  Eye,
+  Calendar,
+  Server,
+  CreditCard,
 } from 'lucide-react';
 import { GenovaLogo } from '@/components/ui/genova-logo';
 
@@ -25,12 +34,21 @@ const navItems = [
   { id: 'dashboard' as const, label: 'Tableau de bord', icon: LayoutDashboard },
   { id: 'agents' as const, label: 'Agents IA', icon: Bot },
   { id: 'automation' as const, label: 'Automatisation', icon: Wand2 },
+  { id: 'marketplace' as const, label: 'Marketplace', icon: ShoppingBag },
+  { id: 'knowledge' as const, label: 'Connaissance', icon: Database },
+  { id: 'avatars' as const, label: 'Avatars', icon: UserCircle },
+  { id: 'voice' as const, label: 'Voix & Audio', icon: Mic2 },
+  { id: 'browser' as const, label: 'Navigateur', icon: Globe },
+  { id: 'multimodal' as const, label: 'Multimodal', icon: Eye },
+  { id: 'scheduler' as const, label: 'Planificateur', icon: Calendar },
   { id: 'integrations' as const, label: 'Intégrations', icon: Package },
   { id: 'connectors' as const, label: 'Connecteurs', icon: Link2 },
+  { id: 'services' as const, label: 'Services', icon: Server },
   { id: 'guardrails' as const, label: 'Garde-fous', icon: Shield },
   { id: 'coordination' as const, label: 'Coordination', icon: GitBranch },
   { id: 'approvals' as const, label: 'Approbations', icon: CheckCircle2 },
   { id: 'analytics' as const, label: 'Analytics', icon: BarChart3 },
+  { id: 'billing' as const, label: 'Facturation', icon: CreditCard },
   { id: 'settings' as const, label: 'Paramètres', icon: Settings },
 ];
 

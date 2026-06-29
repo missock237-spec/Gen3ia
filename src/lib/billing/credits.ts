@@ -204,7 +204,7 @@ export async function getCreditBalance(userId: string): Promise<number> {
     select: { plan: true },
   });
 
-  if (subscription?.plan === 'enterprise') {
+  if (subscription?.plan === 'enterprise' || subscription?.plan === 'custom') {
     return -1; // Unlimited
   }
 
