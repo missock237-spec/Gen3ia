@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/session';
 import { hasRole, isValidRole, UserRole } from '@/lib/auth';
+import { validateDeveloperKey } from '@/lib/connectors/developer-service';
 
 interface RateLimitEntry {
   timestamps: number[];
@@ -136,10 +137,33 @@ export async function applySecurity(
 
   // Auth check
   if (options.requireAuth) {
-    const auth = await getAuthenticatedUser(request);
+    // 1. Try standard session auth (cookie)
+    let auth = await getAuthenticatedUser(request);
+
+    // 2. Fallback to API Key auth (for cross-SaaS/Developer access)
+    if (!auth) {
+      const authHeader = request.headers.get('authorization');
+      if (authHeader && authHeader.startsWith('Bearer gv_live_')) {
+        const apiKey = authHeader.split(' ')[1];
+        const keyData = await validateDeveloperKey(apiKey);
+        if (keyData) {
+          auth = { userId: keyData.userId, role: keyData.user.role };
+        }
+      } else {
+        // Also check custom header
+        const customKey = request.headers.get('x-api-key');
+        if (customKey && customKey.startsWith('gv_live_')) {
+          const keyData = await validateDeveloperKey(customKey);
+          if (keyData) {
+            auth = { userId: keyData.userId, role: keyData.user.role };
+          }
+        }
+      }
+    }
+
     if (!auth) {
       const response = NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Authentication required. Valid session or API Key needed.' },
         { status: 401 }
       );
       applyCorsHeaders(response, request.headers.get('origin') || undefined);

@@ -99,10 +99,15 @@ export function proxy(request: NextRequest) {
     return response;
   }
 
-  // Check for session cookie
+  // Check for session cookie or Developer API Key
   const sessionToken = request.cookies.get(SESSION_COOKIE)?.value;
+  const authHeader = request.headers.get('authorization');
+  const customApiKey = request.headers.get('x-api-key');
 
-  if (!sessionToken) {
+  const hasApiKey = (authHeader && authHeader.startsWith('Bearer gv_live_')) ||
+                    (customApiKey && customApiKey.startsWith('gv_live_'));
+
+  if (!sessionToken && !hasApiKey) {
     const response = NextResponse.json(
       { error: 'Authentication required' },
       { status: 401 }
