@@ -24,9 +24,11 @@ import {
   Mic2,
   Globe,
   Eye,
+  Image as ImageIcon,
   Calendar,
   Server,
   CreditCard,
+  Users,
 } from 'lucide-react';
 import { GenovaLogo } from '@/components/ui/genova-logo';
 
@@ -40,9 +42,11 @@ const navItems = [
   { id: 'voice' as const, label: 'Voix & Audio', icon: Mic2 },
   { id: 'browser' as const, label: 'Navigateur', icon: Globe },
   { id: 'multimodal' as const, label: 'Multimodal', icon: Eye },
+  { id: 'media' as const, label: 'Studio Média', icon: ImageIcon },
   { id: 'scheduler' as const, label: 'Planificateur', icon: Calendar },
   { id: 'integrations' as const, label: 'Intégrations', icon: Package },
   { id: 'connectors' as const, label: 'Connecteurs', icon: Link2 },
+  { id: 'collaboration' as const, label: 'Équipes', icon: Users },
   { id: 'services' as const, label: 'Services', icon: Server },
   { id: 'guardrails' as const, label: 'Garde-fous', icon: Shield },
   { id: 'coordination' as const, label: 'Coordination', icon: GitBranch },

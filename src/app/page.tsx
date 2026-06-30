@@ -20,6 +20,8 @@ import { BrowserView } from '@/components/browser/browser-view';
 import { MultimodalView } from '@/components/multimodal/multimodal-view';
 import { SchedulerView } from '@/components/scheduler/scheduler-view';
 import { ServicesView } from '@/components/services/services-view';
+import { MediaView } from '@/components/media/media-view';
+import { CollaborationView } from '@/components/collaboration/collaboration-view';
 import IntegrationsView from '@/components/integrations/integrations-view';
 import ConnectorsView from '@/components/connectors/connectors-view';
 import { ThemeProvider } from 'next-themes';
@@ -113,6 +115,8 @@ function AppContent() {
           {currentView === 'multimodal' && <MultimodalView />}
           {currentView === 'scheduler' && <SchedulerView />}
           {currentView === 'services' && <ServicesView />}
+          {currentView === 'media' && <MediaView />}
+          {currentView === 'collaboration' && <CollaborationView />}
         </div>
       </main>
     </div>

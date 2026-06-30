@@ -25,7 +25,7 @@ interface AuthState {
 }
 
 interface AppState {
-  currentView: 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'approvals' | 'analytics' | 'integrations' | 'connectors' | 'marketplace' | 'billing' | 'knowledge' | 'avatars' | 'voice' | 'browser' | 'multimodal' | 'scheduler' | 'services';
+  currentView: 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'approvals' | 'analytics' | 'integrations' | 'connectors' | 'marketplace' | 'billing' | 'knowledge' | 'avatars' | 'voice' | 'browser' | 'multimodal' | 'scheduler' | 'services' | 'collaboration' | 'media';
   setCurrentView: (view: AppState['currentView']) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;

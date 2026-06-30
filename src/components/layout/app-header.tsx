@@ -15,6 +15,17 @@ const viewTitles: Record<string, string> = {
   coordination: 'Coordination',
   settings: 'Paramètres',
   approvals: 'Approbations',
+  marketplace: 'Marketplace',
+  billing: 'Facturation',
+  knowledge: 'Connaissance',
+  avatars: 'Avatars',
+  voice: 'Voix & Audio',
+  browser: 'Navigateur',
+  multimodal: 'Multimodal',
+  scheduler: 'Planificateur',
+  integrations: 'Intégrations',
+  connectors: 'Connecteurs',
+  services: 'Services',
 };
 
 export function AppHeader() {
