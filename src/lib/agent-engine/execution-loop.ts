@@ -702,13 +702,13 @@ ${planContext}
 ## Historique d'exécution
 ${stepHistory || 'Aucune étape précédente.'}
 
-## Cycle d'exécution autonome
-Tu suis le cycle: THINK → ACT → OBSERVE → REFLECT → (RETRY si nécessaire)
-- THINK: Raisonne sur la situation, analyse les options
-- ACT: Choisis et exécute un outil
-- OBSERVE: Observe le résultat de l'action
-- REFLECT: Évalue ta progression, décide si tu dois réessayer ou adapter
-- RETRY: Si une action échoue, corrige et réessaie avec une approche différente
+## Cycle d'exécution autonome (Pattern: Observation -> Analyse -> Action)
+Tu suis rigoureusement le cycle: OBSERVE → ANALYZE → ACT → REFLECT → (RETRY si nécessaire)
+- OBSERVE: Examine les données d'entrée, l'historique et le contexte.
+- ANALYZE: Décompose la situation en étapes logiques, identifie les risques et les besoins.
+- ACT: Choisis l'outil le plus adapté ou formule une réponse précise.
+- REFLECT: Évalue si l'action a rapproché l'agent de l'objectif final.
+- RETRY: En cas d'échec ou de signal d'erreur, adapte immédiatement ton approche.
 
 Tu as au maximum ${context.maxSteps} étapes et ${context.maxRetries} tentatives de correction.
 
@@ -724,7 +724,9 @@ Réponds UNIQUEMENT en JSON valide:
 
 Si "action" est "respond", c'est ta réponse finale et "isFinal" doit être true.
 Si "action" est un nom d'outil, "actionInput" contient les paramètres.
-"confidence" indique ton niveau de confiance dans cette action.
+"confidence" indique ton niveau de confiance dans cette action (inspiré par ton entraînement sur les cas réels).
+
+Applique les "Action Steps" et "Analysis Steps" pertinents extraits de ta base de connaissance de raisonnement.
 
 Réponds TOUJOURS en français.`;
 }
@@ -763,10 +765,20 @@ export async function executeAgentLoop(
     }
   }
 
-  // Load long-term memory context
+  // Load long-term memory context (User + Global Reasoning Base)
   const longTermMemory = new LongTermMemory();
-  const knowledgeContext = await longTermMemory.getContextForQuery(context.task, context.userId);
-  context.memory.longTermContext = knowledgeContext;
+  const userKnowledge = await longTermMemory.getContextForQuery(context.task, context.userId);
+  const reasoningBase = await longTermMemory.getContextForQuery(context.task, 'system-reasoning-base');
+
+  // Load per-agent specific memory
+  const { getMemoryContext } = await import('@/lib/agent-memory');
+  const agentMemoryContext = await getMemoryContext(context.agentId, context.userId, context.task);
+
+  context.memory.longTermContext = `
+${reasoningBase ? `## Core Reasoning Patterns\n${reasoningBase}\n` : ''}
+${userKnowledge ? `## User Knowledge\n${userKnowledge}\n` : ''}
+${agentMemoryContext ? agentMemoryContext : ''}
+  `.trim();
 
   // Load short-term memory from conversation if available
   if (context.conversationId) {
@@ -1047,20 +1059,25 @@ async function saveExecution(context: ExecutionContext): Promise<void> {
       },
     });
 
-    // Extract and store learnings in long-term memory
+    // Extract and store learnings in per-agent memory
+    const { storeMemory } = await import('@/lib/agent-memory');
     const successfulObservations = context.steps.filter(s => s.type === 'observation' && s.confidence && s.confidence > 0.7);
-    if (successfulObservations.length > 0) {
-      const ltm = new LongTermMemory();
-      for (const obs of successfulObservations) {
-        await ltm.store({
-          content: `Apprentissage de ${context.agentName}: ${obs.content.substring(0, 500)}`,
-          category: 'agent_learning',
-          tags: [context.agentType, obs.toolName || 'general', 'auto-learned'],
-          source: 'execution',
-          relevance: obs.confidence || 0.7,
-          userId: context.userId,
-        });
-      }
+
+    for (const obs of successfulObservations) {
+      await storeMemory(context.agentId, context.userId, obs.content, {
+        category: 'episodic',
+        source: 'observation',
+        context: { toolName: obs.toolName, duration: obs.duration },
+        relevance: obs.confidence || 0.7,
+        tags: [context.agentType, obs.toolName || 'general', 'auto-learned']
+      });
+    }
+
+    // Also learn from interaction if a result was produced
+    const resultStep = context.steps.find(s => s.type === 'result');
+    if (resultStep) {
+      const { learnFromInteraction } = await import('@/lib/agent-memory');
+      await learnFromInteraction(context.agentId, context.userId, context.task, resultStep.content);
     }
   } catch {
     // Fail silently on save error

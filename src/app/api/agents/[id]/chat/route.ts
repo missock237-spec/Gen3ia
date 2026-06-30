@@ -4,6 +4,7 @@ import { applySecurity, getAllowedOrigins } from '@/lib/security';
 import { createAIRouter } from '@/lib/ai-router';
 import { getMemoryContext, learnFromInteraction } from '@/lib/agent-memory';
 import { checkTokenLimit } from '@/lib/usage-limits';
+import { LongTermMemory } from '@/lib/memory/long-term';
 
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
@@ -112,6 +113,10 @@ export async function POST(
     // Retrieve relevant memories for context injection
     const memoryContext = await getMemoryContext(id, auth.userId, message);
 
+    // Retrieve global reasoning patterns
+    const ltm = new LongTermMemory();
+    const reasoningBase = await ltm.getContextForQuery(message, 'system-reasoning-base');
+
     const systemPrompt = `You are ${agent.name}, an AI agent with the following characteristics:
 - Type: ${agent.type}
 - Personality: ${personality}
@@ -132,7 +137,14 @@ Available tools/permissions:
 When a user asks you to do something that requires a permission you don't have, politely inform them that you lack that capability.
 When a user asks you to do something that requires approval, let them know it will need approval before execution.
 
+${reasoningBase ? `## Core Reasoning Patterns\n${reasoningBase}\n\n` : ''}
 ${memoryContext ? memoryContext + '\n\n' : ''}${context ? `Additional context: ${context}` : ''}
+
+## Reasoning Mode (Observe -> Analyze -> Act)
+Apply a structured reasoning process for complex requests:
+1. OBSERVE: Identify all relevant facts from the input and context.
+2. ANALYZE: Break down the problem, identify risks, and plan steps.
+3. ACT: Provide the most accurate and helpful response or plan.
 
 Respond concisely and helpfully. If you need to perform an action, describe what you would do.`;
 
