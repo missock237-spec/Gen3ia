@@ -23,11 +23,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   Globe,
-  Youtube,
-  Facebook,
-  Instagram,
+  Video,
+  Share2,
+  Camera,
   Music2,
-  Linkedin,
   Megaphone,
   MessageCircle,
   Phone,
@@ -89,11 +88,11 @@ const toolCategories = [
   {
     name: 'Réseaux Sociaux',
     tools: [
-      { id: 'social_youtube', label: 'YouTube', icon: Youtube, color: 'text-red-500' },
-      { id: 'social_facebook', label: 'Facebook', icon: Facebook, color: 'text-blue-500' },
-      { id: 'social_instagram', label: 'Instagram', icon: Instagram, color: 'text-pink-500' },
+      { id: 'social_youtube', label: 'YouTube', icon: Video, color: 'text-red-500' },
+      { id: 'social_facebook', label: 'Facebook', icon: Share2, color: 'text-blue-500' },
+      { id: 'social_instagram', label: 'Instagram', icon: Camera, color: 'text-pink-500' },
       { id: 'social_tiktok', label: 'TikTok', icon: Music2, color: 'text-rose-400' },
-      { id: 'social_linkedin', label: 'LinkedIn', icon: Linkedin, color: 'text-blue-400' },
+      { id: 'social_linkedin', label: 'LinkedIn', icon: Globe, color: 'text-blue-400' },
       { id: 'social_post', label: 'Publier sur les réseaux', icon: Megaphone, color: 'text-orange-500' },
     ],
   },

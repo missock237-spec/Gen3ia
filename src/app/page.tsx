@@ -27,6 +27,7 @@ import ConnectorsView from '@/components/connectors/connectors-view';
 import { ThemeProvider } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 import { GenovaLogo } from '@/components/ui/genova-logo';
+import { LandingView } from '@/components/layout/landing-view';
 
 function AppContent() {
   const { isAuthenticated, isLoading, user } = useAuthStore();
@@ -62,21 +63,32 @@ function AppContent() {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  // If not authenticated and not loading, redirect to login page
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated && validatedRef.current) {
-      window.location.href = '/login';
-    }
-  }, [isLoading, isAuthenticated]);
-
-  // Show loading spinner while validating session or redirecting
-  if (isLoading || !isAuthenticated || !validatedRef.current) {
+  // Show loading spinner while hydrating
+  if (isLoading && !hydrateRef.current) {
     return (
       <div className="min-h-screen flex items-center justify-center gradient-bg grid-pattern">
         <div className="flex flex-col items-center gap-4">
           <GenovaLogo size="md" showText={true} />
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Chargement...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If not authenticated, show landing page instead of redirecting to login
+  if (!isAuthenticated && validatedRef.current) {
+    return <LandingView />;
+  }
+
+  // Show loading while validating session if we have a stored user
+  if (isLoading || !validatedRef.current) {
+    return (
+      <div className="min-h-screen flex items-center justify-center gradient-bg grid-pattern">
+        <div className="flex flex-col items-center gap-4">
+          <GenovaLogo size="md" showText={true} />
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Vérification de la session...</p>
         </div>
       </div>
     );

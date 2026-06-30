@@ -42,10 +42,10 @@ import {
   Lock,
   Loader2,
   Save,
-  Youtube,
-  Facebook,
-  Instagram,
-  Linkedin,
+  Video,
+  Share2,
+  Camera,
+  Globe,
   Megaphone,
   MessageCircle,
   Phone,
@@ -116,11 +116,11 @@ interface ApprovalRequest {
 
 // ---- Platform Config ----
 const platformConfig: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; bgColor: string; label: string }> = {
-  youtube: { icon: Youtube, color: 'text-red-500', bgColor: 'bg-red-500/10', label: 'YouTube' },
-  facebook: { icon: Facebook, color: 'text-blue-500', bgColor: 'bg-blue-500/10', label: 'Facebook' },
-  instagram: { icon: Instagram, color: 'text-pink-500', bgColor: 'bg-pink-500/10', label: 'Instagram' },
+  youtube: { icon: Video, color: 'text-red-500', bgColor: 'bg-red-500/10', label: 'YouTube' },
+  facebook: { icon: Share2, color: 'text-blue-500', bgColor: 'bg-blue-500/10', label: 'Facebook' },
+  instagram: { icon: Camera, color: 'text-pink-500', bgColor: 'bg-pink-500/10', label: 'Instagram' },
   tiktok: { icon: Megaphone, color: 'text-white', bgColor: 'bg-white/10', label: 'TikTok' },
-  linkedin: { icon: Linkedin, color: 'text-blue-400', bgColor: 'bg-blue-400/10', label: 'LinkedIn' },
+  linkedin: { icon: Globe, color: 'text-blue-400', bgColor: 'bg-blue-400/10', label: 'LinkedIn' },
 };
 
 const resourceTypeIcons: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; label: string }> = {
