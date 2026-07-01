@@ -113,6 +113,20 @@ export async function POST(
     // Retrieve relevant memories for context injection
     const memoryContext = await getMemoryContext(id, auth.userId, message);
 
+    // Detect coding or web development context
+    const codingKeywords = [
+      'coding', 'development', 'develop', 'code', 'programmation', 'program', 'script',
+      'web', 'frontend', 'backend', 'fullstack', 'react', 'nextjs', 'typescript', 'javascript',
+      'python', 'html', 'css', 'sql', 'database', 'api', 'git', 'github', 'docker', 'deployment',
+      'developper', 'dev', 'logiciel', 'software', 'bug', 'fix', 'debug',
+    ];
+
+    const isCodingContext =
+      codingKeywords.some((kw) => agent.name.toLowerCase().includes(kw)) ||
+      codingKeywords.some((kw) => agent.description.toLowerCase().includes(kw)) ||
+      codingKeywords.some((kw) => instructions.toLowerCase().includes(kw)) ||
+      codingKeywords.some((kw) => message.toLowerCase().includes(kw));
+
     // Retrieve global reasoning patterns
     const ltm = new LongTermMemory();
     const reasoningBase = await ltm.getContextForQuery(message, 'system-reasoning-base');
@@ -167,7 +181,12 @@ Respond concisely and helpfully. If you need to perform an action, describe what
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const aiStream = router.chatStream(messages, { model: 'default' });
+          // If coding context, force usage of Jule (Google AI)
+          const options = isCodingContext
+            ? { model: 'default' as const, provider: 'jule' }
+            : { model: 'default' as const };
+
+          const aiStream = router.chatStream(messages, options);
 
           for await (const chunk of aiStream) {
             if (chunk.delta) fullResponse += chunk.delta;

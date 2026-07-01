@@ -88,6 +88,15 @@ const DEFAULT_CONFIG: AIRouterConfig = {
         powerful: 'meta-llama/llama-3.1-70b-instruct',
       },
     },
+    {
+      name: 'jule',
+      priority: 3,
+      models: {
+        default: 'gemini-2.0-flash-exp',
+        fast: 'gemini-1.5-flash',
+        powerful: 'gemini-2.0-flash-exp',
+      },
+    },
   ],
   maxRetries: 3,
   retryDelayMs: 500,
@@ -122,6 +131,10 @@ function getCostPerK(
   }
   if (provider === 'openrouter') {
     return OPENROUTER_COST_PER_K[model] ?? { prompt: 0.0005, completion: 0.0006 };
+  }
+  if (provider === 'jule') {
+    // Gemini pricing varies, but often free tier is available
+    return { prompt: 0, completion: 0 };
   }
   return { prompt: 0, completion: 0 };
 }
@@ -308,6 +321,56 @@ async function callGroqDirect(
 }
 
 /**
+ * Call Google AI (Jule) REST API directly.
+ * Note: Jule/Google uses GOOGLE_AI_API_KEY
+ */
+async function callJuleDirect(
+  messages: AIMessage[],
+  model: string,
+  timeoutMs: number,
+): Promise<ProviderCallResult> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) throw new Error('GOOGLE_AI_API_KEY not set');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model, messages, stream: false }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const err = new Error(`Jule API error: status ${res.status}`);
+      (err as unknown as { status: number }).status = res.status;
+      throw err;
+    }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content ?? '';
+
+    return {
+      content,
+      usage: {
+        promptTokens: data.usage?.prompt_tokens ?? 0,
+        completionTokens: data.usage?.completion_tokens ?? 0,
+        totalTokens: data.usage?.total_tokens ?? 0,
+      },
+      provider: 'jule',
+      model,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Call OpenRouter REST API directly when OPENROUTER_API_KEY is available.
  */
 async function callOpenRouterDirect(
@@ -352,6 +415,75 @@ async function callOpenRouterDirect(
       provider: 'openrouter',
       model,
     };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function* streamJuleDirect(
+  messages: AIMessage[],
+  model: string,
+  timeoutMs: number,
+): AsyncGenerator<AIStreamChunk> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) throw new Error('GOOGLE_AI_API_KEY not set');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model, messages, stream: true }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const err = new Error(`Jule streaming error: status ${res.status}`);
+      (err as unknown as { status: number }).status = res.status;
+      throw err;
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No readable stream from Jule');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const payload = trimmed.slice(6);
+        if (payload === '[DONE]') {
+          yield { delta: '', done: true, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(payload);
+          const delta = parsed.choices?.[0]?.delta?.content ?? '';
+          if (delta) {
+            yield { delta, done: false };
+          }
+        } catch {
+          // Skip malformed SSE lines
+        }
+      }
+    }
+
+    yield { delta: '', done: true, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
   } finally {
     clearTimeout(timer);
   }
@@ -776,6 +908,21 @@ export class AIRouter {
         }
         break;
 
+      case 'jule':
+        if (process.env.GOOGLE_AI_API_KEY) {
+          try {
+            return await callJuleDirect(messages, model, this.config.timeoutMs);
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : '';
+            if (!isTransientError(error)) {
+              log.info(`Jule direct failed (${msg}), falling back to z-ai-sdk`);
+              break; // Fall through to z-ai-sdk below
+            }
+            throw error;
+          }
+        }
+        break;
+
       default:
         break;
     }
@@ -803,6 +950,12 @@ export class AIRouter {
       case 'openrouter':
         if (process.env.OPENROUTER_API_KEY) {
           return streamOpenRouterDirect(messages, model, this.config.timeoutMs);
+        }
+        return streamZAI(messages, model, providerName, this.config.timeoutMs);
+
+      case 'jule':
+        if (process.env.GOOGLE_AI_API_KEY) {
+          return streamJuleDirect(messages, model, this.config.timeoutMs);
         }
         return streamZAI(messages, model, providerName, this.config.timeoutMs);
 

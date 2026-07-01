@@ -99,6 +99,33 @@ async function installWorkflow(userId: string, listing: any) {
   log.info('Workflow and associated agents cloned for user', { userId, workflowId: workflow.id });
 }
 
+export async function triggerAutoInstaller(purchaseId: string) {
+  const purchase = await db.marketplacePurchase.findUnique({
+    where: { id: purchaseId },
+    include: { listing: true }
+  });
+
+  if (!purchase) {
+    log.error('Purchase not found for auto-install', { purchaseId });
+    return;
+  }
+
+  try {
+    await installListing(purchase.userId, purchase.listingId);
+
+    // Update purchase metadata to mark as installed
+    const metadata = JSON.parse(purchase.metadata || '{}');
+    await db.marketplacePurchase.update({
+      where: { id: purchaseId },
+      data: {
+        metadata: JSON.stringify({ ...metadata, installed: true, installedAt: new Date() })
+      }
+    });
+  } catch (error: any) {
+    log.error('Auto-install failed', { purchaseId, error: error.message });
+  }
+}
+
 async function installAPI(userId: string, listing: any) {
   // APIs are connectors or wrappers
   const config = JSON.parse(listing.config || '{}');
