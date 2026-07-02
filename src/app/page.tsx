@@ -24,7 +24,6 @@ import { MediaView } from '@/components/media/media-view';
 import { CollaborationView } from '@/components/collaboration/collaboration-view';
 import IntegrationsView from '@/components/integrations/integrations-view';
 import ConnectorsView from '@/components/connectors/connectors-view';
-import { ThemeProvider } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 import { GenovaLogo } from '@/components/ui/genova-logo';
 import { LandingView } from '@/components/layout/landing-view';
@@ -136,9 +135,5 @@ function AppContent() {
 }
 
 export default function Home() {
-  return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-      <AppContent />
-    </ThemeProvider>
-  );
+  return <AppContent />;
 }
