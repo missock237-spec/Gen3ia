@@ -13,7 +13,7 @@ import { SettingsView } from '@/components/settings/settings-view';
 import { AnalyticsView } from '@/components/analytics/analytics-view';
 import IntegrationsView from '@/components/integrations/integrations-view';
 import ConnectorsView from '@/components/connectors/connectors-view';
-import { ThemeProvider } from 'next-themes';
+import { ThemeProvider } from '@/components/theme-provider';
 import { Loader2 } from 'lucide-react';
 import { GenovaLogo } from '@/components/ui/genova-logo';
 
