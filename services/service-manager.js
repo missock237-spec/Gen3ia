@@ -14,7 +14,7 @@ const fs = require('fs');
 
 const PID_FILE = '/tmp/genova-services.pid';
 const LOG_DIR = '/tmp/genova-logs';
-const BASE_DIR = '/home/z/my-project';
+const BASE_DIR = process.cwd();
 
 // Ensure log directory exists
 if (!fs.existsSync(LOG_DIR)) {

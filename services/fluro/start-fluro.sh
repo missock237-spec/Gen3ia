@@ -13,11 +13,11 @@ set -euo pipefail
 
 # Configuration
 FLURO_HOST="${FLURO_HOST:-127.0.0.1:11434}"
-FLURO_MODELS_DIR="${FLURO_MODELS_DIR:-/home/z/my-project/data/ollama-models}"
+FLURO_MODELS_DIR="${FLURO_MODELS_DIR:-$(pwd)/data/ollama-models}"
 FLURO_DEFAULT_MODEL="${FLURO_DEFAULT_MODEL:-qwen2.5:0.5b}"
 FLURO_LOG="${FLURO_LOG:-/tmp/fluro-server.log}"
 FLURO_PID_FILE="${FLURO_PID_FILE:-/tmp/fluro.pid}"
-OLLAMA_BIN="${OLLAMA_BIN:-/home/z/.local/bin/ollama}"
+OLLAMA_BIN="${OLLAMA_BIN:-ollama}"
 RESTART_DELAY=3
 MAX_RESTARTS=10
 RESTART_COUNT=0

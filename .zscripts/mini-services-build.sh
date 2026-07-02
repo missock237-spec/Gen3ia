@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 配置项
-ROOT_DIR="/home/z/my-project/mini-services"
+ROOT_DIR="$(pwd)/mini-services"
 DIST_DIR="/tmp/build_fullstack_$BUILD_ID/mini-services-dist"
 
 main() {

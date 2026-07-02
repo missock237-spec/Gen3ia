@@ -18,8 +18,8 @@ import traceback
 from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────
-RESULT_DIR = Path(os.environ.get("VIDEO_RESULT_DIR", "/home/z/my-project/data/videos"))
-MODEL_CACHE = Path(os.environ.get("VIDEO_MODEL_CACHE", "/home/z/my-project/data/video-models"))
+RESULT_DIR = Path(os.environ.get("VIDEO_RESULT_DIR", "./data/videos"))
+MODEL_CACHE = Path(os.environ.get("VIDEO_MODEL_CACHE", "./data/video-models"))
 RESULT_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_CACHE.mkdir(parents=True, exist_ok=True)
 
@@ -117,7 +117,7 @@ def load_videocrafter():
     if ModelState.videocrafter_loaded:
         return True
     try:
-        vc_path = "/home/z/my-project/upload/VideoCrafter-extract/VideoCrafter-main"
+        vc_path = "./upload/VideoCrafter-extract/VideoCrafter-main"
         if vc_path not in sys.path:
             sys.path.insert(0, vc_path)
         from scripts.gradio.t2v_test import Text2Video

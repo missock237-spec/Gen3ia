@@ -6,9 +6,9 @@ import { join, normalize, extname } from 'path';
 
 // Allowed directories for reading
 const ALLOWED_DIRS = [
-  '/home/z/my-project/src',
-  '/home/z/my-project/prisma',
-  '/home/z/my-project/public',
+  './src',
+  './prisma',
+  './public',
 ];
 
 // Blocked file extensions (binary files)
@@ -53,7 +53,7 @@ export const filesystemTool: ToolDefinition = {
     const relativePath = (params.path as string).replace(/^\//, '');
 
     // Resolve to absolute path
-    const basePath = '/home/z/my-project';
+    const basePath = process.cwd();
     const absolutePath = join(basePath, relativePath);
 
     // Security: ensure the path is within allowed directories

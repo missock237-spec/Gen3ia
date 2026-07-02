@@ -9,7 +9,7 @@ const fs = require('fs');
 const http = require('http');
 
 const LOG_DIR = '/tmp/genova-logs';
-const BASE = '/home/z/my-project';
+const BASE = process.cwd();
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
 const services = [

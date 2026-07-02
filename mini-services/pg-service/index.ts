@@ -2,8 +2,8 @@ import { execSync, spawn } from 'child_process';
 import { mkdirSync, existsSync, writeFileSync, unlinkSync, readFileSync } from 'fs';
 import { join } from 'path';
 
-const PG_INSTALL = '/home/z/my-project/pg-install';
-const PG_DATA = '/home/z/my-project/data/pg';
+const PG_INSTALL = join(process.cwd(), '../../pg-install');
+const PG_DATA = join(process.cwd(), '../../data/pg');
 const PG_LOG = join(PG_DATA, 'server.log');
 const PG_PORT = 5432;
 const PG_USER = 'genova';

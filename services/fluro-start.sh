@@ -23,12 +23,12 @@ echo -e "${GREEN}=================================${NC}"
 echo ""
 
 # Configuration
-OLLAMA_BIN="${OLLAMA_BIN:-/home/z/.local/bin/ollama}"
-OLLAMA_MODELS="${OLLAMA_MODELS:-/home/z/my-project/data/ollama-models}"
+OLLAMA_BIN="${OLLAMA_BIN:-ollama}"
+OLLAMA_MODELS="${OLLAMA_MODELS:-$(pwd)/data/ollama-models}"
 OLLAMA_HOST="${OLLAMA_HOST:-0.0.0.0:11434}"
 COMFYUI_DIR="${COMFYUI_DIR:-/tmp/my-project/services/comfyui}"
 VIDEO_API_DIR="${VIDEO_API_DIR:-/tmp/my-project/services/video-api}"
-BAILEYS_DIR="${BAILEYS_DIR:-/home/z/my-project/services/baileys}"
+BAILEYS_DIR="${BAILEYS_DIR:-$(pwd)/services/baileys}"
 
 # Track PIDs
 PIDS=()
@@ -127,7 +127,7 @@ echo -ne "${YELLOW}Starting Video API (VideoCrafter/CogVideo)...${NC} "
 if port_in_use 8189; then
     echo -e "${YELLOW}already running${NC}"
 elif [ -f "$VIDEO_API_DIR/server.py" ]; then
-    mkdir -p /home/z/my-project/data/videos /home/z/my-project/data/video-models
+    mkdir -p $(pwd)/data/videos $(pwd)/data/video-models
     cd "$VIDEO_API_DIR"
     nohup python3 server.py --port 8189 > /tmp/video-server.log 2>&1 &
     PIDS+=($!)

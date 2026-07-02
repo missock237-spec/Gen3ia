@@ -69,8 +69,8 @@ if [ -f "scripts/start-pg.sh" ]; then
     echo -ne "${YELLOW}Starting PostgreSQL...${NC} "
     bash scripts/start-pg.sh >/dev/null 2>&1 && \
         echo -e "${GREEN}OK${NC}" || echo -e "${RED}FAILED${NC}"
-elif [ -f "/home/z/.local/pg/usr/lib/postgresql/17/bin/pg_ctl" ]; then
-    /home/z/.local/pg/usr/lib/postgresql/17/bin/pg_ctl -D /home/z/.local/pg/data -l /home/z/.local/pg/logfile start 2>/dev/null && \
+elif [ -f "$(pwd)/pg-install/usr/lib/postgresql/17/bin/pg_ctl" ]; then
+    $(pwd)/pg-install/usr/lib/postgresql/17/bin/pg_ctl -D $(pwd)/pg-install/data -l $(pwd)/pg-install/logfile start 2>/dev/null && \
         echo -e "${GREEN}PostgreSQL: started (user-space)${NC}" || echo -e "${YELLOW}PostgreSQL: may already be running${NC}"
 elif command -v pg_ctl >/dev/null 2>&1; then
     echo -e "${YELLOW}PostgreSQL: using system installation${NC}"

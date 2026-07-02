@@ -335,9 +335,9 @@ export async function POST(request: NextRequest) {
     // The SaaS communicates service commands through this API
     const serviceCommands: Record<string, Record<string, string>> = {
       ollama: {
-        start: 'OLLAMA_HOST=0.0.0.0:11434 OLLAMA_MODELS=/home/z/my-project/data/ollama-models /home/z/.local/bin/ollama serve',
+        start: 'OLLAMA_HOST=0.0.0.0:11434 OLLAMA_MODELS=./data/ollama-models ollama serve',
         stop: 'pkill -f "ollama serve" || true',
-        restart: 'pkill -f "ollama serve" || true; sleep 2; OLLAMA_HOST=0.0.0.0:11434 OLLAMA_MODELS=/home/z/my-project/data/ollama-models nohup /home/z/.local/bin/ollama serve > /tmp/fluro-server.log 2>&1 &',
+        restart: 'pkill -f "ollama serve" || true; sleep 2; OLLAMA_HOST=0.0.0.0:11434 OLLAMA_MODELS=./data/ollama-models nohup ollama serve > /tmp/fluro-server.log 2>&1 &',
       },
       comfyui: {
         start: 'cd /tmp/my-project/services/comfyui && source venv/bin/activate && nohup python main.py --listen 0.0.0.0 --port 8188 --cpu --disable-xformers > /tmp/comfyui-server.log 2>&1 &',
@@ -350,7 +350,7 @@ export async function POST(request: NextRequest) {
         restart: 'pkill -f "server.py.*8189" || true; sleep 2; cd /tmp/my-project/services/video-api && nohup python3 server.py --port 8189 > /tmp/video-server.log 2>&1 &',
       },
       baileys: {
-        start: 'pm2 start /home/z/my-project/services/baileys/server.js --name baileys-whatsapp',
+        start: 'pm2 start ./services/baileys/server.js --name baileys-whatsapp',
         stop: 'pm2 stop baileys-whatsapp',
         restart: 'pm2 restart baileys-whatsapp',
       },

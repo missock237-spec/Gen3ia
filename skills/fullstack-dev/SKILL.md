@@ -42,7 +42,7 @@ IMPORTANT: `z-ai-web-dev-sdk` MUST be used in the backend only! Do NOT use it on
 
 ### Dev Server Log
 
-IMPORTANT: Read `/home/z/my-project/dev.log` to see the dev server log. Remember to check the log when developing.
+IMPORTANT: Read `./dev.log` to see the dev server log. Remember to check the log when developing.
 
 IMPORTANT: Only read the most recent logs from `dev.log` to avoid large log files.
 

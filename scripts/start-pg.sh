@@ -8,8 +8,8 @@
 
 set -e
 
-PG_BASE="/home/z/.local/pg"
-PG_BIN="$PG_BASE/usr/lib/postgresql/17/bin"
+PG_BASE="$(pwd)/pg-install"
+PG_BIN="$PG_BASE/bin"
 PG_DATA="$PG_BASE/data"
 PG_LOG="$PG_BASE/logfile"
 PG_SOCKET="/tmp"
