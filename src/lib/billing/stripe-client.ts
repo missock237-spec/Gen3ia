@@ -60,8 +60,8 @@ export interface SubscriptionInfo {
   currentPeriodStart: Date | null;
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
-  stripeCustomerId: string | null;
-  stripeSubscriptionId: string | null;
+  neeroCustomerId: string | null;
+  neeroSubscriptionId: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,19 +128,19 @@ export async function createPortalSession(input: PortalSessionInput): Promise<{
   // Get customer ID from subscription
   const subscription = await db.subscription.findFirst({
     where: { userId, status: 'active' },
-    select: { stripeCustomerId: true },
+    select: { neeroCustomerId: true },
   });
 
-  if (!subscription?.stripeCustomerId) {
+  if (!subscription?.neeroCustomerId) {
     throw new Error('No active Stripe customer found for this user');
   }
 
   const session = await stripe().billingPortal.sessions.create({
-    customer: subscription.stripeCustomerId,
+    customer: subscription.neeroCustomerId,
     return_url: returnUrl || `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}?portal=return`,
   });
 
-  log.info('Portal session created', { userId, customerId: subscription.stripeCustomerId });
+  log.info('Portal session created', { userId, customerId: subscription.neeroCustomerId });
 
   return { url: session.url };
 }
@@ -227,8 +227,8 @@ export async function getSubscription(userId: string): Promise<SubscriptionInfo 
     currentPeriodStart: subscription.currentPeriodStart,
     currentPeriodEnd: subscription.currentPeriodEnd,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-    stripeCustomerId: subscription.stripeCustomerId,
-    stripeSubscriptionId: subscription.stripeSubscriptionId,
+    neeroCustomerId: subscription.neeroCustomerId,
+    neeroSubscriptionId: subscription.neeroSubscriptionId,
   };
 }
 
@@ -280,13 +280,13 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription): Pro
 
   // Create or update subscription record
   await db.subscription.upsert({
-    where: { stripeCustomerId: subscription.customer as string },
+    where: { neeroCustomerId: subscription.customer as string },
     create: {
       userId,
       plan: planId || 'free',
-      stripeCustomerId: subscription.customer as string,
-      stripeSubscriptionId: subscription.id,
-      stripePriceId: subscription.items.data[0]?.price.id,
+      neeroCustomerId: subscription.customer as string,
+      neeroSubscriptionId: subscription.id,
+      neeroPriceId: subscription.items.data[0]?.price.id,
       status: subscription.status,
       currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
       currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
@@ -296,8 +296,8 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription): Pro
     },
     update: {
       plan: planId || 'free',
-      stripeSubscriptionId: subscription.id,
-      stripePriceId: subscription.items.data[0]?.price.id,
+      neeroSubscriptionId: subscription.id,
+      neeroPriceId: subscription.items.data[0]?.price.id,
       status: subscription.status,
       currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
       currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
@@ -333,13 +333,13 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
   const userId = subscription.metadata?.userId;
 
   await db.subscription.updateMany({
-    where: { stripeSubscriptionId: subscription.id },
+    where: { neeroSubscriptionId: subscription.id },
     data: {
       status: subscription.status,
       currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
       currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      stripePriceId: subscription.items.data[0]?.price.id,
+      neeroPriceId: subscription.items.data[0]?.price.id,
     },
   });
 
@@ -357,7 +357,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
   const userId = subscription.metadata?.userId;
 
   await db.subscription.updateMany({
-    where: { stripeSubscriptionId: subscription.id },
+    where: { neeroSubscriptionId: subscription.id },
     data: {
       status: 'canceled',
       cancelAtPeriodEnd: false,
@@ -379,10 +379,10 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
 
   // Create invoice record
   await db.invoice.upsert({
-    where: { stripeInvoiceId: invoice.id },
+    where: { neeroInvoiceId: invoice.id },
     create: {
       userId: invoice.metadata?.userId || '',
-      stripeInvoiceId: invoice.id,
+      neeroInvoiceId: invoice.id,
       subscriptionId: (invoice as any).subscription as string | null,
       amount: invoice.amount_paid / 100, // Convert from cents
       currency: invoice.currency,
@@ -412,10 +412,10 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
   await db.invoice.upsert({
-    where: { stripeInvoiceId: invoice.id },
+    where: { neeroInvoiceId: invoice.id },
     create: {
       userId: invoice.metadata?.userId || '',
-      stripeInvoiceId: invoice.id,
+      neeroInvoiceId: invoice.id,
       subscriptionId: (invoice as any).subscription as string | null,
       amount: invoice.amount_due / 100,
       currency: invoice.currency,
@@ -430,7 +430,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
   // Update subscription status
     if ((invoice as any).subscription) {
       await db.subscription.updateMany({
-        where: { stripeSubscriptionId: (invoice as any).subscription as string },
+        where: { neeroSubscriptionId: (invoice as any).subscription as string },
       data: { status: 'past_due' },
     });
   }
@@ -445,12 +445,12 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
 async function getOrCreateCustomer(userId: string): Promise<string> {
   // Check if customer already exists
   const existing = await db.subscription.findFirst({
-    where: { userId, stripeCustomerId: { not: null } },
-    select: { stripeCustomerId: true },
+    where: { userId, neeroCustomerId: { not: null } },
+    select: { neeroCustomerId: true },
   });
 
-  if (existing?.stripeCustomerId) {
-    return existing.stripeCustomerId;
+  if (existing?.neeroCustomerId) {
+    return existing.neeroCustomerId;
   }
 
   // Get user info

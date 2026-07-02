@@ -30,7 +30,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
       <div className="relative w-full lg:w-1/2 xl:w-2/5 flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-md">
           {/* Card */}
-          <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-8 shadow-2xl shadow-black/50 relative overflow-hidden">
+          <div className="bg-slate-900/90 blur-fix-xl border border-slate-700/50 rounded-2xl p-8 shadow-2xl shadow-black/50 relative overflow-hidden">
             {/* Accent line */}
             <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent rounded-full" />
 

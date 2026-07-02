@@ -156,7 +156,7 @@ function VideoGeneratorTab() {
   return (
     <div className="space-y-6">
       {/* Generator Form */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+      <Card className="border-border/50 bg-card/50 blur-fix-sm">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-base">
             <Video className="h-5 w-5 text-primary" />
@@ -367,7 +367,7 @@ function ImageGeneratorTab() {
   return (
     <div className="space-y-6">
       {/* Generator Form */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+      <Card className="border-border/50 bg-card/50 blur-fix-sm">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-base">
             <ImageIcon className="h-5 w-5 text-primary" />

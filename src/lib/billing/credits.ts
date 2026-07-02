@@ -314,7 +314,7 @@ export async function purchaseCredits(
 
   const result = await createCheckoutSession({
     userId,
-    priceId: pkg.stripePriceId,
+    priceId: pkg.neeroPriceId,
     planId: 'credit_purchase',
     mode: 'payment',
   });

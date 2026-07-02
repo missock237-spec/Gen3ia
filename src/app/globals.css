@@ -272,3 +272,17 @@
   pointer-events: none;
   animation: float 15s linear infinite;
 }
+
+/* Backdrop blur fixes for Turbopack */
+.blur-fix-sm {
+  backdrop-filter: blur(4px);
+}
+.blur-fix-md {
+  backdrop-filter: blur(12px);
+}
+.blur-fix-lg {
+  backdrop-filter: blur(16px);
+}
+.blur-fix-xl {
+  backdrop-filter: blur(24px);
+}

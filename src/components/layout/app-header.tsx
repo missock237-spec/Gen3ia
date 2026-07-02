@@ -45,7 +45,7 @@ export function AppHeader() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 sm:px-6 border-b border-border/50 bg-background/80 backdrop-blur-md">
+    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 sm:px-6 border-b border-border/50 bg-background/80 blur-fix-md">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
