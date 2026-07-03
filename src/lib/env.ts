@@ -10,5 +10,4 @@ function requiredEnv(name: string): string {
 
 export const env = {
   DATABASE_URL: requiredEnv('DATABASE_URL'),
-  VAULT_MASTER_KEY: requiredEnv('VAULT_MASTER_KEY'),
 }
