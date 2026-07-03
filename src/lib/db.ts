@@ -1,16 +1,3 @@
-/**
- * Database — Prisma Client Singleton
- *
- * Ensures the correct DATABASE_URL is used even when a system-level
- * environment variable overrides the .env file (e.g. in shared hosting
- * or container environments where DATABASE_URL may point to SQLite).
- *
- * Resolution order:
- *   1. GENOVA_DATABASE_URL — explicit override for production deployments
- *   2. .env file — parsed directly via dotenv (bypasses system env)
- *   3. process.env.DATABASE_URL — system-level fallback
- */
-
 import { PrismaClient } from '@prisma/client'
 import { env } from '@/lib/env'
 
