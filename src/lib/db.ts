@@ -13,62 +13,25 @@
 
 import { PrismaClient } from '@prisma/client'
 
-// ---------------------------------------------------------------------------
-// Resolve the correct DATABASE_URL
-// ---------------------------------------------------------------------------
-
 function resolveDatabaseUrl(): string {
-  // Priority 1: Explicit override
-  if (process.env.GENOVA_DATABASE_URL) {
-    return process.env.GENOVA_DATABASE_URL;
+  const databaseUrl =
+    process.env.GENOVA_DATABASE_URL || process.env.DATABASE_URL || ''
+
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL is required')
   }
 
-  // Priority 2: Read from .env file directly to bypass system env override
-  if (typeof process.env.DATABASE_URL === 'string' && process.env.DATABASE_URL.startsWith('postgresql://')) {
-    // The system env is already correct — use it
-    return process.env.DATABASE_URL;
+  if (
+    !databaseUrl.startsWith('postgresql://') &&
+    !databaseUrl.startsWith('postgres://')
+  ) {
+    throw new Error('DATABASE_URL must be a PostgreSQL connection string')
   }
 
-  // The system DATABASE_URL is wrong (e.g. SQLite or empty).
-  // Parse .env manually to get the correct PostgreSQL URL.
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const envPath = path.join(process.cwd(), '.env');
-    if (fs.existsSync(envPath)) {
-      const envContent = fs.readFileSync(envPath, 'utf8');
-      const lines = envContent.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('#') || !trimmed.includes('=')) continue;
-        const match = trimmed.match(/^DATABASE_URL\s*=\s*(.+)$/);
-        if (match) {
-          const url = match[1].trim().replace(/^["']|["']$/g, '');
-          if (url.startsWith('postgresql://') || url.startsWith('postgres://')) {
-            return url;
-          }
-        }
-      }
-    }
-  } catch {
-    // Fall through to default
-  }
-
-  // Priority 3: System env fallback (may be wrong, but let Prisma handle the error)
-  return process.env.DATABASE_URL || '';
+  return databaseUrl
 }
 
-const databaseUrl = resolveDatabaseUrl();
-
-// Override the system env so Prisma uses the correct URL
-// This must happen before PrismaClient instantiation
-if (databaseUrl && databaseUrl.startsWith('postgresql')) {
-  process.env.DATABASE_URL = databaseUrl;
-}
-
-// ---------------------------------------------------------------------------
-// Prisma Client Singleton
-// ---------------------------------------------------------------------------
+const databaseUrl = resolveDatabaseUrl()
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -77,8 +40,10 @@ const globalForPrisma = globalThis as unknown as {
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    datasourceUrl: databaseUrl || undefined,
+    datasourceUrl: databaseUrl,
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   })
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = db
+}
