@@ -11,7 +11,9 @@ interface CreateSocialAccountInput {
   isActive?: boolean
 }
 
-export async function createSecureSocialAccount(input: CreateSocialAccountInput) {
+export async function createSecureSocialAccount(
+  input: CreateSocialAccountInput
+) {
   return db.socialAccount.create({
     data: {
       userId: input.userId,
@@ -19,7 +21,9 @@ export async function createSecureSocialAccount(input: CreateSocialAccountInput)
       accountId: input.accountId,
       accountName: input.accountName,
       accessToken: encryptSecret(input.accessToken),
-      refreshToken: input.refreshToken ? encryptSecret(input.refreshToken) : null,
+      refreshToken: input.refreshToken
+        ? encryptSecret(input.refreshToken)
+        : null,
       isActive: input.isActive ?? true,
     },
   })
@@ -35,6 +39,8 @@ export async function getDecryptedSocialAccount(id: string, userId: string) {
   return {
     ...account,
     accessToken: decryptSecret(account.accessToken),
-    refreshToken: account.refreshToken ? decryptSecret(account.refreshToken) : null,
+    refreshToken: account.refreshToken
+      ? decryptSecret(account.refreshToken)
+      : null,
   }
 }
