@@ -4,7 +4,7 @@ const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 12
 const KEY_LENGTH = 32
 const TAG_LENGTH = 16
-const ENCRYPTED_PREFIX = 'enc:v1:'
+const ENCRYPTED_PREFIX = 'enc:v1'
 
 function getMasterKey(): Buffer {
   const rawKey = process.env.VAULT_MASTER_KEY
@@ -27,7 +27,7 @@ function getMasterKey(): Buffer {
 }
 
 export function looksEncrypted(value: string | null | undefined): boolean {
-  return typeof value === 'string' && value.startsWith(ENCRYPTED_PREFIX)
+  return typeof value === 'string' && value.startsWith(`${ENCRYPTED_PREFIX}:`)
 }
 
 export function encryptSecret(plaintext: string): string {
@@ -41,7 +41,6 @@ export function encryptSecret(plaintext: string): string {
 
   const key = getMasterKey()
   const iv = crypto.randomBytes(IV_LENGTH)
-
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv)
 
   const encrypted = Buffer.concat([
@@ -51,12 +50,7 @@ export function encryptSecret(plaintext: string): string {
 
   const authTag = cipher.getAuthTag()
 
-  return [
-    ENCRYPTED_PREFIX,
-    iv.toString('base64url'),
-    authTag.toString('base64url'),
-    encrypted.toString('base64url'),
-  ].join('')
+  return `${ENCRYPTED_PREFIX}:${iv.toString('base64url')}:${authTag.toString('base64url')}:${encrypted.toString('base64url')}`
 }
 
 export function decryptSecret(ciphertext: string): string {
@@ -68,7 +62,7 @@ export function decryptSecret(ciphertext: string): string {
     return ciphertext
   }
 
-  const payload = ciphertext.slice(ENCRYPTED_PREFIX.length)
+  const payload = ciphertext.slice(`${ENCRYPTED_PREFIX}:`.length)
   const parts = payload.split(':')
 
   if (parts.length !== 3) {
