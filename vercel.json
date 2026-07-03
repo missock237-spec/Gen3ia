@@ -1,10 +1,14 @@
 {
   "buildCommand": "bun x prisma generate && bun run build",
-  "installCommand": "bun install",
+  "installCommand": "bun install --frozen-lockfile",
   "framework": "nextjs",
   "regions": ["iad1"],
   "env": {
     "DATABASE_URL": "@database_url",
-    "AUTH_SECRET": "@auth_secret"
+    "REDIS_URL": "@redis_url",
+    "AUTH_SALT": "@auth_salt",
+    "JWT_SECRET": "@jwt_secret",
+    "SESSION_SECRET": "@session_secret",
+    "VAULT_MASTER_KEY": "@vault_master_key"
   }
 }
