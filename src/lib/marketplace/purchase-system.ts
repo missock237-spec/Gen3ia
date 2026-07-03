@@ -1,11 +1,12 @@
 /**
- * Purchase System — Free marketplace listings
+ * Purchase System — Marketplace purchases
  *
- * Hardened rules:
- * - Only published listings can be obtained
- * - Users cannot obtain their own listing
- * - A completed purchase/claim record is required for access checks
- * - installCount is incremented alongside downloads
+ * Business rules:
+ * - The seller chooses the listing price
+ * - The platform takes 25% commission on each sale
+ * - The seller receives 75%
+ * - Free listings are still allowed if the seller sets price = 0
+ * - Access is granted only after a completed purchase/claim record exists
  */
 
 import { db } from '@/lib/db'
@@ -47,8 +48,12 @@ function safeParse<T>(json: string, fallback: T): T {
   }
 }
 
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
 // ---------------------------------------------------------------------------
-// Core: Purchase / Claim Listing
+// Core: Purchase Listing
 // ---------------------------------------------------------------------------
 
 export async function purchaseListing(
@@ -89,10 +94,7 @@ export async function purchaseListing(
       price: existingPurchase.price,
       currency: existingPurchase.currency,
       status: existingPurchase.status,
-      metadata: safeParse<Record<string, unknown>>(
-        existingPurchase.metadata,
-        {}
-      ),
+      metadata: safeParse<Record<string, unknown>>(existingPurchase.metadata, {}),
       createdAt: existingPurchase.createdAt,
       listing: {
         name: listing.name,
@@ -102,18 +104,28 @@ export async function purchaseListing(
     }
   }
 
+  const salePrice = roundMoney(Number(listing.price || 0))
+  const platformCommission = roundMoney(salePrice * 0.25)
+  const sellerRevenue = roundMoney(salePrice - platformCommission)
+
+  const metadata = {
+    type: salePrice > 0 ? 'paid' : 'free',
+    commissionRate: 0.25,
+    sellerRate: 0.75,
+    sellerUserId: listing.userId,
+    sellerRevenue,
+    platformCommission,
+    claimedAt: new Date().toISOString(),
+  }
+
   const purchase = await db.marketplacePurchase.create({
     data: {
       listingId,
       userId,
-      price: 0,
+      price: salePrice,
       currency: listing.currency,
       status: 'completed',
-      metadata: JSON.stringify({
-        type: 'free',
-        license: 'standard',
-        claimedAt: new Date().toISOString(),
-      }),
+      metadata: JSON.stringify(metadata),
     },
   })
 
@@ -132,7 +144,7 @@ export async function purchaseListing(
     price: purchase.price,
     currency: purchase.currency,
     status: purchase.status,
-    metadata: safeParse<Record<string, unknown>>(purchase.metadata, {}),
+    metadata,
     createdAt: purchase.createdAt,
     listing: {
       name: listing.name,
@@ -160,8 +172,11 @@ export async function verifyAccess(
 
   if (!listing) return false
   if (listing.status !== 'published') return false
+
+  // Owner always has access
   if (listing.userId === userId) return true
 
+  // Buyer must have a completed purchase / claim record
   const purchase = await db.marketplacePurchase.findUnique({
     where: {
       userId_listingId: {
@@ -234,4 +249,4 @@ export async function getPurchaseHistory(
     page,
     totalPages: Math.ceil(total / limit),
   }
-  }
+                                       }
