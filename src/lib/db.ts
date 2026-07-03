@@ -12,14 +12,10 @@
  */
 
 import { PrismaClient } from '@prisma/client'
+import { env } from '@/lib/env'
 
 function resolveDatabaseUrl(): string {
-  const databaseUrl =
-    process.env.GENOVA_DATABASE_URL || process.env.DATABASE_URL || ''
-
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL is required')
-  }
+  const databaseUrl = process.env.GENOVA_DATABASE_URL || env.DATABASE_URL
 
   if (
     !databaseUrl.startsWith('postgresql://') &&
