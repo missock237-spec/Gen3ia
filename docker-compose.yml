@@ -12,67 +12,203 @@
 # Start backend + infra:  docker compose up -d
 # Start GPU server:       docker compose -f docker-compose.gpu.yml up -d
 # =============================================
-
+  
 version: "3.9"
 
-services:
+service:
+
+
   # =============================================
   # TIER 1: Genova Backend Infrastructure
   # =============================================
-
-  # PostgreSQL — Primary Database
+  
   postgres:
-    image: postgres:16-alpine
+    image: postgres:${POSTGRES_IMAGE_TAG}
     container_name: genova-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: genova
-      POSTGRES_PASSWORD: genova_secret
-      POSTGRES_DB: genova
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U genova"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - backend
 
-  # Redis — BullMQ Job Queue + Cache + Rate Limiting
   redis:
-    image: redis:7-alpine
+    image: redis:${REDIS_IMAGE_TAG}
     container_name: genova-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - backend
 
-  # Qdrant — Vector Database (for RAG / embeddings)
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:${QDRANT_IMAGE_TAG}
     container_name: genova-qdrant
     restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
     environment:
       QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    expose:
+      - "6333"
+      - "6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
       interval: 15s
       timeout: 5s
       retries: 5
+    networks:
+      - backend
 
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:${POCKETBASE_IMAGE_TAG}
+    container_name: genova-pocketbase
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+    expose:
+      - "8090"
+    volumes:
+      - pocketbase_data:/pb_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  ruflo:
+    build:
+      context: ./services/ruflo
+      dockerfile: Dockerfile
+    container_name: genova-ruflo
+    restart: unless-stopped
+    environment:
+      PORT: 8190
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    expose:
+      - "8190"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  n8n:
+    image: n8nio/n8n:${N8N_IMAGE_TAG}
+    container_name: genova-n8n
+    restart: unless-stopped
+    expose:
+      - "5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      N8N_HOST: ${N8N_HOST}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+    networks:
+      - backend
+
+  baileys:
+    build:
+      context: ./services/baileys
+      dockerfile: Dockerfile
+    container_name: genova-baileys
+    restart: unless-stopped
+    environment:
+      PORT: 8186
+      NODE_ENV: production
+    expose:
+      - "8186"
+    volumes:
+      - baileys_auth:/app/auth_info
+    networks:
+      - backend
+
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_IMAGE_TAG}
+    container_name: genova-prometheus
+    restart: unless-stopped
+    expose:
+      - "9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=5GB
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_IMAGE_TAG}
+    container_name: genova-grafana
+    restart: unless-stopped
+    expose:
+      - "3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/genova-overview.json
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - monitoring
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  pocketbase_data:
+  baileys_auth:
+  n8n_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  backend:
+    driver: bridge
+  monitoring:
+    driver: bridge
   # =============================================
   # TIER 2: API IA / Orchestration
   # =============================================
