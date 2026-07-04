@@ -17,6 +17,8 @@ model User {
   plan            String   @default("free")
   role            String   @default("user")
   isActive        Boolean  @default(false)
+  stripeConnectAccountId String?  @unique
+  stripeConnectOnboarded Boolean  @default(false)
   isEmailVerified Boolean  @default(false)
   emailVerified   DateTime?
   createdAt       DateTime @default(now())
@@ -1335,6 +1337,9 @@ model MarketplacePurchase {
   currency    String
   status      String    @default("completed")
   metadata    String    @default("{}")
+  sellerRevenue      Float?
+  platformCommission Float?
+  transferStatus     String   @default("pending")
   createdAt   DateTime  @default(now())
 
   user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
