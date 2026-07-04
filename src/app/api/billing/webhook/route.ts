@@ -1,3 +1,4 @@
+cat > src/app/api/billing/webhook/route.ts << 'FILEEOF'
 /**
  * Billing Webhook API — POST: Stripe webhook handler
  *
@@ -10,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { handleWebhook } from '@/lib/billing/stripe-client'
 import { finalizeMarketplaceStripePurchase } from '@/lib/marketplace/purchase-system'
+import { db } from '@/lib/db'
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY
@@ -50,6 +52,26 @@ export async function POST(request: NextRequest) {
 
     const event = verifyWebhookSignature(payload, signature)
 
+    // Marketplace seller onboarding: Stripe confirme que le vendeur
+    // a terminé son KYC et peut recevoir des virements (charges_enabled).
+    if (event.type === 'account.updated') {
+      const account = event.data.object as Stripe.Account
+
+      if (account.charges_enabled && account.details_submitted) {
+        await db.user.updateMany({
+          where: { stripeConnectAccountId: account.id },
+          data: { stripeConnectOnboarded: true },
+        })
+      } else {
+        await db.user.updateMany({
+          where: { stripeConnectAccountId: account.id },
+          data: { stripeConnectOnboarded: false },
+        })
+      }
+
+      return NextResponse.json({ received: true, event: event.type })
+    }
+
     // Marketplace one-time payments
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session
@@ -88,3 +110,4 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+FILEEOF
