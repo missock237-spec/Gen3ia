@@ -1,3 +1,4 @@
+cat > src/lib/marketplace/purchase-system.ts << 'FILEEOF'
 /**
  * Purchase System — Marketplace purchases
  *
@@ -239,6 +240,16 @@ export async function purchaseListing(
   const stripe = getStripe()
   const customerId = await getOrCreateStripeCustomerForMarketplace(userId)
 
+  // Récupérer le compte Stripe Connect du vendeur
+  const seller = await db.user.findUnique({
+    where: { id: listing.userId },
+    select: { stripeConnectAccountId: true, stripeConnectOnboarded: true },
+  })
+
+  const hasConnectedSeller = !!(
+    seller?.stripeConnectAccountId && seller.stripeConnectOnboarded
+  )
+
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: 'payment',
@@ -256,6 +267,19 @@ export async function purchaseListing(
         quantity: 1,
       },
     ],
+    // Destination charge : Stripe route automatiquement 75% vers le vendeur
+    // et garde 25% (application_fee_amount) sur le compte plateforme.
+    // Ne s'applique que si le vendeur a terminé l'onboarding Connect.
+    ...(hasConnectedSeller
+      ? {
+          payment_intent_data: {
+            application_fee_amount: toStripeAmount(platformCommission),
+            transfer_data: {
+              destination: seller!.stripeConnectAccountId!,
+            },
+          },
+        }
+      : {}),
     success_url: `${getAppUrl()}?marketplace=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${getAppUrl()}?marketplace=cancel`,
     metadata: {
@@ -269,6 +293,7 @@ export async function purchaseListing(
       sellerRevenue: String(sellerRevenue),
       commissionRate: '0.25',
       sellerRate: '0.75',
+      sellerConnected: String(hasConnectedSeller),
     },
   })
 
@@ -321,6 +346,8 @@ export async function finalizeMarketplaceStripePurchase(
     Number(session.metadata.sellerRevenue || salePrice - platformCommission)
   )
 
+  const sellerConnected = session.metadata?.sellerConnected === 'true'
+
   const metadata = {
     type: 'paid',
     stripeSessionId: session.id,
@@ -333,6 +360,7 @@ export async function finalizeMarketplaceStripePurchase(
     sellerUserId,
     sellerRevenue,
     platformCommission,
+    sellerConnected,
     paidAt: new Date().toISOString(),
   }
 
@@ -344,6 +372,11 @@ export async function finalizeMarketplaceStripePurchase(
       currency: listing.currency,
       status: 'completed',
       metadata: JSON.stringify(metadata),
+      sellerRevenue,
+      platformCommission,
+      // 'transferred' = Stripe a routé les fonds au vendeur via destination charge
+      // 'platform_held' = vendeur pas encore onboardé, fonds restent sur la plateforme
+      transferStatus: sellerConnected ? 'transferred' : 'platform_held',
     },
   })
 
@@ -449,3 +482,4 @@ export async function getPurchaseHistory(
     totalPages: Math.ceil(total / limit),
   }
 }
+FILEEOF
