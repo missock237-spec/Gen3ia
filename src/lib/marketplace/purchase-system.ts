@@ -2,14 +2,15 @@
  * Purchase System — Marketplace purchases
  *
  * Business rules:
- * - The seller chooses the listing price
- * - The platform takes 25% commission on each sale
- * - The seller receives 75%
- * - Free listings are still allowed if the seller sets price = 0
- * - Access is granted only after a completed purchase/claim record exists
+ * - Seller chooses the price
+ * - Platform commission = 25%
+ * - Seller revenue = 75%
+ * - Free listings are allowed when price = 0
+ * - Paid listings are completed after Stripe webhook confirmation
  */
 
 import { db } from '@/lib/db'
+import Stripe from 'stripe'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +37,13 @@ export interface PurchaseResult {
   }
 }
 
+export interface MarketplaceCheckoutResult {
+  mode: 'free' | 'stripe'
+  purchase?: PurchaseResult
+  checkoutUrl?: string
+  sessionId?: string
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -52,15 +60,66 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100
 }
 
-// ---------------------------------------------------------------------------
-// Core: Purchase Listing
-// ---------------------------------------------------------------------------
+function toStripeAmount(value: number): number {
+  return Math.round(value * 100)
+}
 
-export async function purchaseListing(
-  options: PurchaseOptions
-): Promise<PurchaseResult> {
-  const { listingId, userId } = options
+function getStripe(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) {
+    throw new Error('STRIPE_SECRET_KEY environment variable is not set')
+  }
 
+  return new Stripe(key, {
+    typescript: true,
+  })
+}
+
+function getAppUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+}
+
+function normalizeCurrency(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+async function getOrCreateStripeCustomerForMarketplace(userId: string): Promise<string> {
+  const existingSubscription = await db.subscription.findFirst({
+    where: {
+      userId,
+      stripeCustomerId: { not: null },
+    },
+    select: {
+      stripeCustomerId: true,
+    },
+  })
+
+  if (existingSubscription?.stripeCustomerId) {
+    return existingSubscription.stripeCustomerId
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      email: true,
+      name: true,
+    },
+  })
+
+  if (!user) {
+    throw new Error(`User not found: ${userId}`)
+  }
+
+  const customer = await getStripe().customers.create({
+    email: user.email,
+    name: user.name,
+    metadata: { userId },
+  })
+
+  return customer.id
+}
+
+async function getListingOrThrow(listingId: string) {
   const listing = await db.marketplaceListing.findUnique({
     where: { id: listingId },
   })
@@ -72,6 +131,20 @@ export async function purchaseListing(
   if (listing.status !== 'published') {
     throw new Error('Listing is not available for purchase')
   }
+
+  return listing
+}
+
+// ---------------------------------------------------------------------------
+// Core: Create marketplace checkout / claim
+// ---------------------------------------------------------------------------
+
+export async function purchaseListing(
+  options: PurchaseOptions
+): Promise<MarketplaceCheckoutResult> {
+  const { listingId, userId } = options
+
+  const listing = await getListingOrThrow(listingId)
 
   if (listing.userId === userId) {
     throw new Error('Cannot purchase your own listing')
@@ -88,18 +161,21 @@ export async function purchaseListing(
 
   if (existingPurchase) {
     return {
-      id: existingPurchase.id,
-      listingId: existingPurchase.listingId,
-      userId: existingPurchase.userId,
-      price: existingPurchase.price,
-      currency: existingPurchase.currency,
-      status: existingPurchase.status,
-      metadata: safeParse<Record<string, unknown>>(existingPurchase.metadata, {}),
-      createdAt: existingPurchase.createdAt,
-      listing: {
-        name: listing.name,
-        type: listing.type,
-        config: safeParse<Record<string, unknown>>(listing.config, {}),
+      mode: 'free',
+      purchase: {
+        id: existingPurchase.id,
+        listingId: existingPurchase.listingId,
+        userId: existingPurchase.userId,
+        price: existingPurchase.price,
+        currency: existingPurchase.currency,
+        status: existingPurchase.status,
+        metadata: safeParse<Record<string, unknown>>(existingPurchase.metadata, {}),
+        createdAt: existingPurchase.createdAt,
+        listing: {
+          name: listing.name,
+          type: listing.type,
+          config: safeParse<Record<string, unknown>>(listing.config, {}),
+        },
       },
     }
   }
@@ -108,17 +184,159 @@ export async function purchaseListing(
   const platformCommission = roundMoney(salePrice * 0.25)
   const sellerRevenue = roundMoney(salePrice - platformCommission)
 
-  const metadata = {
-    type: salePrice > 0 ? 'paid' : 'free',
-    commissionRate: 0.25,
-    sellerRate: 0.75,
-    sellerUserId: listing.userId,
-    sellerRevenue,
-    platformCommission,
-    claimedAt: new Date().toISOString(),
+  // Free claim
+  if (salePrice <= 0) {
+    const metadata = {
+      type: 'free',
+      commissionRate: 0.25,
+      sellerRate: 0.75,
+      sellerUserId: listing.userId,
+      sellerRevenue,
+      platformCommission,
+      claimedAt: new Date().toISOString(),
+    }
+
+    const purchase = await db.marketplacePurchase.create({
+      data: {
+        listingId,
+        userId,
+        price: 0,
+        currency: listing.currency,
+        status: 'completed',
+        metadata: JSON.stringify(metadata),
+      },
+    })
+
+    await db.marketplaceListing.update({
+      where: { id: listingId },
+      data: {
+        downloads: { increment: 1 },
+        installCount: { increment: 1 },
+      },
+    })
+
+    return {
+      mode: 'free',
+      purchase: {
+        id: purchase.id,
+        listingId: purchase.listingId,
+        userId: purchase.userId,
+        price: purchase.price,
+        currency: purchase.currency,
+        status: purchase.status,
+        metadata,
+        createdAt: purchase.createdAt,
+        listing: {
+          name: listing.name,
+          type: listing.type,
+          config: safeParse<Record<string, unknown>>(listing.config, {}),
+        },
+      },
+    }
   }
 
-  const purchase = await db.marketplacePurchase.create({
+  // Paid checkout
+  const stripe = getStripe()
+  const customerId = await getOrCreateStripeCustomerForMarketplace(userId)
+
+  const session = await stripe.checkout.sessions.create({
+    customer: customerId,
+    mode: 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency: normalizeCurrency(listing.currency),
+          product_data: {
+            name: listing.name,
+            description: listing.description,
+          },
+          unit_amount: toStripeAmount(salePrice),
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: `${getAppUrl()}?marketplace=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${getAppUrl()}?marketplace=cancel`,
+    metadata: {
+      type: 'marketplace_purchase',
+      listingId,
+      buyerUserId: userId,
+      sellerUserId: listing.userId,
+      listingPrice: String(salePrice),
+      currency: listing.currency,
+      platformCommission: String(platformCommission),
+      sellerRevenue: String(sellerRevenue),
+      commissionRate: '0.25',
+      sellerRate: '0.75',
+    },
+  })
+
+  return {
+    mode: 'stripe',
+    checkoutUrl: session.url || '',
+    sessionId: session.id,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Core: Finalize Stripe marketplace purchase from webhook
+// ---------------------------------------------------------------------------
+
+export async function finalizeMarketplaceStripePurchase(
+  session: Stripe.Checkout.Session
+): Promise<void> {
+  if (session.metadata?.type !== 'marketplace_purchase') {
+    return
+  }
+
+  const listingId = session.metadata.listingId
+  const userId = session.metadata.buyerUserId
+  const sellerUserId = session.metadata.sellerUserId
+
+  if (!listingId || !userId || !sellerUserId) {
+    throw new Error('Missing marketplace Stripe metadata')
+  }
+
+  const listing = await getListingOrThrow(listingId)
+
+  const existingPurchase = await db.marketplacePurchase.findUnique({
+    where: {
+      userId_listingId: {
+        listingId,
+        userId,
+      },
+    },
+  })
+
+  if (existingPurchase) {
+    return
+  }
+
+  const salePrice = roundMoney(Number(session.metadata.listingPrice || listing.price || 0))
+  const platformCommission = roundMoney(
+    Number(session.metadata.platformCommission || salePrice * 0.25)
+  )
+  const sellerRevenue = roundMoney(
+    Number(session.metadata.sellerRevenue || salePrice - platformCommission)
+  )
+
+  const metadata = {
+    type: 'paid',
+    stripeSessionId: session.id,
+    stripePaymentIntentId:
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id || null,
+    commissionRate: 0.25,
+    sellerRate: 0.75,
+    sellerUserId,
+    sellerRevenue,
+    platformCommission,
+    paidAt: new Date().toISOString(),
+  }
+
+  await db.marketplacePurchase.create({
     data: {
       listingId,
       userId,
@@ -136,22 +354,6 @@ export async function purchaseListing(
       installCount: { increment: 1 },
     },
   })
-
-  return {
-    id: purchase.id,
-    listingId: purchase.listingId,
-    userId: purchase.userId,
-    price: purchase.price,
-    currency: purchase.currency,
-    status: purchase.status,
-    metadata,
-    createdAt: purchase.createdAt,
-    listing: {
-      name: listing.name,
-      type: listing.type,
-      config: safeParse<Record<string, unknown>>(listing.config, {}),
-    },
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -172,11 +374,8 @@ export async function verifyAccess(
 
   if (!listing) return false
   if (listing.status !== 'published') return false
-
-  // Owner always has access
   if (listing.userId === userId) return true
 
-  // Buyer must have a completed purchase / claim record
   const purchase = await db.marketplacePurchase.findUnique({
     where: {
       userId_listingId: {
@@ -249,4 +448,4 @@ export async function getPurchaseHistory(
     page,
     totalPages: Math.ceil(total / limit),
   }
-                                       }
+}
