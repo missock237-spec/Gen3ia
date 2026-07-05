@@ -23,10 +23,14 @@ jobs:
 
       - name: Generate Prisma Client
         run: bun x prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Build
         run: bun run build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           AUTH_SALT: ${{ secrets.AUTH_SALT }}
-          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
