@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { handleWebhook, verifyWebhookSignature } from '@/lib/billing/stripe-client'
 import { finalizeMarketplaceStripePurchase } from '@/lib/marketplace/purchase-system'
+import { db } from '@/lib/db'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('billing-webhook')
@@ -26,6 +27,31 @@ export async function POST(request: NextRequest) {
     }
 
     const event = verifyWebhookSignature(payload, signature)
+
+    if (event.type === 'account.updated') {
+      const account = event.data.object as Stripe.Account
+
+      await db.user.updateMany({
+        where: {
+          stripeConnectAccountId: account.id,
+        },
+        data: {
+          stripeConnectOnboarded: !!(account.details_submitted && account.charges_enabled),
+          stripeConnectDetailsSubmitted: !!account.details_submitted,
+          stripeConnectChargesEnabled: !!account.charges_enabled,
+          stripeConnectPayoutsEnabled: !!account.payouts_enabled,
+          stripeConnectCountry: account.country || null,
+          stripeConnectCurrency: account.default_currency || null,
+          stripeConnectLastSyncedAt: new Date(),
+        },
+      })
+
+      return NextResponse.json({
+        received: true,
+        event: event.type,
+        connect: true,
+      })
+    }
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session
