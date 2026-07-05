@@ -11,6 +11,7 @@
     "SESSION_SECRET": "@session_secret",
     "VAULT_MASTER_KEY": "@vault_master_key",
     "STRIPE_SECRET_KEY": "@stripe_secret_key",
-    "STRIPE_WEBHOOK_SECRET": "@stripe_webhook_secret"
+    "STRIPE_WEBHOOK_SECRET": "@stripe_webhook_secret",
+    "NEXT_PUBLIC_APP_URL": "@next_public_app_url"
   }
 }
