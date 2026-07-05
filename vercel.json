@@ -9,6 +9,8 @@
     "AUTH_SALT": "@auth_salt",
     "JWT_SECRET": "@jwt_secret",
     "SESSION_SECRET": "@session_secret",
-    "VAULT_MASTER_KEY": "@vault_master_key"
+    "VAULT_MASTER_KEY": "@vault_master_key",
+    "STRIPE_SECRET_KEY": "@stripe_secret_key",
+    "STRIPE_WEBHOOK_SECRET": "@stripe_webhook_secret"
   }
 }
