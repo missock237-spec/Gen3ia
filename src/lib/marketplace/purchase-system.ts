@@ -17,6 +17,11 @@ export interface PurchaseResult {
   currency: string
   status: string
   metadata: Record<string, unknown>
+  stripeSessionId?: string | null
+  stripePaymentIntentId?: string | null
+  sellerRevenue?: number
+  platformCommission?: number
+  transferStatus?: string
   createdAt: Date
   listing?: {
     name: string
@@ -150,6 +155,11 @@ export async function purchaseListing(
         currency: existingPurchase.currency,
         status: existingPurchase.status,
         metadata: safeParse<Record<string, unknown>>(existingPurchase.metadata, {}),
+        stripeSessionId: existingPurchase.stripeSessionId,
+        stripePaymentIntentId: existingPurchase.stripePaymentIntentId,
+        sellerRevenue: existingPurchase.sellerRevenue,
+        platformCommission: existingPurchase.platformCommission,
+        transferStatus: existingPurchase.transferStatus,
         createdAt: existingPurchase.createdAt,
         listing: {
           name: listing.name,
@@ -161,10 +171,13 @@ export async function purchaseListing(
   }
 
   const salePrice = roundMoney(Number(listing.price || 0))
+  const platformCommission = roundMoney(salePrice * 0.25)
+  const sellerRevenue = roundMoney(salePrice - platformCommission)
 
   if (salePrice <= 0) {
     const metadata: Record<string, unknown> = {
       type: 'free',
+      sellerUserId: listing.userId,
       claimedAt: new Date().toISOString(),
     }
 
@@ -176,6 +189,9 @@ export async function purchaseListing(
         currency: listing.currency,
         status: 'completed',
         metadata: JSON.stringify(metadata),
+        sellerRevenue: 0,
+        platformCommission: 0,
+        transferStatus: 'not_applicable',
       },
     })
 
@@ -197,6 +213,11 @@ export async function purchaseListing(
         currency: purchase.currency,
         status: purchase.status,
         metadata,
+        stripeSessionId: purchase.stripeSessionId,
+        stripePaymentIntentId: purchase.stripePaymentIntentId,
+        sellerRevenue: purchase.sellerRevenue,
+        platformCommission: purchase.platformCommission,
+        transferStatus: purchase.transferStatus,
         createdAt: purchase.createdAt,
         listing: {
           name: listing.name,
@@ -209,6 +230,21 @@ export async function purchaseListing(
 
   const stripe = getStripe()
   const customerId = await getOrCreateStripeCustomerForMarketplace(userId)
+
+  const seller = await db.user.findUnique({
+    where: { id: listing.userId },
+    select: {
+      stripeConnectAccountId: true,
+      stripeConnectOnboarded: true,
+      stripeConnectChargesEnabled: true,
+    },
+  })
+
+  const hasConnectedSeller = !!(
+    seller?.stripeConnectAccountId &&
+    seller.stripeConnectOnboarded &&
+    seller.stripeConnectChargesEnabled
+  )
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
@@ -227,6 +263,16 @@ export async function purchaseListing(
         quantity: 1,
       },
     ],
+    ...(hasConnectedSeller
+      ? {
+          payment_intent_data: {
+            application_fee_amount: toStripeAmount(platformCommission),
+            transfer_data: {
+              destination: seller!.stripeConnectAccountId!,
+            },
+          },
+        }
+      : {}),
     success_url: `${getAppUrl()}?marketplace=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${getAppUrl()}?marketplace=cancel`,
     metadata: {
@@ -236,6 +282,9 @@ export async function purchaseListing(
       sellerUserId: listing.userId,
       listingPrice: String(salePrice),
       currency: listing.currency,
+      platformCommission: String(platformCommission),
+      sellerRevenue: String(sellerRevenue),
+      sellerConnected: String(hasConnectedSeller),
     },
   })
 
@@ -243,6 +292,7 @@ export async function purchaseListing(
     listingId,
     userId,
     sessionId: session.id,
+    hasConnectedSeller,
   })
 
   return {
@@ -263,7 +313,7 @@ export async function finalizeMarketplaceStripePurchase(
   const userId = session.metadata.buyerUserId
   const sellerUserId = session.metadata.sellerUserId
 
-  if (!listingId || !userId) {
+  if (!listingId || !userId || !sellerUserId) {
     throw new Error('Missing marketplace Stripe metadata')
   }
 
@@ -283,15 +333,27 @@ export async function finalizeMarketplaceStripePurchase(
   }
 
   const salePrice = roundMoney(Number(session.metadata.listingPrice || listing.price || 0))
+  const platformCommission = roundMoney(
+    Number(session.metadata.platformCommission || salePrice * 0.25)
+  )
+  const sellerRevenue = roundMoney(
+    Number(session.metadata.sellerRevenue || salePrice - platformCommission)
+  )
+  const sellerConnected = session.metadata?.sellerConnected === 'true'
+
+  const stripePaymentIntentId =
+    typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id || null
 
   const metadata: Record<string, unknown> = {
     type: 'paid',
     stripeSessionId: session.id,
-    stripePaymentIntentId:
-      typeof session.payment_intent === 'string'
-        ? session.payment_intent
-        : session.payment_intent?.id || null,
-    sellerUserId: sellerUserId || listing.userId,
+    stripePaymentIntentId,
+    sellerUserId,
+    sellerRevenue,
+    platformCommission,
+    sellerConnected,
     paidAt: new Date().toISOString(),
   }
 
@@ -303,6 +365,11 @@ export async function finalizeMarketplaceStripePurchase(
       currency: listing.currency,
       status: 'completed',
       metadata: JSON.stringify(metadata),
+      stripeSessionId: session.id,
+      stripePaymentIntentId,
+      sellerRevenue,
+      platformCommission,
+      transferStatus: sellerConnected ? 'transferred' : 'platform_held',
     },
   })
 
@@ -318,6 +385,8 @@ export async function finalizeMarketplaceStripePurchase(
     listingId,
     userId,
     stripeSessionId: session.id,
+    stripePaymentIntentId,
+    sellerConnected,
   })
 }
 
@@ -384,6 +453,11 @@ export async function getPurchaseHistory(
       currency: purchase.currency,
       status: purchase.status,
       metadata: safeParse<Record<string, unknown>>(purchase.metadata, {}),
+      stripeSessionId: purchase.stripeSessionId,
+      stripePaymentIntentId: purchase.stripePaymentIntentId,
+      sellerRevenue: purchase.sellerRevenue,
+      platformCommission: purchase.platformCommission,
+      transferStatus: purchase.transferStatus,
       createdAt: purchase.createdAt,
       listing: {
         name: purchase.listing.name,
@@ -395,4 +469,4 @@ export async function getPurchaseHistory(
     page,
     totalPages: Math.ceil(total / limit),
   }
-          }
+                                                         }
