@@ -720,24 +720,24 @@ model AccessKey {
 }
 
 model ConnectorExecution {
-  id              String   @id @default(cuid())
-  connectorType   String
-  connectorId     String
-  agentId         String?
-  operation       String
-  inputParams     String   @default("{}")
-  outputResult    String   @default("{}")
-  status          String   @default("pending")
-  errorMessage    String?
-  statusCode      Int?
-  durationMs      Int      @default(0)
-  tokenCost       Int      @default(0)
-  userId          String
-  createdAt       DateTime @default(now())
+  id            String @id @default(cuid())
+  connectorType String
+  connectorId   String
+  agentId       String?
+  operation     String
+  inputParams   String @default("{}")
+  outputResult  String @default("{}")
+  status        String @default("pending")
+  errorMessage  String?
+  statusCode    Int?
+  durationMs    Int @default(0)
+  tokenCost     Int @default(0)
+  userId        String
+  createdAt     DateTime @default(now())
 
-  mcpConnector    MCPConnector? @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_mcp")
-  accessKey       AccessKey?    @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_ak")
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mcpConnector  MCPConnector? @relation(fields: [connectorId], references: [id], onDelete: Restrict, map: "fk_connector_exec_mcp")
+  accessKey     AccessKey?    @relation(fields: [connectorId], references: [id], onDelete: Restrict, map: "fk_connector_exec_ak")
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([connectorType, connectorId])
   @@index([userId, createdAt])
