@@ -719,7 +719,12 @@ model AccessKey {
   @@map("access_keys")
 }
 
-model ConnectorExecution {
+
+
+model AgentAutomation {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")model ConnectorExecution {
   id            String @id @default(cuid())
   connectorType String
   connectorId   String
@@ -745,11 +750,6 @@ model ConnectorExecution {
   @@index([status, createdAt])
   @@map("connector_executions")
 }
-
-model AgentAutomation {
-  id          String   @id @default(cuid())
-  name        String
-  description String   @default("")
   trigger     String
   conditions  String   @default("[]")
   actions     String
