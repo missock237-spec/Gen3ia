@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { applySecurity, secureResponse } from '@/lib/security'
+
 import { db } from '@/lib/db'
+import { applySecurity, secureResponse } from '@/lib/security'
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY
+
   if (!key) {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set')
   }
@@ -15,12 +17,19 @@ function getStripe(): Stripe {
 }
 
 function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const url = process.env.NEXT_PUBLIC_APP_URL
+
+  if (!url) {
+    throw new Error('NEXT_PUBLIC_APP_URL environment variable is not set')
+  }
+
+  return url.replace(/\/$/, '')
 }
 
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request)
   if (error) return error
+
   return new NextResponse(null, { status: 204 })
 }
 
@@ -28,7 +37,10 @@ export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true })
 
   if (error || !auth) {
-    return error || NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    return (
+      error ||
+      NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    )
   }
 
   const user = await db.user.findUnique({
@@ -47,12 +59,12 @@ export async function GET(request: NextRequest) {
 
   return secureResponse(
     NextResponse.json({
-      connected: !!user?.stripeConnectAccountId,
+      connected: Boolean(user?.stripeConnectAccountId),
       accountId: user?.stripeConnectAccountId || null,
-      onboarded: !!user?.stripeConnectOnboarded,
-      detailsSubmitted: !!user?.stripeConnectDetailsSubmitted,
-      chargesEnabled: !!user?.stripeConnectChargesEnabled,
-      payoutsEnabled: !!user?.stripeConnectPayoutsEnabled,
+      onboarded: Boolean(user?.stripeConnectOnboarded),
+      detailsSubmitted: Boolean(user?.stripeConnectDetailsSubmitted),
+      chargesEnabled: Boolean(user?.stripeConnectChargesEnabled),
+      payoutsEnabled: Boolean(user?.stripeConnectPayoutsEnabled),
       country: user?.stripeConnectCountry || null,
       currency: user?.stripeConnectCurrency || null,
       lastSyncedAt: user?.stripeConnectLastSyncedAt || null,
@@ -65,7 +77,10 @@ export async function POST(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true })
 
   if (error || !auth) {
-    return error || NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    return (
+      error ||
+      NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    )
   }
 
   const stripe = getStripe()
@@ -91,6 +106,7 @@ export async function POST(request: NextRequest) {
   }
 
   let body: { country?: string } = {}
+
   try {
     body = await request.json()
   } catch {
@@ -98,7 +114,6 @@ export async function POST(request: NextRequest) {
   }
 
   const country = body.country?.trim()?.toUpperCase() || 'FR'
-
   let accountId = user.stripeConnectAccountId
 
   if (!accountId) {
@@ -122,9 +137,9 @@ export async function POST(request: NextRequest) {
       data: {
         stripeConnectAccountId: account.id,
         stripeConnectOnboarded: false,
-        stripeConnectDetailsSubmitted: !!account.details_submitted,
-        stripeConnectChargesEnabled: !!account.charges_enabled,
-        stripeConnectPayoutsEnabled: !!account.payouts_enabled,
+        stripeConnectDetailsSubmitted: Boolean(account.details_submitted),
+        stripeConnectChargesEnabled: Boolean(account.charges_enabled),
+        stripeConnectPayoutsEnabled: Boolean(account.payouts_enabled),
         stripeConnectCountry: account.country || country,
         stripeConnectCurrency: account.default_currency || null,
         stripeConnectLastSyncedAt: new Date(),
