@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+import { createListing, searchListings } from '@/lib/marketplace/listing-manager'
 import { applySecurity, secureResponse } from '@/lib/security'
-import { searchListings, createListing } from '@/lib/marketplace/listing-manager'
 
 const VALID_TYPES = ['agent', 'workflow', 'template', 'plugin'] as const
+
 const VALID_CATEGORIES = [
   'general',
   'productivity',
@@ -29,15 +31,24 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function parsePositiveInt(value: string | null, fallback: number, max: number) {
+function parsePositiveInt(
+  value: string | null,
+  fallback: number,
+  max: number
+): number {
   const parsed = Number.parseInt(value || '', 10)
-  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback
+  }
+
   return Math.min(parsed, max)
 }
 
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request)
   if (error) return error
+
   return new NextResponse(null, { status: 204 })
 }
 
@@ -53,14 +64,23 @@ export async function GET(request: NextRequest) {
     const rawCategory = searchParams.get('category') || undefined
     const rawSort = searchParams.get('sort') || 'newest'
     const rawTags = searchParams.getAll('tag')
+
     const page = parsePositiveInt(searchParams.get('page'), 1, 100000)
     const limit = parsePositiveInt(searchParams.get('limit'), 20, 100)
+
     const minPriceRaw = searchParams.get('minPrice')
     const maxPriceRaw = searchParams.get('maxPrice')
 
-    const type = rawType && VALID_TYPES.includes(rawType as any) ? rawType : undefined
+    const type =
+      rawType && VALID_TYPES.includes(rawType as (typeof VALID_TYPES)[number])
+        ? rawType
+        : undefined
+
     const category =
-      rawCategory && VALID_CATEGORIES.includes(rawCategory as any)
+      rawCategory &&
+      VALID_CATEGORIES.includes(
+        rawCategory as (typeof VALID_CATEGORIES)[number]
+      )
         ? rawCategory
         : undefined
 
@@ -77,6 +97,7 @@ export async function GET(request: NextRequest) {
       minPriceRaw !== null && minPriceRaw !== ''
         ? Number(minPriceRaw)
         : undefined
+
     const maxPrice =
       maxPriceRaw !== null && maxPriceRaw !== ''
         ? Number(maxPriceRaw)
@@ -84,14 +105,20 @@ export async function GET(request: NextRequest) {
 
     if (minPrice !== undefined && (!Number.isFinite(minPrice) || minPrice < 0)) {
       return secureResponse(
-        NextResponse.json({ error: 'minPrice must be a number >= 0' }, { status: 400 }),
+        NextResponse.json(
+          { error: 'minPrice must be a number >= 0' },
+          { status: 400 }
+        ),
         request
       )
     }
 
     if (maxPrice !== undefined && (!Number.isFinite(maxPrice) || maxPrice < 0)) {
       return secureResponse(
-        NextResponse.json({ error: 'maxPrice must be a number >= 0' }, { status: 400 }),
+        NextResponse.json(
+          { error: 'maxPrice must be a number >= 0' },
+          { status: 400 }
+        ),
         request
       )
     }
@@ -115,6 +142,7 @@ export async function GET(request: NextRequest) {
       { error: 'Failed to search listings' },
       { status: 500 }
     )
+
     return secureResponse(res, request)
   }
 }
@@ -169,7 +197,9 @@ export async function POST(request: NextRequest) {
     if (category !== undefined && !VALID_CATEGORIES.includes(category)) {
       return secureResponse(
         NextResponse.json(
-          { error: `Invalid category. Allowed: ${VALID_CATEGORIES.join(', ')}` },
+          {
+            error: `Invalid category. Allowed: ${VALID_CATEGORIES.join(', ')}`,
+          },
           { status: 400 }
         ),
         request
@@ -286,7 +316,8 @@ export async function POST(request: NextRequest) {
 
     return secureResponse(NextResponse.json(listing, { status: 201 }), request)
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to create listing'
+    const message =
+      err instanceof Error ? err.message : 'Failed to create listing'
 
     const status =
       message.includes('Invalid') ||
@@ -296,6 +327,7 @@ export async function POST(request: NextRequest) {
         : 500
 
     const res = NextResponse.json({ error: message }, { status })
+
     return secureResponse(res, request)
   }
-            }
+  }
