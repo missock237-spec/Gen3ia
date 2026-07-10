@@ -1,20 +1,26 @@
 /**
- * Listing Manager — CRUD for marketplace listings
+ * Listing Manager - CRUD, visibility and moderation for marketplace listings.
  *
  * Hardened rules:
- * - Draft / archived / suspended listings are only visible to their owner
- * - Published listings are visible to authenticated viewers
- * - Runtime validation for create / update
+ * - Public marketplace responses never expose installable config.
+ * - Owners and verified buyers can access full config.
+ * - Owners can submit listings for review, but cannot self-publish.
+ * - Admins moderate submitted listings into approved/published/rejected/suspended states.
  */
 
 import { db } from '@/lib/db'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export type ListingType = 'agent' | 'workflow' | 'template' | 'plugin'
-export type ListingStatus = 'draft' | 'published' | 'archived' | 'suspended'
+export type ListingStatus =
+  | 'draft'
+  | 'submitted'
+  | 'approved'
+  | 'published'
+  | 'rejected'
+  | 'archived'
+  | 'suspended'
+export type OwnerListingStatus = 'draft' | 'submitted' | 'archived'
+export type ModerationStatus = 'approved' | 'published' | 'rejected' | 'suspended'
 export type ListingCategory =
   | 'general'
   | 'productivity'
@@ -78,6 +84,7 @@ export interface MarketplaceListingResult {
   price: number
   currency: string
   config: Record<string, unknown>
+  hasConfigAccess: boolean
   previewUrl: string | null
   downloads: number
   installCount: number
@@ -94,15 +101,21 @@ export interface MarketplaceListingResult {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const VALID_TYPES: ListingType[] = ['agent', 'workflow', 'template', 'plugin']
 const VALID_STATUSES: ListingStatus[] = [
   'draft',
+  'submitted',
+  'approved',
   'published',
+  'rejected',
   'archived',
+  'suspended',
+]
+const OWNER_ALLOWED_STATUSES: OwnerListingStatus[] = ['draft', 'submitted', 'archived']
+const MODERATION_STATUSES: ModerationStatus[] = [
+  'approved',
+  'published',
+  'rejected',
   'suspended',
 ]
 const VALID_CATEGORIES: ListingCategory[] = [
@@ -118,20 +131,14 @@ const VALID_CATEGORIES: ListingCategory[] = [
   'creative',
 ]
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function generateSlug(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .substring(0, 80) +
-    '-' +
-    Math.random().toString(36).substring(2, 8)
-  )
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 80)
+
+  return `${base}-${Math.random().toString(36).substring(2, 8)}`
 }
 
 function safeParse<T>(json: string, fallback: T): T {
@@ -146,13 +153,55 @@ function normalizeCurrency(value?: string): string {
   return (value || 'USD').trim().toUpperCase()
 }
 
+function assertPlainObject(value: unknown, field: string): asserts value is Record<string, unknown> {
+  if (value === undefined) return
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${field} must be a JSON object`)
+  }
+}
+
 function assertValidPreviewUrl(value?: string | null): void {
   if (value === undefined || value === null || value === '') return
 
   try {
-    new URL(value)
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      throw new Error('invalid protocol')
+    }
   } catch {
-    throw new Error('previewUrl must be a valid URL')
+    throw new Error('previewUrl must be a valid HTTP(S) URL')
+  }
+}
+
+function assertValidTags(tags?: string[]): void {
+  if (tags === undefined) return
+
+  if (!Array.isArray(tags) || tags.length > 20) {
+    throw new Error('Tags must be an array with at most 20 items')
+  }
+
+  if (tags.some((tag) => typeof tag !== 'string' || tag.trim().length === 0 || tag.length > 40)) {
+    throw new Error('Each tag must be a non-empty string up to 40 characters')
+  }
+}
+
+function assertSafeMarketplaceConfig(config?: Record<string, unknown>): void {
+  if (!config) return
+
+  const serialized = JSON.stringify(config).toLowerCase()
+  const forbiddenTerms = [
+    'apikey',
+    'api_key',
+    'secret',
+    'password',
+    'token',
+    'private_key',
+    'authorization',
+  ]
+
+  const leakedTerm = forbiddenTerms.find((term) => serialized.includes(term))
+  if (leakedTerm) {
+    throw new Error(`Config appears to contain sensitive data: ${leakedTerm}`)
   }
 }
 
@@ -181,18 +230,15 @@ function assertValidCreateInput(options: CreateListingOptions): void {
     throw new Error(`Invalid listing category: ${options.category}`)
   }
 
-  if (options.tags && (!Array.isArray(options.tags) || options.tags.length > 20)) {
-    throw new Error('Tags must be an array with at most 20 items')
-  }
-
-  if (options.tags?.some((tag) => typeof tag !== 'string' || tag.length > 40)) {
-    throw new Error('Each tag must be a string up to 40 characters')
-  }
+  assertValidTags(options.tags)
 
   if (options.price !== undefined && (Number.isNaN(options.price) || options.price < 0)) {
     throw new Error('Price must be a number greater than or equal to 0')
   }
 
+  assertPlainObject(options.config, 'config')
+  assertPlainObject(options.metadata, 'metadata')
+  assertSafeMarketplaceConfig(options.config)
   assertValidPreviewUrl(options.previewUrl)
 }
 
@@ -217,15 +263,7 @@ function assertValidUpdateInput(options: UpdateListingOptions): void {
     throw new Error(`Invalid listing category: ${options.category}`)
   }
 
-  if (options.tags !== undefined) {
-    if (!Array.isArray(options.tags) || options.tags.length > 20) {
-      throw new Error('Tags must be an array with at most 20 items')
-    }
-
-    if (options.tags.some((tag) => typeof tag !== 'string' || tag.length > 40)) {
-      throw new Error('Each tag must be a string up to 40 characters')
-    }
-  }
+  assertValidTags(options.tags)
 
   if (options.price !== undefined && (Number.isNaN(options.price) || options.price < 0)) {
     throw new Error('Price must be a number greater than or equal to 0')
@@ -235,33 +273,45 @@ function assertValidUpdateInput(options: UpdateListingOptions): void {
     throw new Error(`Invalid listing status: ${options.status}`)
   }
 
+  if (options.status !== undefined && !OWNER_ALLOWED_STATUSES.includes(options.status as OwnerListingStatus)) {
+    throw new Error('This status can only be changed by marketplace moderation')
+  }
+
+  assertPlainObject(options.config, 'config')
+  assertPlainObject(options.metadata, 'metadata')
+  assertSafeMarketplaceConfig(options.config)
   assertValidPreviewUrl(options.previewUrl)
 }
 
-function serializeListing(listing: {
-  id: string
-  userId: string
-  type: string
-  name: string
-  slug: string
-  description: string
-  category: string
-  tags: string
-  price: number
-  currency: string
-  config: string
-  previewUrl: string | null
-  downloads: number
-  installCount: number
-  rating: number
-  reviewCount: number
-  status: string
-  metadata: string
-  publishedAt: Date | null
-  createdAt: Date
-  updatedAt: Date
-  user?: { name: string; avatar: string | null }
-}): MarketplaceListingResult {
+function serializeListing(
+  listing: {
+    id: string
+    userId: string
+    type: string
+    name: string
+    slug: string
+    description: string
+    category: string
+    tags: string
+    price: number
+    currency: string
+    config: string
+    previewUrl: string | null
+    downloads: number
+    installCount: number
+    rating: number
+    reviewCount: number
+    status: string
+    metadata: string
+    publishedAt: Date | null
+    createdAt: Date
+    updatedAt: Date
+    user?: { name: string; avatar: string | null }
+  },
+  options: { includeConfig?: boolean } = {}
+): MarketplaceListingResult {
+  const includeConfig = Boolean(options.includeConfig)
+
   return {
     id: listing.id,
     userId: listing.userId,
@@ -273,7 +323,8 @@ function serializeListing(listing: {
     tags: safeParse<string[]>(listing.tags, []),
     price: listing.price,
     currency: listing.currency,
-    config: safeParse<Record<string, unknown>>(listing.config, {}),
+    config: includeConfig ? safeParse<Record<string, unknown>>(listing.config, {}) : {},
+    hasConfigAccess: includeConfig,
     previewUrl: listing.previewUrl,
     downloads: listing.downloads,
     installCount: listing.installCount,
@@ -293,9 +344,30 @@ function serializeListing(listing: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Core: Create Listing
-// ---------------------------------------------------------------------------
+async function hasCompletedPurchase(userId: string, listingId: string): Promise<boolean> {
+  const purchase = await db.marketplacePurchase.findUnique({
+    where: {
+      userId_listingId: {
+        userId,
+        listingId,
+      },
+    },
+    select: { status: true },
+  })
+
+  return purchase?.status === 'completed'
+}
+
+async function assertMarketplaceAdmin(userId: string): Promise<void> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  })
+
+  if (!user || user.role !== 'admin') {
+    throw new Error('Marketplace moderation requires an admin account')
+  }
+}
 
 export async function createListing(
   userId: string,
@@ -320,8 +392,12 @@ export async function createListing(
       previewUrl: options.previewUrl || null,
       metadata: JSON.stringify({
         ...(options.metadata || {}),
-        version: '1.0.0',
-        changelog: [],
+        version: String(options.metadata?.version || '1.0.0'),
+        changelog: Array.isArray(options.metadata?.changelog) ? options.metadata.changelog : [],
+        moderation: {
+          status: 'draft',
+          notes: [],
+        },
       }),
       status: 'draft',
     },
@@ -335,12 +411,8 @@ export async function createListing(
     },
   })
 
-  return serializeListing(listing)
+  return serializeListing(listing, { includeConfig: true })
 }
-
-// ---------------------------------------------------------------------------
-// Core: Update Listing
-// ---------------------------------------------------------------------------
 
 export async function updateListing(
   userId: string,
@@ -372,16 +444,25 @@ export async function updateListing(
   if (options.previewUrl !== undefined) data.previewUrl = options.previewUrl
   if (options.status !== undefined) data.status = options.status
 
-  if (options.metadata !== undefined) {
+  if (options.metadata !== undefined || options.status !== undefined) {
     const currentMeta = safeParse<Record<string, unknown>>(existing.metadata, {})
+    const moderation = safeParse<Record<string, unknown>>(
+      JSON.stringify(currentMeta.moderation || {}),
+      {}
+    )
+
     data.metadata = JSON.stringify({
       ...currentMeta,
-      ...options.metadata,
+      ...(options.metadata || {}),
+      moderation: {
+        ...moderation,
+        status: options.status || moderation.status || existing.status,
+        submittedAt:
+          options.status === 'submitted'
+            ? new Date().toISOString()
+            : moderation.submittedAt,
+      },
     })
-  }
-
-  if (options.status === 'published' && existing.status !== 'published') {
-    data.publishedAt = new Date()
   }
 
   const listing = await db.marketplaceListing.update({
@@ -397,23 +478,89 @@ export async function updateListing(
     },
   })
 
-  return serializeListing(listing)
+  return serializeListing(listing, { includeConfig: true })
 }
 
-// ---------------------------------------------------------------------------
-// Core: Publish Listing
-// ---------------------------------------------------------------------------
+export async function submitListingForReview(
+  userId: string,
+  listingId: string
+): Promise<MarketplaceListingResult> {
+  return updateListing(userId, listingId, { status: 'submitted' })
+}
 
 export async function publishListing(
   userId: string,
   listingId: string
 ): Promise<MarketplaceListingResult> {
-  return updateListing(userId, listingId, { status: 'published' })
+  return submitListingForReview(userId, listingId)
 }
 
-// ---------------------------------------------------------------------------
-// Core: Search Listings
-// ---------------------------------------------------------------------------
+export async function moderateListing(
+  adminUserId: string,
+  listingId: string,
+  status: ModerationStatus,
+  notes?: string
+): Promise<MarketplaceListingResult> {
+  await assertMarketplaceAdmin(adminUserId)
+
+  if (!MODERATION_STATUSES.includes(status)) {
+    throw new Error(`Invalid moderation status: ${status}`)
+  }
+
+  const existing = await db.marketplaceListing.findUnique({
+    where: { id: listingId },
+  })
+
+  if (!existing) {
+    throw new Error('Listing not found')
+  }
+
+  const currentMeta = safeParse<Record<string, unknown>>(existing.metadata, {})
+  const moderation = safeParse<Record<string, unknown>>(
+    JSON.stringify(currentMeta.moderation || {}),
+    {}
+  )
+  const moderationNotes = Array.isArray(moderation.notes) ? moderation.notes : []
+  const now = new Date()
+
+  const listing = await db.marketplaceListing.update({
+    where: { id: listingId },
+    data: {
+      status,
+      publishedAt: status === 'published' && !existing.publishedAt ? now : existing.publishedAt,
+      metadata: JSON.stringify({
+        ...currentMeta,
+        moderation: {
+          ...moderation,
+          status,
+          moderatedBy: adminUserId,
+          moderatedAt: now.toISOString(),
+          notes: notes
+            ? [
+                ...moderationNotes,
+                {
+                  status,
+                  note: notes,
+                  createdAt: now.toISOString(),
+                  createdBy: adminUserId,
+                },
+              ]
+            : moderationNotes,
+        },
+      }),
+    },
+    include: {
+      user: {
+        select: {
+          name: true,
+          avatar: true,
+        },
+      },
+    },
+  })
+
+  return serializeListing(listing, { includeConfig: true })
+}
 
 export async function searchListings(
   options: SearchListingsOptions = {}
@@ -436,15 +583,17 @@ export async function searchListings(
     limit = 20,
   } = options
 
-  const where: Record<string, unknown> = { status }
+  const safePage = Math.max(1, page)
+  const safeLimit = Math.min(100, Math.max(1, limit))
+  const where: Record<string, unknown> = { status, isActive: true }
 
   if (type) where.type = type
   if (category) where.category = category
 
   if (query) {
     where.OR = [
-      { name: { contains: query } },
-      { description: { contains: query } },
+      { name: { contains: query, mode: 'insensitive' } },
+      { description: { contains: query, mode: 'insensitive' } },
     ]
   }
 
@@ -458,7 +607,7 @@ export async function searchListings(
   if (tags && tags.length > 0) {
     where.AND = tags.map((tag) => ({
       tags: {
-        contains: tag,
+        contains: JSON.stringify(tag).slice(1, -1),
       },
     }))
   }
@@ -489,8 +638,8 @@ export async function searchListings(
     db.marketplaceListing.findMany({
       where,
       orderBy,
-      skip: (page - 1) * limit,
-      take: limit,
+      skip: (safePage - 1) * safeLimit,
+      take: safeLimit,
       include: {
         user: {
           select: {
@@ -504,16 +653,12 @@ export async function searchListings(
   ])
 
   return {
-    listings: listings.map(serializeListing),
+    listings: listings.map((listing) => serializeListing(listing, { includeConfig: false })),
     total,
-    page,
-    totalPages: Math.ceil(total / limit),
+    page: safePage,
+    totalPages: Math.ceil(total / safeLimit),
   }
 }
-
-// ---------------------------------------------------------------------------
-// Core: Get Listing by ID
-// ---------------------------------------------------------------------------
 
 export async function getListing(
   listingId: string
@@ -530,7 +675,7 @@ export async function getListing(
     },
   })
 
-  return listing ? serializeListing(listing) : null
+  return listing ? serializeListing(listing, { includeConfig: false }) : null
 }
 
 export async function getListingForViewer(
@@ -549,26 +694,33 @@ export async function getListingForViewer(
     },
   })
 
-  if (!listing) return null
+  if (!listing || !listing.isActive) return null
 
   const isOwner = listing.userId === viewerUserId
   const isPublished = listing.status === 'published'
+  const purchased = isOwner ? false : await hasCompletedPurchase(viewerUserId, listingId)
 
   if (!isOwner && !isPublished) {
     return null
   }
 
-  return serializeListing(listing)
+  return serializeListing(listing, { includeConfig: isOwner || purchased })
 }
 
-// ---------------------------------------------------------------------------
-// Core: Delete Listing
-// ---------------------------------------------------------------------------
-
-export async function deleteListing(
+export async function getListingConfigForAccess(
   userId: string,
   listingId: string
-): Promise<boolean> {
+): Promise<MarketplaceListingResult> {
+  const listing = await getListingForViewer(userId, listingId)
+
+  if (!listing || !listing.hasConfigAccess) {
+    throw new Error('Listing access not found or not purchased')
+  }
+
+  return listing
+}
+
+export async function deleteListing(userId: string, listingId: string): Promise<boolean> {
   const listing = await db.marketplaceListing.findFirst({
     where: {
       id: listingId,
@@ -578,16 +730,16 @@ export async function deleteListing(
 
   if (!listing) return false
 
-  await db.marketplaceListing.delete({
+  await db.marketplaceListing.update({
     where: { id: listingId },
+    data: {
+      isActive: false,
+      status: 'archived',
+    },
   })
 
   return true
 }
-
-// ---------------------------------------------------------------------------
-// Core: Increment downloads / installs
-// ---------------------------------------------------------------------------
 
 export async function incrementDownloads(listingId: string): Promise<void> {
   await db.marketplaceListing.update({
@@ -609,4 +761,4 @@ export async function incrementInstallCount(listingId: string): Promise<void> {
       },
     },
   })
-  }
+}
