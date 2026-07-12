@@ -6,12 +6,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
-import { createBrowserAutomationEngine, type ActionType } from '@/lib/browser/browser-automation';
+import {
+  createBrowserAutomationEngine,
+  type ActionType,
+  type SessionStatus,
+} from '@/lib/browser/browser-automation';
 
 const VALID_ACTION_TYPES: ActionType[] = [
   'navigate', 'click', 'type', 'scroll', 'screenshot',
   'extract', 'fill_form', 'wait', 'hover', 'select',
   'press_key', 'evaluate',
+];
+
+const VALID_SESSION_STATUSES: SessionStatus[] = [
+  'idle', 'running', 'paused', 'completed', 'error',
 ];
 
 export async function OPTIONS(request: NextRequest) {
@@ -30,9 +38,15 @@ export async function GET(request: NextRequest) {
   try {
     const engine = createBrowserAutomationEngine(auth.userId);
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') || undefined;
+    const rawStatus = searchParams.get('status') || undefined;
 
-    const sessions = await engine.listSessions(status as any);
+    // Validate status against known values — avoid `as any`
+    const status: SessionStatus | undefined =
+      rawStatus && VALID_SESSION_STATUSES.includes(rawStatus as SessionStatus)
+        ? (rawStatus as SessionStatus)
+        : undefined;
+
+    const sessions = await engine.listSessions(status);
 
     const res = NextResponse.json({
       sessions,

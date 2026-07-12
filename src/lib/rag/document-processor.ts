@@ -12,6 +12,12 @@ export interface DocumentChunk {
   };
 }
 
+// pdf-parse is a CommonJS module without bundled type declarations.
+// We define the subset we use to avoid `as any`.
+type PdfParseResult = { text: string };
+type PdfParseFn = (buffer: Buffer) => Promise<PdfParseResult>;
+type PdfParseModule = PdfParseFn | { default: PdfParseFn };
+
 export class DocumentProcessor {
   /**
    * Process an uploaded file (PDF, TXT, MD, CSV)
@@ -48,7 +54,6 @@ export class DocumentProcessor {
     while (start < text.length) {
       let end = start + chunkSize;
 
-      // Try to break at a sentence boundary
       if (end < text.length) {
         const lastPeriod = text.lastIndexOf('.', end);
         const lastNewline = text.lastIndexOf('\n', end);
@@ -72,12 +77,18 @@ export class DocumentProcessor {
   }
 
   /**
-   * Extract text from PDF
+   * Extract text from PDF via pdf-parse (CommonJS, no official typings).
+   * We import via unknown cast to avoid `import("pdf-parse" as any)` syntax
+   * which is invalid in strict TypeScript.
    */
   async extractPdfText(buffer: Buffer): Promise<string> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfParse = (await import('pdf-parse' as any)).default || (await import('pdf-parse' as any)) as (buf: Buffer) => Promise<{ text: string }>;
+      // Dynamic import resolves to a CJS module — shape may be
+      // `{ default: fn }` (ESM interop) or the function directly.
+      const pdfModule = await import('pdf-parse') as unknown as PdfParseModule;
+      const pdfParse: PdfParseFn = typeof pdfModule === 'function'
+        ? pdfModule
+        : (pdfModule as { default: PdfParseFn }).default;
       const data = await pdfParse(buffer);
       return data.text || '';
     } catch {
@@ -102,7 +113,6 @@ export class DocumentProcessor {
 
       case 'csv': {
         const content = buffer.toString('utf-8');
-        // Simple CSV to text conversion
         return content;
       }
 
@@ -115,7 +125,6 @@ export class DocumentProcessor {
         }
 
       default:
-        // Try as plain text
         try {
           return buffer.toString('utf-8');
         } catch {
