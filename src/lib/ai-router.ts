@@ -1,14 +1,10 @@
 /**
- * AI Router — PRIORITÉ 4
+ * AI Router — Multi-provider AI router with fallback, retry, streaming,
+ * cost estimation, and usage tracking.
  *
- * Multi-provider AI router with fallback, retry (exponential backoff),
- * streaming via async generators, cost estimation, and usage tracking.
- *
- * Providers:
- *  - Groq       (direct REST when GROQ_API_KEY is set, else z-ai-web-dev-sdk)
- *  - OpenRouter  (direct REST when OPENROUTER_API_KEY is set, else z-ai-web-dev-sdk)
- *
- * Fallback chain is ordered by `priority` (lower = tried first).
+ * Providers (in priority order):
+ * - Groq (direct REST when GROQ_API_KEY is set, else z-ai-web-dev-sdk)
+ * - OpenRouter (direct REST when OPENROUTER_API_KEY is set, else z-ai-web-dev-sdk)
  */
 
 import ZAI from 'z-ai-web-dev-sdk';
@@ -49,7 +45,7 @@ export interface AIResponse {
 
 export interface ProviderConfig {
   name: string;
-  priority: number; // lower = higher priority
+  priority: number;
   models: {
     default: string;
     fast: string;
@@ -62,6 +58,15 @@ export interface AIRouterConfig {
   maxRetries: number;
   retryDelayMs: number;
   timeoutMs: number;
+}
+
+export type ModelTier = 'default' | 'fast' | 'powerful';
+
+export interface GenerateOptions {
+  tier?: ModelTier;
+  temperature?: number;
+  maxTokens?: number;
+  systemPrompt?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,35 +100,37 @@ const DEFAULT_CONFIG: AIRouterConfig = {
 };
 
 // ---------------------------------------------------------------------------
-// Cost estimation (USD per 1 K tokens — approximate)
+// Cost estimation
 // ---------------------------------------------------------------------------
 
-// Groq pricing as of 2025 — USD per 1K tokens
-// Source: https://console.groq.com/docs/models
-// llama-3.3-70b-versatile: $0.59/M input, $0.79/M output
-// llama-3.1-8b-instant:   $0.05/M input, $0.08/M output
 const GROQ_COST_PER_K: Record<string, { prompt: number; completion: number }> = {
-  default:   { prompt: 0.00059, completion: 0.00079 },   // llama-3.3-70b-versatile
-  fast:      { prompt: 0.00005, completion: 0.00008 },   // llama-3.1-8b-instant
-  powerful:  { prompt: 0.00059, completion: 0.00079 },   // llama-3.3-70b-versatile
+  default: { prompt: 0.00059, completion: 0.00079 },
+  fast: { prompt: 0.00005, completion: 0.00008 },
+  powerful: { prompt: 0.00059, completion: 0.00079 },
 };
 
 const OPENROUTER_COST_PER_K: Record<string, { prompt: number; completion: number }> = {
   'meta-llama/llama-3.1-8b-instruct:free': { prompt: 0, completion: 0 },
-  'meta-llama/llama-3.1-70b-instruct':      { prompt: 0.00065, completion: 0.00075 },
+  'meta-llama/llama-3.1-70b-instruct': { prompt: 0.00065, completion: 0.00075 },
 };
 
 function getCostPerK(
   provider: string,
   model: string,
 ): { prompt: number; completion: number } {
-  if (provider === 'groq') {
-    return GROQ_COST_PER_K[model] ?? { prompt: 0, completion: 0 };
-  }
-  if (provider === 'openrouter') {
-    return OPENROUTER_COST_PER_K[model] ?? { prompt: 0.0005, completion: 0.0006 };
-  }
+  if (provider === 'groq') return GROQ_COST_PER_K[model] ?? { prompt: 0, completion: 0 };
+  if (provider === 'openrouter') return OPENROUTER_COST_PER_K[model] ?? { prompt: 0.0005, completion: 0.0006 };
   return { prompt: 0, completion: 0 };
+}
+
+function estimateCost(
+  provider: string,
+  model: string,
+  promptTokens: number,
+  completionTokens: number,
+): number {
+  const rates = getCostPerK(provider, model);
+  return (promptTokens / 1000) * rates.prompt + (completionTokens / 1000) * rates.completion;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,25 +140,16 @@ function getCostPerK(
 function isTransientError(error: unknown): boolean {
   if (error instanceof Response) {
     const s = error.status;
-    // Only 429 (rate limit) and 5xx (server errors) are transient
-    // 4xx client errors (401, 403, etc.) are NOT transient — retrying won't help
     return s === 429 || (s >= 500 && s <= 599);
   }
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
-
-    // Check for explicit HTTP status in the error message
     const statusMatch = msg.match(/status[:\s]*(\d{3})/);
     if (statusMatch) {
       const s = parseInt(statusMatch[1], 10);
-      // 4xx = client error (bad key, forbidden, not found) — NOT transient
-      // 429 = rate limit — IS transient
-      // 5xx = server error — IS transient
       if (s >= 400 && s < 500 && s !== 429) return false;
       return s === 429 || (s >= 500 && s <= 599);
     }
-
-    // Network-level / timeout / rate-limit — these are transient
     if (
       msg.includes('network') ||
       msg.includes('timeout') ||
@@ -159,23 +157,14 @@ function isTransientError(error: unknown): boolean {
       msg.includes('econnrefused') ||
       msg.includes('rate limit') ||
       msg.includes('overloaded')
-    ) {
-      return true;
-    }
-
-    // Explicitly check for common API auth failures — NOT transient
+    ) return true;
     if (
       msg.includes('forbidden') ||
       msg.includes('unauthorized') ||
       msg.includes('invalid api key') ||
-      msg.includes('invalid api_key') ||
-      msg.includes('user not found') ||
       msg.includes('authentication')
-    ) {
-      return false;
-    }
+    ) return false;
   }
-  // Default to NON-transient — prevents wasteful retries on unknown persistent errors
   return false;
 }
 
@@ -188,7 +177,7 @@ function generateRequestId(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Provider callers
+// Provider callers — non-streaming
 // ---------------------------------------------------------------------------
 
 interface ProviderCallResult {
@@ -198,14 +187,6 @@ interface ProviderCallResult {
   model: string;
 }
 
-/**
- * Call via z-ai-web-dev-sdk (the universal fallback).
- */
-/**
- * Create a promise that rejects when the AbortController signals.
- * This enables proper timeout cancellation even for SDK calls
- * that don't natively accept an AbortSignal.
- */
 function abortRace(controller: AbortController, timeoutMs: number): Promise<never> {
   return new Promise((_, reject) => {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -223,17 +204,11 @@ async function callZAI(
   timeoutMs: number,
 ): Promise<ProviderCallResult> {
   const zai = await ZAI.create();
-
   const controller = new AbortController();
 
   try {
-    // Race the SDK call against the abort timeout
     const completion = await Promise.race([
-      zai.chat.completions.create({
-        messages,
-        model,
-        stream: false,
-      }),
+      zai.chat.completions.create({ messages, model, stream: false }),
       abortRace(controller, timeoutMs),
     ]);
 
@@ -251,16 +226,10 @@ async function callZAI(
       model,
     };
   } finally {
-    // Ensure abort is triggered to clean up any pending race
-    if (!controller.signal.aborted) {
-      controller.abort();
-    }
+    if (!controller.signal.aborted) controller.abort();
   }
 }
 
-/**
- * Call Groq REST API directly when GROQ_API_KEY is available.
- */
 async function callGroqDirect(
   messages: AIMessage[],
   model: string,
@@ -290,10 +259,8 @@ async function callGroqDirect(
     }
 
     const data = await res.json();
-    const content = data.choices?.[0]?.message?.content ?? '';
-
     return {
-      content,
+      content: data.choices?.[0]?.message?.content ?? '',
       usage: {
         promptTokens: data.usage?.prompt_tokens ?? 0,
         completionTokens: data.usage?.completion_tokens ?? 0,
@@ -307,9 +274,6 @@ async function callGroqDirect(
   }
 }
 
-/**
- * Call OpenRouter REST API directly when OPENROUTER_API_KEY is available.
- */
 async function callOpenRouterDirect(
   messages: AIMessage[],
   model: string,
@@ -340,10 +304,8 @@ async function callOpenRouterDirect(
     }
 
     const data = await res.json();
-    const content = data.choices?.[0]?.message?.content ?? '';
-
     return {
-      content,
+      content: data.choices?.[0]?.message?.content ?? '',
       usage: {
         promptTokens: data.usage?.prompt_tokens ?? 0,
         completionTokens: data.usage?.completion_tokens ?? 0,
@@ -358,7 +320,7 @@ async function callOpenRouterDirect(
 }
 
 // ---------------------------------------------------------------------------
-// Streaming callers
+// Provider callers — streaming
 // ---------------------------------------------------------------------------
 
 async function* streamZAI(
@@ -368,47 +330,33 @@ async function* streamZAI(
   timeoutMs: number,
 ): AsyncGenerator<AIStreamChunk> {
   const zai = await ZAI.create();
-
   const controller = new AbortController();
-  // Set up a timeout that aborts the controller for the initial connection
-  const connectionTimer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  let totalDelta = '';
   try {
-    // Race the initial stream creation against timeout
-    const completion = await Promise.race([
-      zai.chat.completions.create({
-        messages,
-        model,
-        stream: true,
-      }),
-      abortRace(controller, timeoutMs),
-    ]);
+    const stream = await zai.chat.completions.create({
+      messages,
+      model,
+      stream: true,
+    });
 
-    // Connection established — clear the connection timeout
-    clearTimeout(connectionTimer);
-
-    for await (const chunk of completion) {
-      // Check if aborted during streaming
+    for await (const chunk of stream) {
       if (controller.signal.aborted) break;
-
       const delta = chunk.choices?.[0]?.delta?.content ?? '';
-      if (delta) {
-        totalDelta += delta;
-        yield { delta, done: false };
-      }
+      const isDone = chunk.choices?.[0]?.finish_reason != null;
+      const usage = chunk.usage
+        ? {
+            promptTokens: chunk.usage.prompt_tokens ?? 0,
+            completionTokens: chunk.usage.completion_tokens ?? 0,
+            totalTokens: chunk.usage.total_tokens ?? 0,
+          }
+        : undefined;
+      yield { delta, done: isDone, usage };
+      if (isDone) break;
     }
-
-    yield {
-      delta: '',
-      done: true,
-      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-    };
   } finally {
-    clearTimeout(connectionTimer);
-    if (!controller.signal.aborted) {
-      controller.abort();
-    }
+    clearTimeout(timer);
+    if (!controller.signal.aborted) controller.abort();
   }
 }
 
@@ -440,44 +388,10 @@ async function* streamGroqDirect(
       throw err;
     }
 
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error('No readable stream from Groq');
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const payload = trimmed.slice(6);
-        if (payload === '[DONE]') {
-          yield { delta: '', done: true, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
-          return;
-        }
-
-        try {
-          const parsed = JSON.parse(payload);
-          const delta = parsed.choices?.[0]?.delta?.content ?? '';
-          if (delta) {
-            yield { delta, done: false };
-          }
-        } catch {
-          // Skip malformed SSE lines
-        }
-      }
-    }
-
-    yield { delta: '', done: true, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
+    yield* parseSseStream(res, controller);
   } finally {
     clearTimeout(timer);
+    if (!controller.signal.aborted) controller.abort();
   }
 }
 
@@ -510,13 +424,26 @@ async function* streamOpenRouterDirect(
       throw err;
     }
 
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error('No readable stream from OpenRouter');
+    yield* parseSseStream(res, controller);
+  } finally {
+    clearTimeout(timer);
+    if (!controller.signal.aborted) controller.abort();
+  }
+}
 
-    const decoder = new TextDecoder();
-    let buffer = '';
+/** Parse an OpenAI-compatible SSE stream into AIStreamChunk objects */
+async function* parseSseStream(
+  res: Response,
+  controller: AbortController,
+): AsyncGenerator<AIStreamChunk> {
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('No response body');
 
-    while (true) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (!controller.signal.aborted) {
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -527,27 +454,31 @@ async function* streamOpenRouterDirect(
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const payload = trimmed.slice(6);
-        if (payload === '[DONE]') {
-          yield { delta: '', done: true, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') {
+          yield { delta: '', done: true };
           return;
         }
-
         try {
-          const parsed = JSON.parse(payload);
+          const parsed = JSON.parse(data);
           const delta = parsed.choices?.[0]?.delta?.content ?? '';
-          if (delta) {
-            yield { delta, done: false };
-          }
+          const isDone = parsed.choices?.[0]?.finish_reason != null;
+          const usage = parsed.usage
+            ? {
+                promptTokens: parsed.usage.prompt_tokens ?? 0,
+                completionTokens: parsed.usage.completion_tokens ?? 0,
+                totalTokens: parsed.usage.total_tokens ?? 0,
+              }
+            : undefined;
+          yield { delta, done: isDone, usage };
+          if (isDone) return;
         } catch {
           // Skip malformed SSE lines
         }
       }
     }
-
-    yield { delta: '', done: true, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
   } finally {
-    clearTimeout(timer);
+    reader.releaseLock();
   }
 }
 
@@ -556,324 +487,179 @@ async function* streamOpenRouterDirect(
 // ---------------------------------------------------------------------------
 
 export class AIRouter {
-  private config: AIRouterConfig;
-  private userId: string;
+  private readonly config: AIRouterConfig;
 
-  constructor(userId: string, config?: Partial<AIRouterConfig>) {
-    this.userId = userId;
-    this.config = { ...DEFAULT_CONFIG, ...config };
+  constructor(config: Partial<AIRouterConfig> = {}) {
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      providers: config.providers ?? DEFAULT_CONFIG.providers,
+    };
   }
 
-  // -----------------------------------------------------------------------
-  // Public: chat()
-  // -----------------------------------------------------------------------
+  // Sort providers by priority (lower number = higher priority)
+  private getOrderedProviders(): ProviderConfig[] {
+    return [...this.config.providers].sort((a, b) => a.priority - b.priority);
+  }
 
-  async chat(
-    messages: AIMessage[],
-    options?: { model?: 'default' | 'fast' | 'powerful'; provider?: string },
-  ): Promise<AIResponse> {
-    const modelTier = options?.model ?? 'default';
-    const requestedProvider = options?.provider;
+  private resolveModel(provider: ProviderConfig, tier: ModelTier = 'default'): string {
+    return provider.models[tier];
+  }
 
-    // Build ordered provider list
-    let providers = [...this.config.providers].sort(
-      (a, b) => a.priority - b.priority,
-    );
+  /**
+   * Generate a non-streaming AI response with automatic provider fallback
+   * and exponential-backoff retries on transient errors.
+   */
+  async generate(messages: AIMessage[], options: GenerateOptions = {}): Promise<AIResponse> {
+    const { tier = 'default', systemPrompt } = options;
+    const fullMessages: AIMessage[] = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...messages]
+      : messages;
 
-    if (requestedProvider) {
-      const match = providers.find((p) => p.name === requestedProvider);
-      if (match) {
-        providers = [match, ...providers.filter((p) => p.name !== requestedProvider)];
-      }
-    }
-
+    const requestId = generateRequestId();
+    const providers = this.getOrderedProviders();
     let lastError: unknown;
 
     for (const provider of providers) {
-      const model = provider.models[modelTier];
+      const model = this.resolveModel(provider, tier);
 
-      // Attempt with retries on this provider
       for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+        if (attempt > 0) {
+          const backoff = Math.min(
+            this.config.retryDelayMs * Math.pow(2, attempt - 1),
+            30_000
+          );
+          const jitter = Math.random() * 200;
+          await sleep(backoff + jitter);
+          log.warn('Retrying AI request', { requestId, provider: provider.name, attempt });
+        }
+
         try {
-          const result = await this.callProvider(messages, model, provider.name);
+          let result: ProviderCallResult;
 
-          // Track usage
-          const costUsd = this.estimateCost(
-            provider.name,
+          if (provider.name === 'groq' && process.env.GROQ_API_KEY) {
+            result = await callGroqDirect(fullMessages, model, this.config.timeoutMs);
+          } else if (provider.name === 'openrouter' && process.env.OPENROUTER_API_KEY) {
+            result = await callOpenRouterDirect(fullMessages, model, this.config.timeoutMs);
+          } else {
+            result = await callZAI(fullMessages, model, provider.name, this.config.timeoutMs);
+          }
+
+          const costUsd = estimateCost(
+            result.provider,
             model,
             result.usage.promptTokens,
             result.usage.completionTokens,
           );
 
-          await this.trackUsage(
-            provider.name,
-            model,
-            result.usage.promptTokens,
-            result.usage.completionTokens,
-            costUsd,
-          );
-
-          return {
-            content: result.content,
-            usage: result.usage,
+          log.info('AI request completed', {
+            requestId,
             provider: result.provider,
-            model: result.model,
+            model,
+            promptTokens: result.usage.promptTokens,
+            completionTokens: result.usage.completionTokens,
             costUsd,
-          };
-        } catch (error) {
-          lastError = error;
-          const isTransient = isTransientError(error);
-
-          log.warn(`Provider ${provider.name}/${model} failed (attempt ${attempt + 1}/${this.config.maxRetries + 1})`, {
-            transient: isTransient,
-            error: error instanceof Error ? error.message : String(error),
           });
 
-          // If not transient, don't retry this provider — skip to next one
-          if (!isTransient) break;
-
-          // If this was the last retry for this provider, move on
-          if (attempt < this.config.maxRetries) {
-            const delay = this.config.retryDelayMs * Math.pow(2, attempt);
-            await sleep(delay);
+          return { ...result, costUsd };
+        } catch (err) {
+          lastError = err;
+          if (!isTransientError(err)) {
+            log.warn('Non-transient error, trying next provider', {
+              requestId,
+              provider: provider.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            break; // Skip remaining retries for this provider
           }
+          log.warn('Transient error, will retry', {
+            requestId,
+            provider: provider.name,
+            attempt,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     }
 
-    // All providers exhausted
-    throw lastError ?? new Error('All AI providers failed');
+    log.error('All AI providers exhausted', { requestId, error: lastError });
+    throw lastError ?? new Error('All AI providers exhausted');
   }
 
-  // -----------------------------------------------------------------------
-  // Public: chatStream()
-  // -----------------------------------------------------------------------
-
-  async *chatStream(
+  /**
+   * Generate a streaming AI response with automatic provider fallback.
+   * Yields AIStreamChunk objects until the stream is complete.
+   */
+  async *stream(
     messages: AIMessage[],
-    options?: { model?: 'default' | 'fast' | 'powerful'; provider?: string },
+    options: GenerateOptions = {},
   ): AsyncGenerator<AIStreamChunk> {
-    const modelTier = options?.model ?? 'default';
-    const requestedProvider = options?.provider;
+    const { tier = 'default', systemPrompt } = options;
+    const fullMessages: AIMessage[] = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...messages]
+      : messages;
 
-    let providers = [...this.config.providers].sort(
-      (a, b) => a.priority - b.priority,
-    );
-
-    if (requestedProvider) {
-      const match = providers.find((p) => p.name === requestedProvider);
-      if (match) {
-        providers = [match, ...providers.filter((p) => p.name !== requestedProvider)];
-      }
-    }
-
+    const requestId = generateRequestId();
+    const providers = this.getOrderedProviders();
     let lastError: unknown;
 
     for (const provider of providers) {
-      const model = provider.models[modelTier];
+      const model = this.resolveModel(provider, tier);
 
-      for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
-        try {
-          let totalDelta = '';
+      try {
+        let generator: AsyncGenerator<AIStreamChunk>;
 
-          const stream = this.streamProvider(messages, model, provider.name);
-
-          for await (const chunk of stream) {
-            totalDelta += chunk.delta;
-            yield chunk;
-          }
-
-          // Track usage (best-effort — streaming doesn't always return token counts)
-          const approxPromptTokens = Math.ceil(
-            messages.reduce((s, m) => s + m.content.length, 0) / 4,
-          );
-          const approxCompletionTokens = Math.ceil(totalDelta.length / 4);
-
-          const costUsd = this.estimateCost(
-            provider.name,
-            model,
-            approxPromptTokens,
-            approxCompletionTokens,
-          );
-
-          await this.trackUsage(
-            provider.name,
-            model,
-            approxPromptTokens,
-            approxCompletionTokens,
-            costUsd,
-          );
-
-          return; // success
-        } catch (error) {
-          lastError = error;
-
-          if (!isTransientError(error)) break;
-
-          if (attempt < this.config.maxRetries) {
-            const delay = this.config.retryDelayMs * Math.pow(2, attempt);
-            await sleep(delay);
-          }
+        if (provider.name === 'groq' && process.env.GROQ_API_KEY) {
+          generator = streamGroqDirect(fullMessages, model, this.config.timeoutMs);
+        } else if (provider.name === 'openrouter' && process.env.OPENROUTER_API_KEY) {
+          generator = streamOpenRouterDirect(fullMessages, model, this.config.timeoutMs);
+        } else {
+          generator = streamZAI(fullMessages, model, provider.name, this.config.timeoutMs);
         }
+
+        log.info('AI stream started', { requestId, provider: provider.name, model });
+        yield* generator;
+        return;
+      } catch (err) {
+        lastError = err;
+        log.warn('AI stream provider failed, trying next', {
+          requestId,
+          provider: provider.name,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
-    throw lastError ?? new Error('All AI providers failed for streaming');
-  }
-
-  // -----------------------------------------------------------------------
-  // Public: estimateCost()
-  // -----------------------------------------------------------------------
-
-  estimateCost(
-    provider: string,
-    model: string,
-    promptTokens: number,
-    completionTokens: number,
-  ): number {
-    const rates = getCostPerK(provider, model);
-    return (promptTokens / 1000) * rates.prompt + (completionTokens / 1000) * rates.completion;
-  }
-
-  // -----------------------------------------------------------------------
-  // Private: dispatch to correct provider (non-streaming)
-  // -----------------------------------------------------------------------
-
-  private async callProvider(
-    messages: AIMessage[],
-    model: string,
-    providerName: string,
-  ): Promise<ProviderCallResult> {
-    switch (providerName) {
-      case 'groq':
-        if (process.env.GROQ_API_KEY) {
-          try {
-            return await callGroqDirect(messages, model, this.config.timeoutMs);
-          } catch (error) {
-            // If direct API fails with auth error (4xx), fall through to z-ai-sdk
-            const msg = error instanceof Error ? error.message : '';
-            if (!isTransientError(error)) {
-              log.info(`Groq direct failed (${msg}), falling back to z-ai-sdk`);
-              break; // Fall through to z-ai-sdk below
-            }
-            throw error;
-          }
-        }
-        break;
-
-      case 'openrouter':
-        if (process.env.OPENROUTER_API_KEY) {
-          try {
-            return await callOpenRouterDirect(messages, model, this.config.timeoutMs);
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : '';
-            if (!isTransientError(error)) {
-              log.info(`OpenRouter direct failed (${msg}), falling back to z-ai-sdk`);
-              break; // Fall through to z-ai-sdk below
-            }
-            throw error;
-          }
-        }
-        break;
-
-      default:
-        break;
-    }
-
-    // Universal fallback: z-ai-web-dev-sdk
-    return callZAI(messages, model, providerName, this.config.timeoutMs);
-  }
-
-  // -----------------------------------------------------------------------
-  // Private: dispatch to correct provider (streaming)
-  // -----------------------------------------------------------------------
-
-  private streamProvider(
-    messages: AIMessage[],
-    model: string,
-    providerName: string,
-  ): AsyncGenerator<AIStreamChunk> {
-    switch (providerName) {
-      case 'groq':
-        if (process.env.GROQ_API_KEY) {
-          return streamGroqDirect(messages, model, this.config.timeoutMs);
-        }
-        return streamZAI(messages, model, providerName, this.config.timeoutMs);
-
-      case 'openrouter':
-        if (process.env.OPENROUTER_API_KEY) {
-          return streamOpenRouterDirect(messages, model, this.config.timeoutMs);
-        }
-        return streamZAI(messages, model, providerName, this.config.timeoutMs);
-
-      default:
-        return streamZAI(messages, model, providerName, this.config.timeoutMs);
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Private: usage tracking
-  // -----------------------------------------------------------------------
-
-  private async trackUsage(
-    provider: string,
-    model: string,
-    promptTokens: number,
-    completionTokens: number,
-    costUsd: number,
-  ): Promise<void> {
-    const requestId = generateRequestId();
-
-    try {
-      const { trackAICost } = await import('@/lib/analytics');
-      await trackAICost({
-        userId: this.userId,
-        provider,
-        model,
-        promptTokens,
-        completionTokens,
-        costUsd,
-        requestId,
-      });
-    } catch {
-      // Analytics module not available yet — silent fail is intentional
-    }
-
-    // Structured logging via centralized logger
-    log.info('AI request completed', {
-      provider,
-      model,
-      promptTokens,
-      completionTokens,
-      costUsd: costUsd.toFixed(6),
-      requestId,
-    });
+    log.error('All AI providers exhausted for streaming', { requestId, error: lastError });
+    throw lastError ?? new Error('All AI providers exhausted');
   }
 }
 
 // ---------------------------------------------------------------------------
-// Factory
+// Module-level singleton
 // ---------------------------------------------------------------------------
 
-export function createAIRouter(
-  userId: string,
-  config?: Partial<AIRouterConfig>,
-): AIRouter {
-  return new AIRouter(userId, config);
+let _defaultRouter: AIRouter | null = null;
+
+export function getAIRouter(config?: Partial<AIRouterConfig>): AIRouter {
+  if (!_defaultRouter || config) {
+    _defaultRouter = new AIRouter(config);
+  }
+  return _defaultRouter;
 }
 
-// ---------------------------------------------------------------------------
-// Convenience: chatCompletion — Quick one-shot chat call
-// ---------------------------------------------------------------------------
-
-export async function chatCompletion(
+/** Convenience wrapper: single non-streaming generation */
+export async function generateText(
   messages: AIMessage[],
-  mode: 'default' | 'fast' | 'powerful' | 'quick_chat' | 'analysis' | 'reasoning' | 'orchestration' = 'default',
-): Promise<{ content: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; provider: string; model: string; costUsd: number }> {
-  const modelTier = (mode === 'fast' || mode === 'quick_chat') ? 'fast' as const
-    : mode === 'powerful' || mode === 'analysis' || mode === 'reasoning' || mode === 'orchestration' ? 'powerful' as const
-    : 'default' as const;
+  options: GenerateOptions = {},
+): Promise<AIResponse> {
+  return getAIRouter().generate(messages, options);
+}
 
-  const router = createAIRouter('system');
-  return router.chat(messages, { model: modelTier });
+/** Convenience wrapper: single streaming generation */
+export function streamText(
+  messages: AIMessage[],
+  options: GenerateOptions = {},
+): AsyncGenerator<AIStreamChunk> {
+  return getAIRouter().stream(messages, options);
 }

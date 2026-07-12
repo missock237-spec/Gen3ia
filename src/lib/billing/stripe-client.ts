@@ -5,16 +5,13 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('stripe-client')
 
+// Fixed: removed invalid `typescript: true` — not a valid Stripe SDK constructor option
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY
-
   if (!key) {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set')
   }
-
-  return new Stripe(key, {
-    typescript: true,
-  })
+  return new Stripe(key)
 }
 
 let _stripe: Stripe | null = null
@@ -23,17 +20,14 @@ function stripe(): Stripe {
   if (!_stripe) {
     _stripe = getStripe()
   }
-
   return _stripe
 }
 
 function getAppUrl(): string {
   const url = process.env.NEXT_PUBLIC_APP_URL
-
   if (!url) {
     throw new Error('NEXT_PUBLIC_APP_URL environment variable is not set')
   }
-
   return url.replace(/\/$/, '')
 }
 
@@ -73,28 +67,14 @@ export async function createCheckoutSession(
     customer: customerId,
     mode: mode || 'subscription',
     payment_method_types: ['card'],
-    line_items: [
-      {
-        price: priceId,
-        quantity: 1,
-      },
-    ],
+    line_items: [{ price: priceId, quantity: 1 }],
     success_url:
-      successUrl ||
-      `${appUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      successUrl || `${appUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: cancelUrl || `${appUrl}?checkout=cancel`,
-    metadata: {
-      userId,
-      planId,
-    },
+    metadata: { userId, planId },
     subscription_data:
       mode === 'subscription'
-        ? {
-            metadata: {
-              userId,
-              planId,
-            },
-          }
+        ? { metadata: { userId, planId } }
         : undefined,
   })
 
@@ -105,10 +85,7 @@ export async function createCheckoutSession(
     mode: mode || 'subscription',
   })
 
-  return {
-    sessionId: session.id,
-    url: session.url || '',
-  }
+  return { sessionId: session.id, url: session.url || '' }
 }
 
 export async function createPortalSession(
@@ -117,13 +94,8 @@ export async function createPortalSession(
   const { userId, returnUrl } = input
 
   const subscription = await db.subscription.findFirst({
-    where: {
-      userId,
-      status: 'active',
-    },
-    select: {
-      stripeCustomerId: true,
-    },
+    where: { userId, status: 'active' },
+    select: { stripeCustomerId: true },
   })
 
   if (!subscription?.stripeCustomerId) {
@@ -150,7 +122,6 @@ export async function handleWebhook(
   signature: string
 ): Promise<{ received: boolean; event?: string }> {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-
   if (!webhookSecret) {
     throw new Error('STRIPE_WEBHOOK_SECRET environment variable is not set')
   }
@@ -177,32 +148,26 @@ export async function handleWebhook(
       await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session)
       break
     }
-
     case 'customer.subscription.created': {
       await handleSubscriptionCreated(event.data.object as Stripe.Subscription)
       break
     }
-
     case 'customer.subscription.updated': {
       await handleSubscriptionUpdated(event.data.object as Stripe.Subscription)
       break
     }
-
     case 'customer.subscription.deleted': {
       await handleSubscriptionDeleted(event.data.object as Stripe.Subscription)
       break
     }
-
     case 'invoice.paid': {
       await handleInvoicePaid(event.data.object as Stripe.Invoice)
       break
     }
-
     case 'invoice.payment_failed': {
       await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice)
       break
     }
-
     default: {
       log.info('Unhandled webhook event type', { type: event.type })
     }
@@ -219,9 +184,7 @@ export async function getSubscription(
     orderBy: { createdAt: 'desc' },
   })
 
-  if (!subscription) {
-    return null
-  }
+  if (!subscription) return null
 
   return {
     id: subscription.id,
@@ -234,6 +197,10 @@ export async function getSubscription(
     stripeSubscriptionId: subscription.stripeSubscriptionId,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Internal: Webhook Handlers
+// ---------------------------------------------------------------------------
 
 async function handleCheckoutCompleted(
   session: Stripe.Checkout.Session
@@ -265,11 +232,7 @@ async function handleCheckoutCompleted(
     }
   }
 
-  log.info('Checkout completed', {
-    userId,
-    planId,
-    mode: session.mode,
-  })
+  log.info('Checkout completed', { userId, planId, mode: session.mode })
 }
 
 async function handleSubscriptionCreated(
@@ -285,10 +248,11 @@ async function handleSubscriptionCreated(
     return
   }
 
+  const periodStart = (subscription as unknown as { current_period_start: number }).current_period_start
+  const periodEnd = (subscription as unknown as { current_period_end: number }).current_period_end
+
   await db.subscription.upsert({
-    where: {
-      stripeCustomerId: subscription.customer as string,
-    },
+    where: { stripeCustomerId: subscription.customer as string },
     create: {
       userId,
       plan: planId || 'free',
@@ -296,12 +260,8 @@ async function handleSubscriptionCreated(
       stripeSubscriptionId: subscription.id,
       stripePriceId: subscription.items.data[0]?.price.id,
       status: subscription.status,
-      currentPeriodStart: new Date(
-        (subscription as any).current_period_start * 1000
-      ),
-      currentPeriodEnd: new Date(
-        (subscription as any).current_period_end * 1000
-      ),
+      currentPeriodStart: new Date(periodStart * 1000),
+      currentPeriodEnd: new Date(periodEnd * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       trialStart: subscription.trial_start
         ? new Date(subscription.trial_start * 1000)
@@ -315,12 +275,8 @@ async function handleSubscriptionCreated(
       stripeSubscriptionId: subscription.id,
       stripePriceId: subscription.items.data[0]?.price.id,
       status: subscription.status,
-      currentPeriodStart: new Date(
-        (subscription as any).current_period_start * 1000
-      ),
-      currentPeriodEnd: new Date(
-        (subscription as any).current_period_end * 1000
-      ),
+      currentPeriodStart: new Date(periodStart * 1000),
+      currentPeriodEnd: new Date(periodEnd * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
     },
   })
@@ -341,9 +297,7 @@ async function handleSubscriptionCreated(
       type: 'bonus',
       resourceType: 'plan_upgrade',
       description: `${planId} plan credits`,
-      metadata: {
-        subscriptionId: subscription.id,
-      },
+      metadata: { subscriptionId: subscription.id },
     })
   }
 
@@ -358,19 +312,15 @@ async function handleSubscriptionUpdated(
   subscription: Stripe.Subscription
 ): Promise<void> {
   const userId = subscription.metadata?.userId
+  const periodStart = (subscription as unknown as { current_period_start: number }).current_period_start
+  const periodEnd = (subscription as unknown as { current_period_end: number }).current_period_end
 
   await db.subscription.updateMany({
-    where: {
-      stripeSubscriptionId: subscription.id,
-    },
+    where: { stripeSubscriptionId: subscription.id },
     data: {
       status: subscription.status,
-      currentPeriodStart: new Date(
-        (subscription as any).current_period_start * 1000
-      ),
-      currentPeriodEnd: new Date(
-        (subscription as any).current_period_end * 1000
-      ),
+      currentPeriodStart: new Date(periodStart * 1000),
+      currentPeriodEnd: new Date(periodEnd * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       stripePriceId: subscription.items.data[0]?.price.id,
     },
@@ -379,9 +329,7 @@ async function handleSubscriptionUpdated(
   if (userId) {
     await db.user.update({
       where: { id: userId },
-      data: {
-        plan: subscription.metadata?.planId || 'free',
-      },
+      data: { plan: subscription.metadata?.planId || 'free' },
     })
   }
 
@@ -397,13 +345,8 @@ async function handleSubscriptionDeleted(
   const userId = subscription.metadata?.userId
 
   await db.subscription.updateMany({
-    where: {
-      stripeSubscriptionId: subscription.id,
-    },
-    data: {
-      status: 'canceled',
-      cancelAtPeriodEnd: false,
-    },
+    where: { stripeSubscriptionId: subscription.id },
+    data: { status: 'canceled', cancelAtPeriodEnd: false },
   })
 
   if (userId) {
@@ -413,22 +356,18 @@ async function handleSubscriptionDeleted(
     })
   }
 
-  log.info('Subscription deleted', {
-    subscriptionId: subscription.id,
-  })
+  log.info('Subscription deleted', { subscriptionId: subscription.id })
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
   if (!invoice.customer) return
 
   await db.invoice.upsert({
-    where: {
-      stripeInvoiceId: invoice.id,
-    },
+    where: { stripeInvoiceId: invoice.id },
     create: {
       userId: invoice.metadata?.userId || '',
       stripeInvoiceId: invoice.id,
-      subscriptionId: (invoice as any).subscription as string | null,
+      subscriptionId: (invoice as unknown as { subscription: string | null }).subscription,
       amount: invoice.amount_paid / 100,
       currency: invoice.currency,
       status: 'paid',
@@ -440,7 +379,9 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
           description: line.description,
           amount: line.amount / 100,
         })),
-        tax: (invoice as any).tax ? (invoice as any).tax / 100 : 0,
+        tax: (invoice as unknown as { tax?: number }).tax
+          ? (invoice as unknown as { tax: number }).tax / 100
+          : 0,
         total: invoice.total / 100,
       }),
     },
@@ -454,56 +395,44 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
 
   log.info('Invoice paid', {
     invoiceId: invoice.id,
+    customerId: invoice.customer as string,
     amount: invoice.amount_paid / 100,
   })
 }
 
-async function handleInvoicePaymentFailed(
-  invoice: Stripe.Invoice
-): Promise<void> {
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
   await db.invoice.upsert({
-    where: {
-      stripeInvoiceId: invoice.id,
-    },
+    where: { stripeInvoiceId: invoice.id },
     create: {
       userId: invoice.metadata?.userId || '',
       stripeInvoiceId: invoice.id,
-      subscriptionId: (invoice as any).subscription as string | null,
+      subscriptionId: (invoice as unknown as { subscription: string | null }).subscription,
       amount: invoice.amount_due / 100,
       currency: invoice.currency,
-      status: 'open',
-      dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+      status: 'failed',
+      pdfUrl: null,
+      hostedUrl: invoice.hosted_invoice_url,
+      paidAt: null,
+      metadata: JSON.stringify({ failedAt: new Date().toISOString() }),
     },
-    update: {
-      status: 'open',
-    },
+    update: { status: 'failed' },
   })
-
-  if ((invoice as any).subscription) {
-    await db.subscription.updateMany({
-      where: {
-        stripeSubscriptionId: (invoice as any).subscription as string,
-      },
-      data: {
-        status: 'past_due',
-      },
-    })
-  }
 
   log.warn('Invoice payment failed', {
     invoiceId: invoice.id,
+    customerId: invoice.customer as string,
+    amountDue: invoice.amount_due / 100,
   })
 }
 
-async function getOrCreateCustomer(userId: string): Promise<string> {
+// ---------------------------------------------------------------------------
+// Internal: Customer management
+// ---------------------------------------------------------------------------
+
+export async function getOrCreateCustomer(userId: string): Promise<string> {
   const existing = await db.subscription.findFirst({
-    where: {
-      userId,
-      stripeCustomerId: { not: null },
-    },
-    select: {
-      stripeCustomerId: true,
-    },
+    where: { userId, stripeCustomerId: { not: null } },
+    select: { stripeCustomerId: true },
   })
 
   if (existing?.stripeCustomerId) {
@@ -512,10 +441,7 @@ async function getOrCreateCustomer(userId: string): Promise<string> {
 
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: {
-      email: true,
-      name: true,
-    },
+    select: { email: true, name: true },
   })
 
   if (!user) {
@@ -528,27 +454,5 @@ async function getOrCreateCustomer(userId: string): Promise<string> {
     metadata: { userId },
   })
 
-  log.info('Stripe customer created', {
-    userId,
-    customerId: customer.id,
-  })
-
   return customer.id
-}
-
-export function verifyWebhookSignature(
-  payload: string | Buffer,
-  signature: string
-): Stripe.Event {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-
-  if (!webhookSecret) {
-    throw new Error('STRIPE_WEBHOOK_SECRET not configured')
-  }
-
-  return stripe().webhooks.constructEvent(
-    typeof payload === 'string' ? Buffer.from(payload) : payload,
-    signature,
-    webhookSecret
-  )
 }

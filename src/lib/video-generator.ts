@@ -2,9 +2,6 @@
  * Video Generation Engine — Generate videos via CogVideo, VideoCrafter, or cloud API
  *
  * Fallback chain: CogVideo (local) → VideoCrafter (local) → Cloud API → z-ai-sdk
- *
- * Each provider is tried in order. If a provider fails, the next one is attempted.
- * Results are persisted in the VideoGeneration and AICost tables.
  */
 
 import { db } from '@/lib/db';
@@ -16,7 +13,7 @@ const log = createLogger('video-generator');
 // ── Types ─────────────────────────────────────────────────────
 
 interface GenerateVideoOptions {
-  model?: string;       // cogvideo, videocrafter, cloud
+  model?: string;
   mode?: 't2v' | 'i2v';
   width?: number;
   height?: number;
@@ -103,7 +100,7 @@ async function checkVideoRateLimit(userId: string): Promise<{ allowed: boolean; 
   };
 }
 
-// ── Local Video API (CogVideo / VideoCrafter) ────────────────
+// ── Local Video API ────────────────────────────────────────────
 
 async function generateWithLocalAPI(
   prompt: string,
@@ -115,10 +112,9 @@ async function generateWithLocalAPI(
   log.info('Calling local video API', { model: modelInfo.id, prompt: prompt.substring(0, 50) });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 300_000); // 5 min timeout
+  const timeout = setTimeout(() => controller.abort(), 300_000);
 
   try {
-    // 1. Submit generation job
     const submitResponse = await fetch(`${VIDEO_API_URL}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -144,19 +140,15 @@ async function generateWithLocalAPI(
 
     const submitData = await submitResponse.json();
     const jobId = submitData.job_id;
-
-    if (!jobId) {
-      throw new Error('No job_id returned from Video API');
-    }
+    if (!jobId) throw new Error('No job_id returned from Video API');
 
     log.info('Video generation job submitted', { jobId });
 
-    // 2. Poll for completion
     let attempts = 0;
-    const maxPollAttempts = 120; // 5 minutes at 2.5s intervals
+    const maxPollAttempts = 120;
 
     while (attempts < maxPollAttempts) {
-      await new Promise(r => setTimeout(r, 2500)); // Poll every 2.5s
+      await new Promise((r) => setTimeout(r, 2500));
 
       const statusResponse = await fetch(`${VIDEO_API_URL}/status/${jobId}`, {
         signal: controller.signal,
@@ -172,7 +164,6 @@ async function generateWithLocalAPI(
         const videoUrl = statusData.video_url
           ? `${VIDEO_API_URL}${statusData.video_url}`
           : null;
-
         return {
           videoUrl,
           provider: statusData.metadata?.mock ? 'local-mock' : (statusData.metadata?.model || modelInfo.provider),
@@ -194,28 +185,25 @@ async function generateWithLocalAPI(
   }
 }
 
-// ── Cloud Video API (Replicate, RunwayML, etc.) ───────────────
+// ── Cloud Video API ────────────────────────────────────────────
 
 async function generateWithCloudAPI(
   prompt: string,
   options: GenerateVideoOptions,
 ): Promise<{ videoUrl: string | null; provider: string; durationSeconds: number; metadata: Record<string, unknown> }> {
   const apiKey = process.env.REPLICATE_API_TOKEN;
-  if (!apiKey) {
-    throw new Error('No cloud video API configured');
-  }
+  if (!apiKey) throw new Error('No cloud video API configured');
 
   log.info('Calling cloud video API (Replicate)');
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 600_000); // 10 min for cloud
+  const timeout = setTimeout(() => controller.abort(), 600_000);
 
   try {
-    // Create prediction
     const createResponse = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
       headers: {
-        'Authorization': `Token ${apiKey}`,
+        Authorization: `Token ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -237,14 +225,13 @@ async function generateWithCloudAPI(
     const prediction = await createResponse.json();
     const predictionId = prediction.id;
 
-    // Poll for completion
     let result = prediction;
     let attempts = 0;
     while (result.status !== 'succeeded' && result.status !== 'failed' && attempts < 120) {
-      await new Promise((r) => setTimeout(r, 5000)); // 5s polling
+      await new Promise((r) => setTimeout(r, 5000));
       const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-        headers: { 'Authorization': `Token ${apiKey}` },
-        signal: controller.signal, // Use abort signal so timeout actually works
+        headers: { Authorization: `Token ${apiKey}` },
+        signal: controller.signal,
       });
       result = await pollResponse.json();
       attempts++;
@@ -254,17 +241,11 @@ async function generateWithCloudAPI(
       throw new Error(`Replicate prediction failed: ${result.error || 'Unknown error'}`);
     }
 
-    const videoUrl = result.output?.[0] || null;
-
     return {
-      videoUrl,
+      videoUrl: result.output?.[0] || null,
       provider: 'replicate',
       durationSeconds: attempts * 5,
-      metadata: {
-        predictionId,
-        model: 'cogvideox-2b',
-        status: result.status,
-      },
+      metadata: { predictionId, model: 'cogvideox-2b', status: result.status },
     };
   } finally {
     clearTimeout(timeout);
@@ -284,6 +265,31 @@ async function checkLocalVideoAPI(): Promise<boolean> {
   }
 }
 
+// ── z-ai-sdk Fallback ─────────────────────────────────────────
+
+async function generateWithSDKFallback(
+  prompt: string,
+  model: string,
+  options: GenerateVideoOptions,
+): Promise<{ videoUrl: string | null; provider: string; durationSeconds: number; metadata: Record<string, unknown> }> {
+  const { default: ZAI } = await import('z-ai-web-dev-sdk');
+  const client = await ZAI.create();
+  const modelInfo = AVAILABLE_MODELS[model] || AVAILABLE_MODELS[DEFAULT_MODEL];
+
+  const result = await client.video.generations.create({
+    model: modelInfo.id,
+    prompt,
+    mode: options.mode || 't2v',
+  });
+
+  return {
+    videoUrl: result.url || null,
+    provider: 'z-ai-sdk',
+    durationSeconds: 0,
+    metadata: { model: modelInfo.id, provider: 'z-ai-sdk' },
+  };
+}
+
 // ── Main Export: generateVideo ────────────────────────────────
 
 export async function generateVideo(
@@ -291,28 +297,23 @@ export async function generateVideo(
   prompt: string,
   options: GenerateVideoOptions = {},
 ): Promise<VideoGenerationResult> {
-  // 1. Validate prompt
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
     throw new Error('Prompt is required');
   }
-  const sanitizedPrompt = sanitizePrompt(prompt);
-  if (sanitizedPrompt.length === 0) {
-    throw new Error('Prompt is empty after sanitization');
-  }
 
-  // 2. Validate model
+  const sanitizedPrompt = sanitizePrompt(prompt);
+  if (sanitizedPrompt.length === 0) throw new Error('Prompt is empty after sanitization');
+
   const model = options.model || DEFAULT_MODEL;
   if (!AVAILABLE_MODELS[model]) {
     throw new Error(`Invalid model. Available: ${Object.keys(AVAILABLE_MODELS).join(', ')}`);
   }
 
-  // 3. Check rate limit
   const rateCheck = await checkVideoRateLimit(userId);
   if (!rateCheck.allowed) {
     throw new Error(`Rate limit exceeded. Maximum ${MAX_VIDEOS_PER_HOUR} videos per hour.`);
   }
 
-  // 4. Create DB record
   const generation = await db.videoGeneration.create({
     data: {
       userId,
@@ -330,14 +331,12 @@ export async function generateVideo(
   });
 
   try {
-    // 5. Attempt generation with fallback chain
     let result: { videoUrl: string | null; provider: string; durationSeconds: number; metadata: Record<string, unknown> };
     let usedProvider = 'z-ai-sdk';
 
     const localAPIHealthy = await checkLocalVideoAPI();
 
     if (localAPIHealthy) {
-      // Try local API (CogVideo → VideoCrafter with internal fallback)
       try {
         result = await generateWithLocalAPI(sanitizedPrompt, model, options);
         usedProvider = result.provider;
@@ -346,31 +345,30 @@ export async function generateVideo(
           error: localError instanceof Error ? localError.message : String(localError),
         });
 
-        // Try cloud API
         try {
           result = await generateWithCloudAPI(sanitizedPrompt, options);
           usedProvider = result.provider;
         } catch (cloudError) {
-          log.warn('Cloud API also failed', {
+          log.warn('Cloud video API failed, falling back to z-ai-sdk', {
             error: cloudError instanceof Error ? cloudError.message : String(cloudError),
           });
-          throw localError; // Throw original local error
+          result = await generateWithSDKFallback(sanitizedPrompt, model, options);
+          usedProvider = result.provider;
         }
       }
     } else {
-      // Local API not healthy — try cloud
       try {
         result = await generateWithCloudAPI(sanitizedPrompt, options);
         usedProvider = result.provider;
       } catch (cloudError) {
-        log.warn('Cloud API failed, local API unavailable', {
+        log.warn('Cloud video API failed, falling back to z-ai-sdk', {
           error: cloudError instanceof Error ? cloudError.message : String(cloudError),
         });
-        throw new Error('Video generation unavailable: local API is down and no cloud API is configured');
+        result = await generateWithSDKFallback(sanitizedPrompt, model, options);
+        usedProvider = result.provider;
       }
     }
 
-    // 6. Update DB record
     const updated = await db.videoGeneration.update({
       where: { id: generation.id },
       data: {
@@ -382,16 +380,21 @@ export async function generateVideo(
       },
     });
 
-    // 7. Track cost
-    const costUsd = usedProvider === 'local' ? 0 : 0.05;
     await db.aICost.create({
       data: {
         userId,
         provider: usedProvider,
         model,
-        costUsd,
+        costUsd: 0,
         requestId: generation.id,
       },
+    });
+
+    log.info('Video generated', {
+      userId,
+      generationId: generation.id,
+      provider: usedProvider,
+      durationSeconds: result.durationSeconds,
     });
 
     return {
@@ -400,12 +403,11 @@ export async function generateVideo(
       status: updated.status,
       model: updated.model,
       provider: updated.provider,
-      costUsd,
+      costUsd: 0,
       durationSeconds: updated.durationSeconds || 0,
       metadata: JSON.parse(updated.metadata || '{}'),
     };
   } catch (error) {
-    // Update DB record with failed status
     await db.videoGeneration.update({
       where: { id: generation.id },
       data: {
@@ -420,36 +422,49 @@ export async function generateVideo(
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────
+// ── Helper: getUserVideos ─────────────────────────────────────
 
 export async function getUserVideos(
   userId: string,
-  options: { limit?: number; offset?: number; status?: string } = {},
+  options: { limit?: number; offset?: number; status?: string } = {}
 ) {
   const limit = Math.min(Math.max(options.limit || 20, 1), 100);
   const offset = Math.max(options.offset || 0, 0);
+
   const where: Record<string, unknown> = { userId };
   if (options.status) where.status = options.status;
 
   const [videos, total] = await Promise.all([
-    db.videoGeneration.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset }),
+    db.videoGeneration.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+    }),
     db.videoGeneration.count({ where }),
   ]);
 
   return { videos, total, limit, offset };
 }
 
-export async function getVideoGeneration(id: string, userId: string) {
+// ── Helper: getVideoGeneration ────────────────────────────────
+
+export async function getVideoGeneration(
+  id: string,
+  userId: string
+): Promise<VideoGenerationResult | null> {
   const video = await db.videoGeneration.findUnique({ where: { id } });
+
   if (!video || video.userId !== userId) return null;
-  return video;
-}
 
-export async function deleteVideoGeneration(id: string, userId: string): Promise<boolean> {
-  const video = await db.videoGeneration.findUnique({ where: { id } });
-  if (!video || video.userId !== userId) return false;
-  await db.videoGeneration.delete({ where: { id } });
-  return true;
+  return {
+    id: video.id,
+    videoUrl: video.videoUrl,
+    status: video.status,
+    model: video.model,
+    provider: video.provider,
+    costUsd: 0,
+    durationSeconds: video.durationSeconds || 0,
+    metadata: JSON.parse(video.metadata || '{}'),
+  };
 }
-
-export { AVAILABLE_MODELS, DEFAULT_MODEL, MAX_PROMPT_LENGTH, MAX_VIDEOS_PER_HOUR };
