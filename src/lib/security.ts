@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/session';
-import { hasRole, isValidRole, UserRole } from '@/lib/auth';
-
-interface RateLimitEntry {
-  timestamps: number[];
-}
-
-const rateLimitStore = new Map<string, RateLimitEntry>();
-
-// Clean up old entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
-    entry.timestamps = entry.timestamps.filter((t) => now - t < 60000);
-    if (entry.timestamps.length === 0) {
-      rateLimitStore.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);
+import { hasRole, UserRole } from '@/lib/auth';
+import { rateLimit } from '@/lib/rate-limit';
 
 export function applyCorsHeaders(
   response: NextResponse,
@@ -55,36 +39,6 @@ export function getAllowedOrigins(origin?: string): string | null {
   return null;
 }
 
-export function checkRateLimit(
-  identifier: string,
-  limit: number = 100,
-  windowMs: number = 60000
-): { allowed: boolean; remaining: number; resetAt: number } {
-  const now = Date.now();
-  const windowStart = now - windowMs;
-
-  let entry = rateLimitStore.get(identifier);
-  if (!entry) {
-    entry = { timestamps: [] };
-    rateLimitStore.set(identifier, entry);
-  }
-
-  // Remove timestamps outside the window
-  entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
-
-  const remaining = Math.max(0, limit - entry.timestamps.length);
-  const resetAt = entry.timestamps.length > 0
-    ? entry.timestamps[0] + windowMs
-    : now + windowMs;
-
-  if (entry.timestamps.length >= limit) {
-    return { allowed: false, remaining: 0, resetAt };
-  }
-
-  entry.timestamps.push(now);
-  return { allowed: true, remaining: remaining - 1, resetAt };
-}
-
 interface SecurityOptions {
   requireAuth?: boolean;
   requireRole?: UserRole;
@@ -110,25 +64,24 @@ export async function applySecurity(
     return { auth: null, error: response };
   }
 
-  // Rate limiting
+  // Rate limiting — Redis-backed via rateLimit(), safe for serverless/multi-instance
   if (options.rateLimit) {
     const identifier =
       request.headers.get('x-forwarded-for') ||
       request.headers.get('x-real-ip') ||
       'unknown';
 
-    const rateLimitResult = checkRateLimit(
-      identifier,
-      options.rateLimit.limit,
-      options.rateLimit.windowMs
-    );
+    const result = await rateLimit(`security:${identifier}`, {
+      max: options.rateLimit.limit,
+      windowMs: options.rateLimit.windowMs,
+    });
 
-    if (!rateLimitResult.allowed) {
+    if (!result.success) {
       const response = NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
         { status: 429 }
       );
-      response.headers.set('Retry-After', String(Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)));
+      response.headers.set('Retry-After', String(Math.ceil((result.resetAt - Date.now()) / 1000)));
       applyCorsHeaders(response, request.headers.get('origin') || undefined);
       return { auth: null, error: response };
     }

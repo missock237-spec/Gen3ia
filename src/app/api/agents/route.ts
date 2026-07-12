@@ -3,6 +3,9 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { checkAgentLimit } from '@/lib/usage-limits';
 import { sanitizeHtml, sanitizeJson, stripNullBytes, escapeForDb } from '@/lib/input-sanitizer';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('agents');
 
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
@@ -34,7 +37,8 @@ export async function GET(request: NextRequest) {
 
     const res = NextResponse.json(agents);
     return secureResponse(res, request);
-  } catch {
+  } catch (error) {
+    log.error('GET /api/agents failed', { error });
     const res = NextResponse.json(
       { error: 'Failed to fetch agents' },
       { status: 500 }
@@ -189,7 +193,8 @@ export async function POST(request: NextRequest) {
 
     const res = NextResponse.json(agentWithPerms, { status: 201 });
     return secureResponse(res, request);
-  } catch {
+  } catch (error) {
+    log.error('POST /api/agents failed', { error });
     const res = NextResponse.json(
       { error: 'Failed to create agent' },
       { status: 500 }

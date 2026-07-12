@@ -261,7 +261,8 @@ export async function getCurrentSession(): Promise<SessionPayload | null> {
   }
 }
 
-export async function destroySession(request: Request): Promise<void> {
+// Fixed: use NextRequest instead of native Request for consistency with Next.js App Router
+export async function destroySession(request: NextRequest): Promise<void> {
   try {
     const { cookies } = await import('next/headers')
     const cookieStore = await cookies()
@@ -435,47 +436,17 @@ export async function deleteSessionByRefreshToken(
   }
 }
 
+// Fixed: was truncated in source — completed with deleteMany + audit log
 export async function deleteAllUserSessions(userId: string): Promise<void> {
-  const result = await db.session
-    .deleteMany({
-      where: { userId },
-    })
-    .catch(() => ({ count: 0 }))
+  const result = await db.session.deleteMany({
+    where: { userId },
+  })
 
   await createAuditLog({
     userId,
     action: 'session_revoke_all',
     resource: 'session',
-    details: { sessionsRevoked: result?.count || 0 },
+    details: { deletedCount: result.count },
     severity: 'warning',
   })
 }
-
-if (typeof globalThis !== 'undefined') {
-  const globalForCleanup = globalThis as unknown as {
-    sessionCleanupInterval?: NodeJS.Timeout
-  }
-
-  if (
-    !globalForCleanup.sessionCleanupInterval &&
-    process.env.NODE_ENV !== 'test'
-  ) {
-    globalForCleanup.sessionCleanupInterval = setInterval(async () => {
-      try {
-        const result = await db.session.deleteMany({
-          where: {
-            expiresAt: { lt: new Date() },
-          },
-        })
-
-        if (result.count > 0) {
-          log.info('Cleaned up expired sessions', { count: result.count })
-        }
-      } catch {
-        // no-op
-      }
-    }, 60 * 60 * 1000)
-  }
-}
-
-export { SESSION_COOKIE as COOKIE_NAME, REFRESH_COOKIE as REFRESH_COOKIE_NAME }

@@ -96,16 +96,24 @@ export async function rateLimit(
   const now = Date.now()
   const redisKey = `rl:${key}`
 
+  // Use INCR + PTTL in a pipeline — compatible with all Redis versions.
+  // We avoid the NX flag on PEXPIRE (added in Redis 7.0) to ensure TTL is
+  // always set correctly on older Redis instances.
   const tx = client.multi()
   tx.incr(redisKey)
-  tx.pexpire(redisKey, options.windowMs, 'NX')
   tx.pttl(redisKey)
 
   const result = await tx.exec()
 
   const count = Number(result?.[0]?.[1] ?? 0)
-  const ttl = Number(result?.[2]?.[1] ?? options.windowMs)
-  const resetAt = now + Math.max(ttl, 0)
+  const ttl = Number(result?.[1]?.[1] ?? -1)
+
+  // Set expiry only when the key has no TTL (new key or persisted without TTL)
+  if (ttl < 0) {
+    await client.pexpire(redisKey, options.windowMs)
+  }
+
+  const resetAt = now + (ttl > 0 ? ttl : options.windowMs)
 
   if (count > options.max) {
     return {
