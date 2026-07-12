@@ -5,6 +5,7 @@
  * - User cannot review their own listing
  * - User must have a completed purchase record before reviewing
  * - Rating must be an integer between 1 and 5
+ * - Helpful votes are deduplicated per user (stored in metadata.helpfulUserIds)
  */
 
 import { db } from '@/lib/db'
@@ -81,10 +82,7 @@ function serializeReview(review: {
     createdAt: review.createdAt,
     updatedAt: review.updatedAt,
     author: review.user
-      ? {
-          name: review.user.name,
-          avatar: review.user.avatar,
-        }
+      ? { name: review.user.name, avatar: review.user.avatar }
       : undefined,
   }
 }
@@ -95,35 +93,16 @@ async function ensureUserCanReviewListing(
 ): Promise<void> {
   const listing = await db.marketplaceListing.findUnique({
     where: { id: listingId },
-    select: {
-      id: true,
-      userId: true,
-      status: true,
-    },
+    select: { id: true, userId: true, status: true },
   })
 
-  if (!listing) {
-    throw new Error('Listing not found')
-  }
-
-  if (listing.userId === userId) {
-    throw new Error('Cannot review your own listing')
-  }
-
-  if (listing.status !== 'published') {
-    throw new Error('Listing is not available for review')
-  }
+  if (!listing) throw new Error('Listing not found')
+  if (listing.userId === userId) throw new Error('Cannot review your own listing')
+  if (listing.status !== 'published') throw new Error('Listing is not available for review')
 
   const purchase = await db.marketplacePurchase.findUnique({
-    where: {
-      userId_listingId: {
-        userId,
-        listingId,
-      },
-    },
-    select: {
-      status: true,
-    },
+    where: { userId_listingId: { userId, listingId } },
+    select: { status: true },
   })
 
   if (!purchase || purchase.status !== 'completed') {
@@ -135,53 +114,29 @@ async function ensureUserCanReviewListing(
 // Core: Add Review
 // ---------------------------------------------------------------------------
 
-export async function addReview(
-  options: AddReviewOptions
-): Promise<ReviewResult> {
+export async function addReview(options: AddReviewOptions): Promise<ReviewResult> {
   const { listingId, userId, rating, title = '', content = '' } = options
 
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
     throw new Error('Rating must be an integer between 1 and 5')
   }
-
-  if (title.length > 120) {
-    throw new Error('Title must be at most 120 characters')
-  }
-
-  if (content.length > 5000) {
-    throw new Error('Content must be at most 5000 characters')
-  }
+  if (title.length > 120) throw new Error('Title must be at most 120 characters')
+  if (content.length > 5000) throw new Error('Content must be at most 5000 characters')
 
   await ensureUserCanReviewListing(userId, listingId)
 
   const existing = await db.marketplaceReview.findUnique({
-    where: {
-      userId_listingId: {
-        listingId,
-        userId,
-      },
-    },
+    where: { userId_listingId: { listingId, userId } },
   })
 
   if (existing) {
     const updated = await db.marketplaceReview.update({
       where: { id: existing.id },
-      data: {
-        rating,
-        title,
-        content,
-        updatedAt: new Date(),
-      },
+      data: { rating, title, content, updatedAt: new Date() },
       include: {
-        user: {
-          select: {
-            name: true,
-            avatar: true,
-          },
-        },
+        user: { select: { name: true, avatar: true } },
       },
     })
-
     await recalculateListingRating(listingId)
     return serializeReview(updated)
   }
@@ -193,15 +148,11 @@ export async function addReview(
       rating,
       title,
       content,
-      metadata: JSON.stringify({ helpfulVotes: 0 }),
+      // helpfulUserIds tracks who voted to prevent duplicate votes
+      metadata: JSON.stringify({ helpfulVotes: 0, helpfulUserIds: [] }),
     },
     include: {
-      user: {
-        select: {
-          name: true,
-          avatar: true,
-        },
-      },
+      user: { select: { name: true, avatar: true } },
     },
   })
 
@@ -220,12 +171,7 @@ export async function getReviews(
     limit?: number
     sortBy?: 'newest' | 'highest' | 'lowest' | 'helpful'
   } = {}
-): Promise<{
-  reviews: ReviewResult[]
-  total: number
-  page: number
-  totalPages: number
-}> {
+): Promise<{ reviews: ReviewResult[]; total: number; page: number; totalPages: number }> {
   const { page = 1, limit = 20, sortBy = 'newest' } = options
 
   const listing = await db.marketplaceListing.findUnique({
@@ -234,57 +180,27 @@ export async function getReviews(
   })
 
   if (!listing || listing.status !== 'published') {
-    return {
-      reviews: [],
-      total: 0,
-      page,
-      totalPages: 0,
-    }
+    return { reviews: [], total: 0, page, totalPages: 0 }
   }
 
-  let orderBy:
+  const orderBy:
     | Array<Record<string, 'asc' | 'desc'>>
-    | Record<string, 'asc' | 'desc'>
-
-  switch (sortBy) {
-    case 'highest':
-      orderBy = [{ rating: 'desc' }, { createdAt: 'desc' }]
-      break
-    case 'lowest':
-      orderBy = [{ rating: 'asc' }, { createdAt: 'desc' }]
-      break
-    case 'helpful':
-      orderBy = [{ createdAt: 'desc' }]
-      break
-    case 'newest':
-    default:
-      orderBy = [{ createdAt: 'desc' }]
-  }
+    | Record<string, 'asc' | 'desc'> =
+    sortBy === 'highest' ? [{ rating: 'desc' }, { createdAt: 'desc' }]
+    : sortBy === 'lowest' ? [{ rating: 'asc' }, { createdAt: 'desc' }]
+    : [{ createdAt: 'desc' }] // 'helpful' and 'newest'
 
   const [reviews, total] = await Promise.all([
     db.marketplaceReview.findMany({
-      where: {
-        listingId,
-        status: 'published',
-      },
+      where: { listingId, status: 'published' },
       orderBy,
       skip: (page - 1) * limit,
       take: limit,
       include: {
-        user: {
-          select: {
-            name: true,
-            avatar: true,
-          },
-        },
+        user: { select: { name: true, avatar: true } },
       },
     }),
-    db.marketplaceReview.count({
-      where: {
-        listingId,
-        status: 'published',
-      },
-    }),
+    db.marketplaceReview.count({ where: { listingId, status: 'published' } }),
   ])
 
   return {
@@ -299,60 +215,35 @@ export async function getReviews(
 // Core: Get Average Rating
 // ---------------------------------------------------------------------------
 
-export async function getAverageRating(
-  listingId: string
-): Promise<AverageRatingResult> {
+export async function getAverageRating(listingId: string): Promise<AverageRatingResult> {
   const reviews = await db.marketplaceReview.findMany({
-    where: {
-      listingId,
-      status: 'published',
-    },
-    select: {
-      rating: true,
-    },
+    where: { listingId, status: 'published' },
+    select: { rating: true },
   })
 
   if (reviews.length === 0) {
-    return {
-      average: 0,
-      count: 0,
-      distribution: {
-        1: 0,
-        2: 0,
-        3: 0,
-        4: 0,
-        5: 0,
-      },
-    }
+    return { average: 0, count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }
   }
 
   const total = reviews.reduce((sum, r) => sum + r.rating, 0)
   const average = Math.round((total / reviews.length) * 100) / 100
-
-  const distribution: Record<number, number> = {
-    1: 0,
-    2: 0,
-    3: 0,
-    4: 0,
-    5: 0,
-  }
+  const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
 
   for (const review of reviews) {
     distribution[review.rating] = (distribution[review.rating] || 0) + 1
   }
 
-  return {
-    average,
-    count: reviews.length,
-    distribution,
-  }
+  return { average, count: reviews.length, distribution }
 }
 
 // ---------------------------------------------------------------------------
-// Core: Mark Helpful
+// Core: Mark Helpful — one vote per user, no duplicates
 // ---------------------------------------------------------------------------
 
-export async function markHelpful(reviewId: string): Promise<boolean> {
+export async function markHelpful(
+  reviewId: string,
+  userId: string
+): Promise<boolean> {
   const review = await db.marketplaceReview.findUnique({
     where: { id: reviewId },
   })
@@ -360,6 +251,17 @@ export async function markHelpful(reviewId: string): Promise<boolean> {
   if (!review) return false
 
   const metadata = safeParse<Record<string, unknown>>(review.metadata, {})
+
+  // Deduplicate: reject if user already voted
+  const helpfulUserIds = Array.isArray(metadata.helpfulUserIds)
+    ? (metadata.helpfulUserIds as string[])
+    : []
+
+  if (helpfulUserIds.includes(userId)) {
+    // Already voted — return true to avoid leaking whether the vote was new
+    return true
+  }
+
   const helpfulVotes = (Number(metadata.helpfulVotes) || 0) + 1
 
   await db.marketplaceReview.update({
@@ -368,6 +270,7 @@ export async function markHelpful(reviewId: string): Promise<boolean> {
       metadata: JSON.stringify({
         ...metadata,
         helpfulVotes,
+        helpfulUserIds: [...helpfulUserIds, userId],
       }),
     },
   })
@@ -384,9 +287,6 @@ async function recalculateListingRating(listingId: string): Promise<void> {
 
   await db.marketplaceListing.update({
     where: { id: listingId },
-    data: {
-      rating: result.average,
-      reviewCount: result.count,
-    },
+    data: { rating: result.average, reviewCount: result.count },
   })
-  }
+}

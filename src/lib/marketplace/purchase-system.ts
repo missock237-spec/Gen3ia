@@ -53,15 +53,13 @@ function toStripeAmount(value: number): number {
   return Math.round(value * 100)
 }
 
+// Fixed: removed invalid `typescript: true` option — not a valid Stripe SDK option
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set')
   }
-
-  return new Stripe(key, {
-    typescript: true,
-  })
+  return new Stripe(key)
 }
 
 function getAppUrl(): string {
@@ -89,10 +87,7 @@ async function getOrCreateStripeCustomerForMarketplace(userId: string): Promise<
 
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: {
-      email: true,
-      name: true,
-    },
+    select: { email: true, name: true },
   })
 
   if (!user) {
@@ -136,12 +131,7 @@ export async function purchaseListing(
   }
 
   const existingPurchase = await db.marketplacePurchase.findUnique({
-    where: {
-      userId_listingId: {
-        listingId,
-        userId,
-      },
-    },
+    where: { userId_listingId: { listingId, userId } },
   })
 
   if (existingPurchase) {
@@ -305,9 +295,7 @@ export async function purchaseListing(
 export async function finalizeMarketplaceStripePurchase(
   session: Stripe.Checkout.Session
 ): Promise<void> {
-  if (session.metadata?.type !== 'marketplace_purchase') {
-    return
-  }
+  if (session.metadata?.type !== 'marketplace_purchase') return
 
   const listingId = session.metadata.listingId
   const userId = session.metadata.buyerUserId
@@ -320,17 +308,10 @@ export async function finalizeMarketplaceStripePurchase(
   const listing = await getListingOrThrow(listingId)
 
   const existingPurchase = await db.marketplacePurchase.findUnique({
-    where: {
-      userId_listingId: {
-        listingId,
-        userId,
-      },
-    },
+    where: { userId_listingId: { listingId, userId } },
   })
 
-  if (existingPurchase) {
-    return
-  }
+  if (existingPurchase) return
 
   const salePrice = roundMoney(Number(session.metadata.listingPrice || listing.price || 0))
   const platformCommission = roundMoney(
@@ -393,10 +374,7 @@ export async function finalizeMarketplaceStripePurchase(
 export async function verifyAccess(userId: string, listingId: string): Promise<boolean> {
   const listing = await db.marketplaceListing.findUnique({
     where: { id: listingId },
-    select: {
-      userId: true,
-      status: true,
-    },
+    select: { userId: true, status: true },
   })
 
   if (!listing) return false
@@ -404,15 +382,8 @@ export async function verifyAccess(userId: string, listingId: string): Promise<b
   if (listing.userId === userId) return true
 
   const purchase = await db.marketplacePurchase.findUnique({
-    where: {
-      userId_listingId: {
-        listingId,
-        userId,
-      },
-    },
-    select: {
-      status: true,
-    },
+    where: { userId_listingId: { listingId, userId } },
+    select: { status: true },
   })
 
   return !!purchase && purchase.status === 'completed'
@@ -433,11 +404,7 @@ export async function getPurchaseHistory(
       take: limit,
       include: {
         listing: {
-          select: {
-            name: true,
-            type: true,
-            config: true,
-          },
+          select: { name: true, type: true, config: true },
         },
       },
     }),
@@ -445,28 +412,30 @@ export async function getPurchaseHistory(
   ])
 
   return {
-    purchases: purchases.map((purchase) => ({
-      id: purchase.id,
-      listingId: purchase.listingId,
-      userId: purchase.userId,
-      price: purchase.price,
-      currency: purchase.currency,
-      status: purchase.status,
-      metadata: safeParse<Record<string, unknown>>(purchase.metadata, {}),
-      stripeSessionId: purchase.stripeSessionId,
-      stripePaymentIntentId: purchase.stripePaymentIntentId,
-      sellerRevenue: purchase.sellerRevenue,
-      platformCommission: purchase.platformCommission,
-      transferStatus: purchase.transferStatus,
-      createdAt: purchase.createdAt,
-      listing: {
-        name: purchase.listing.name,
-        type: purchase.listing.type,
-        config: safeParse<Record<string, unknown>>(purchase.listing.config, {}),
-      },
+    purchases: purchases.map((p) => ({
+      id: p.id,
+      listingId: p.listingId,
+      userId: p.userId,
+      price: p.price,
+      currency: p.currency,
+      status: p.status,
+      metadata: safeParse<Record<string, unknown>>(p.metadata, {}),
+      stripeSessionId: p.stripeSessionId,
+      stripePaymentIntentId: p.stripePaymentIntentId,
+      sellerRevenue: p.sellerRevenue,
+      platformCommission: p.platformCommission,
+      transferStatus: p.transferStatus,
+      createdAt: p.createdAt,
+      listing: p.listing
+        ? {
+            name: p.listing.name,
+            type: p.listing.type,
+            config: safeParse<Record<string, unknown>>(p.listing.config, {}),
+          }
+        : undefined,
     })),
     total,
     page,
     totalPages: Math.ceil(total / limit),
   }
-                                                         }
+}

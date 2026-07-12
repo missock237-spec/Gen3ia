@@ -3,33 +3,30 @@ import Stripe from 'stripe'
 
 import { db } from '@/lib/db'
 import { applySecurity, secureResponse } from '@/lib/security'
+import { createLogger } from '@/lib/logger'
 
+const log = createLogger('marketplace-seller-connect')
+
+// Fixed: removed invalid `typescript: true` — not a valid Stripe SDK constructor option
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY
-
   if (!key) {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set')
   }
-
-  return new Stripe(key, {
-    typescript: true,
-  })
+  return new Stripe(key)
 }
 
 function getAppUrl(): string {
   const url = process.env.NEXT_PUBLIC_APP_URL
-
   if (!url) {
     throw new Error('NEXT_PUBLIC_APP_URL environment variable is not set')
   }
-
   return url.replace(/\/$/, '')
 }
 
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request)
   if (error) return error
-
   return new NextResponse(null, { status: 204 })
 }
 
@@ -43,34 +40,42 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const user = await db.user.findUnique({
-    where: { id: auth.userId },
-    select: {
-      stripeConnectAccountId: true,
-      stripeConnectOnboarded: true,
-      stripeConnectDetailsSubmitted: true,
-      stripeConnectChargesEnabled: true,
-      stripeConnectPayoutsEnabled: true,
-      stripeConnectCountry: true,
-      stripeConnectCurrency: true,
-      stripeConnectLastSyncedAt: true,
-    },
-  })
+  try {
+    const user = await db.user.findUnique({
+      where: { id: auth.userId },
+      select: {
+        stripeConnectAccountId: true,
+        stripeConnectOnboarded: true,
+        stripeConnectDetailsSubmitted: true,
+        stripeConnectChargesEnabled: true,
+        stripeConnectPayoutsEnabled: true,
+        stripeConnectCountry: true,
+        stripeConnectCurrency: true,
+        stripeConnectLastSyncedAt: true,
+      },
+    })
 
-  return secureResponse(
-    NextResponse.json({
-      connected: Boolean(user?.stripeConnectAccountId),
-      accountId: user?.stripeConnectAccountId || null,
-      onboarded: Boolean(user?.stripeConnectOnboarded),
-      detailsSubmitted: Boolean(user?.stripeConnectDetailsSubmitted),
-      chargesEnabled: Boolean(user?.stripeConnectChargesEnabled),
-      payoutsEnabled: Boolean(user?.stripeConnectPayoutsEnabled),
-      country: user?.stripeConnectCountry || null,
-      currency: user?.stripeConnectCurrency || null,
-      lastSyncedAt: user?.stripeConnectLastSyncedAt || null,
-    }),
-    request
-  )
+    return secureResponse(
+      NextResponse.json({
+        connected: Boolean(user?.stripeConnectAccountId),
+        accountId: user?.stripeConnectAccountId || null,
+        onboarded: Boolean(user?.stripeConnectOnboarded),
+        detailsSubmitted: Boolean(user?.stripeConnectDetailsSubmitted),
+        chargesEnabled: Boolean(user?.stripeConnectChargesEnabled),
+        payoutsEnabled: Boolean(user?.stripeConnectPayoutsEnabled),
+        country: user?.stripeConnectCountry || null,
+        currency: user?.stripeConnectCurrency || null,
+        lastSyncedAt: user?.stripeConnectLastSyncedAt || null,
+      }),
+      request
+    )
+  } catch (error) {
+    log.error('GET /api/marketplace/seller/connect failed', { error })
+    return secureResponse(
+      NextResponse.json({ error: 'Failed to fetch seller status' }, { status: 500 }),
+      request
+    )
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -83,114 +88,119 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const stripe = getStripe()
-  const appUrl = getAppUrl()
-
-  const user = await db.user.findUnique({
-    where: { id: auth.userId },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      stripeConnectAccountId: true,
-      stripeConnectOnboarded: true,
-      stripeConnectChargesEnabled: true,
-    },
-  })
-
-  if (!user) {
-    return secureResponse(
-      NextResponse.json({ error: 'User not found' }, { status: 404 }),
-      request
-    )
-  }
-
-  let body: { country?: string } = {}
-
   try {
-    body = await request.json()
-  } catch {
-    body = {}
-  }
+    const stripe = getStripe()
+    const appUrl = getAppUrl()
 
-  const country = body.country?.trim()?.toUpperCase() || 'FR'
-  let accountId = user.stripeConnectAccountId
-
-  if (!accountId) {
-    const account = await stripe.accounts.create({
-      type: 'express',
-      country,
-      email: user.email,
-      business_type: 'individual',
-      capabilities: {
-        transfers: { requested: true },
-      },
-      metadata: {
-        userId: user.id,
+    const user = await db.user.findUnique({
+      where: { id: auth.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        stripeConnectAccountId: true,
+        stripeConnectOnboarded: true,
+        stripeConnectChargesEnabled: true,
       },
     })
 
-    accountId = account.id
+    if (!user) {
+      return secureResponse(
+        NextResponse.json({ error: 'User not found' }, { status: 404 }),
+        request
+      )
+    }
 
-    await db.user.update({
+    let body: { country?: string } = {}
+    try {
+      body = await request.json()
+    } catch {
+      body = {}
+    }
+
+    const country = body.country?.trim()?.toUpperCase() || 'FR'
+    let accountId = user.stripeConnectAccountId
+
+    if (!accountId) {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country,
+        email: user.email,
+        business_type: 'individual',
+        capabilities: {
+          transfers: { requested: true },
+        },
+        metadata: { userId: user.id },
+      })
+
+      accountId = account.id
+
+      await db.user.update({
+        where: { id: user.id },
+        data: {
+          stripeConnectAccountId: account.id,
+          stripeConnectOnboarded: false,
+          stripeConnectDetailsSubmitted: Boolean(account.details_submitted),
+          stripeConnectChargesEnabled: Boolean(account.charges_enabled),
+          stripeConnectPayoutsEnabled: Boolean(account.payouts_enabled),
+          stripeConnectCountry: account.country || country,
+          stripeConnectCurrency: account.default_currency || null,
+          stripeConnectLastSyncedAt: new Date(),
+        },
+      })
+    }
+
+    const refreshedUser = await db.user.findUnique({
       where: { id: user.id },
-      data: {
-        stripeConnectAccountId: account.id,
-        stripeConnectOnboarded: false,
-        stripeConnectDetailsSubmitted: Boolean(account.details_submitted),
-        stripeConnectChargesEnabled: Boolean(account.charges_enabled),
-        stripeConnectPayoutsEnabled: Boolean(account.payouts_enabled),
-        stripeConnectCountry: account.country || country,
-        stripeConnectCurrency: account.default_currency || null,
-        stripeConnectLastSyncedAt: new Date(),
+      select: {
+        stripeConnectAccountId: true,
+        stripeConnectOnboarded: true,
+        stripeConnectChargesEnabled: true,
       },
     })
-  }
 
-  const refreshedUser = await db.user.findUnique({
-    where: { id: user.id },
-    select: {
-      stripeConnectAccountId: true,
-      stripeConnectOnboarded: true,
-      stripeConnectChargesEnabled: true,
-    },
-  })
+    if (
+      refreshedUser?.stripeConnectAccountId &&
+      refreshedUser.stripeConnectOnboarded &&
+      refreshedUser.stripeConnectChargesEnabled
+    ) {
+      const loginLink = await stripe.accounts.createLoginLink(
+        refreshedUser.stripeConnectAccountId
+      )
 
-  if (
-    refreshedUser?.stripeConnectAccountId &&
-    refreshedUser.stripeConnectOnboarded &&
-    refreshedUser.stripeConnectChargesEnabled
-  ) {
-    const loginLink = await stripe.accounts.createLoginLink(
-      refreshedUser.stripeConnectAccountId
-    )
+      return secureResponse(
+        NextResponse.json({
+          connected: true,
+          onboarded: true,
+          accountId: refreshedUser.stripeConnectAccountId,
+          dashboardUrl: loginLink.url,
+        }),
+        request
+      )
+    }
+
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId!,
+      refresh_url: `${appUrl}/marketplace/seller?stripe=refresh`,
+      return_url: `${appUrl}/marketplace/seller?stripe=return`,
+      type: 'account_onboarding',
+    })
 
     return secureResponse(
       NextResponse.json({
         connected: true,
-        onboarded: true,
-        accountId: refreshedUser.stripeConnectAccountId,
-        dashboardUrl: loginLink.url,
+        onboarded: false,
+        accountId,
+        onboardingUrl: accountLink.url,
+        expiresAt: accountLink.expires_at,
       }),
       request
     )
+  } catch (error) {
+    log.error('POST /api/marketplace/seller/connect failed', { error })
+    return secureResponse(
+      NextResponse.json({ error: 'Failed to connect seller account' }, { status: 500 }),
+      request
+    )
   }
-
-  const accountLink = await stripe.accountLinks.create({
-    account: accountId!,
-    refresh_url: `${appUrl}/marketplace/seller?stripe=refresh`,
-    return_url: `${appUrl}/marketplace/seller?stripe=return`,
-    type: 'account_onboarding',
-  })
-
-  return secureResponse(
-    NextResponse.json({
-      connected: true,
-      onboarded: false,
-      accountId,
-      onboardingUrl: accountLink.url,
-      expiresAt: accountLink.expires_at,
-    }),
-    request
-  )
 }

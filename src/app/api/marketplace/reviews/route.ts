@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { applySecurity, secureResponse } from '@/lib/security'
-import {
-  addReview,
-  getReviews,
-  getAverageRating,
-  markHelpful,
-} from '@/lib/marketplace/review-system'
+import { addReview, getReviews, getAverageRating, markHelpful } from '@/lib/marketplace/review-system'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('marketplace-reviews')
 
 function parsePositiveInt(value: string | null, fallback: number, max: number) {
   const parsed = Number.parseInt(value || '', 10)
@@ -42,41 +40,26 @@ export async function GET(request: NextRequest) {
 
     const page = parsePositiveInt(searchParams.get('page'), 1, 100000)
     const limit = parsePositiveInt(searchParams.get('limit'), 20, 100)
-
     const rawSort = searchParams.get('sort') || 'newest'
     const sortBy =
-      rawSort === 'newest' ||
-      rawSort === 'highest' ||
-      rawSort === 'lowest' ||
-      rawSort === 'helpful'
+      rawSort === 'newest' || rawSort === 'highest' || rawSort === 'lowest' || rawSort === 'helpful'
         ? rawSort
-        : 'newest'
+        : ('newest' as const)
 
-    const result = await getReviews(listingId, {
-      page,
-      limit,
-      sortBy,
-    })
-
+    const result = await getReviews(listingId, { page, limit, sortBy })
     return secureResponse(NextResponse.json(result), request)
-  } catch {
-    const res = NextResponse.json(
-      { error: 'Failed to get reviews' },
-      { status: 500 }
-    )
+  } catch (error) {
+    log.error('GET /api/marketplace/reviews failed', { error })
+    const res = NextResponse.json({ error: 'Failed to get reviews' }, { status: 500 })
     return secureResponse(res, request)
   }
 }
 
 export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, {
-    requireAuth: true,
-  })
+  const { auth, error: secError } = await applySecurity(request, { requireAuth: true })
 
   if (secError || !auth) {
-    return (
-      secError || NextResponse.json({ error: 'Auth required' }, { status: 401 })
-    )
+    return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 })
   }
 
   try {
@@ -93,7 +76,8 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const success = await markHelpful(reviewId)
+      // Pass userId to prevent duplicate votes from the same user
+      const success = await markHelpful(reviewId, auth.userId)
 
       if (!success) {
         return secureResponse(
@@ -109,69 +93,41 @@ export async function POST(request: NextRequest) {
 
     if (!listingId || rating === undefined || rating === null) {
       return secureResponse(
-        NextResponse.json(
-          { error: 'listingId and rating are required' },
-          { status: 400 }
-        ),
+        NextResponse.json({ error: 'listingId and rating are required' }, { status: 400 }),
         request
       )
     }
 
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       return secureResponse(
-        NextResponse.json(
-          { error: 'rating must be an integer between 1 and 5' },
-          { status: 400 }
-        ),
+        NextResponse.json({ error: 'rating must be an integer between 1 and 5' }, { status: 400 }),
         request
       )
     }
 
     if (title !== undefined && (typeof title !== 'string' || title.length > 120)) {
       return secureResponse(
-        NextResponse.json(
-          { error: 'title must be a string of at most 120 characters' },
-          { status: 400 }
-        ),
+        NextResponse.json({ error: 'title must be a string of at most 120 characters' }, { status: 400 }),
         request
       )
     }
 
-    if (
-      content !== undefined &&
-      (typeof content !== 'string' || content.length > 5000)
-    ) {
+    if (content !== undefined && (typeof content !== 'string' || content.length > 5000)) {
       return secureResponse(
-        NextResponse.json(
-          { error: 'content must be a string of at most 5000 characters' },
-          { status: 400 }
-        ),
+        NextResponse.json({ error: 'content must be a string of at most 5000 characters' }, { status: 400 }),
         request
       )
     }
 
-    const review = await addReview({
-      listingId,
-      userId: auth.userId,
-      rating,
-      title,
-      content,
-    })
-
+    const review = await addReview({ listingId, userId: auth.userId, rating, title, content })
     return secureResponse(NextResponse.json(review, { status: 201 }), request)
   } catch (err: unknown) {
+    log.error('POST /api/marketplace/reviews failed', { err })
     const message = err instanceof Error ? err.message : 'Failed to add review'
-
     const status =
-      message.includes('not found') ? 404 :
-      message.includes('must') ||
-      message.includes('Cannot') ||
-      message.includes('required') ||
-      message.includes('available') ||
-      message.includes('obtain') ? 400 :
-      500
-
-    const res = NextResponse.json({ error: message }, { status })
-    return secureResponse(res, request)
+      message.includes('not found') ? 404
+      : message.includes('must') || message.includes('Cannot') || message.includes('required') || message.includes('available') || message.includes('obtain') ? 400
+      : 500
+    return secureResponse(NextResponse.json({ error: message }, { status }), request)
   }
 }
