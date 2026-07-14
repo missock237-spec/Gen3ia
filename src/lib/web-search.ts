@@ -1,7 +1,7 @@
 /**
- * Web Search — Moteur de recherche web via SerpAPI
- * Permet aux agents AI de chercher des informations en temps réel
- * Utilise SerpAPI (Google Search) avec fallback automatique
+ * Web Search — Recherche web via SerpAPI
+ * Permet aux agents AI de faire des recherches en temps réel
+ * Utilise SerpAPI (100 recherches/mois gratuites)
  */
 
 import { createLogger } from '@/lib/logger';
@@ -12,262 +12,240 @@ const log = createLogger('web-search');
 // Types
 // ============================================================
 
-export interface SearchResult {
+export interface WebSearchResult {
   title: string;
   link: string;
   snippet: string;
   position: number;
-  source: string;
+  source?: string;
+  date?: string;
 }
 
-export interface SearchResponse {
-  results: SearchResult[];
+export interface WebSearchResponse {
+  query: string;
+  results: WebSearchResult[];
   totalResults: number;
   searchTime: number;
-  query: string;
-  provider: string;
+  source: 'serpapi' | 'fallback';
 }
 
-export interface SearchOptions {
-  num?: number;
-  lang?: string;
+export interface WebSearchOptions {
+  maxResults?: number;
+  language?: string;
   country?: string;
-  safe?: boolean;
+  safeSearch?: boolean;
 }
 
 // ============================================================
-// SerpAPI Client
+// SerpAPI Search
 // ============================================================
+
+const SERPAPI_BASE_URL = 'https://serpapi.com/search';
 
 /**
- * Effectue une recherche web via SerpAPI
- * Nécessite SERPAPI_API_KEY dans .env
- * Gratuit : 100 recherches/mois
+ * Recherche web via SerpAPI
  */
-export async function searchWeb(
+async function searchWithSerpAPI(
   query: string,
-  options: SearchOptions = {}
-): Promise<SearchResponse> {
-  const {
-    num = 10,
-    lang = 'lang_fr|lang_en',
-    country = 'fr',
-    safe = true,
-  } = options;
-
-  const startTime = Date.now();
+  options: WebSearchOptions = {},
+): Promise<WebSearchResponse> {
   const apiKey = process.env.SERPAPI_API_KEY;
-
   if (!apiKey) {
-    log.warn('SERPAPI_API_KEY non configurée, utilisation du fallback');
-    return searchFallback(query, options);
+    throw new Error('SERPAPI_API_KEY non configurée. Obtenez une clé sur https://serpapi.com');
   }
 
-  try {
-    const params = new URLSearchParams({
-      q: query,
-      api_key: apiKey,
-      num: String(Math.min(num, 20)),
-      hl: lang.replace('lang_', '').split('|')[0] || 'fr',
-      gl: country.toUpperCase(),
-      safe: safe ? 'active' : 'off',
-      engine: 'google',
-      google_domain: 'google.com',
-      output: 'json',
-    });
+  const startTime = Date.now();
+  const maxResults = options.maxResults || 10;
 
+  const params = new URLSearchParams({
+    q: query,
+    api_key: apiKey,
+    num: String(Math.min(maxResults, 20)),
+    engine: 'google',
+    google_domain: 'google.com',
+    ...(options.language ? { hl: options.language } : {}),
+    ...(options.country ? { gl: options.country } : {}),
+    ...(options.safeSearch !== false ? { safe: 'active' } : {}),
+  });
+
+  const response = await fetch(`${SERPAPI_BASE_URL}?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Erreur inconnue');
+    throw new Error(`SerpAPI error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  const searchTime = Date.now() - startTime;
+
+  // Vérifier les erreurs SerpAPI
+  if (data.error) {
+    throw new Error(`SerpAPI: ${data.error}`);
+  }
+
+  // Extraire les résultats
+  const organic = data.organic_results || [];
+  const results: WebSearchResult[] = organic.slice(0, maxResults).map((r: {
+    title?: string;
+    link?: string;
+    snippet?: string;
+    position?: number;
+    source?: string;
+    date?: string;
+  }, index: number) => ({
+    title: r.title || 'Sans titre',
+    link: r.link || '#',
+    snippet: r.snippet || '',
+    position: r.position || index + 1,
+    source: r.source,
+    date: r.date,
+  }));
+
+  log.info('Recherche web effectuée', {
+    query,
+    resultsCount: results.length,
+    searchTimeMs: searchTime,
+    totalResults: data.search_information?.total_results || 0,
+  });
+
+  return {
+    query,
+    results,
+    totalResults: data.search_information?.total_results || results.length,
+    searchTime,
+    source: 'serpapi',
+  };
+}
+
+/**
+ * Fallback: recherche via DuckDuckGo (gratuit, sans clé API)
+ * Utilisé si SerpAPI n'est pas configuré
+ */
+async function searchFallback(query: string, maxResults: number = 10): Promise<WebSearchResponse> {
+  const startTime = Date.now();
+
+  try {
     const response = await fetch(
-      `https://serpapi.com/search?${params.toString()}`,
-      { signal: AbortSignal.timeout(15000) }
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; GenovaAI/1.0)',
+        },
+      },
     );
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`SerpAPI error ${response.status}: ${errText.substring(0, 200)}`);
+      throw new Error(`DuckDuckGo error: ${response.status}`);
     }
 
-    const data = await response.json();
-    const organic = data.organic_results || [];
-
-    const results: SearchResult[] = organic.map((r: {
-      title?: string;
-      link?: string;
-      snippet?: string;
-      position?: number;
-    }, i: number) => ({
-      title: r.title || 'Sans titre',
-      link: r.link || '',
-      snippet: r.snippet || '',
-      position: r.position ?? i + 1,
-      source: 'serpapi',
-    }));
-
-    const searchTime = Date.now() - startTime;
-
-    log.info('Recherche SerpAPI effectuée', {
-      query: query.substring(0, 50),
-      results: results.length,
-      timeMs: searchTime,
-    });
-
-    return {
-      results,
-      totalResults: data.search_information?.total_results || results.length,
-      searchTime,
-      query,
-      provider: 'serpapi',
-    };
-  } catch (err) {
-    log.error('SerpAPI a échoué, fallback', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return searchFallback(query, options);
-  }
-}
-
-/**
- * Effectue une recherche web avec contexte pour un agent AI
- * Retourne un texte formaté prêt à être injecté dans le prompt
- */
-export async function searchWebForAgent(
-  query: string,
-  options: SearchOptions = {}
-): Promise<string> {
-  const result = await searchWeb(query, options);
-
-  if (result.results.length === 0) {
-    return 'Aucun résultat trouvé pour cette recherche.';
-  }
-
-  let context = `## Résultats de recherche web pour: "${query}"\n\n`;
-
-  for (let i = 0; i < Math.min(result.results.length, 8); i++) {
-    const r = result.results[i];
-    context += `[Source ${i + 1}] ${r.title}\n`;
-    context += `URL: ${r.link}\n`;
-    context += `${r.snippet}\n\n`;
-  }
-
-  context += `---\nFournisseur: ${result.provider} | Temps: ${result.searchTime}ms\n`;
-
-  return context;
-}
-
-// ============================================================
-// Fallback — Recherche directe via Google (limité)
-// ============================================================
-
-async function searchFallback(
-  query: string,
-  options: SearchOptions = {}
-): Promise<SearchResponse> {
-  const { num = 5 } = options;
-  const startTime = Date.now();
-
-  try {
-    // Utilise l'API de suggestion Google (gratuite, limitée)
-    // ou un scraping basique
-    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${num}`;
-
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; GenovaAI/1.0; +https://github.com/missock237-spec/Genova)',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-      signal: AbortSignal.timeout(8000),
-    });
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
     const html = await response.text();
-    const results = parseGoogleResults(html);
+
+    // Extraction simple des résultats depuis le HTML
+    const results: WebSearchResult[] = [];
+    const resultRegex = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+    let match;
+    let position = 0;
+
+    while ((match = resultRegex.exec(html)) !== null && results.length < maxResults) {
+      position++;
+      results.push({
+        title: match[2].replace(/<[^>]*>/g, '').trim(),
+        link: match[1],
+        snippet: match[3].replace(/<[^>]*>/g, '').trim(),
+        position,
+      });
+    }
 
     return {
-      results: results.slice(0, num),
+      query,
+      results,
       totalResults: results.length,
       searchTime: Date.now() - startTime,
-      query,
-      provider: 'google_fallback',
+      source: 'fallback',
     };
   } catch (err) {
-    log.warn('Fallback de recherche échoué', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-
+    log.error('Fallback search failed', { error: err instanceof Error ? err.message : String(err) });
     return {
+      query,
       results: [],
       totalResults: 0,
       searchTime: Date.now() - startTime,
-      query,
-      provider: 'none',
+      source: 'fallback',
     };
   }
 }
 
+// ============================================================
+// API publique
+// ============================================================
+
 /**
- * Parse les résultats Google depuis le HTML
+ * Effectue une recherche web.
+ * Utilise SerpAPI si configuré, sinon fallback DuckDuckGo.
  */
-function parseGoogleResults(html: string): SearchResult[] {
-  const results: SearchResult[] = [];
+export async function searchWeb(
+  query: string,
+  options: WebSearchOptions = {},
+): Promise<WebSearchResponse> {
+  if (!query || query.trim().length === 0) {
+    return {
+      query,
+      results: [],
+      totalResults: 0,
+      searchTime: 0,
+      source: 'fallback',
+    };
+  }
 
-  // Extraction basique des résultats Google
-  // Note: Google peut changer sa structure HTML, ceci est un fallback
-  try {
-    const linkRegex = /<a[^>]*href="(https?://[^"]+)"[^>]*>(.*?)<\/a>/gi;
-    const snippetRegex = /<span[^>]*class="[^"]*aCOpRe[^"]*"[^>]*>(.*?)<\/span>/gi;
-
-    const links: string[] = [];
-    const titles: string[] = [];
-    const snippets: string[] = [];
-
-    let match;
-    while ((match = linkRegex.exec(html)) !== null && links.length < 10) {
-      const url = match[1];
-      if (!url.includes('google.com') && !url.includes('youtube.com')) {
-        links.push(url);
-        titles.push(match[2].replace(/<[^>]*>/g, '').trim());
-      }
-    }
-
-    while ((match = snippetRegex.exec(html)) !== null && snippets.length < 10) {
-      snippets.push(match[1].replace(/<[^>]*>/g, '').trim());
-    }
-
-    for (let i = 0; i < Math.min(links.length, 10); i++) {
-      results.push({
-        title: titles[i] || 'Résultat',
-        link: links[i],
-        snippet: snippets[i] || '',
-        position: i + 1,
-        source: 'google_fallback',
+  // Essayer SerpAPI d'abord
+  if (process.env.SERPAPI_API_KEY) {
+    try {
+      return await searchWithSerpAPI(query, options);
+    } catch (err) {
+      log.warn('SerpAPI a échoué, fallback DuckDuckGo', {
+        error: err instanceof Error ? err.message : String(err),
       });
+      // Fallback
     }
-  } catch { /* ignore parse errors */ }
+  }
 
-  return results;
+  // Fallback DuckDuckGo (gratuit)
+  return await searchFallback(query, options.maxResults);
 }
 
-// ============================================================
-// API Route Helper
-// ============================================================
+/**
+ * Formate les résultats de recherche pour les agents AI
+ */
+export function formatSearchResultsForAgent(response: WebSearchResponse): string {
+  if (response.results.length === 0) {
+    return 'Aucun résultat trouvé.';
+  }
+
+  const header = `Résultats de recherche pour "${response.query}" (${response.source}, ${response.searchTime}ms):\n\n`;
+  const body = response.results
+    .map((r, i) => {
+      return `[${i + 1}] ${r.title}\n   URL: ${r.link}\n   Extrait: ${r.snippet}\n`;
+    })
+    .join('\n');
+
+  return header + body;
+}
 
 /**
- * POST /api/web-search
- * Body: { query: string, options?: SearchOptions }
+ * Format court pour les réponses AI (concis)
  */
-export async function handleWebSearchRequest(body: {
-  query: string;
-  options?: SearchOptions;
-}): Promise<SearchResponse> {
-  const { query, options } = body;
-
-  if (!query || typeof query !== 'string' || query.trim().length === 0) {
-    throw new Error('La requête de recherche est requise');
+export function formatSearchResultsShort(response: WebSearchResponse): string {
+  if (response.results.length === 0) {
+    return 'Aucun résultat.';
   }
 
-  if (query.length > 500) {
-    throw new Error('La requête est trop longue (max 500 caractères)');
-  }
-
-  return searchWeb(query.trim(), options);
+  return response.results
+    .slice(0, 5)
+    .map((r) => `- ${r.title}: ${r.snippet.substring(0, 150)}`)
+    .join('\n');
 }
