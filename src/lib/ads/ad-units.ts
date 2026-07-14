@@ -2,16 +2,13 @@
  * Reward Ads System — Ad Units Configuration
  *
  * Configure ad placements and rewards for free users.
+ * Free users can earn up to ~200 credits/day by watching ads.
  */
 
 import type { AdUnit } from './types';
 
-// ===================================================================
-// In-House Ads (Genova promos & partner ads we control directly)
-// ===================================================================
-
 export const AD_UNITS: AdUnit[] = [
-  // ── Sidebar Banner ──
+  // ── Sidebar ──
   {
     id: 'sidebar_discover_pro',
     name: 'Découvrez Genova Pro',
@@ -84,7 +81,7 @@ export const AD_UNITS: AdUnit[] = [
   // ── Rewarded Video (modal) ──
   {
     id: 'rewarded_video_15',
-    name: 'Video Récompensée x15',
+    name: 'Vidéo Récompensée x15',
     provider: 'inhouse',
     placement: 'modal',
     format: 'rewarded_video',
@@ -100,7 +97,7 @@ export const AD_UNITS: AdUnit[] = [
   },
   {
     id: 'rewarded_video_25',
-    name: 'Video Premium x25',
+    name: 'Vidéo Premium x25',
     provider: 'inhouse',
     placement: 'modal',
     format: 'rewarded_video',
@@ -133,7 +130,7 @@ export const AD_UNITS: AdUnit[] = [
     alt: 'Découvrez le Marketplace',
   },
 
-  // ── Footer Banner ──
+  // ── Footer ──
   {
     id: 'footer_starter',
     name: 'Starter à 9$/mois',
@@ -156,34 +153,22 @@ export const AD_UNITS: AdUnit[] = [
 // Helpers
 // ===================================================================
 
-/**
- * Get active ad units for a specific placement
- */
 export function getAdsForPlacement(placement: string): AdUnit[] {
   return AD_UNITS.filter((ad) => ad.placement === placement && ad.status === 'active');
 }
 
-/**
- * Get a random active ad for a placement (rotation)
- */
 export function getRandomAdForPlacement(placement: string): AdUnit | null {
   const ads = getAdsForPlacement(placement);
   if (ads.length === 0) return null;
   return ads[Math.floor(Math.random() * ads.length)];
 }
 
-/**
- * Get maximum daily credits a free user can earn from ads
- */
 export function getMaxDailyCreditsFromAds(): number {
   return AD_UNITS
     .filter((ad) => ad.status === 'active')
     .reduce((total, ad) => total + ad.rewardCredits * ad.dailyLimit, 0);
 }
 
-/**
- * Calculate how many credits a user would earn watching all daily ads
- */
 export function getPotentialDailyCredits(): { perAd: { name: string; credits: number; maxDaily: number }[]; total: number } {
   const perAd = AD_UNITS
     .filter((ad) => ad.status === 'active')
@@ -194,6 +179,5 @@ export function getPotentialDailyCredits(): { perAd: { name: string; credits: nu
     }));
 
   const total = perAd.reduce((sum, a) => sum + a.maxDaily, 0);
-
   return { perAd, total };
 }
