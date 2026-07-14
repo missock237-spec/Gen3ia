@@ -1,10 +1,11 @@
 /**
- * Stripe Withdrawal — Retrait des gains vendeur via Stripe Connect uniquement
+ * Stripe Instant Withdrawal — Retrait instantané des gains vendeur
+ * Via Stripe Connect Instant Payouts (arrivée sous 30 secondes sur la carte)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
-import { requestStripeWithdrawal } from '@/lib/marketplace/seller-earnings';
+import { requestInstantPayout } from '@/lib/marketplace/seller-earnings';
 
 export async function OPTIONS() {
   const response = new NextResponse(null, { status: 204 });
@@ -15,24 +16,24 @@ export async function OPTIONS() {
 export async function POST(request: NextRequest) {
   const { auth, error } = await applySecurity(request, {
     requireAuth: true,
-    rateLimit: { limit: 3, windowMs: 60000 },
+    rateLimit: { limit: 5, windowMs: 60000 },
   });
 
   if (error) return error;
   if (!auth) return secureResponse(NextResponse.json({ error: 'Non authentifié' }, { status: 401 }), request);
 
   try {
-    const result = await requestStripeWithdrawal(auth.userId);
+    const result = await requestInstantPayout(auth.userId);
 
-    if (!result.success) {
-      return secureResponse(
-        NextResponse.json({ success: false, message: result.message }, { status: 400 }),
-        request
-      );
-    }
+    const statusCode = result.success ? 200 : 400;
 
     return secureResponse(
-      NextResponse.json({ success: true, message: result.message }),
+      NextResponse.json({
+        success: result.success,
+        message: result.message,
+        amount: result.amount,
+        payoutId: result.payoutId,
+      }, { status: statusCode }),
       request
     );
   } catch (err) {
