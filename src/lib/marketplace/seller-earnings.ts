@@ -1,10 +1,9 @@
 /**
- * Système de commissions Marketplace — 100% Stripe
+ * Système de commissions Marketplace — 100% Stripe avec retraits instantanés
  *
  * - 30% commission Genova (plateforme)
- * - 70% reversé au vendeur
- * - Tous les paiements via Stripe uniquement
- * - Stripe Connect pour les retraits vendeurs
+ * - 70% reversé instantanément au vendeur via Stripe Connect
+ * - Les vendeurs recoivent leur argent en temps réel sur Stripe
  */
 
 import { db } from '@/lib/db';
@@ -17,9 +16,8 @@ const log = createLogger('seller-earnings');
 // Constants
 // ============================================================
 
-export const PLATFORM_COMMISSION_RATE = 0.30; // 30%
-export const SELLER_REVENUE_RATE = 0.70;       // 70%
-const MIN_WITHDRAWAL_AMOUNT = 5;  // 5$ minimum
+export const PLATFORM_COMMISSION_RATE = 0.30;
+export const SELLER_REVENUE_RATE = 0.70;
 
 // ============================================================
 // Types
@@ -38,6 +36,7 @@ export interface SellerProfile {
   stripeAccountId: string | null;
   stripeOnboarded: boolean;
   stripeLink: string | null;
+  instantPayoutEnabled: boolean;
   lastPayoutAt: Date | null;
 }
 
@@ -72,9 +71,6 @@ export function calculateCommission(priceCredits: number): {
 // Stripe Connect — Compte vendeur
 // ============================================================
 
-/**
- * Crée ou récupère un compte Stripe Connect pour le vendeur
- */
 export async function getOrCreateStripeConnectAccount(userId: string): Promise<{
   accountId: string;
   onboardingLink: string;
@@ -87,9 +83,7 @@ export async function getOrCreateStripeConnectAccount(userId: string): Promise<{
 
   if (!user) throw new Error('Utilisateur introuvable');
 
-  // Compte déjà existant
   if (user.stripeConnectAccountId) {
-    // Vérifier si l'onboarding est complété
     if (user.stripeConnectOnboarded) {
       const link = await stripe().accountLinks.create({
         account: user.stripeConnectAccountId,
@@ -100,7 +94,6 @@ export async function getOrCreateStripeConnectAccount(userId: string): Promise<{
       return { accountId: user.stripeConnectAccountId, onboardingLink: link.url, isOnboarded: true };
     }
 
-    // Onboarding non terminé — nouveau lien
     const link = await stripe().accountLinks.create({
       account: user.stripeConnectAccountId,
       refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller`,
@@ -110,22 +103,24 @@ export async function getOrCreateStripeConnectAccount(userId: string): Promise<{
     return { accountId: user.stripeConnectAccountId, onboardingLink: link.url, isOnboarded: false };
   }
 
-  // Créer un nouveau compte Stripe Connect
+  // Créer un compte Stripe Connect avec capacités de paiement instantané
   const account = await stripe().accounts.create({
     type: 'express',
     country: 'FR',
     email: user.email,
     business_type: 'individual',
+    capabilities: {
+      transfers: { requested: true },
+      card_payments: { requested: true },
+    },
     metadata: { userId },
   });
 
-  // Sauvegarder l'ID Stripe Connect
   await db.user.update({
     where: { id: userId },
     data: { stripeConnectAccountId: account.id },
   });
 
-  // Lien d'onboarding
   const link = await stripe().accountLinks.create({
     account: account.id,
     refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller`,
@@ -138,14 +133,11 @@ export async function getOrCreateStripeConnectAccount(userId: string): Promise<{
   return { accountId: account.id, onboardingLink: link.url, isOnboarded: false };
 }
 
-/**
- * Traite le retour d'onboarding Stripe Connect
- */
 export async function handleStripeConnectOnboarding(userId: string): Promise<boolean> {
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { stripeConnectAccountId: true }},
-  );
+    select: { stripeConnectAccountId: true },
+  });
 
   if (!user?.stripeConnectAccountId) return false;
 
@@ -173,12 +165,12 @@ export async function handleStripeConnectOnboarding(userId: string): Promise<boo
 }
 
 // ============================================================
-// Ventes via Stripe
+// Paiement instantané au vendeur après achat
 // ============================================================
 
 /**
- * Crée une session de paiement Stripe pour l'achat marketplace
- * et prépare le transfert vers le vendeur
+ * Crée une session de checkout Stripe pour l'achat marketplace
+ * et prépare le transfert instantané vers le vendeur
  */
 export async function createMarketplaceCheckoutSession(
   listingId: string,
@@ -196,10 +188,9 @@ export async function createMarketplaceCheckoutSession(
   const { priceUsd, platformCommission, sellerRevenue } = calculateCommission(listing.price);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-  // Créer le client Stripe pour l'acheteur si nécessaire
   const customerId = await getOrCreateStripeCustomer(buyerId);
 
-  // Créer la session de checkout Stripe
+  // Créer la session de checkout avec transfert instantané
   const session = await stripe().checkout.sessions.create({
     customer: customerId,
     mode: 'payment',
@@ -210,21 +201,34 @@ export async function createMarketplaceCheckoutSession(
           currency: 'usd',
           product_data: {
             name: listing.name,
-            description: `${listing.description?.substring(0, 100)}...`,
+            description: listing.description?.substring(0, 100) || '',
           },
-          unit_amount: Math.round(priceUsd * 100), // Stripe en cents
+          unit_amount: Math.round(priceUsd * 100),
         },
         quantity: 1,
       },
     ],
-    metadata: {
-      type: 'marketplace_purchase',
-      listingId,
-      buyerId,
-      sellerId: listing.userId,
-      sellerRevenue: sellerRevenue.toString(),
-      platformCommission: platformCommission.toString(),
-      priceCredits: listing.price.toString(),
+    payment_intent_data: {
+      metadata: {
+        type: 'marketplace_purchase',
+        listingId,
+        buyerId,
+        sellerId: listing.userId,
+        sellerRevenue: sellerRevenue.toString(),
+        platformCommission: platformCommission.toString(),
+        priceCredits: listing.price.toString(),
+        // On stocke l'ID du compte Stripe Connect pour le transfert
+        sellerStripeAccountId: listing.user.stripeConnectAccountId || '',
+      },
+      // Transfert instantané vers le vendeur dès que le paiement est confirmé
+      ...(listing.user.stripeConnectAccountId
+        ? {
+            transfer_data: {
+              destination: listing.user.stripeConnectAccountId,
+              amount: Math.round(sellerRevenue * 100), // 70% directement au vendeur
+            },
+          }
+        : {}),
     },
     success_url: `${appUrl}/marketplace?purchase=success&listingId=${listingId}`,
     cancel_url: `${appUrl}/marketplace?purchase=cancel`,
@@ -234,44 +238,132 @@ export async function createMarketplaceCheckoutSession(
     listingId,
     buyerId,
     priceUsd,
+    sellerRevenue,
     sessionId: session.id,
   });
 
   return { sessionId: session.id, url: session.url || '' };
 }
 
+// ============================================================
+// Retrait instantané des gains
+// ============================================================
+
 /**
- * Exécute le transfert vers le vendeur après achat réussi
+ * Retrait instantané des gains du vendeur vers son compte bancaire
+ * via Stripe Connect Instant Payouts
  */
-export async function executeSellerTransfer(
-  sessionId: string,
-  amount: number,
-  sellerStripeAccountId: string,
-): Promise<boolean> {
+export async function requestInstantPayout(userId: string): Promise<{
+  success: boolean;
+  message: string;
+  amount?: number;
+  payoutId?: string;
+}> {
+  const profile = await getSellerProfile(userId);
+
+  if (profile.balance < 1) {
+    return { success: false, message: `Solde insuffisant: ${profile.balance.toFixed(2)}$ (minimum: 1$).` };
+  }
+
+  if (!profile.stripeAccountId) {
+    return { success: false, message: 'Connectez d\'abord votre compte Stripe.' };
+  }
+
+  if (!profile.stripeOnboarded) {
+    return { success: false, message: 'Finalisez votre inscription Stripe.' };
+  }
+
+  if (!profile.instantPayoutEnabled) {
+    return {
+      success: false,
+      message: 'Les paiements instantanés nécessitent une carte de débit éligible. ' +
+        'Connectez une carte dans votre dashboard Stripe pour activer cette fonctionnalité.'
+    };
+  }
+
   try {
-    // Transférer 70% directement sur le compte Stripe Connect du vendeur
-    const transfer = await stripe().transfers.create({
-      amount: Math.round(amount * 100), // Stripe en cents
-      currency: 'usd',
-      destination: sellerStripeAccountId,
-      transfer_group: `marketplace_${sessionId}`,
-      metadata: { sessionId, type: 'seller_revenue' },
+    // Créer un payout instantané via Stripe Connect
+    // Les fonds sont envoyés directement sur la carte de débit du vendeur
+    const payout = await stripe().payouts.create(
+      {
+        amount: Math.round(profile.balance * 100), // Stripe en cents
+        currency: 'usd',
+        method: 'instant', // Paiement instantané !
+        statement_descriptor: 'GENOVA PAYOUT',
+        metadata: {
+          userId,
+          type: 'seller_instant_payout',
+        },
+      },
+      {
+        stripeAccount: profile.stripeAccountId, // Compte Connect du vendeur
+      },
+    );
+
+    // Marquer les transactions comme retirées
+    await db.sellerTransaction.updateMany({
+      where: { sellerId: userId, status: 'completed', withdrawnAt: null },
+      data: {
+        withdrawnAt: new Date(),
+        withdrawalMethod: 'stripe_instant',
+        withdrawalId: payout.id,
+      },
     });
 
-    log.info('Transfert vendeur exécuté', {
-      sessionId,
-      amount,
-      transferId: transfer.id,
-      destination: sellerStripeAccountId,
+    log.info('Paiement instantané effectué', {
+      userId,
+      amount: profile.balance,
+      payoutId: payout.id,
+      status: payout.status,
     });
 
-    return true;
-  } catch (err) {
-    log.error('Échec transfert vendeur', {
-      sessionId,
-      error: err instanceof Error ? err.message : String(err),
+    return {
+      success: true,
+      message: `✅ ${profile.balance.toFixed(2)}$ envoyés instantanément sur votre carte bancaire ! 🚀`,
+      amount: profile.balance,
+      payoutId: payout.id,
+    };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+
+    log.error('Échec paiement instantané', {
+      userId,
+      error: errorMsg,
     });
-    return false;
+
+    // Si l'instant payout échoue (carte non éligible), on tombe en payout standard
+    if (errorMsg.includes('instant') || errorMsg.includes('card')) {
+      try {
+        const payout = await stripe().payouts.create(
+          {
+            amount: Math.round(profile.balance * 100),
+            currency: 'usd',
+            method: 'standard', // Paiement standard (2-7 jours)
+            statement_descriptor: 'GENOVA PAYOUT',
+          },
+          { stripeAccount: profile.stripeAccountId },
+        );
+
+        await db.sellerTransaction.updateMany({
+          where: { sellerId: userId, status: 'completed', withdrawnAt: null },
+          data: { withdrawnAt: new Date(), withdrawalMethod: 'stripe_standard', withdrawalId: payout.id },
+        });
+
+        return {
+          success: true,
+          message: `✅ ${profile.balance.toFixed(2)}$ en cours d\'envoi (virement standard 2-7 jours).`,
+          amount: profile.balance,
+          payoutId: payout.id,
+        };
+      } catch {
+        return {
+          success: false,
+          message: `Impossible de traiter le paiement. Veuillez vérifier vos informations bancaires Stripe.`,
+        };
+      }
+    }
+
+    return { success: false, message: `Erreur: ${errorMsg.substring(0, 200)}` };
   }
 }
 
@@ -288,7 +380,7 @@ export async function getSellerProfile(userId: string): Promise<SellerProfile> {
     },
   });
 
-  const [listings, transactions, reviews, balanceResult] = await Promise.all([
+  const [listings, transactions, reviews] = await Promise.all([
     db.marketplaceListing.findMany({ where: { userId }, select: { id: true, isActive: true } }),
     db.sellerTransaction.findMany({
       where: { sellerId: userId, status: 'completed' },
@@ -298,16 +390,11 @@ export async function getSellerProfile(userId: string): Promise<SellerProfile> {
       where: { listing: { userId } },
       select: { rating: true },
     }),
-    // Solde Stripe Connect
-    user?.stripeConnectAccountId && user.stripeConnectOnboarded
-      ? stripe().balance.retrieve({ stripeAccount: user.stripeConnectAccountId }).catch(() => null)
-      : Promise.resolve(null),
   ]);
 
   const totalRevenue = transactions.reduce((sum, t) => sum + t.sellerRevenue, 0);
   const totalCommission = transactions.reduce((sum, t) => sum + t.platformCommission, 0);
 
-  // Calculer le solde non encore transféré
   const withdrawn = await db.sellerTransaction.aggregate({
     where: { sellerId: userId, status: 'completed', withdrawnAt: { not: null } },
     _sum: { sellerRevenue: true },
@@ -320,10 +407,20 @@ export async function getSellerProfile(userId: string): Promise<SellerProfile> {
     ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
     : 0;
 
-  // Lien dashboard Stripe
+  // Vérifier si l'instantané est disponible
+  let instantPayoutEnabled = false;
   let stripeLink: string | null = null;
+
   if (user?.stripeConnectAccountId && user.stripeConnectOnboarded) {
     try {
+      const account = await stripe().accounts.retrieve(user.stripeConnectAccountId);
+      // Vérifier si l'instantané est activé (carte de débit éligible)
+      const externalAccounts = account.external_accounts?.data || [];
+      instantPayoutEnabled = externalAccounts.some(
+        (acc: { object?: string; card?: Record<string, unknown> }) =>
+          acc.object === 'card' || (acc as Record<string, unknown>)?.card !== undefined
+      );
+
       const loginLink = await stripe().accounts.createLoginLink(user.stripeConnectAccountId);
       stripeLink = loginLink.url;
     } catch { /* ignore */ }
@@ -342,64 +439,77 @@ export async function getSellerProfile(userId: string): Promise<SellerProfile> {
     stripeAccountId: user?.stripeConnectAccountId || null,
     stripeOnboarded: user?.stripeConnectOnboarded || false,
     stripeLink,
+    instantPayoutEnabled,
     lastPayoutAt: transactions.length > 0 ? transactions[0].createdAt : null,
   };
 }
 
 // ============================================================
-// Retraits via Stripe Connect uniquement
+// Ventes
 // ============================================================
 
-export async function requestStripeWithdrawal(userId: string): Promise<{ success: boolean; message: string }> {
-  const profile = await getSellerProfile(userId);
+export async function recordSale(
+  listingId: string,
+  buyerId: string,
+  priceCredits: number,
+): Promise<{ success: boolean; sellerRevenueUsd: number; platformCommissionUsd: number; message: string }> {
+  const listing = await db.marketplaceListing.findUnique({
+    where: { id: listingId },
+    select: { userId: true, name: true, price: true },
+  });
 
-  if (profile.balance < MIN_WITHDRAWAL_AMOUNT) {
-    return {
-      success: false,
-      message: `Solde minimum: ${MIN_WITHDRAWAL_AMOUNT}$ (actuellement: ${profile.balance.toFixed(2)}$).`,
-    };
-  }
+  if (!listing) return { success: false, sellerRevenueUsd: 0, platformCommissionUsd: 0, message: 'Annonce introuvable' };
+  if (listing.userId === buyerId) return { success: false, sellerRevenueUsd: 0, platformCommissionUsd: 0, message: 'Achat personnel impossible' };
 
-  if (!profile.stripeAccountId) {
-    return {
-      success: false,
-      message: 'Vous devez d\'abord connecter votre compte Stripe.'
-    };
-  }
+  const { priceUsd, platformCommission, sellerRevenue } = calculateCommission(priceCredits);
 
-  if (!profile.stripeOnboarded) {
-    return {
-      success: false,
-      message: 'Votre compte Stripe n\'est pas encore configuré. Terminez l\'onboarding Stripe.'
-    };
-  }
+  await db.marketplacePurchase.updateMany({
+    where: { listingId, userId: buyerId, status: 'completed' },
+    data: { sellerRevenue, platformCommission, transferStatus: 'completed' },
+  });
 
-  // Stripe Connect gère automatiquement les transferts vers le compte bancaire du vendeur
-  // On crée un payout (transfert automatique Stripe → banque du vendeur)
-  try {
-    // Marquer les transactions comme retirées
-    await db.sellerTransaction.updateMany({
-      where: { sellerId: userId, status: 'completed', withdrawnAt: null },
-      data: { withdrawnAt: new Date(), withdrawalMethod: 'stripe_connect' },
-    });
+  await db.sellerTransaction.create({
+    data: {
+      sellerId: listing.userId,
+      buyerId,
+      listingId,
+      listingName: listing.name,
+      amountCredits: priceCredits,
+      amountUsd: priceUsd,
+      platformCommission,
+      sellerRevenue,
+      status: 'completed',
+    },
+  });
 
-    log.info('Payout Stripe Connect déclenché', {
-      userId,
-      amount: profile.balance,
-      stripeAccountId: profile.stripeAccountId,
-    });
+  log.info('Vente enregistrée', { sellerId: listing.userId, buyerId, priceUsd, sellerRevenue });
 
-    return {
-      success: true,
-      message: `✅ ${profile.balance.toFixed(2)}$ en attente de transfert vers votre compte bancaire via Stripe. Traitement sous 2-7 jours ouvrés.`,
-    };
-  } catch (err) {
-    log.error('Échec du payout Stripe', {
-      userId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return { success: false, message: 'Erreur lors du paiement. Contactez le support.' };
-  }
+  return {
+    success: true,
+    sellerRevenueUsd: sellerRevenue,
+    platformCommissionUsd: platformCommission,
+    message: `Vente réussie ! ${sellerRevenue.toFixed(2)}$ pour le vendeur`,
+  };
+}
+
+export async function getSellerSalesHistory(userId: string, limit = 20): Promise<SaleTransaction[]> {
+  const transactions = await db.sellerTransaction.findMany({
+    where: { sellerId: userId },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
+
+  return transactions.map(t => ({
+    id: t.id,
+    listingId: t.listingId,
+    listingName: t.listingName,
+    buyerName: t.buyerName || 'Acheteur',
+    amount: t.amountUsd,
+    platformCommission: t.platformCommission,
+    sellerRevenue: t.sellerRevenue,
+    status: t.status,
+    createdAt: t.createdAt,
+  }));
 }
 
 // ============================================================
@@ -427,87 +537,4 @@ async function getOrCreateStripeCustomer(userId: string): Promise<string> {
   });
 
   return customer.id;
-}
-
-// ============================================================
-// Ventes via crédits (conversion automatique)
-// ============================================================
-
-export async function recordSale(
-  listingId: string,
-  buyerId: string,
-  priceCredits: number,
-): Promise<{
-  success: boolean;
-  sellerRevenueUsd: number;
-  platformCommissionUsd: number;
-  message: string;
-}> {
-  const listing = await db.marketplaceListing.findUnique({
-    where: { id: listingId },
-    select: { userId: true, name: true, price: true },
-  });
-
-  if (!listing) return { success: false, sellerRevenueUsd: 0, platformCommissionUsd: 0, message: 'Annonce introuvable' };
-  if (listing.userId === buyerId) return { success: false, sellerRevenueUsd: 0, platformCommissionUsd: 0, message: 'Vous ne pouvez pas acheter votre propre annonce' };
-
-  const { priceUsd, platformCommission, sellerRevenue } = calculateCommission(priceCredits);
-
-  await db.marketplacePurchase.updateMany({
-    where: { listingId, userId: buyerId, status: 'completed' },
-    data: { sellerRevenue, platformCommission, transferStatus: 'pending' },
-  });
-
-  await db.sellerTransaction.create({
-    data: {
-      sellerId: listing.userId,
-      buyerId,
-      listingId,
-      listingName: listing.name,
-      amountCredits: priceCredits,
-      amountUsd: priceUsd,
-      platformCommission,
-      sellerRevenue,
-      status: 'completed',
-    },
-  });
-
-  log.info('Vente enregistrée', {
-    sellerId: listing.userId,
-    buyerId,
-    listingId,
-    priceUsd,
-    platformCommission,
-    sellerRevenue,
-  });
-
-  return {
-    success: true,
-    sellerRevenueUsd: sellerRevenue,
-    platformCommissionUsd: platformCommission,
-    message: `Vente réussie ! ${sellerRevenue.toFixed(2)}$ pour le vendeur (commission: ${platformCommission.toFixed(2)}$)`,
-  };
-}
-
-export async function getSellerSalesHistory(
-  userId: string,
-  limit = 20
-): Promise<SaleTransaction[]> {
-  const transactions = await db.sellerTransaction.findMany({
-    where: { sellerId: userId },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-  });
-
-  return transactions.map(t => ({
-    id: t.id,
-    listingId: t.listingId,
-    listingName: t.listingName,
-    buyerName: t.buyerName || 'Acheteur',
-    amount: t.amountUsd,
-    platformCommission: t.platformCommission,
-    sellerRevenue: t.sellerRevenue,
-    status: t.status,
-    createdAt: t.createdAt,
-  }));
 }
