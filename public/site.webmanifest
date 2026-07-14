@@ -1,0 +1,24 @@
+{
+  "name": "Genova AI - Agent Operating System",
+  "short_name": "Genova AI",
+  "description": "Système d'exploitation pour agents AI open source et SaaS Freemium",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "/favicon-genova.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["technology", "ai", "productivity", "developer-tools"],
+  "lang": "fr",
+  "dir": "ltr"
+}
