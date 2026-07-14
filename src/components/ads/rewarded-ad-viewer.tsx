@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Coins, Eye, Play, CheckCircle2, Clock, Loader2, Sparkles, X } from 'lucide-react';
+import { Coins, Eye, Play, CheckCircle2, Clock, Loader2, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface AdData {
@@ -78,7 +78,6 @@ export function RewardedAdViewer({
       setEligibility(data.eligibility);
       if (data.stats) setStats(data.stats);
 
-      // Handle cooldown
       if (data.eligibility && !data.eligibility.success && data.eligibility.cooldownRemaining > 0) {
         setCooldownTimer(data.eligibility.cooldownRemaining);
       }
@@ -93,7 +92,6 @@ export function RewardedAdViewer({
     fetchAd();
   }, [fetchAd]);
 
-  // Cooldown countdown
   useEffect(() => {
     if (cooldownTimer <= 0) return;
     const interval = setInterval(() => {
@@ -110,7 +108,6 @@ export function RewardedAdViewer({
 
   const handleViewAd = () => {
     setAdViewed(true);
-    // Simulate ad view duration (3 seconds for minimum engagement)
     setCountdown(3);
     const interval = setInterval(() => {
       setCountdown((prev) => {
@@ -147,7 +144,6 @@ export function RewardedAdViewer({
         });
         onRewardClaimed?.(result.creditsAwarded);
 
-        // Refresh after 2 seconds
         setTimeout(() => {
           setClaimed(false);
           setAdViewed(false);
@@ -176,11 +172,10 @@ export function RewardedAdViewer({
   }
 
   if (!ad) return null;
- warning
+
   const isEligible = eligibility?.success ?? false;
   const canClaim = adViewed && !claimed && !claiming;
 
-  // ── Banner variant ──
   if (variant === 'banner') {
     return (
       <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/5 via-background to-primary/5">
@@ -218,11 +213,9 @@ export function RewardedAdViewer({
     );
   }
 
-  // ── Sidebar / Inline variant ──
   return (
     <Card className={`overflow-hidden ${claimed ? 'border-emerald-500/30 bg-emerald-500/5' : ''}`}>
       <CardContent className="p-4 space-y-3">
-        {/* Ad Header */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 shrink-0">
@@ -231,16 +224,15 @@ export function RewardedAdViewer({
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{ad.name}</p>
               <p className="text-xs text-muted-foreground">
-                +{ad.rewardCredits} crédits • {eligibility?.totalToday ?? 0}/{eligibility?.dailyLimit ?? ad.rewardCredits} aujourd&apos;hui
+                +{ad.rewardCredits} crédits &bull; {eligibility?.totalToday ?? 0}/{eligibility?.dailyLimit ?? ad.rewardCredits} aujourd&apos;hui
               </p>
             </div>
           </div>
-          <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 shrink-0">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 border-amber-500/20 shrink-0">
             +{ad.rewardCredits}
-          </Badge>
+          </span>
         </div>
 
-        {/* Ad Image / Content */}
         <div
           className={`relative rounded-lg overflow-hidden bg-muted/30 border ${adViewed ? 'ring-2 ring-primary/20' : ''}`}
           style={{ aspectRatio: `${ad.width}/${ad.height}` }}
@@ -259,7 +251,6 @@ export function RewardedAdViewer({
             </div>
           )}
 
-          {/* Overlay when viewing */}
           {adViewed && !claimed && (
             <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
               <div className="text-center text-white">
@@ -275,7 +266,6 @@ export function RewardedAdViewer({
             </div>
           )}
 
-          {/* Claimed overlay */}
           {claimed && (
             <div className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center">
               <div className="text-center">
@@ -288,7 +278,6 @@ export function RewardedAdViewer({
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2">
           {!adViewed ? (
             <Button
@@ -316,7 +305,6 @@ export function RewardedAdViewer({
           )}
         </div>
 
-        {/* Progress bar - daily limit */}
         {eligibility && (
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] text-muted-foreground">
@@ -331,14 +319,5 @@ export function RewardedAdViewer({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-// Badge helper
-function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>
-      {children}
-    </span>
   );
 }
