@@ -30,19 +30,6 @@ const services = [
     healthPath: '/api/health',
   },
   {
-    id: 'n8n', name: 'n8n Workflows', port: 5678,
-    cmd: `${process.env.HOME}/.npm-global/bin/n8n`,
-    args: ['start'],
-    healthPath: '/healthz',
-    env: {
-      N8N_BASIC_AUTH_ACTIVE: 'true',
-      N8N_BASIC_AUTH_USER: 'admin',
-      N8N_BASIC_AUTH_PASSWORD: 'genova_admin',
-      N8N_PORT: '5678',
-      WEBHOOK_URL: 'http://localhost:5678/',
-    },
-  },
-  {
     id: 'speechbrain', name: 'SpeechBrain ASR', port: 8187,
     cmd: 'python3', args: [`${BASE}/services/speechbrain_api_server.py`],
     healthPath: '/health',
@@ -113,7 +100,7 @@ async function startAll() {
   await new Promise(r => setTimeout(r, 5000));
 
   // Report status
-  console.log('\n=== Service Status ===');
+  console.log('\\n=== Service Status ===');
   for (const svc of services) {
     const healthy = await checkHealth(svc.port, svc.healthPath);
     console.log(`  ${healthy ? '[OK]' : '[XX]'} ${svc.name} (port ${svc.port})`);
