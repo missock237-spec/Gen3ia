@@ -16,12 +16,12 @@ export interface AdUnit {
   width: number;
   height: number;
   rewardCredits: number;
-  dailyLimit: number;       // max views per user per day
-  cooldownSeconds: number;  // min time between views
+  dailyLimit: number;
+  cooldownSeconds: number;
   status: AdStatus;
-  code?: string;            // HTML/JS snippet for external ads
-  imageUrl?: string;        // For in-house ads
-  targetUrl?: string;       // For in-house ads
+  code?: string;
+  imageUrl?: string;
+  targetUrl?: string;
   alt?: string;
 }
 
@@ -38,7 +38,7 @@ export interface AdEvent {
 export interface DailyAdQuota {
   userId: string;
   adUnitId: string;
-  date: string;          // YYYY-MM-DD
+  date: string;
   views: number;
   creditsEarned: number;
   lastViewAt: Date | null;
@@ -49,6 +49,6 @@ export interface AdRewardResult {
   creditsAwarded: number;
   totalToday: number;
   dailyLimit: number;
-  cooldownRemaining: number;  // seconds until next ad allowed
+  cooldownRemaining: number;
   message: string;
 }
