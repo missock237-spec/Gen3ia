@@ -1,14 +1,21 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
+# https://www.robotstxt.org/robotstxt.html
+# Genova AI - Agent Operating System
 
 User-agent: *
 Allow: /
+Allow: /api/ads
+Allow: /api/terminal
+Allow: /api/mcp
+
+# Private areas
+Disallow: /api/auth/
+Disallow: /api/billing/
+Disallow: /api/admin/
+
+# Assets
+Allow: /favicon-genova.png$
+Allow: /icon.svg$
+Allow: /og-image.png$
+Allow: /apple-touch-icon.png$
+
+Sitemap: https://missock237-spec.github.io/Genova/sitemap.xml
