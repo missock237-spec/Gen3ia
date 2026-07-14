@@ -1,13 +1,7 @@
 #!/bin/bash
 # Genova Genova — Stop All Services
 
-echo "🛑 Stopping Genova Genova Services..."
-
-# Stop n8n
-pkill -f "n8n start" 2>/dev/null
-
-# Stop ComfyUI
-pkill -f "comfyui.*main.py" 2>/dev/null
+echo "Stopping Genova Services..."
 
 # Stop PocketBase
 pkill -f "pocketbase serve" 2>/dev/null
@@ -18,4 +12,4 @@ pkill -f "pocketbase serve" 2>/dev/null
 # Stop Next.js dev
 pkill -f "next dev" 2>/dev/null
 
-echo "✅ All services stopped."
+echo "All services stopped."
