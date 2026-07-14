@@ -78,11 +78,69 @@ model User {
   aiCosts                      AICost[]
   usageDaily                   UsageDaily[]
   monitoringEvents             MonitoringEvent[]
+  dailyAdQuotas                DailyAdQuota[]
+  adEvents                     AdEvent[]
+  genovaApiKeys                GenovaApiKey[]
 
   @@index([email])
   @@index([role])
   @@index([stripeConnectOnboarded])
   @@map("users")
+}
+
+model GenovaApiKey {
+  id                 String    @id @default(cuid())
+  userId             String
+  name               String
+  keyPrefix          String
+  keyHash            String    @unique
+  keyLastFour        String
+  scopes             String    @default("[]")
+  rateLimitPerMinute Int       @default(60)
+  lastUsedAt         DateTime?
+  expiresAt          DateTime?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([keyHash])
+  @@map("genova_api_keys")
+}
+
+model DailyAdQuota {
+  id             String    @id @default(cuid())
+  userId         String
+  adUnitId       String
+  date           String
+  views          Int       @default(0)
+  creditsEarned  Int       @default(0)
+  lastViewAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, adUnitId, date])
+  @@index([userId, date])
+  @@map("daily_ad_quotas")
+}
+
+model AdEvent {
+  id              String   @id @default(cuid())
+  userId          String
+  adUnitId        String
+  type            String
+  creditsAwarded  Int      @default(0)
+  metadata        String   @default("{}")
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ad_events")
 }
 
 model Session {
@@ -719,12 +777,7 @@ model AccessKey {
   @@map("access_keys")
 }
 
-
-
-model AgentAutomation {
-  id          String   @id @default(cuid())
-  name        String
-  description String   @default("")model ConnectorExecution {
+model ConnectorExecution {
   id            String @id @default(cuid())
   connectorType String
   connectorId   String
@@ -750,6 +803,11 @@ model AgentAutomation {
   @@index([status, createdAt])
   @@map("connector_executions")
 }
+
+model AgentAutomation {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
   trigger     String
   conditions  String   @default("[]")
   actions     String
@@ -865,7 +923,7 @@ model VoiceCall {
   id                 String    @id @default(cuid())
   userId             String
   agentId            String?
-  provider           String    // twilio, whatsapp
+  provider           String
   callSid            String?   @unique
   fromNumber         String
   toNumber           String
@@ -875,8 +933,8 @@ model VoiceCall {
   maxDurationMinutes Int       @default(30)
   recordingEnabled   Boolean   @default(false)
   recordingUrl       String?
-  transcript         String    @default("[]") // JSON
-  metadata           String    @default("{}") // JSON
+  transcript         String    @default("[]")
+  metadata           String    @default("{}")
   startedAt          DateTime  @default(now())
   endedAt            DateTime?
   createdAt          DateTime  @default(now())
@@ -893,14 +951,14 @@ model VoiceSession {
   id              String    @id @default(cuid())
   userId          String
   agentId         String?
-  type            String    // stt, tts, voice_chat
+  type            String
   status          String    @default("active")
   language        String?
   sttProvider     String?
   ttsProvider     String?
   transcription   String?   @default("")
   durationSeconds Int       @default(0)
-  metadata        String    @default("{}") // JSON
+  metadata        String    @default("{}")
   endedAt         DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -919,12 +977,12 @@ model VoiceMemory {
   voiceSessionId String?
   category       String    @default("general")
   content        String
-  embedding      String?   // JSON
+  embedding      String?
   durationMs     Int       @default(0)
   language       String    @default("en-US")
   confidence     Float     @default(0.8)
-  tags           String    @default("[]") // JSON
-  metadata       String    @default("{}") // JSON
+  tags           String    @default("[]")
+  metadata       String    @default("{}")
   createdAt      DateTime  @default(now())
 
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1192,7 +1250,7 @@ model MarketplacePurchase {
   @@index([createdAt])
   @@map("marketplace_purchases")
 }
-  
+
 model MarketplaceReview {
   id          String    @id @default(cuid())
   userId      String
