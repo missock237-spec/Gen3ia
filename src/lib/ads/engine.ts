@@ -2,11 +2,12 @@
  * Reward Ads System — Engine
  *
  * Handles ad view tracking, quota checks, and credit rewards.
+ * Supporte les 3 niveaux de récompense (Tier 1, 2, 3).
  */
 
 import { db } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
-import { AD_UNITS, getRandomAdForPlacement } from './ad-units';
+import { AD_UNITS, getRandomAdForPlacement, getAdsByTier, getMaxDailyCreditsByTier } from './ad-units';
 import { addCredits } from '@/lib/billing/credits';
 import type { AdUnit, AdRewardResult, DailyAdQuota } from './types';
 
@@ -50,13 +51,59 @@ async function getOrCreateDailyQuota(userId: string, adUnitId: string): Promise<
   return { userId, adUnitId, date, views: 0, creditsEarned: 0, lastViewAt: null };
 }
 
+// ===================================================================
+// Tier-specific daily limits
+// ===================================================================
+
+const TIER_DAILY_CREDIT_CAPS = {
+  1: 200,  // Niveau 1 : 200 crédits max/jour
+  2: 150,  // Niveau 2 : 150 crédits max/jour
+  3: 100,  // Niveau 3 : 100 crédits max/jour
+};
+
+async function getTierDailyEarnings(userId: string, tier: number): Promise<number> {
+  const date = getTodayDate();
+  const tierAdIds = getAdsByTier(tier).map((ad) => ad.id);
+
+  if (tierAdIds.length === 0) return 0;
+
+  const quotas = await db.dailyAdQuota.findMany({
+    where: {
+      userId,
+      date,
+      adUnitId: { in: tierAdIds },
+    },
+  });
+
+  return quotas.reduce((sum, q) => sum + q.creditsEarned, 0);
+}
+
+// ===================================================================
+// Main functions
+// ===================================================================
+
 /**
  * Check if a user can view a specific ad
  */
 export async function canViewAd(userId: string, adUnit: AdUnit): Promise<AdRewardResult> {
   const quota = await getOrCreateDailyQuota(userId, adUnit.id);
 
-  // Check daily limit
+  // Vérifier le plafond quotidien du tier
+  const tierCap = TIER_DAILY_CREDIT_CAPS[adUnit.tier as keyof typeof TIER_DAILY_CREDIT_CAPS] || 200;
+  const tierEarnings = await getTierDailyEarnings(userId, adUnit.tier);
+
+  if (tierEarnings >= tierCap) {
+    return {
+      success: false,
+      creditsAwarded: 0,
+      totalToday: quota.views,
+      dailyLimit: adUnit.dailyLimit,
+      cooldownRemaining: 0,
+      message: `Plafond journalier du Niveau ${adUnit.tier} atteint (${tierEarnings}/${tierCap} crédits). Revenez demain !`,
+    };
+  }
+
+  // Check daily limit per ad
   if (quota.views >= adUnit.dailyLimit) {
     const remaining = Math.max(0, adUnit.dailyLimit - quota.views);
     return {
@@ -65,7 +112,7 @@ export async function canViewAd(userId: string, adUnit: AdUnit): Promise<AdRewar
       totalToday: quota.views,
       dailyLimit: adUnit.dailyLimit,
       cooldownRemaining: 0,
-      message: `Daily limit reached for this ad (${quota.views}/${adUnit.dailyLimit}). Try again tomorrow!`,
+      message: `Limite quotidienne atteinte pour cette pub (${quota.views}/${adUnit.dailyLimit}). Réessayez demain !`,
     };
   }
 
@@ -80,7 +127,7 @@ export async function canViewAd(userId: string, adUnit: AdUnit): Promise<AdRewar
         totalToday: quota.views,
         dailyLimit: adUnit.dailyLimit,
         cooldownRemaining: remaining,
-        message: `Please wait ${remaining}s before viewing another ad.`,
+        message: `Veuillez patienter ${remaining}s avant de voir une autre pub.`,
       };
     }
   }
@@ -91,7 +138,7 @@ export async function canViewAd(userId: string, adUnit: AdUnit): Promise<AdRewar
     totalToday: quota.views,
     dailyLimit: adUnit.dailyLimit,
     cooldownRemaining: 0,
-    message: `Watch the ad to earn ${adUnit.rewardCredits} credits!`,
+    message: `Regardez la pub pour gagner ${adUnit.rewardCredits} crédits (Niveau ${adUnit.tier}) !`,
   };
 }
 
@@ -136,11 +183,12 @@ export async function recordAdViewAndReward(
       amount: adUnit.rewardCredits,
       type: 'bonus',
       resourceType: 'ad_reward',
-      description: `Rewarded ad: ${adUnit.name} (+${adUnit.rewardCredits} credits)`,
+      description: `Pub Niveau ${adUnit.tier}: ${adUnit.name} (+${adUnit.rewardCredits} crédits)`,
       metadata: {
         adUnitId: adUnit.id,
         adName: adUnit.name,
         placement: adUnit.placement,
+        tier: String(adUnit.tier),
       },
     });
 
@@ -154,6 +202,7 @@ export async function recordAdViewAndReward(
         metadata: {
           placement: adUnit.placement,
           adName: adUnit.name,
+          tier: String(adUnit.tier),
         },
       },
     });
@@ -164,6 +213,7 @@ export async function recordAdViewAndReward(
     log.info('Ad reward claimed', {
       userId,
       adUnitId: adUnit.id,
+      tier: adUnit.tier,
       creditsAwarded: adUnit.rewardCredits,
       totalToday: updatedQuota.views,
     });
@@ -174,7 +224,7 @@ export async function recordAdViewAndReward(
       totalToday: updatedQuota.views,
       dailyLimit: adUnit.dailyLimit,
       cooldownRemaining: adUnit.cooldownSeconds,
-      message: `+${adUnit.rewardCredits} credits earned!`,
+      message: `+${adUnit.rewardCredits} crédits gagnés (Niveau ${adUnit.tier}) !`,
     };
   } catch (err) {
     log.error('Failed to record ad reward', {
@@ -189,7 +239,7 @@ export async function recordAdViewAndReward(
       totalToday: 0,
       dailyLimit: adUnit.dailyLimit,
       cooldownRemaining: 0,
-      message: 'Failed to process ad reward. Please try again.',
+      message: 'Impossible de traiter la récompense. Réessayez.',
     };
   }
 }
@@ -211,13 +261,14 @@ export async function getEligibleAd(
 }
 
 /**
- * Get today's ad stats for a user
+ * Get today's ad stats for a user (with tier breakdown)
  */
 export async function getUserAdStats(userId: string): Promise<{
   todayEarnings: number;
   todayViews: number;
   maxDailyCredits: number;
-  adsWatched: { name: string; views: number; credits: number; limit: number }[];
+  tierEarnings: Record<number, { earned: number; cap: number }>;
+  adsWatched: { name: string; views: number; credits: number; limit: number; tier: number }[];
 }> {
   const date = getTodayDate();
 
@@ -232,17 +283,30 @@ export async function getUserAdStats(userId: string): Promise<{
       views: q.views,
       credits: q.creditsEarned,
       limit: adUnit?.dailyLimit || 0,
+      tier: adUnit?.tier || 1,
     };
   });
 
-  const totalCredits = AD_UNITS
-    .filter((a) => a.status === 'active')
-    .reduce((sum, a) => sum + a.rewardCredits * a.dailyLimit, 0);
+  // Calcul par tier
+  const tierEarnings: Record<number, { earned: number; cap: number }> = {};
+  for (const tier of [1, 2, 3]) {
+    const tierAds = adsWatched.filter((a) => a.tier === tier);
+    const earned = tierAds.reduce((sum, a) => sum + a.credits, 0);
+    tierEarnings[tier] = {
+      earned,
+      cap: TIER_DAILY_CREDIT_CAPS[tier as keyof typeof TIER_DAILY_CREDIT_CAPS],
+    };
+  }
+
+  const maxDailyCredits = Object.values(TIER_DAILY_CREDIT_CAPS).reduce((a, b) => a + b, 0);
 
   return {
     todayEarnings: quotas.reduce((sum, q) => sum + q.creditsEarned, 0),
     todayViews: quotas.reduce((sum, q) => sum + q.views, 0),
-    maxDailyCredits: totalCredits,
+    maxDailyCredits,
+    tierEarnings,
     adsWatched,
   };
 }
+
+export { TIER_DAILY_CREDIT_CAPS };
