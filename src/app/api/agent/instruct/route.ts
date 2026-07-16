@@ -1,6 +1,6 @@
 // route: POST /api/agent/instruct
 import { NextRequest, NextResponse } from 'next/server';
-import { agentOrchestrator } from '@/lib/agent/agent-orchestrator';
+import { agentOrchestrator } from '@/lib/agent/orchestrator';
 
 export async function POST(request: NextRequest) {
   try {
