@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { agentOrchestrator } from '@/lib/agent/agent-orchestrator';
+import { agentOrchestrator } from '@/lib/agent/orchestrator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     if (!userId || !platform || !authCode) {
       return NextResponse.json({ error: 'userId, platform et authCode requis' }, { status: 400 });
     }
-    const success = await agentOrchestrator.connectPlatform(userId, platform, authCode);
+    const success = await agentOrchestrator.connect(userId, platform);
     return NextResponse.json({ success, message: success ? 'Plateforme connectee' : 'Echec de connexion' });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
