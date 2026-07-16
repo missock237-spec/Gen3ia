@@ -2,6 +2,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 
+interface AgentChatProps {
+  userId?: string;
+}
+
 interface Message {
   id: string;
   text: string;
@@ -16,16 +20,16 @@ interface Message {
   platform?: string;
 }
 
-const SUGGESTIONS = [
+const SUGGESTIONS: string[] = [
   'Cherche les dernières actualités tech',
-  'Envoie un email à test@email.com',
+  'Envoie un email à john@email.com pour dire bonjour',
   'Va sur google.com',
   'Crée un événement dans mon calendrier demain',
+  'Extrait le contenu de cette page',
   'Liste mes emails non lus',
-  'Extrais le contenu de cette page',
 ];
 
-export default function AgentChat({ userId = 'user_' + Date.now() }) {
+export default function AgentChat({ userId = 'user_' + Date.now() }: AgentChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     { id: '0', text: '🧠 **Agent Genova** activé ! Je peux agir sur le web et tes comptes personnels pour toi.\n\nDis-moi ce que tu veux que je fasse.', isUser: false, agent: true, timestamp: new Date() },
   ]);
@@ -71,8 +75,12 @@ export default function AgentChat({ userId = 'user_' + Date.now() }) {
       });
       const data = await response.json();
       setMessages(prev => [...prev, { id: 'app_' + Date.now(), text: approved ? '✅ Approuvé' : '❌ Rejeté', isUser: false, agent: true, timestamp: new Date() }]);
-      if (data.status === 'completed') setMessages(prev => [...prev, { id: 'res2_' + Date.now(), text: '✅ **Action exécutée !**', isUser: false, agent: true, timestamp: new Date() }]);
-    } catch { }
+      if (data.status === 'completed') {
+        setMessages(prev => [...prev, { id: 'res2_' + Date.now(), text: '✅ **Action exécutée !**', isUser: false, agent: true, timestamp: new Date() }]);
+      }
+    } catch {
+      // ignore
+    }
     setLoading(false);
   };
 
@@ -89,7 +97,7 @@ export default function AgentChat({ userId = 'user_' + Date.now() }) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map(msg => (
+        {messages.map((msg: Message) => (
           <div key={msg.id} className={'flex ' + (msg.isUser ? 'justify-end' : 'justify-start')}>
             <div className={'max-w-[85%] rounded-2xl p-4 ' + (msg.isUser ? 'bg-indigo-500 text-white' : msg.agent ? 'bg-white shadow-sm border border-gray-100' : 'bg-gray-100')}>
               {msg.agent && <div className="text-xs text-indigo-500 font-semibold mb-1">🧠 Agent Genova</div>}
@@ -124,19 +132,26 @@ export default function AgentChat({ userId = 'user_' + Date.now() }) {
       </div>
 
       <div className="px-4 py-2 border-t border-gray-100 flex gap-2 overflow-x-auto">
-        {SUGGESTIONS.slice(0, 3).map((s, i) => (
+        {SUGGESTIONS.slice(0, 3).map((s: string, i: number) => (
           <button key={i} onClick={() => setInput(s)} className="text-xs bg-gray-100 hover:bg-indigo-50 hover:text-indigo-600 px-3 py-1.5 rounded-full whitespace-nowrap transition text-gray-500">{s}</button>
         ))}
       </div>
 
-      <div className="p-4 border-t border-gray-200 bg-white">
-        <div className="flex gap-2">
-          <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()}
+      <div className="border-t border-gray-200 bg-white">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <input
+            type="text"
+            value={input}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInput(e.target.value)}
+            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') sendMessage(); }}
             placeholder="Dis-moi ce que tu veux que je fasse..."
             className="flex-1 bg-gray-100 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
           />
-          <button onClick={sendMessage} disabled={loading}
-            className="bg-indigo-500 text-white rounded-xl px-5 py-3 font-medium hover:bg-indigo-600 transition disabled:opacity-50">
+          <button
+            onClick={sendMessage}
+            disabled={loading}
+            className="bg-indigo-500 text-white rounded-xl px-5 py-3 font-medium hover:bg-indigo-600 transition disabled:opacity-50"
+          >
             {loading ? '...' : 'Envoyer'}
           </button>
         </div>
