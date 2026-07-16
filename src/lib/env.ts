@@ -9,8 +9,15 @@ export const env = {
   // =============================================
   // Database
   // =============================================
-  databaseUrl: process.env.DATABASE_URL || "",
+  databaseUrl:
+    process.env.DATABASE_URL ||
+    process.env.SUPABASE_DATABASE_URL ||
+    "",
   genovaDatabaseUrl: process.env.GENOVA_DATABASE_URL || "",
+  supabaseDatabaseUrl:
+    process.env.SUPABASE_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    "",
   postgresUser: process.env.POSTGRES_USER || "",
   postgresPassword: process.env.POSTGRES_PASSWORD || "",
   postgresDb: process.env.POSTGRES_DB || "",
@@ -206,6 +213,13 @@ export function isKeyConfigured(key: keyof typeof env): boolean {
  */
 export function isAiReady(): boolean {
   return isKeyConfigured("groqApiKey") || isKeyConfigured("geminiApiKey");
+}
+
+/**
+ * Check if database is configured
+ */
+export function isDatabaseReady(): boolean {
+  return isKeyConfigured("databaseUrl");
 }
 
 /**
