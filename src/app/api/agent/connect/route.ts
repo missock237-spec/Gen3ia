@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'userId, platform et authCode requis' }, { status: 400 });
     }
     const success = await agentOrchestrator.connectPlatform(userId, platform, authCode);
-    return NextResponse.json({ success, message: success ? 'Plateforme connectée' : 'Échec de connexion' });
+    return NextResponse.json({ success, message: success ? 'Plateforme connectee' : 'Echec de connexion' });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
   if (!userId || !platform) {
     return NextResponse.json({ error: 'userId et platform requis' }, { status: 400 });
   }
-  const url = agentOrchestrator.getOAuthURL(platform, process.env.APP_URL + '/api/agent/oauth/callback');
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const url = agentOrchestrator.getOAuthURL(platform, appUrl + '/api/agent/oauth/callback');
   return NextResponse.json({ url });
 }
