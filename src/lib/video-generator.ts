@@ -1,8 +1,10 @@
 /**
  * Video Generator — Free AI Video Generation API
  *
- * Utilise des APIs gratuites/freemium pour générer des vidéos.
- * Providers supportés : Hugging Face (gratuit), Replicate (essai gratuit), fallback simulé
+ * - Durée max par vidéo : 10 secondes
+ * - Les utilisateurs peuvent importer une vidéo existante pour l'étendre
+ * - Durée d'extension max : 10 secondes supplémentaires
+ * - Durée totale max avec extension : 20 secondes
  */
 
 import { db } from '@/lib/db';
@@ -27,7 +29,16 @@ export interface VideoGenerationResult {
   durationSeconds: number | null;
   width: number;
   height: number;
+  isExtended: boolean;
+  parentVideoId?: string;
   error?: string;
+}
+
+export interface ExtendVideoInput {
+  userId: string;
+  videoId: string;       // ID de la vidéo à étendre
+  prompt: string;        // Description de la suite
+  additionalSeconds: number; // Secondes à ajouter (max 10)
 }
 
 // ============================================================
@@ -35,6 +46,10 @@ export interface VideoGenerationResult {
 // ============================================================
 
 export const DEFAULT_MODEL = 'cogvideo';
+
+export const MAX_VIDEO_DURATION_SECONDS = 10;      // 10s max par vidéo
+export const MAX_EXTENSION_SECONDS = 10;            // 10s max d'extension
+export const MAX_TOTAL_DURATION_SECONDS = 20;       // 20s max totale
 
 export const AVAILABLE_MODELS: Record<string, { provider: string; modelName: string; maxWidth: number; maxHeight: number }> = {
   'cogvideo': { provider: 'huggingface', modelName: 'THUDM/CogVideoX-2b', maxWidth: 720, maxHeight: 480 },
@@ -63,7 +78,6 @@ export async function generateVideo(
     seed?: number;
   }
 ): Promise<VideoGenerationResult> {
-  const startTime = Date.now();
   const model = options?.model || DEFAULT_MODEL;
   const modelConfig = AVAILABLE_MODELS[model];
 
@@ -79,22 +93,123 @@ export async function generateVideo(
     throw new Error(`Le prompt ne peut pas dépasser ${MAX_PROMPT_LENGTH} caractères`);
   }
 
+  const fps = options?.fps || 10;
+  // Calculer le nombre de frames pour ne pas dépasser 10 secondes
+  const maxFrames = MAX_VIDEO_DURATION_SECONDS * fps;
+  const numFrames = Math.min(options?.numFrames || maxFrames, maxFrames);
   const width = Math.min(options?.width || 640, modelConfig.maxWidth);
   const height = Math.min(options?.height || 480, modelConfig.maxHeight);
-  const fps = options?.fps || 8;
-  const numFrames = options?.numFrames || 25;
+
+  return await processVideoGeneration(userId, prompt, model, modelConfig.provider, {
+    fps, numFrames, width, height, isExtended: false
+  });
+}
+
+// ============================================================
+// Extend Video — Importer une vidéo existante et l'étendre
+// ============================================================
+
+export async function extendExistingVideo(input: ExtendVideoInput): Promise<VideoGenerationResult> {
+  const { userId, videoId, prompt, additionalSeconds } = input;
+
+  if (additionalSeconds <= 0 || additionalSeconds > MAX_EXTENSION_SECONDS) {
+    throw new Error(`La durée d'extension doit être entre 1 et ${MAX_EXTENSION_SECONDS} secondes.`);
+  }
+
+  // Récupérer la vidéo originale
+  const originalVideo = await db.videoGeneration.findUnique({
+    where: { id: videoId },
+  });
+
+  if (!originalVideo) {
+    throw new Error('Vidéo originale introuvable.');
+  }
+
+  if (originalVideo.userId !== userId) {
+    throw new Error('Cette vidéo ne vous appartient pas.');
+  }
+
+  if (originalVideo.status !== 'completed') {
+    throw new Error('La vidéo originale doit être complétée avant de pouvoir l\'étendre.');
+  }
+
+  // Calculer la durée totale si on ajoute
+  const originalDuration = originalVideo.durationSeconds || 0;
+  const totalDuration = originalDuration + additionalSeconds;
+
+  if (totalDuration > MAX_TOTAL_DURATION_SECONDS) {
+    throw new Error(
+      `Durée totale maximale dépassée. La vidéo fait déjà ${originalDuration}s, ` +
+      `vous pouvez ajouter au maximum ${MAX_EXTENSION_SECONDS}s (total max: ${MAX_TOTAL_DURATION_SECONDS}s).`
+    );
+  }
+
+  // Calculer les frames pour l'extension
+  const fps = originalVideo.fps || 10;
+  const numFrames = additionalSeconds * fps;
+
+  // Générer la suite
+  const extensionPrompt = `Suite de la vidéo précédente. ${prompt}. Style cohérent avec la partie précédente.`;
+
+  const result = await processVideoGeneration(
+    userId,
+    extensionPrompt,
+    originalVideo.model || DEFAULT_MODEL,
+    originalVideo.provider || 'huggingface',
+    {
+      fps,
+      numFrames,
+      width: originalVideo.width || 640,
+      height: originalVideo.height || 480,
+      isExtended: true,
+      parentVideoId: videoId,
+    }
+  );
+
+  return result;
+}
+
+// ============================================================
+// Moteur de génération commun
+// ============================================================
+
+async function processVideoGeneration(
+  userId: string,
+  prompt: string,
+  model: string,
+  provider: string,
+  config: {
+    fps: number;
+    numFrames: number;
+    width: number;
+    height: number;
+    isExtended: boolean;
+    parentVideoId?: string;
+  }
+): Promise<VideoGenerationResult> {
+  const startTime = Date.now();
+  const modelConfig = AVAILABLE_MODELS[model];
+
+  if (!modelConfig) {
+    throw new Error(`Modèle non supporté: ${model}`);
+  }
+
+  const { fps, numFrames, width, height, isExtended, parentVideoId } = config;
 
   // Sauvegarder en base
   const record = await db.videoGeneration.create({
     data: {
-      userId, prompt, model, provider: modelConfig.provider,
-      mode: options?.mode || 't2v', status: 'pending',
+      userId, prompt, model, provider,
+      mode: isExtended ? 'extend' : 't2v',
+      status: 'pending',
       width, height, fps, numFrames, costUsd: 0,
+      metadata: isExtended && parentVideoId
+        ? JSON.stringify({ isExtended: true, parentVideoId })
+        : '{}',
     },
   });
 
   try {
-    // Mettre à jour le statut
     await db.videoGeneration.update({
       where: { id: record.id },
       data: { status: 'processing' },
@@ -104,12 +219,12 @@ export async function generateVideo(
     const apiKey = process.env.HUGGINGFACE_API_KEY || process.env.HF_API_KEY;
     const replicateKey = process.env.REPLICATE_API_TOKEN;
 
-    switch (modelConfig.provider) {
+    switch (provider) {
       case 'huggingface': {
         if (apiKey) {
           videoUrl = await generateVideoWithHuggingFace(prompt, modelConfig.modelName, apiKey);
         } else {
-          videoUrl = await generatePlaceholderVideo(prompt, 'huggingface');
+          videoUrl = await generatePlaceholderVideo(prompt, 'huggingface', model);
         }
         break;
       }
@@ -117,39 +232,46 @@ export async function generateVideo(
         if (replicateKey) {
           videoUrl = await generateVideoWithReplicate(prompt, modelConfig.modelName, replicateKey);
         } else {
-          videoUrl = await generatePlaceholderVideo(prompt, 'replicate');
+          videoUrl = await generatePlaceholderVideo(prompt, 'replicate', model);
         }
         break;
       }
       default:
-        videoUrl = await generatePlaceholderVideo(prompt, 'fallback');
+        videoUrl = await generatePlaceholderVideo(prompt, 'fallback', model);
     }
 
     const durationSeconds = numFrames / fps;
 
-    // Mettre à jour en base
     await db.videoGeneration.update({
       where: { id: record.id },
       data: {
         videoUrl, status: 'completed', costUsd: 0.005,
         durationSeconds, fps, numFrames,
+        metadata: isExtended && parentVideoId
+          ? JSON.stringify({ isExtended: true, parentVideoId, originalDuration: durationSeconds })
+          : JSON.stringify({ isExtended: false, originalDuration: durationSeconds }),
       },
     });
 
-    log.info('Video generated', { userId, model, durationMs: Date.now() - startTime });
+    log.info('Vidéo générée', {
+      userId, model, durationMs: Date.now() - startTime,
+      durationSeconds, isExtended,
+    });
 
     return {
       id: record.id,
       prompt,
       model,
-      provider: modelConfig.provider,
-      mode: options?.mode || 't2v',
+      provider,
+      mode: isExtended ? 'extend' : 't2v',
       videoUrl,
       status: 'completed',
       costUsd: 0.005,
       durationSeconds,
       width,
       height,
+      isExtended,
+      parentVideoId,
     };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Échec génération vidéo';
@@ -158,13 +280,13 @@ export async function generateVideo(
       data: { status: 'failed' },
     });
 
-    log.error('Video generation failed', { userId, model, error: errorMsg });
+    log.error('Échec génération vidéo', { userId, model, error: errorMsg });
     throw new Error(errorMsg);
   }
 }
 
 // ============================================================
-// Hugging Face
+// APIs externes
 // ============================================================
 
 async function generateVideoWithHuggingFace(
@@ -193,10 +315,6 @@ async function generateVideoWithHuggingFace(
   const base64 = Buffer.from(buffer).toString('base64');
   return `data:video/mp4;base64,${base64}`;
 }
-
-// ============================================================
-// Replicate
-// ============================================================
 
 async function generateVideoWithReplicate(
   prompt: string,
@@ -242,19 +360,8 @@ async function pollReplicateResult(url: string, apiKey: string, maxRetries = 60)
   throw new Error('Replicate video: timeout (2 min)');
 }
 
-// ============================================================
-// Placeholder (fallback gratuit)
-// ============================================================
-
-async function generatePlaceholderVideo(prompt: string, provider: string): Promise<string> {
-  // Utilise des vidéos placeholder gratuites (pexels, coverr)
+async function generatePlaceholderVideo(prompt: string, provider: string, model: string): Promise<string> {
   const seed = crypto.createHash('md5').update(prompt).digest('hex').substring(0, 8);
-  
-  // Fallback vers une vidéo placeholder colorée
-  const colors = ['3498db', 'e74c3c', '2ecc71', 'f39c12', '9b59b6'];
-  const color = colors[parseInt(seed.substring(0, 8), 16) % colors.length];
-  
-  // Utilise des vidéos libres de droits de Coverr (gratuit sans API key)
   return `https://coverr.co/redirect?s=mp4&token=${seed}`;
 }
 
@@ -280,19 +387,26 @@ export async function getUserVideos(
   ]);
 
   return {
-    videos: videos.map((v) => ({
-      id: v.id,
-      prompt: v.prompt,
-      model: v.model,
-      provider: v.provider,
-      mode: v.mode,
-      videoUrl: v.videoUrl,
-      status: v.status as 'pending' | 'processing' | 'completed' | 'failed',
-      costUsd: v.costUsd,
-      durationSeconds: v.durationSeconds,
-      width: v.width || 640,
-      height: v.height || 480,
-    })),
+    videos: videos.map((v) => {
+      let meta: { isExtended?: boolean; parentVideoId?: string } = {};
+      try { meta = JSON.parse(v.metadata || '{}'); } catch { /* ignore */ }
+
+      return {
+        id: v.id,
+        prompt: v.prompt,
+        model: v.model,
+        provider: v.provider,
+        mode: v.mode,
+        videoUrl: v.videoUrl,
+        status: v.status as 'pending' | 'processing' | 'completed' | 'failed',
+        costUsd: v.costUsd,
+        durationSeconds: v.durationSeconds,
+        width: v.width || 640,
+        height: v.height || 480,
+        isExtended: meta.isExtended || false,
+        parentVideoId: meta.parentVideoId,
+      };
+    }),
     total,
   };
 }
