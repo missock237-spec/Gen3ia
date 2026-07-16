@@ -1,2 +1,4 @@
-// Ancien fichier - voir orchestrator.ts pour la version actuelle
+// Shim - redirige vers orchestrator.ts
+import { agentOrchestrator } from './orchestrator';
+export { agentOrchestrator };
 export * from './orchestrator';
