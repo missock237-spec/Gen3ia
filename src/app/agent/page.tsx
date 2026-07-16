@@ -20,7 +20,7 @@ export default function AgentPage() {
             </div>
           </div>
           <div className="flex-1">
-            <AgentChat />
+            <AgentChat userId="default" />
           </div>
         </div>
       </div>
