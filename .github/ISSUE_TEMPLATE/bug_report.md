@@ -1,45 +1,44 @@
 ---
-name: 🐛 Bug Report
-about: Signaler un bug dans Genova AI
-labels: ["bug"]
-title: "[BUG] "
+name: Rapport de bug
+about: Signaler un problème pour nous aider à améliorer Genova
+title: '[BUG] '
+labels: bug
+assignees: ''
 ---
 
-## 🐛 Description du bug
+## Description du bug
 
-Une description claire et concise du bug.
+Description claire et concise du bug.
 
-## 🔄 Étapes pour reproduire
+## Étapes pour reproduire
 
 1. Aller sur '...'
-2. Cliquer sur '...'
-3. Faire défiler jusqu'à '...'
-4. Voir l'erreur
+2. Cliquer sur '....'
+3. Voir l'erreur
 
-## ✅ Comportement attendu
+## Comportement attendu
 
-Ce qui devrait se passer.
+Description claire de ce qui devrait se passer.
 
-## ❌ Comportement actuel
+## Comportement observé
 
-Ce qui se passe réellement.
+Description de ce qui se passe réellement.
 
-## 📸 Captures d'écran / Logs
+## Captures d'écran / Logs
 
-<!-- Si applicable, ajoutez des captures d'écran ou des logs d'erreur -->
+Si applicable, ajoute des captures d'écran ou les logs d'erreur.
 
 ```
-Collez les logs d'erreur ici
+Colle ici tes logs
 ```
 
-## 🖥️ Environnement
+## Environnement
 
-- OS: [ex: Ubuntu 22.04, macOS 14, Windows 11]
-- Navigateur: [ex: Chrome 126, Firefox 127]
-- Version de Genova: [ex: 1.0.0]
-- Mode de déploiement: [Vercel / Docker / Local dev]
-- Plan: [Free / Starter / Pro / Enterprise / Self-hosted]
+- OS : [ex: Ubuntu 22.04, macOS 14]
+- Node/Bun version : [ex: Bun 1.1.x]
+- Version Genova : [ex: 0.2.0 / commit hash]
+- Base de données : [ex: PostgreSQL 16]
 
-## 📌 Contexte supplémentaire
+## Contexte additionnel
 
-<!-- Tout autre information utile -->
+Tout autre contexte utile sur le problème.
