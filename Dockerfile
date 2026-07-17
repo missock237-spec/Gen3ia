@@ -4,7 +4,7 @@
 # ============================================================
 
 # ---- Stage 1 : Build ----
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 
 # Installer les dépendances de build
 RUN apk add --no-cache python3 make g++ curl openssl
@@ -28,7 +28,7 @@ COPY . .
 RUN npm run build
 
 # ---- Stage 2 : Production ----
-FROM node:20-alpine AS production
+FROM node:26-alpine AS production
 
 RUN apk add --no-cache curl openssl ca-certificates tzdata
 
