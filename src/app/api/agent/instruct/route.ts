@@ -1,1 +1,16 @@
-// route: POST /api/agent/instructimport { NextRequest, NextResponse } from 'next/server';import { agentOrchestrator } from '@/lib/agent/agent-orchestrator';export async function POST(request: NextRequest) {  try {    const { userId, instruction } = await request.json();    if (!userId || !instruction) {      return NextResponse.json({ error: 'userId et instruction requis' }, { status: 400 });    }    const result = await agentOrchestrator.instruct(userId, instruction);    return NextResponse.json(result);  } catch (error: any) {    return NextResponse.json({ error: error.message }, { status: 500 });  }}
+// route: POST /api/agent/instruct
+import { NextRequest, NextResponse } from 'next/server';
+import { agentOrchestrator } from '@/lib/agent/agent-orchestrator';
+
+export async function POST(request: NextRequest) {
+  try {
+    const { userId, instruction } = await request.json();
+    if (!userId || !instruction) {
+      return NextResponse.json({ error: 'userId et instruction requis' }, { status: 400 });
+    }
+    const result = await agentOrchestrator.instruct(userId, instruction);
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur inconnue" }, { status: 500 });
+  }
+}
