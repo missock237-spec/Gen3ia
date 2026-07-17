@@ -1,0 +1,18 @@
+openapi: 3.0.0
+info:
+  title: Genova API
+  version: 1.0.0
+  description: API de l agent autonome Genova
+paths:
+  /api/agent/instruct:
+    post:
+      summary: Envoyer une instruction
+      tags: [Agent]
+  /api/status:
+    get:
+      summary: Etat des fonctionnalites
+      tags: [Systeme]
+  /api/dashboard:
+    get:
+      summary: Tableau de bord
+      tags: [Systeme]
