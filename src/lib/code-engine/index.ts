@@ -1,7 +1,5 @@
 /**
- * Code Engine v3.0 — Module d'execution, generation et deploiement
- * 
- * Platforme universelle pour les agents de code autonomes.
+ * Code Engine v3.0 — Plateforme universelle d'agents de code autonomes
  * 
  * Modules:
  * - sandbox: Execution securisee de code
@@ -9,6 +7,7 @@
  * - generator: Generation automatique de code par IA
  * - deployer: Deploiement one-click en API live
  * - web-agent-core: Moteur d'autonomie pour agents
+ * - orchestrator-core: Orchestration multi-agents
  * - api-gateway: Proxy securise vers API externes
  * - api-keys: Gestion des cles API
  */
@@ -64,6 +63,19 @@ export {
 } from './web-agent-core';
 export type { AgentAction, ActionResult, AgentState, AgentMemory } from './web-agent-core';
 
+// Orchestrateur multi-agents (NOUVEAU)
+export {
+  orchestrator,
+} from './orchestrator-core';
+export type {
+  OrchestrationGoal,
+  SubTask,
+  DeployedAgent,
+  OrchestrationReport,
+  AgentRole,
+  TaskStatus,
+} from './orchestrator-core';
+
 // API Gateway securise
 export {
   callApi,
@@ -94,7 +106,7 @@ export const VERSION = '3.0.0';
 export const CODE_ENGINE = {
   name: 'Code Engine',
   version: '3.0.0',
-  modules: ['sandbox', 'realtime', 'generator', 'deployer', 'agents', 'gateway'],
+  modules: ['sandbox', 'realtime', 'generator', 'deployer', 'agents', 'orchestrator', 'gateway'],
   languages: ['javascript', 'typescript', 'python', 'html'],
   features: [
     'Execution securisee avec timeout',
@@ -102,6 +114,7 @@ export const CODE_ENGINE = {
     'Generation automatique de code par IA',
     'Deploiement one-click en API live',
     'Agents de code autonomes avec memoire',
+    'Orchestration multi-agents (12 roles)',
     'API Gateway securise (proxy credentials)',
     'Analyse de securite et scoring',
   ],
