@@ -36,7 +36,8 @@ model CodeSession {
   updatedAt       DateTime @updatedAt
   lastExecutedAt  DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions CodeExecution[]
 
   @@index([userId])
   @@index([shareToken])
