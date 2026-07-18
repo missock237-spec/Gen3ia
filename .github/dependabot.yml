@@ -3,9 +3,8 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
+      interval: "daily"
+    open-pull-requests-limit: 25
     labels:
       - "dependencies"
       - "security"
@@ -24,11 +23,17 @@ updates:
         update-types:
           - "patch"
           - "minor"
+    ignore:
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
+      day: "monday"
     labels:
       - "dependencies"
       - "ci"
@@ -39,7 +44,11 @@ updates:
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
+      day: "monday"
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
