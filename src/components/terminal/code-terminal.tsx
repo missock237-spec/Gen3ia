@@ -271,7 +271,7 @@ export function CodeTerminal({
           style={{ height: '160px', minHeight: '100px' }}
         >
           {output.length === 0 ? (
-            <div className="text-[#585b70] italic">> Terminal prêt. Exécutez du code pour voir la sortie.</div>
+            <div className="text-[#585b70] italic">{'>'} Terminal prêt. Exécutez du code pour voir la sortie.</div>
           ) : (
             output.map((line, i) => (
               <div key={i} className={`whitespace-pre-wrap break-all ${
