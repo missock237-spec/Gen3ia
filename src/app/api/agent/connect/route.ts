@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { agentOrchestrator } from '@/lib/agent/agent-orchestrator';
+import { agentOrchestrator, Platform } from '@/lib/agent/agent-orchestrator';
 import { isFeatureActive } from '@/lib/config/features';
+
+const VALID_PLATFORMS = new Set<Platform>([
+  'gmail', 'google_calendar', 'google_drive', 'slack', 'discord',
+  'github', 'notion', 'twitter', 'linkedin', 'shopify', 'stripe',
+  'supabase', 'web_browser'
+]);
 
 export async function POST(request: NextRequest) {
   try {
     const { userId, platform, authCode } = await request.json();
     if (!userId || !platform || !authCode) {
       return NextResponse.json({ error: 'userId, platform et authCode requis' }, { status: 400 });
+    }
+    if (!VALID_PLATFORMS.has(platform)) {
+      return NextResponse.json({ error: 'Plateforme non valide: ' + platform }, { status: 400 });
     }
     const platformFeatures: {[key:string]: string} = {
       gmail: 'google_oauth',
@@ -35,11 +44,14 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
-  const platform = searchParams.get('platform') as any;
+  const platform = searchParams.get('platform');
   if (!userId || !platform) {
     return NextResponse.json({ error: 'userId et platform requis' }, { status: 400 });
   }
+  if (!VALID_PLATFORMS.has(platform as Platform)) {
+    return NextResponse.json({ error: 'Plateforme non valide: ' + platform }, { status: 400 });
+  }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const url = agentOrchestrator.getOAuthURL(platform, appUrl + '/api/agent/oauth/callback');
+  const url = agentOrchestrator.getOAuthURL(platform as Platform, appUrl + '/api/agent/oauth/callback');
   return NextResponse.json({ url, requiresConfig: !isFeatureActive('google_oauth') });
 }
