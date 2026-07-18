@@ -1,0 +1,14 @@
+name: "CodeQL Security Analysis"
+
+paths:
+  - src
+paths-ignore:
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - '**/*.spec.ts'
+  - '**/__tests__/**'
+  - '**/node_modules/**'
+  - '**/*.generated.*'
+
+queries:
+  - uses: security-and-quality
