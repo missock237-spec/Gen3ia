@@ -1,1 +1,34 @@
-import { NextResponse } from 'next/server'; import { getFeatures, getActiveFeatures, getInactiveFeatures, requireFeature } from '@/lib/config/features'; import type { FeatureKey } from '@/lib/config/features'; export async function GET(request: Request) { const { searchParams } = new URL(request.url); const feature = searchParams.get('feature') as FeatureKey | null; if (feature) { const result = requireFeature(feature); const allFeatures = getFeatures(); const f = allFeatures.find(x => x.key === feature); return NextResponse.json({ key: feature, name: f?.name || feature, active: result.ok, message: result.message, envVars: f?.envVars || [], }); } return NextResponse.json({ all: getFeatures(), active: getActiveFeatures(), inactive: getInactiveFeatures(), timestamp: new Date().toISOString(), }); }
+import { NextResponse } from 'next/server';
+import { gatewayStats } from '@/lib/code-engine/api-gateway';
+import { autonomousAgent } from '@/lib/code-engine/web-agent-core';
+
+export async function GET() {
+  const agentStats = autonomousAgent.getAgentStats();
+  const gwStats = gatewayStats();
+
+  return NextResponse.json({
+    name: 'Genova AI Platform',
+    version: '3.0.0',
+    status: 'operational',
+    uptime: process.uptime(),
+    modules: {
+      codeEngine: {
+        version: '3.0.0',
+        features: ['sandbox', 'realtime', 'generator', 'deployer', 'agents', 'gateway'],
+        status: 'active',
+      },
+      agents: agentStats,
+      gateway: gwStats,
+    },
+    api: {
+      total: 22,
+      endpoints: {
+        agent: ['/api/agent/connect', '/api/agent/disconnect', '/api/agent/instruct', '/api/agent/approve', '/api/agent/oauth'],
+        code: ['/api/code/execute', '/api/code/sessions', '/api/code/gateway', '/api/code/generate', '/api/code/deploy', '/api/code/agents'],
+        payments: ['/api/mobile-money/*'],
+        integrations: ['/api/integrations/*'],
+        system: ['/api/status', '/api/dashboard', '/api/docs', '/api/sso/*'],
+      },
+    },
+  });
+}
