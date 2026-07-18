@@ -1,13 +1,19 @@
 /**
- * Code Engine — Module d'execution de code et gateway API securise
+ * Code Engine v3.0 — Module d'execution, generation et deploiement
  * 
- * Utilisation:
- * ```ts
- * import { executeCode, callApi } from '@/lib/code-engine';
- * ```
+ * Platforme universelle pour les agents de code autonomes.
+ * 
+ * Modules:
+ * - sandbox: Execution securisee de code
+ * - realtime-engine: Execution temps reel avec streaming
+ * - generator: Generation automatique de code par IA
+ * - deployer: Deploiement one-click en API live
+ * - web-agent-core: Moteur d'autonomie pour agents
+ * - api-gateway: Proxy securise vers API externes
+ * - api-keys: Gestion des cles API
  */
 
-// Sandbox d'execution
+// Execution securisee
 export {
   executeCode,
   validateCode,
@@ -18,22 +24,47 @@ export {
   deleteSession,
   listUserSessions,
 } from './sandbox';
+export type { ExecutionRequest, ExecutionResult, CodeStudioSession } from './sandbox';
 
-export type {
-  ExecutionRequest,
-  ExecutionResult,
-  CodeStudioSession,
-} from './sandbox';
-
-// Cles API
+// Execution temps reel
 export {
-  registerApiKey,
-  validateApiKey,
-  revokeApiKey,
-  listUserKeys,
-} from './api-keys';
+  createRealtimeExecution,
+  executeRealtime,
+  cancelExecution,
+  getExecutionHistory,
+  getExecution,
+  forkExecution,
+  addExecutionListener,
+  analyzeCodeSecurity,
+  realtimeEngine,
+} from './realtime-engine';
+export type { ExecutionEvent, RealtimeExecution } from './realtime-engine';
 
-// API Gateway securise pour agents de code
+// Generation de code par IA
+export {
+  generateCode,
+  generator,
+} from './generator';
+export type { GenerationRequest, GenerationResult } from './generator';
+
+// Deploiement one-click
+export {
+  deployCode,
+  executeDeployment,
+  listDeployments,
+  deleteDeployment,
+  renewDeployment,
+  deployer,
+} from './deployer';
+export type { DeployRequest, DeployResult } from './deployer';
+
+// Agent autonome
+export {
+  autonomousAgent,
+} from './web-agent-core';
+export type { AgentAction, ActionResult, AgentState, AgentMemory } from './web-agent-core';
+
+// API Gateway securise
 export {
   callApi,
   storeCredential,
@@ -48,24 +79,30 @@ export {
   getAuditLog,
   gatewayStats,
 } from './api-gateway';
+export type { ApiProvider, HttpMethod, GatewayRequest, GatewayResponse, GatewayPermission, AuditEntry } from './api-gateway';
 
-export type {
-  ApiProvider,
-  HttpMethod,
-  GatewayRequest,
-  GatewayResponse,
-  GatewayPermission,
-  AuditEntry,
-} from './api-gateway';
+// Cles API
+export {
+  registerApiKey,
+  validateApiKey,
+  revokeApiKey,
+  listUserKeys,
+} from './api-keys';
 
-/**
- * Verifie si le code engine est disponible
- */
-export function isCodeEngineAvailable(): boolean {
-  return typeof globalThis !== 'undefined';
-}
-
-/**
- * Retourne la version du module
- */
-export const VERSION = '2.0.0';
+// Version
+export const VERSION = '3.0.0';
+export const CODE_ENGINE = {
+  name: 'Code Engine',
+  version: '3.0.0',
+  modules: ['sandbox', 'realtime', 'generator', 'deployer', 'agents', 'gateway'],
+  languages: ['javascript', 'typescript', 'python', 'html'],
+  features: [
+    'Execution securisee avec timeout',
+    'Streaming temps reel et pas-a-pas',
+    'Generation automatique de code par IA',
+    'Deploiement one-click en API live',
+    'Agents de code autonomes avec memoire',
+    'API Gateway securise (proxy credentials)',
+    'Analyse de securite et scoring',
+  ],
+};
