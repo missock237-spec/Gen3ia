@@ -1,13 +1,13 @@
 /**
- * Code Engine — Module d'execution de code securise
+ * Code Engine — Module d'execution de code et gateway API securise
  * 
  * Utilisation:
  * ```ts
- * import { executeCode, checkExecutionQuota, createSession } from '@/lib/code-engine';
- * const result = await executeCode({ code: 'console.log("hello")', language: 'javascript' });
+ * import { executeCode, callApi } from '@/lib/code-engine';
  * ```
  */
 
+// Sandbox d'execution
 export {
   executeCode,
   validateCode,
@@ -25,12 +25,38 @@ export type {
   CodeStudioSession,
 } from './sandbox';
 
+// Cles API
 export {
   registerApiKey,
   validateApiKey,
   revokeApiKey,
   listUserKeys,
 } from './api-keys';
+
+// API Gateway securise pour agents de code
+export {
+  callApi,
+  storeCredential,
+  getCredential,
+  deleteCredential,
+  listCredentials,
+  grantPermission,
+  revokePermission,
+  checkPermission,
+  createAgentSession,
+  validateAgentSession,
+  getAuditLog,
+  gatewayStats,
+} from './api-gateway';
+
+export type {
+  ApiProvider,
+  HttpMethod,
+  GatewayRequest,
+  GatewayResponse,
+  GatewayPermission,
+  AuditEntry,
+} from './api-gateway';
 
 /**
  * Verifie si le code engine est disponible
@@ -42,4 +68,4 @@ export function isCodeEngineAvailable(): boolean {
 /**
  * Retourne la version du module
  */
-export const VERSION = '1.0.0';
+export const VERSION = '2.0.0';
