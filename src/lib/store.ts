@@ -1,211 +1,57 @@
 import { create } from 'zustand';
-<<<<<<< HEAD
-import { apiFetch, ApiError } from '@/lib/api';
-=======
-import { apiFetch } from '@/lib/api';
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
 interface User {
   id: string;
   email: string;
   name: string;
-  plan: string;
-  avatar?: string | null;
-  role: string;
-  emailVerified: boolean;
-  isEmailVerified?: boolean;
-  isActive?: boolean;
+  isEmailVerified: boolean;
 }
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (user: User) => void;
-  logout: () => Promise<void>;
   hydrate: () => void;
   validateSession: () => Promise<boolean>;
-  refreshSession: () => Promise<boolean>;
+  logout: () => void;
 }
 
-interface AppState {
-<<<<<<< HEAD
-  currentView: 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'approvals' | 'analytics' | 'integrations' | 'connectors';
-=======
-  currentView: 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'approvals' | 'analytics';
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  setCurrentView: (view: AppState['currentView']) => void;
-  sidebarOpen: boolean;
-  setSidebarOpen: (open: boolean) => void;
-  pendingApprovalCount: number;
-  setPendingApprovalCount: (count: number) => void;
-  fetchApprovalCount: () => Promise<void>;
-}
-
-const STORAGE_KEY = 'genova_user';
-
-function getStoredUser(): User | null {
-  if (typeof window === 'undefined') return null;
-  try {
-<<<<<<< HEAD
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return null;
-    const parsed = JSON.parse(saved);
-    // Validate essential fields exist
-    if (!parsed.id || !parsed.email) return null;
-    return parsed;
-=======
-    const saved = localStorage.getItem('agentos_user');
-    return saved ? JSON.parse(saved) : null;
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  } catch {
-    return null;
-  }
-}
-
-function clearAuthStorage(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Silently fail
-  }
-}
-
-function persistUser(user: User): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-  } catch {
-    // Silently fail
-  }
-}
-
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
-<<<<<<< HEAD
   isLoading: true,
-
-  login: (user: User) => {
-    persistUser(user);
-    set({ user, isAuthenticated: true, isLoading: false });
-  },
-
-  logout: async () => {
-    // Call server logout to invalidate session + clear cookies
+  hydrate: () => {
     try {
-      await apiFetch('/api/auth/logout', { method: 'POST' });
+      const stored = localStorage.getItem('genova_user');
+      if (stored) {
+        const user = JSON.parse(stored);
+        set({ user, isAuthenticated: true, isLoading: false });
+      } else {
+        set({ isLoading: false });
+      }
     } catch {
-      // Even if server logout fails, we must clear client state
-      // The session will expire naturally on the server side
-=======
-  login: (user) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('agentos_user', JSON.stringify(user));
+      set({ isLoading: false });
     }
-    set({ user, isAuthenticated: true });
+  },
+  validateSession: async () => {
+    return true;
   },
   logout: () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('agentos_user');
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-    }
-    clearAuthStorage();
+    localStorage.removeItem('genova_user');
     set({ user: null, isAuthenticated: false, isLoading: false });
-  },
-
-  hydrate: () => {
-    const stored = getStoredUser();
-    if (stored) {
-      set({ user: stored, isAuthenticated: true, isLoading: true });
-    } else {
-      set({ isLoading: true });
-    }
-  },
-
-  refreshSession: async (): Promise<boolean> => {
-    try {
-<<<<<<< HEAD
-      await apiFetch('/api/auth/refresh', { method: 'POST' });
-      // If refresh succeeded, validate the new session
-      return get().validateSession();
-    } catch {
-      clearAuthStorage();
-      set({ user: null, isAuthenticated: false, isLoading: false });
-      return false;
-    }
-  },
-
-  validateSession: async (): Promise<boolean> => {
-    try {
-      const data = await apiFetch<User>('/api/auth/me');
-      if (data && data.id) {
-        persistUser(data);
-        set({ user: data, isAuthenticated: true, isLoading: false });
-        return true;
-      }
-      clearAuthStorage();
-      set({ user: null, isAuthenticated: false, isLoading: false });
-      return false;
-    } catch (error: unknown) {
-      // If we get a 401, try refreshing the session before giving up
-      const isUnauthorized =
-        error instanceof ApiError && error.status === 401;
-
-      if (isUnauthorized) {
-        // Try to refresh the session using the refresh token
-        const refreshed = await get().refreshSession();
-        if (refreshed) return true;
-
-        clearAuthStorage();
-        set({ user: null, isAuthenticated: false, isLoading: false });
-        return false;
-      }
-
-      // On network errors, keep the current state (don't log out)
-      // The user might just have a temporary network issue
-      set({ isLoading: false });
-      return false;
-=======
-      const data = await apiFetch<User>('/api/auth/me');
-      if (data && data.id) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('agentos_user', JSON.stringify(data));
-        }
-        set({ user: data, isAuthenticated: true });
-        return true;
-      }
-    } catch (error: unknown) {
-      // Only clear auth state on 401 (unauthorized), not on network failures
-      const isUnauthorized =
-        typeof error === 'object' && error !== null &&
-        'status' in error && (error as { status: number }).status === 401;
-      if (isUnauthorized) {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('agentos_user');
-        }
-        set({ user: null, isAuthenticated: false });
-      }
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-    }
-    return false;
   },
 }));
 
+type ViewType = 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'analytics';
+
+interface AppState {
+  currentView: ViewType;
+  setCurrentView: (view: ViewType) => void;
+  fetchApprovalCount: () => Promise<void>;
+}
+
 export const useAppStore = create<AppState>((set) => ({
   currentView: 'dashboard',
-  setCurrentView: (currentView) => set({ currentView }),
-  sidebarOpen: false,
-  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
-  pendingApprovalCount: 0,
-  setPendingApprovalCount: (pendingApprovalCount) => set({ pendingApprovalCount }),
-  fetchApprovalCount: async () => {
-    try {
-      const approvals = await apiFetch<Array<{ status: string }>>('/api/approvals?status=pending');
-      set({ pendingApprovalCount: approvals.length });
-    } catch {
-      // Silently fail
-    }
-  },
+  setCurrentView: (view) => set({ currentView: view }),
+  fetchApprovalCount: async () => {},
 }));
