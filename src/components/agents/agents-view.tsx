@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Gift, Timer } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { AdProvider, useAdContext } from '@/components/shared/ad-context';
 import { AdBanner } from '@/components/shared/ad-banner';
@@ -15,12 +15,12 @@ interface Message {
 
 function ChatMessages() {
   const { user } = useAuthStore();
-  const { incMessageCount, trackAdEvent, totalRewards } = useAdContext();
+  const { incMessageCount, trackAdEvent, creditBalance, lastRewardMessage, rewardStats } = useAdContext();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'agent',
-      content: 'Bonjour ! Je suis votre assistant Genova AI. Comment puis-je vous aider aujourd\'hui ?',
+      content: "Bonjour ! Je suis votre assistant Genova AI. Comment puis-je vous aider aujourd'hui ?",
       timestamp: new Date(),
     },
   ]);
@@ -29,6 +29,7 @@ function ChatMessages() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const userPlan = user?.plan || 'free';
+  const isPaid = userPlan !== 'free';
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -49,7 +50,7 @@ function ChatMessages() {
     setIsTyping(true);
     incMessageCount();
 
-    // Simulate agent response
+    // Simule la réponse de l'agent
     setTimeout(() => {
       const agentMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -69,14 +70,37 @@ function ChatMessages() {
     }
   };
 
+  const remainingToday = rewardStats.maxPerDay - rewardStats.balance.today;
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header avec récompenses */}
-      {userPlan !== 'free' && totalRewards > 0 && (
-        <div className="flex items-center justify-end gap-2 px-4 py-2 border-b bg-gradient-to-r from-emerald-500/5 to-green-500/5">
-          <Sparkles className="h-4 w-4 text-emerald-500" />
+      {/* Header récompenses pour utilisateurs payants */}
+      {isPaid && (
+        <div className="flex items-center justify-between px-4 py-2 border-b bg-gradient-to-r from-emerald-500/5 to-green-500/5">
+          <div className="flex items-center gap-2">
+            <Gift className="h-4 w-4 text-emerald-500" />
+            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <strong>{creditBalance.total}</strong> crédit{creditBalance.total > 1 ? 's' : ''} gagné{creditBalance.total > 1 ? 's' : ''}
+            </span>
+            {remainingToday > 0 && (
+              <span className="text-[10px] text-muted-foreground">
+                ({remainingToday} encore disponibles aujourd'hui)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Timer className="h-3 w-3" />
+            <span>1 pub = {rewardStats.creditsPerView} crédit | 1 clic = {rewardStats.creditsPerClick} crédits</span>
+          </div>
+        </div>
+      )}
+
+      {/* Notification de récompense */}
+      {lastRewardMessage && (
+        <div className="px-4 py-1.5 bg-emerald-500/10 border-b border-emerald-500/20 text-center">
           <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-            {totalRewards} crédit{totalRewards > 1 ? 's' : ''} gagné{totalRewards > 1 ? 's' : ''} en consultant les pubs
+            <Sparkles className="h-3 w-3 inline mr-1" />
+            {lastRewardMessage}
           </span>
         </div>
       )}
@@ -110,15 +134,15 @@ function ChatMessages() {
               )}
             </div>
 
-            {/* 🎯 PUB APRÈS CHAQUE RÉPONSE DE L'AGENT (sauf le message de bienvenue) */}
+            {/* 🎯 PUB APRÈS CHAQUE RÉPONSE DE L'AGENT */}
             {msg.role === 'agent' && idx > 0 && (
               <div className="ml-11 mt-2">
                 <AdBanner
                   userPlan={userPlan}
                   placement="agent-response"
                   messageIndex={idx}
-                  onAdViewed={() => trackAdEvent(`ad_response_${idx}`, 'view')}
-                  onAdClicked={() => trackAdEvent(`ad_response_${idx}`, 'click')}
+                  onAdViewed={() => trackAdEvent(`ad_response_${idx}`, 'view', userPlan)}
+                  onAdClicked={() => trackAdEvent(`ad_response_${idx}`, 'click', userPlan)}
                 />
               </div>
             )}
@@ -168,10 +192,8 @@ function ChatMessages() {
 }
 
 export function AgentsView() {
-  const { user } = useAuthStore();
-
   return (
-    <AdProvider userPlan={user?.plan || 'free'}>
+    <AdProvider>
       <div className="flex flex-col h-[calc(100vh-12rem)]">
         <div className="flex-1 rounded-xl border bg-card overflow-hidden">
           <ChatMessages />

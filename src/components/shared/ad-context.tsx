@@ -1,94 +1,95 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import {
+  awardAdReward,
+  getCreditBalance,
+  getRewardStats,
+  syncRewardsWithServer,
+  getCreditBalance as getBalance,
+} from '@/lib/ad-rewards';
 
-interface AdEvent {
-  adId: string;
-  type: 'view' | 'click' | 'dismiss';
-  timestamp: string;
-  plan: string;
+interface CreditBalance {
+  total: number;
+  today: number;
+  thisWeek: number;
+  lastUpdated: string;
 }
 
 interface AdContextType {
-  /** Compteur de messages pour déclencher les pubs */
+  /** Compteur de messages */
   messageCount: number;
   incMessageCount: () => void;
-  resetMessageCount: () => void;
-  
-  /** Récompenses gagnées */
-  totalRewards: number;
-  
-  /** Enregistrer un événement pub */
-  trackAdEvent: (adId: string, type: 'view' | 'click' | 'dismiss') => void;
-  
-  /** Voir si une pub doit s'afficher après ce message */
-  shouldShowAd: () => boolean;
-  
-  /** Dernière pub affichée */
-  lastAdIndex: number;
-  setLastAdIndex: (idx: number) => void;
+  /** Solde de crédits réels */
+  creditBalance: CreditBalance;
+  /** Récompenser une vue/click de pub */
+  trackAdEvent: (adId: string, type: 'view' | 'click' | 'dismiss', userPlan: string) => void;
+  /** Dernier message de récompense */
+  lastRewardMessage: string | null;
+  /** Stats des limites */
+  rewardStats: ReturnType<typeof getRewardStats>;
 }
 
 const AdContext = createContext<AdContextType | null>(null);
 
-export function AdProvider({ children, userPlan = 'free' }: { children: ReactNode; userPlan?: string }) {
+export function AdProvider({ children }: { children: ReactNode }) {
   const [messageCount, setMessageCount] = useState(0);
-  const [totalRewards, setTotalRewards] = useState(0);
-  const [lastAdIndex, setLastAdIndex] = useState(-1);
-  const [adHistory, setAdHistory] = useState<AdEvent[]>([]);
+  const [creditBalance, setCreditBalance] = useState<CreditBalance>({ total: 0, today: 0, thisWeek: 0, lastUpdated: new Date().toISOString() });
+  const [lastRewardMessage, setLastRewardMessage] = useState<string | null>(null);
+  const [rewardStats, setRewardStats] = useState(() => getRewardStats());
 
-  const isPaid = userPlan !== 'free';
+  // Charger le solde au montage
+  useEffect(() => {
+    setCreditBalance(getCreditBalance());
+    setRewardStats(getRewardStats());
+
+    // Synchroniser avec le serveur toutes les 60s
+    const interval = setInterval(() => {
+      syncRewardsWithServer();
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const incMessageCount = useCallback(() => {
     setMessageCount(prev => prev + 1);
   }, []);
 
-  const resetMessageCount = useCallback(() => {
-    setMessageCount(0);
+  const trackAdEvent = useCallback((adId: string, type: 'view' | 'click' | 'dismiss', userPlan: string) => {
+    // Logger l'événement
+    fetch('/api/analytics/ad-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adId, type, timestamp: new Date().toISOString(), plan: userPlan }),
+    }).catch(() => {});
+
+    // Attribuer les récompenses via le système anti-abuse
+    if (type === 'view' || type === 'click') {
+      const result = awardAdReward(adId, type, userPlan);
+      if (result.success) {
+        setCreditBalance(prev => ({
+          ...prev,
+          total: result.balance?.total ?? prev.total + (result.credits || 0),
+          today: result.balance?.today ?? prev.today + (result.credits || 0),
+          lastUpdated: new Date().toISOString(),
+        }));
+        setLastRewardMessage(result.message || null);
+        setRewardStats(getRewardStats());
+
+        // Effacer le message après 3 secondes
+        setTimeout(() => setLastRewardMessage(null), 3000);
+      }
+    }
   }, []);
-
-  const shouldShowAd = useCallback(() => {
-    if (messageCount === 0) return false;
-    // Affiche une pub tous les 3 messages pour les free, tous les 5 pour les payants
-    return isPaid 
-      ? messageCount % 5 === 0 && messageCount > 0
-      : messageCount % 3 === 0;
-  }, [messageCount, isPaid]);
-
-  const trackAdEvent = useCallback((adId: string, type: 'view' | 'click' | 'dismiss') => {
-    const event: AdEvent = {
-      adId,
-      type,
-      timestamp: new Date().toISOString(),
-      plan: userPlan,
-    };
-    setAdHistory(prev => [...prev, event]);
-
-    // Récompense pour les utilisateurs payants
-    if (isPaid && (type === 'view' || type === 'click')) {
-      setTotalRewards(prev => prev + 1);
-    }
-
-    // Envoi à l'API pour analytics
-    if (typeof window !== 'undefined') {
-      fetch('/api/analytics/ad-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(event),
-      }).catch(() => {});
-    }
-  }, [userPlan, isPaid]);
 
   return (
     <AdContext.Provider value={{
       messageCount,
       incMessageCount,
-      resetMessageCount,
-      totalRewards,
+      creditBalance,
       trackAdEvent,
-      shouldShowAd,
-      lastAdIndex,
-      setLastAdIndex,
+      lastRewardMessage,
+      rewardStats,
     }}>
       {children}
     </AdContext.Provider>
