@@ -14,8 +14,20 @@ import { AnalyticsView } from '@/components/analytics/analytics-view';
 import IntegrationsView from '@/components/integrations/integrations-view';
 import ConnectorsView from '@/components/connectors/connectors-view';
 import { ThemeProvider } from 'next-themes';
+<<<<<<< HEAD
 import { Loader2 } from 'lucide-react';
 import { GenovaLogo } from '@/components/ui/genova-logo';
+=======
+import { motion, AnimatePresence } from 'framer-motion';
+
+const viewComponents = {
+  dashboard: DashboardView,
+  agents: AgentsView,
+  automation: AutomationView,
+  guardrails: GuardrailsView,
+  coordination: CoordinationView,
+};
+>>>>>>> 393da2d (34435f28-a1d4-4c91-9d7c-40c579ff6a46)
 
 function AppContent() {
   const { isAuthenticated, isLoading, user } = useAuthStore();
@@ -23,7 +35,6 @@ function AppContent() {
   const hydrateRef = useRef(false);
   const validatedRef = useRef(false);
 
-  // Hydrate auth from localStorage only once on mount
   useEffect(() => {
     if (!hydrateRef.current) {
       hydrateRef.current = true;
@@ -79,12 +90,15 @@ function AppContent() {
     return null;
   }
 
+  const ViewComponent = viewComponents[currentView];
+
   return (
     <div className="min-h-screen flex bg-background grid-pattern">
       <AppSidebar />
       <main className="flex-1 flex flex-col min-w-0">
         <AppHeader />
         <div className="flex-1 p-4 sm:p-6 overflow-auto">
+<<<<<<< HEAD
           {currentView === 'dashboard' && <DashboardView />}
           {currentView === 'agents' && <AgentsView />}
           {currentView === 'automation' && <AutomationView />}
@@ -95,6 +109,19 @@ function AppContent() {
           {currentView === 'analytics' && <AnalyticsView />}
           {currentView === 'integrations' && <IntegrationsView />}
           {currentView === 'connectors' && <ConnectorsView />}
+=======
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentView}
+              initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -20, filter: 'blur(4px)' }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+            >
+              <ViewComponent />
+            </motion.div>
+          </AnimatePresence>
+>>>>>>> 393da2d (34435f28-a1d4-4c91-9d7c-40c579ff6a46)
         </div>
       </main>
     </div>
