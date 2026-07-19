@@ -5,6 +5,7 @@ interface User {
   email: string;
   name: string;
   isEmailVerified: boolean;
+  plan: string;
 }
 
 interface AuthState {
@@ -42,7 +43,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 }));
 
-type ViewType = 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'analytics';
+type ViewType = 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'analytics' | 'billing';
 
 interface AppState {
   currentView: ViewType;
