@@ -17,24 +17,21 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { packageId, phone, operator } = body;
-
+    const { packageId, customerEmail, customerName } = body;
     const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
     if (!pkg) {
       return NextResponse.json({ error: "Pack de crédits invalide" }, { status: 400 });
     }
-
     const reference = `GENOVA-CREDIT-${packageId}-${Date.now()}`;
     const payment = await initiatePayment({
       amount: pkg.price,
-      currency: process.env.SEBPAY_DEFAULT_CURRENCY || "XAF",
-      phone: phone || "",
-      operator: operator || (process.env.SEBPAY_DEFAULT_OPERATOR as any) || "MTN",
+      currency: "XAF",
       description: `${pkg.name} - ${pkg.credits} crédits Genova AI`,
       reference,
       callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/webhook`,
+      customerEmail,
+      customerName,
     });
-
     return NextResponse.json({ payment, package: pkg, reference });
   } catch (err) {
     return NextResponse.json(

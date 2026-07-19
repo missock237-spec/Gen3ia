@@ -2,8 +2,7 @@
  * SebPay Africa - Service de paiement Mobile Money
  * API REST pour intégration des paiements Mobile Money dans 15 pays africains
  * 
- * Endpoint de test: https://sandbox.sebpay.africa/api/v1
- * Documentation: https://sebpay.africa/docs
+ * Site: https://sebpay.africa
  */
 
 interface SebPayConfig {
@@ -16,12 +15,12 @@ interface SebPayConfig {
 interface SebPayPaymentRequest {
   amount: number;
   currency: string;
-  phone: string;
-  operator: 'MTN' | 'ORANGE' | 'MOOV' | 'EXPRESSU' | 'AIRTEL' | 'FREEMONEY' | 'WAVE';
   description: string;
   reference: string;
   callbackUrl?: string;
   redirectUrl?: string;
+  customerEmail?: string;
+  customerName?: string;
 }
 
 interface SebPayPaymentResponse {
@@ -37,8 +36,6 @@ interface SebPayTransaction {
   reference: string;
   amount: number;
   currency: string;
-  phone: string;
-  operator: string;
   status: 'pending' | 'success' | 'failed' | 'cancelled';
   description: string;
   createdAt: string;
@@ -72,7 +69,7 @@ function getHeaders(): HeadersInit {
 }
 
 /**
- * Initier un paiement Mobile Money via SebPay
+ * Initier un paiement via SebPay (Mobile Money automatique)
  */
 export async function initiatePayment(
   payment: SebPayPaymentRequest
@@ -83,12 +80,12 @@ export async function initiatePayment(
     body: JSON.stringify({
       amount: payment.amount,
       currency: payment.currency || 'XAF',
-      phone: payment.phone,
-      operator: payment.operator,
       description: payment.description,
       reference: payment.reference,
       callback_url: payment.callbackUrl,
       redirect_url: payment.redirectUrl,
+      customer_email: payment.customerEmail,
+      customer_name: payment.customerName,
     }),
   });
 
@@ -153,7 +150,6 @@ export const PLANS = [
       { name: 'Basic agent tools', included: true },
       { name: '3 scheduled tasks', included: true },
       { name: 'Advanced guardrails', included: false },
-      { name: 'Web monitors', included: false },
       { name: 'Priority support', included: false },
     ],
   },
