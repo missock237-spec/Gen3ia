@@ -1,12 +1,15 @@
 /**
  * SebPay Africa - Service de paiement Mobile Money
- * API REST pour intégration des paiements Mobile Money dans 15 pays africains
- * 
  * Site: https://sebpay.africa
+ * 
+ * Configuration des clés :
+ *   SEBPAY_PUBLIC_KEY  = Identifiant public du marchand
+ *   SEBPAY_SECRET_KEY  = Clé secrète pour signer les requêtes
+ *   SEBPAY_ENVIRONMENT = sandbox | production
  */
 
 interface SebPayConfig {
-  apiKey: string;
+  publicKey: string;
   secretKey: string;
   environment: 'sandbox' | 'production';
   webhookSecret: string;
@@ -31,28 +34,12 @@ interface SebPayPaymentResponse {
   message: string;
 }
 
-interface SebPayTransaction {
-  id: string;
-  reference: string;
-  amount: number;
-  currency: string;
-  status: 'pending' | 'success' | 'failed' | 'cancelled';
-  description: string;
-  createdAt: string;
-  updatedAt: string;
-  fees?: number;
-}
-
-let config: SebPayConfig = {
-  apiKey: process.env.SEBPAY_API_KEY || '',
+const config: SebPayConfig = {
+  publicKey: process.env.SEBPAY_PUBLIC_KEY || '',
   secretKey: process.env.SEBPAY_SECRET_KEY || '',
   environment: (process.env.SEBPAY_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
   webhookSecret: process.env.SEBPAY_WEBHOOK_SECRET || '',
 };
-
-export function configureSebPay(newConfig: Partial<SebPayConfig>) {
-  config = { ...config, ...newConfig };
-}
 
 function getBaseUrl(): string {
   return config.environment === 'production'
@@ -63,13 +50,21 @@ function getBaseUrl(): string {
 function getHeaders(): HeadersInit {
   return {
     'Content-Type': 'application/json',
-    'X-Api-Key': config.apiKey,
+    'X-Public-Key': config.publicKey,
     'X-Secret-Key': config.secretKey,
   };
 }
 
 /**
  * Initier un paiement via SebPay (Mobile Money automatique)
+ * 
+ * @example
+ * const payment = await initiatePayment({
+ *   amount: 5000,
+ *   currency: 'XAF',
+ *   description: 'Abonnement Starter - Genova AI',
+ *   reference: 'GENOVA-001',
+ * });
  */
 export async function initiatePayment(
   payment: SebPayPaymentRequest
@@ -102,35 +97,12 @@ export async function initiatePayment(
  */
 export async function checkTransactionStatus(
   transactionId: string
-): Promise<SebPayTransaction> {
+): Promise<{ id: string; reference: string; amount: number; currency: string; status: string; description: string; createdAt: string }> {
   const response = await fetch(`${getBaseUrl()}/payments/${transactionId}`, {
     headers: getHeaders(),
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch transaction: ${response.status}`);
-  }
-
+  if (!response.ok) throw new Error(`Failed to fetch transaction: ${response.status}`);
   return response.json();
-}
-
-/**
- * Vérifier la signature d'un webhook SebPay
- */
-export function verifyWebhookSignature(
-  payload: string,
-  signature: string
-): boolean {
-  try {
-    const crypto = require('crypto');
-    const expected = crypto
-      .createHmac('sha256', config.webhookSecret)
-      .update(payload)
-      .digest('hex');
-    return expected === signature;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -138,81 +110,45 @@ export function verifyWebhookSignature(
  */
 export const PLANS = [
   {
-    id: 'free',
-    name: 'Free',
-    price: 0,
-    currency: 'XAF',
-    interval: 'month',
-    credits: 100,
+    id: 'free', name: 'Free', price: 0, currency: 'XAF', interval: 'month', credits: 100,
     features: [
-      { name: '2 AI Agents', included: true },
-      { name: '100 credits/month', included: true },
-      { name: 'Basic agent tools', included: true },
-      { name: '3 scheduled tasks', included: true },
-      { name: 'Advanced guardrails', included: false },
-      { name: 'Priority support', included: false },
+      { name: '2 AI Agents', included: true }, { name: '100 credits/month', included: true },
+      { name: 'Basic agent tools', included: true }, { name: '3 scheduled tasks', included: true },
+      { name: 'Advanced guardrails', included: false }, { name: 'Priority support', included: false },
     ],
   },
   {
-    id: 'starter',
-    name: 'Starter',
-    price: 5000,
-    currency: 'XAF',
-    interval: 'month',
-    credits: 1000,
+    id: 'starter', name: 'Starter', price: 5000, currency: 'XAF', interval: 'month', credits: 1000,
     featured: true,
     features: [
-      { name: '5 AI Agents', included: true },
-      { name: '1,000 credits/month', included: true },
-      { name: 'All agent tools', included: true },
-      { name: '10 scheduled tasks', included: true },
-      { name: '5 web monitors', included: true },
-      { name: 'Advanced guardrails', included: true },
+      { name: '5 AI Agents', included: true }, { name: '1,000 credits/month', included: true },
+      { name: 'All agent tools', included: true }, { name: '10 scheduled tasks', included: true },
+      { name: '5 web monitors', included: true }, { name: 'Advanced guardrails', included: true },
       { name: 'Priority support', included: false },
     ],
   },
   {
-    id: 'pro',
-    name: 'Pro',
-    price: 15000,
-    currency: 'XAF',
-    interval: 'month',
-    credits: 5000,
-    highlighted: true,
-    badge: 'Populaire',
+    id: 'pro', name: 'Pro', price: 15000, currency: 'XAF', interval: 'month', credits: 5000,
+    highlighted: true, badge: 'Populaire',
     features: [
-      { name: '20 AI Agents', included: true },
-      { name: '5,000 credits/month', included: true },
-      { name: 'All tools + advanced', included: true },
-      { name: '50 scheduled tasks', included: true },
-      { name: '25 web monitors', included: true },
-      { name: 'Auto-reports', included: true },
+      { name: '20 AI Agents', included: true }, { name: '5,000 credits/month', included: true },
+      { name: 'All tools + advanced', included: true }, { name: '50 scheduled tasks', included: true },
+      { name: '25 web monitors', included: true }, { name: 'Auto-reports', included: true },
       { name: 'Priority support', included: true },
     ],
   },
   {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 50000,
-    currency: 'XAF',
-    interval: 'month',
-    credits: -1,
+    id: 'enterprise', name: 'Enterprise', price: 50000, currency: 'XAF', interval: 'month', credits: -1,
     badge: 'Meilleur Rapport Qualité/Prix',
     features: [
-      { name: 'Unlimited Agents', included: true },
-      { name: 'Unlimited credits', included: true },
-      { name: 'All tools & features', included: true },
-      { name: 'Unlimited tasks', included: true },
-      { name: 'SSO & SAML', included: true },
-      { name: 'Custom integrations', included: true },
+      { name: 'Unlimited Agents', included: true }, { name: 'Unlimited credits', included: true },
+      { name: 'All tools & features', included: true }, { name: 'Unlimited tasks', included: true },
+      { name: 'SSO & SAML', included: true }, { name: 'Custom integrations', included: true },
       { name: 'SLA guarantee', included: true },
     ],
   },
 ];
 
-/**
- * Packs de crédits SebPay
- */
 export const CREDIT_PACKAGES = [
   { id: 'credits_500', name: 'Petit Pack', credits: 500, price: 2500, currency: 'XAF' },
   { id: 'credits_2000', name: 'Pack Standard', credits: 2000, price: 9000, currency: 'XAF' },
