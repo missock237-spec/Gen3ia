@@ -15,7 +15,7 @@ interface Message {
 
 function ChatMessages() {
   const { user } = useAuthStore();
-  const { messageCount, incMessageCount, shouldShowAd, trackAdEvent, totalRewards } = useAdContext();
+  const { incMessageCount, trackAdEvent, totalRewards } = useAdContext();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -110,15 +110,17 @@ function ChatMessages() {
               )}
             </div>
 
-            {/* Publicité après chaque réponse d\'agent (pour les free) ou toutes les 5 interactions */}
-            {msg.role === 'agent' && idx > 0 && idx % 2 === 0 && (
-              <AdBanner
-                userPlan={userPlan}
-                placement="chat"
-                messageIndex={idx}
-                onAdViewed={() => trackAdEvent(`ad_chat_${idx}`, 'view')}
-                onAdClicked={() => trackAdEvent(`ad_chat_${idx}`, 'click')}
-              />
+            {/* 🎯 PUB APRÈS CHAQUE RÉPONSE DE L'AGENT (sauf le message de bienvenue) */}
+            {msg.role === 'agent' && idx > 0 && (
+              <div className="ml-11 mt-2">
+                <AdBanner
+                  userPlan={userPlan}
+                  placement="agent-response"
+                  messageIndex={idx}
+                  onAdViewed={() => trackAdEvent(`ad_response_${idx}`, 'view')}
+                  onAdClicked={() => trackAdEvent(`ad_response_${idx}`, 'click')}
+                />
+              </div>
             )}
           </div>
         ))}
@@ -148,9 +150,7 @@ function ChatMessages() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={userPlan === 'free'
-              ? "Écrivez votre message... (Les pubs apparaîtront après chaque échange)"
-              : "Écrivez votre message..."}
+            placeholder="Écrivez votre message à l'agent..."
             className="flex-1 min-h-[44px] max-h-32 rounded-xl border bg-background px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
             rows={1}
           />
@@ -162,11 +162,6 @@ function ChatMessages() {
             <Send className="h-4 w-4" />
           </button>
         </div>
-        {userPlan === 'free' && (
-          <p className="text-[10px] text-muted-foreground/60 mt-2 text-center">
-            💡 Passage à la version Pro pour une expérience sans publicité
-          </p>
-        )}
       </div>
     </div>
   );
