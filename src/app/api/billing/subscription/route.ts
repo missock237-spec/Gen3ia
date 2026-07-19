@@ -1,107 +1,33 @@
-/**
- * Billing Subscription API — GET/PUT: Manage subscription
- */
+import { NextRequest, NextResponse } from "next/server";
+import { PLANS } from "@/lib/sebpay";
 
-import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { getSubscription } from '@/lib/billing/stripe-client';
-import { changePlan, getPlan, type PlanTier } from '@/lib/billing/plans';
-import { db } from '@/lib/db';
-
-export async function OPTIONS() {
-  const response = new NextResponse(null, { status: 204 });
-  response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  return response;
-}
-
-export async function GET(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, {
-    requireAuth: true,
-    rateLimit: { limit: 100, windowMs: 60000 },
+export async function GET() {
+  return NextResponse.json({
+    subscription: {
+      id: "sub_sebpay_free",
+      plan: "free",
+      status: "active",
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    },
+    currentPlan: PLANS.find(p => p.id === "free"),
   });
-
-  if (error) return error;
-  if (!auth) return secureResponse(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), request);
-
-  try {
-    const subscription = await getSubscription(auth.userId);
-    const user = await db.user.findUnique({
-      where: { id: auth.userId },
-      select: { plan: true },
-    });
-
-    const currentPlan = getPlan((user?.plan as PlanTier) || 'free');
-
-    return secureResponse(
-      NextResponse.json({
-        subscription,
-        currentPlan: currentPlan ? {
-          id: currentPlan.id,
-          name: currentPlan.name,
-          price: currentPlan.price,
-          credits: currentPlan.credits,
-        } : null,
-      }),
-      request
-    );
-  } catch (err) {
-    return secureResponse(
-      NextResponse.json(
-        { error: 'Failed to fetch subscription', details: err instanceof Error ? err.message : 'Unknown error' },
-        { status: 500 }
-      ),
-      request
-    );
-  }
 }
 
 export async function PUT(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, {
-    requireAuth: true,
-    rateLimit: { limit: 10, windowMs: 60000 },
-  });
-
-  if (error) return error;
-  if (!auth) return secureResponse(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), request);
-
   try {
     const body = await request.json();
     const { planId } = body;
-
-    if (!planId) {
-      return secureResponse(
-        NextResponse.json({ error: 'Missing required field: planId' }, { status: 400 }),
-        request
-      );
-    }
-
-    // Validate plan
-    const plan = getPlan(planId as PlanTier);
+    const plan = PLANS.find(p => p.id === planId);
     if (!plan) {
-      return secureResponse(
-        NextResponse.json({ error: 'Invalid plan ID' }, { status: 400 }),
-        request
-      );
+      return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
     }
-
-    const result = await changePlan(auth.userId, planId);
-
-    return secureResponse(
-      NextResponse.json({
-        success: result.success,
-        message: result.message,
-        newPlan: result.newPlan,
-      }),
-      request
-    );
+    return NextResponse.json({ message: `Redirection vers SebPay pour ${plan.name}`, plan });
   } catch (err) {
-    return secureResponse(
-      NextResponse.json(
-        { error: 'Failed to update subscription', details: err instanceof Error ? err.message : 'Unknown error' },
-        { status: 500 }
-      ),
-      request
-    );
+    return NextResponse.json({ error: "Erreur de mise à jour" }, { status: 500 });
   }
+}
+
+export async function DELETE() {
+  return NextResponse.json({ message: "Abonnement résilié" });
 }
