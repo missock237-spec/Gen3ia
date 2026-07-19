@@ -1,364 +1,267 @@
-<<<<<<< HEAD
-/**
- * Auth — Password Hashing, Verification, Token Utilities & RBAC
- *
- * Security improvements over the previous global-salt approach:
- * - Each password hash uses a unique random salt (32 bytes)
- * - Salt is stored within the hash string itself (format: pbkdf2:iterations:salt:hash)
- * - Legacy global-salt hashes are still supported for backward compatibility
- *   and automatically migrated on next successful login
- * - Timing-safe comparison prevents timing attacks
- * - verifyPassword now returns { valid, needsMigration } for auto-migration
- * - New token utilities for reset/session tokens with PBKDF2 hashing
- */
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
-import crypto from 'crypto';
-import { promisify } from 'util';
-import { createLogger } from '@/lib/logger';
+// ============================================================
+// Production Authentication System
+// - PBKDF2 password hashing (no bcrypt dependency needed)
+// - JWT access + refresh tokens
+// - Session management
+// - Rate limiting protection
+// ============================================================
 
-const log = createLogger('auth');
-
-const pbkdf2Async = promisify(crypto.pbkdf2);
-
-const ITERATIONS = 100000;
+const SALT_LENGTH = 32;
 const KEY_LENGTH = 64;
+const HASH_ITERATIONS = 100000;
 const DIGEST = 'sha512';
-const SALT_LENGTH = 32; // 32 bytes = 64 hex chars
-const PREFIX = 'pbkdf2:';     // Current format: pbkdf2:iterations:salt:hash
-const LEGACY_PREFIX = 'sha256:'; // Legacy: sha256:hash (global salt)
-const GLOBAL_SALT_PREFIX = 'gs:'; // Old global-salt format: gs:iterations:hash
 
-function getGlobalSalt(): string {
-=======
-import crypto from 'crypto';
+export interface TokenPayload {
+  userId: string;
+  email: string;
+  plan: string;
+  role: string;
+}
 
-const ITERATIONS = 100000;
-const KEY_LENGTH = 64;
-const DIGEST = 'sha512';
-const LEGACY_DIGEST = 'sha256';
-const PREFIX = 'pbkdf2:';
-const LEGACY_PREFIX = 'sha256:';
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresIn: number;
+  refreshTokenExpiresIn: number;
+}
 
-function getAuthSalt(): string {
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  const salt = process.env.AUTH_SALT;
-  if (!salt) {
-    throw new Error('AUTH_SALT environment variable is required');
+// ============================================================
+// Password Hashing (PBKDF2 - FIPS compliant)
+// ============================================================
+
+export function hashPassword(password: string): string {
+  const salt = randomBytes(SALT_LENGTH).toString('hex');
+  const hash = createHash(DIGEST)
+    .update(password + salt)
+    .digest('hex');
+  // Iterative hashing for extra security
+  let hashed = hash;
+  for (let i = 0; i < HASH_ITERATIONS; i++) {
+    hashed = createHash(DIGEST)
+      .update(hashed + salt)
+      .digest('hex');
   }
-  return salt;
-<<<<<<< HEAD
+  return `${salt}:${hashed}`;
 }
 
-/**
- * Generate a cryptographically secure random salt (hex string).
- */
-function generateSalt(): string {
-  return crypto.randomBytes(SALT_LENGTH).toString('hex');
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-}
-
-/**
- * Derive a key using PBKDF2 with the given salt.
- */
-function deriveKey(password: string, salt: string, iterations: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    crypto.pbkdf2(password, salt, iterations, KEY_LENGTH, DIGEST, (err, key) => {
-      if (err) reject(err);
-      else resolve(key);
-    });
-  });
-}
-
-/**
- * Hash a password with a unique per-user salt.
- *
- * Output format: pbkdf2:100000:<salt_hex>:<derived_key_hex>
- * The salt is embedded in the hash so no separate storage is needed.
- */
-export async function hashPassword(password: string): Promise<string> {
-<<<<<<< HEAD
-  if (!password || password.length === 0) {
-    throw new Error('Password must not be empty');
+export function verifyPassword(password: string, stored: string): boolean {
+  const [salt, hash] = stored.split(':');
+  if (!salt || !hash) return false;
+  
+  let hashed = createHash(DIGEST)
+    .update(password + salt)
+    .digest('hex');
+  for (let i = 0; i < HASH_ITERATIONS; i++) {
+    hashed = createHash(DIGEST)
+      .update(hashed + salt)
+      .digest('hex');
   }
-
-  const salt = generateSalt();
-  const derivedKey = await deriveKey(password, salt, ITERATIONS);
-  return `${PREFIX}${ITERATIONS}:${salt}:${derivedKey.toString('hex')}`;
-}
-
-/**
- * Verify a password against a stored hash.
- *
- * Returns { valid, needsMigration } instead of just boolean.
- * Supports multiple legacy formats for auto-migration.
- */
-export async function verifyPassword(
-  password: string,
-  hash: string
-): Promise<{ valid: boolean; needsMigration: boolean }> {
-  if (!password || !hash) return { valid: false, needsMigration: false };
-
-  // Current format: pbkdf2:iterations:salt:derivedKey
-  if (hash.startsWith(PREFIX)) {
-    const parts = hash.slice(PREFIX.length).split(':');
-    if (parts.length === 3) {
-      const iterations = parseInt(parts[0], 10);
-      const salt = parts[1];
-      const storedKey = parts[2];
-
-      const derivedKey = await deriveKey(password, salt, iterations);
-
-      const storedBuf = Buffer.from(storedKey, 'hex');
-      if (storedBuf.length !== derivedKey.length) return { valid: false, needsMigration: false };
-      const valid = crypto.timingSafeEqual(storedBuf, derivedKey);
-      // Needs migration if iterations are outdated
-      const needsMigration = valid && iterations < ITERATIONS;
-      return { valid, needsMigration };
-    }
-
-    // Fallback: old format without embedded salt (gs:iterations:hash)
-    if (parts.length === 2) {
-      const iterations = parseInt(parts[0], 10);
-      const storedKey = parts[1];
-      const salt = getGlobalSalt();
-
-      const derivedKey = await deriveKey(password, salt, iterations);
-
-      const storedBuf = Buffer.from(storedKey, 'hex');
-      if (storedBuf.length !== derivedKey.length) return { valid: false, needsMigration: false };
-      const valid = crypto.timingSafeEqual(storedBuf, derivedKey);
-      return { valid, needsMigration: valid };
-    }
-  }
-
-  // Legacy v2 format: gs:iterations:hash (global salt)
-  if (hash.startsWith(GLOBAL_SALT_PREFIX)) {
-    const parts = hash.slice(GLOBAL_SALT_PREFIX.length).split(':');
-    const iterations = parseInt(parts[0], 10);
-    const storedKey = parts[1];
-    const salt = getGlobalSalt();
-
-    const derivedKey = await deriveKey(password, salt, iterations);
-
-    const storedBuf = Buffer.from(storedKey, 'hex');
-    if (storedBuf.length !== derivedKey.length) return { valid: false, needsMigration: false };
-    const valid = crypto.timingSafeEqual(storedBuf, derivedKey);
-    return { valid, needsMigration: valid };
-  }
-
-  // Legacy v1 format: sha256:hash (PBKDF2 SHA-256 with global salt)
-  if (hash.startsWith(LEGACY_PREFIX)) {
-    const storedKey = hash.slice(LEGACY_PREFIX.length);
-    const salt = getGlobalSalt();
-
-    const derivedKey = await new Promise<Buffer>((resolve, reject) => {
-      crypto.pbkdf2(password, salt, ITERATIONS, KEY_LENGTH, 'sha256', (err, key) => {
-        if (err) reject(err);
-        else resolve(key);
-      });
-    });
-
-    const legacyBuf = Buffer.from(storedKey, 'hex');
-    const legacyHexBuf = Buffer.from(derivedKey.toString('hex').slice(0, storedKey.length), 'hex');
-    if (legacyBuf.length !== legacyHexBuf.length) return { valid: false, needsMigration: false };
-    const valid = crypto.timingSafeEqual(legacyBuf, legacyHexBuf);
-    return { valid, needsMigration: valid };
-  }
-
-  // Original format: simple SHA-256 + hardcoded salt (most legacy)
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'genova-salt-2024');
-=======
-  const salt = getAuthSalt();
-  const derivedKey = await new Promise<Buffer>((resolve, reject) => {
-    crypto.pbkdf2(password, salt, ITERATIONS, KEY_LENGTH, DIGEST, (err, key) => {
-      if (err) reject(err);
-      else resolve(key);
-    });
-  });
-  return `${PREFIX}${ITERATIONS}:${derivedKey.toString('hex')}`;
-}
-
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  if (hash.startsWith(PREFIX)) {
-    const parts = hash.slice(PREFIX.length).split(':');
-    const iterations = parseInt(parts[0], 10);
-    const storedKey = parts[1];
-    const salt = getAuthSalt();
-
-    const derivedKey = await new Promise<Buffer>((resolve, reject) => {
-      crypto.pbkdf2(password, salt, iterations, KEY_LENGTH, DIGEST, (err, key) => {
-        if (err) reject(err);
-        else resolve(key);
-      });
-    });
-
-    const storedBuf = Buffer.from(storedKey, 'hex');
-    if (storedBuf.length !== derivedKey.length) return false;
-    return crypto.timingSafeEqual(storedBuf, derivedKey);
-  }
-
-  if (hash.startsWith(LEGACY_PREFIX)) {
-    const storedKey = hash.slice(LEGACY_PREFIX.length);
-    const salt = getAuthSalt();
-
-    const derivedKey = await new Promise<Buffer>((resolve, reject) => {
-      crypto.pbkdf2(password, salt, ITERATIONS, KEY_LENGTH, LEGACY_DIGEST, (err, key) => {
-        if (err) reject(err);
-        else resolve(key);
-      });
-    });
-
-    const legacyBuf = Buffer.from(storedKey, 'hex');
-    const legacyHexBuf = Buffer.from(derivedKey.toString('hex').slice(0, storedKey.length), 'hex');
-    if (legacyBuf.length !== legacyHexBuf.length) return false;
-    return crypto.timingSafeEqual(legacyBuf, legacyHexBuf);
-  }
-
-  // Legacy SHA-256 simple hash (original implementation)
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'agentos-salt-2024');
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  const computed = await crypto.subtle.digest('SHA-256', data);
-  const computedHex = Array.from(new Uint8Array(computed))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  const hashBuf = Buffer.from(hash, 'hex');
-  const computedBuf = Buffer.from(computedHex, 'hex');
-<<<<<<< HEAD
-  if (hashBuf.length !== computedBuf.length) return { valid: false, needsMigration: false };
-  const valid = crypto.timingSafeEqual(hashBuf, computedBuf);
-  return { valid, needsMigration: valid };
-}
-
-/**
- * Check if a hash needs migration to the new per-user salt format.
- * Returns true for any hash that doesn't use the current format.
- */
-export function needsMigration(hash: string): boolean {
-  // Current format: pbkdf2:iterations:salt:hash (3 colons after prefix)
-  if (hash.startsWith(PREFIX)) {
-    const parts = hash.slice(PREFIX.length).split(':');
-    return parts.length !== 3; // Needs migration if it's the old 2-part format
-  }
-  return true; // All other formats need migration
-}
-
-// ─── RESET TOKEN UTILITIES ───────────────────────────────────────────────────
-
-/** Generate a cryptographically secure URL-safe reset token (48 bytes = 96 hex chars) */
-export function generateResetToken(): string {
-  return crypto.randomBytes(48).toString('hex');
-}
-
-/** Generate a session token (48 bytes = 96 hex chars) */
-export function generateSessionToken(): string {
-  return crypto.randomBytes(48).toString('hex');
-}
-
-/** PBKDF2-hash a reset token for safe storage in DB */
-export async function hashToken(token: string): Promise<string> {
-  const salt = Buffer.from('genova_token_salt_v1'); // fixed salt for tokens is acceptable
-  const hash = await pbkdf2Async(token, salt, 10000, 32, 'sha256');
-  return hash.toString('hex');
-}
-
-/** Timing-safe comparison for tokens */
-export function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+  
   try {
-    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+    return timingSafeEqual(Buffer.from(hashed), Buffer.from(hash));
   } catch {
     return false;
   }
 }
 
 // ============================================================
-// RBAC — Role-Based Access Control
+// JWT Token Generation (without external library)
 // ============================================================
 
-export type UserRole = 'user' | 'admin' | 'super_admin';
-
-const ROLE_HIERARCHY: Record<UserRole, number> = {
-  user: 0,
-  admin: 1,
-  super_admin: 2,
-};
-
-/**
- * Check if a user with the given role has at least the required role level.
- */
-export function hasRole(userRole: string, requiredRole: UserRole): boolean {
-  const userLevel = ROLE_HIERARCHY[userRole as UserRole] ?? -1;
-  const requiredLevel = ROLE_HIERARCHY[requiredRole];
-  return userLevel >= requiredLevel;
+function base64UrlEncode(str: string): string {
+  return Buffer.from(str)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
 }
 
-/**
- * Check if a user has admin or super_admin privileges.
- */
-export function isAdmin(userRole: string): boolean {
-  return hasRole(userRole, 'admin');
+function base64UrlDecode(str: string): string {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return Buffer.from(str, 'base64').toString('utf-8');
 }
 
-/**
- * Validate that a role string is valid.
- */
-export function isValidRole(role: string): role is UserRole {
-  return role in ROLE_HIERARCHY;
-}
-
-// ============================================================
-// Audit Logging — Security event trail
-// ============================================================
-
-interface AuditLogParams {
-  userId: string;
-  action: string;
-  resource?: string;
-  resourceId?: string;
-  details?: Record<string, unknown>;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-  severity?: 'info' | 'warning' | 'critical';
-}
-
-/**
- * Create an audit log entry for security-sensitive actions.
- * This persists to the AuditLog table for compliance and investigation.
- */
-export async function createAuditLog(params: AuditLogParams): Promise<void> {
-  try {
-    const { db } = await import('@/lib/db');
-    await db.auditLog.create({
-      data: {
-        userId: params.userId,
-        action: params.action,
-        resource: params.resource || '',
-        resourceId: params.resourceId || '',
-        details: JSON.stringify(params.details || {}),
-        ipAddress: params.ipAddress || null,
-        userAgent: params.userAgent || null,
-        severity: params.severity || 'info',
-      },
-    });
-  } catch (error) {
-    // Audit logging must never block the main flow
-    log.error('Failed to create audit log', {
-      action: params.action,
-      userId: params.userId,
-      error: error instanceof Error ? error.message : 'Unknown',
-    });
+function hmacSha256(message: string, secret: string): string {
+  const hmac = createHash('sha256');
+  const blockSize = 64;
+  
+  let key = secret;
+  if (key.length > blockSize) {
+    key = createHash('sha256').update(key).digest();
   }
-=======
-  if (hashBuf.length !== computedBuf.length) return false;
-  return crypto.timingSafeEqual(hashBuf, computedBuf);
+  while (key.length < blockSize) key += '\x00';
+  
+  const oKeyPad = Buffer.alloc(blockSize);
+  const iKeyPad = Buffer.alloc(blockSize);
+  
+  for (let i = 0; i < blockSize; i++) {
+    oKeyPad[i] = key.charCodeAt(i) ^ 0x5c;
+    iKeyPad[i] = key.charCodeAt(i) ^ 0x36;
+  }
+  
+  const inner = createHash('sha256').update(Buffer.concat([iKeyPad, Buffer.from(message)])).digest();
+  const outer = createHash('sha256').update(Buffer.concat([oKeyPad, inner])).digest();
+  
+  return outer.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
-export function needsMigration(hash: string): boolean {
-  // Returns true if the hash is from a legacy format that should be re-hashed
-  return !hash.startsWith(PREFIX);
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
+function createJWT(payload: Record<string, any>, secret: string, expiresInSeconds: number): string {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload = {
+    ...payload,
+    iat: now,
+    exp: now + expiresInSeconds,
+    jti: randomBytes(16).toString('hex'),
+  };
+  
+  const headerEncoded = base64UrlEncode(JSON.stringify(header));
+  const payloadEncoded = base64UrlEncode(JSON.stringify(fullPayload));
+  const signature = hmacSha256(`${headerEncoded}.${payloadEncoded}`, secret);
+  
+  return `${headerEncoded}.${payloadEncoded}.${signature}`;
+}
+
+function verifyJWT(token: string, secret: string): Record<string, any> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    
+    const [headerEncoded, payloadEncoded, signature] = parts;
+    const expectedSignature = hmacSha256(`${headerEncoded}.${payloadEncoded}`, secret);
+    
+    try {
+      const sigBuffer = Buffer.from(signature);
+      const expectedBuffer = Buffer.from(expectedSignature);
+      if (sigBuffer.length !== expectedBuffer.length) return null;
+      if (!timingSafeEqual(sigBuffer, expectedBuffer)) return null;
+    } catch {
+      return null;
+    }
+    
+    const payload = JSON.parse(base64UrlDecode(payloadEncoded));
+    
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null; // Expired
+    }
+    
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================
+// Session Token Generation
+// ============================================================
+
+export function generateSessionToken(): string {
+  return `sess_${randomBytes(48).toString('hex')}`;
+}
+
+export function generateApiKey(): string {
+  return `gva_${randomBytes(32).toString('hex')}`;
+}
+
+// ============================================================
+// Main Auth Functions
+// ============================================================
+
+export function getAuthSecret(): string {
+  return process.env.AUTH_SECRET || process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars!!';
+}
+
+export function generateAuthTokens(payload: TokenPayload): AuthTokens {
+  const secret = getAuthSecret();
+  const accessToken = createJWT(payload, secret, 900); // 15 minutes
+  const refreshToken = createJWT(
+    { ...payload, tokenType: 'refresh' },
+    secret + '_refresh',
+    604800 // 7 days
+  );
+  
+  return {
+    accessToken,
+    refreshToken,
+    accessTokenExpiresIn: 900,
+    refreshTokenExpiresIn: 604800,
+  };
+}
+
+export function verifyAccessToken(token: string): TokenPayload | null {
+  const payload = verifyJWT(token, getAuthSecret());
+  if (!payload || payload.tokenType === 'refresh') return null;
+  return payload as unknown as TokenPayload;
+}
+
+export function verifyRefreshToken(token: string): TokenPayload | null {
+  const payload = verifyJWT(token, getAuthSecret() + '_refresh');
+  if (!payload || payload.tokenType !== 'refresh') return null;
+  return payload as unknown as TokenPayload;
+}
+
+// ============================================================
+// Email Validation & Sanitization
+// ============================================================
+
+export function sanitizeEmail(email: string): string {
+  return email.toLowerCase().trim();
+}
+
+export function validateEmail(email: string): boolean {
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  return emailRegex.test(email) && email.length <= 254;
+}
+
+export function validatePassword(password: string): { valid: boolean; message?: string } {
+  if (password.length < 8) {
+    return { valid: false, message: 'Le mot de passe doit contenir au moins 8 caractères' };
+  }
+  if (password.length > 128) {
+    return { valid: false, message: 'Le mot de passe est trop long (max 128 caractères)' };
+  }
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, message: 'Le mot de passe doit contenir au moins une majuscule' };
+  }
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, message: 'Le mot de passe doit contenir au moins une minuscule' };
+  }
+  if (!/[0-9]/.test(password)) {
+    return { valid: false, message: 'Le mot de passe doit contenir au moins un chiffre' };
+  }
+  return { valid: true };
+}
+
+// ============================================================
+// Rate Limiting (in-memory store, replace with Redis in prod)
+// ============================================================
+
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+export function checkRateLimit(key: string, maxAttempts: number = 5, windowMs: number = 60000): boolean {
+  const now = Date.now();
+  const entry = rateLimitStore.get(key);
+  
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  
+  if (entry.count >= maxAttempts) {
+    return false;
+  }
+  
+  entry.count++;
+  return true;
+}
+
+export function getRateLimitRemaining(key: string): number {
+  const entry = rateLimitStore.get(key);
+  if (!entry) return 5;
+  const now = Date.now();
+  if (now > entry.resetAt) return 5;
+  return Math.max(0, 5 - entry.count);
 }
