@@ -1,455 +1,147 @@
-/**
-<<<<<<< HEAD
- * Email Service — Resend Only
- *
- * Stratégie de livraison :
- * 1. Resend SDK (méthode principale)
- * 2. Resend REST API (fallback si SDK échoue)
- * 3. Console log — développement uniquement
- *
- * Nodemailer a été retiré pour éliminer la double architecture
- * et simplifier la maintenance. Resend est le seul provider en production.
- */
-
 import { Resend } from 'resend';
-import { createLogger } from '@/lib/logger';
 
-const log = createLogger('email');
-
-=======
- * Email Service — PRIORITÉ 3
- *
- * Stratégie de livraison :
- * 1. Resend SDK (production) — utilise l'API Resend nativement
- * 2. Resend REST fallback — si le SDK échoue, appel REST direct
- * 3. SMTP (Nodemailer) — si Resend indisponible
- * 4. Console log — développement uniquement
- */
-
-import { Resend } from 'resend';
-import nodemailer from 'nodemailer';
-
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-interface EmailResult {
-  success: boolean;
-  method?: string;
-  error?: string;
-  messageId?: string;
-}
+const resend = new Resend(process.env.RESEND_API_KEY || '');
+const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@genova.ai';
+const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Genova AI';
 
 interface EmailOptions {
-  to: string;
+  to: string | string[];
   subject: string;
   html: string;
-  from?: string;
+  text?: string;
   replyTo?: string;
-  tags?: Array<{ name: string; value: string }>;
+  attachments?: Array<{
+    filename: string;
+    content: string;
+    contentType?: string;
+  }>;
 }
 
-<<<<<<< HEAD
-const DEFAULT_FROM = 'Genova Genova <onboarding@resend.dev>';
-=======
-const DEFAULT_FROM = 'Genova AgentOS <onboarding@resend.dev>';
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-
-/**
- * Récupère l'adresse d'expédition configurée.
- * En production avec un domaine vérifié Resend, utiliser :
-<<<<<<< HEAD
- *   'Genova Genova <noreply@votre-domaine.com>'
-=======
- *   'Genova AgentOS <noreply@votre-domaine.com>'
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
- */
-function getFromAddress(): string {
-  return process.env.EMAIL_FROM || DEFAULT_FROM;
+function baseHtml(content: string): string {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f4f4f5; }
+    .container { max-width: 600px; margin: 0 auto; padding: 24px; }
+    .card { background: #ffffff; border-radius: 12px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .logo { text-align: center; margin-bottom: 24px; }
+    .logo img { width: 48px; height: 48px; }
+    h1 { font-size: 20px; font-weight: 700; color: #09090b; margin: 0 0 8px 0; }
+    p { font-size: 14px; line-height: 1.6; color: #52525b; margin: 0 0 16px 0; }
+    .btn { display: inline-block; padding: 12px 24px; background: #7c3aed; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-size: 14px; font-weight: 600; margin: 8px 0; }
+    .btn:hover { background: #6d28d9; }
+    .footer { text-align: center; padding: 24px 0; color: #a1a1aa; font-size: 12px; }
+    .footer a { color: #7c3aed; text-decoration: none; }
+    .code { font-size: 32px; font-weight: 700; color: #7c3aed; text-align: center; padding: 16px; letter-spacing: 8px; background: #f4f4f5; border-radius: 8px; margin: 16px 0; }
+    @media (max-width: 480px) { .card { padding: 16px; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">🔮</div>
+    <div class="card">
+      ${content}
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} Genova AI. Tous droits réservés.</p>
+      <p><a href="{{unsubscribe_url}}">Se désabonner</a></p>
+    </div>
+  </div>
+</body>
+</html>`;
 }
 
-// ---------------------------------------------------------------------------
-// 1. Resend SDK (méthode principale)
-// ---------------------------------------------------------------------------
-
-async function sendViaResendSDK(options: EmailOptions): Promise<EmailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { success: false, method: 'resend-sdk', error: 'No RESEND_API_KEY' };
+export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; id?: string; error?: string }> {
+  if (!process.env.RESEND_API_KEY) {
+    console.log(`[Email Mock] À: ${options.to} | Sujet: ${options.subject}`);
+    return { success: true, id: 'mock_' + Date.now() };
+  }
 
   try {
-    const resend = new Resend(apiKey);
-
     const { data, error } = await resend.emails.send({
-      from: options.from || getFromAddress(),
-      to: options.to,
+      from: `${FROM_NAME} <${FROM_EMAIL}>`,
+      to: Array.isArray(options.to) ? options.to : [options.to],
       subject: options.subject,
       html: options.html,
+      text: options.text,
       replyTo: options.replyTo,
-      tags: options.tags,
+      attachments: options.attachments,
     });
 
     if (error) {
-<<<<<<< HEAD
-      log.warn('Resend SDK error', { error: error.message, to: options.to });
-      // If this is a domain verification error, note it clearly
-      if (error.message.includes('verify a domain') || error.message.includes('testing emails')) {
-        log.info('Email domain not verified — in development, emails can only be sent to the account owner email. Verify a domain at resend.com/domains for production.');
-      }
-      return { success: false, method: 'resend-sdk', error: error.message };
+      console.error('[Email Error]:', error);
+      return { success: false, error: error.message };
     }
 
-    log.info('Email sent via Resend SDK', { messageId: data?.id, to: options.to });
-    return { success: true, method: 'resend-sdk', messageId: data?.id };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Resend SDK error';
-    log.warn('Resend SDK exception', { error: message, to: options.to });
-=======
-      return { success: false, method: 'resend-sdk', error: error.message };
-    }
-
-    return { success: true, method: 'resend-sdk', messageId: data?.id };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Resend SDK error';
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-    return { success: false, method: 'resend-sdk', error: message };
+    return { success: true, id: data?.id };
+  } catch (err) {
+    console.error('[Email Exception]:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Erreur d\'envoi' };
   }
 }
 
-// ---------------------------------------------------------------------------
-// 2. Resend REST API (fallback si SDK échoue)
-// ---------------------------------------------------------------------------
-
-async function sendViaResendREST(options: EmailOptions): Promise<EmailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { success: false, method: 'resend-rest', error: 'No RESEND_API_KEY' };
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: options.from || getFromAddress(),
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        reply_to: options.replyTo,
-        tags: options.tags,
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json().catch(() => ({}));
-<<<<<<< HEAD
-      log.info('Email sent via Resend REST', { messageId: data.id, to: options.to });
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-      return { success: true, method: 'resend-rest', messageId: data.id };
-    }
-
-    const body = await response.text().catch(() => '');
-<<<<<<< HEAD
-    log.warn('Resend REST error', { status: response.status, to: options.to });
-    return { success: false, method: 'resend-rest', error: `HTTP ${response.status}: ${body.slice(0, 200)}` };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Resend REST error';
-    log.warn('Resend REST exception', { error: message, to: options.to });
-=======
-    return { success: false, method: 'resend-rest', error: `HTTP ${response.status}: ${body.slice(0, 200)}` };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Resend REST error';
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-    return { success: false, method: 'resend-rest', error: message };
-  }
-}
-
-// ---------------------------------------------------------------------------
-<<<<<<< HEAD
-// 3. Console fallback (développement uniquement)
-// ---------------------------------------------------------------------------
-
-function sendViaConsole(options: EmailOptions): EmailResult {
-  if (process.env.NODE_ENV === 'production') {
-    return { success: false, method: 'none', error: 'No email provider configured in production' };
-=======
-// 3. SMTP via Nodemailer (tertiary)
-// ---------------------------------------------------------------------------
-
-async function sendViaSMTP(options: EmailOptions): Promise<EmailResult> {
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
-
-  if (!smtpHost || !smtpUser || !smtpPass) {
-    return { success: false, method: 'smtp', error: 'SMTP not configured' };
-  }
-
-  try {
-    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
-
-    const result = await transporter.sendMail({
-      from: `"Genova AgentOS" <${smtpUser}>`,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      replyTo: options.replyTo,
-    });
-
-    return { success: true, method: 'smtp', messageId: result.messageId };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'SMTP error';
-    return { success: false, method: 'smtp', error: message };
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  }
-
-  log.debug('Email (dev console)', { to: options.to, subject: options.subject });
-  return { success: true, method: 'console' };
-}
-
-// ---------------------------------------------------------------------------
-<<<<<<< HEAD
-// Fonction principale : sendEmail
-// ---------------------------------------------------------------------------
-
-/**
- * Envoie un email transactionnel en essayant successivement :
- * Resend SDK → Resend REST → Console (dev only)
- *
- * Chaque méthode est tentée uniquement si la précédente échoue,
- * garantissant une livraison fiable avec le maximum de méthodes disponibles.
- */
-export async function sendEmail(
-  to: string,
-  subject: string,
-  html: string,
-  options?: Partial<EmailOptions>
-): Promise<EmailResult> {
-  const emailOptions: EmailOptions = { to, subject, html, ...options };
-
-  // 1. Resend SDK (méthode privilégiée)
-  if (process.env.RESEND_API_KEY) {
-    const result = await sendViaResendSDK(emailOptions);
-    if (result.success) return result;
-
-    // 2. Resend REST fallback
-    const restResult = await sendViaResendREST(emailOptions);
-    if (restResult.success) return restResult;
-  }
-
-  // 3. Console (développement)
-  return sendViaConsole(emailOptions);
-}
-
-// ---------------------------------------------------------------------------
-// Helpers pour les emails transactionnels courants
-// ---------------------------------------------------------------------------
-
-/**
- * Email de vérification d'adresse email (6-digit code)
- */
-=======
-// 4. Console fallback (développement uniquement)
-// ---------------------------------------------------------------------------
-
-function sendViaConsole(options: EmailOptions): EmailResult {
-  if (process.env.NODE_ENV === 'production') {
-    return { success: false, method: 'none', error: 'No email provider configured in production' };
-  }
-
-  console.log(
-    `[EMAIL] to=${options.to} subject="${options.subject}" body_preview="${options.html.substring(0, 200)}..."`
-  );
-  return { success: true, method: 'console' };
-}
-
-// ---------------------------------------------------------------------------
-// Fonction principale : sendEmail
-// ---------------------------------------------------------------------------
-
-/**
- * Envoie un email transactionnel en essayant successivement :
- * Resend SDK → Resend REST → SMTP → Console
- *
- * Chaque méthode est tentée uniquement si la précédente échoue,
- * garantissant une livraison fiable avec le maximum de méthodes disponibles.
- */
-export async function sendEmail(
-  to: string,
-  subject: string,
-  html: string,
-  options?: Partial<EmailOptions>
-): Promise<EmailResult> {
-  const emailOptions: EmailOptions = { to, subject, html, ...options };
-
-  // 1. Resend SDK (méthode privilégiée)
-  if (process.env.RESEND_API_KEY) {
-    const result = await sendViaResendSDK(emailOptions);
-    if (result.success) return result;
-
-    // 2. Resend REST fallback
-    const restResult = await sendViaResendREST(emailOptions);
-    if (restResult.success) return restResult;
-  }
-
-  // 3. SMTP
-  if (process.env.SMTP_HOST) {
-    const smtpResult = await sendViaSMTP(emailOptions);
-    if (smtpResult.success) return smtpResult;
-  }
-
-  // 4. Console (développement)
-  return sendViaConsole(emailOptions);
-}
-
-// ---------------------------------------------------------------------------
-// Helpers pour les emails transactionnels courants
-// ---------------------------------------------------------------------------
-
-/**
- * Email de vérification d'adresse email (6-digit code)
- */
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-export async function sendVerificationEmail(
-  to: string,
-  code: string,
-  userName?: string
-): Promise<EmailResult> {
-<<<<<<< HEAD
-  return sendEmail(to, 'Vérifiez votre adresse email — Genova Genova', `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 32px;">
-        <h1 style="color: #f5f5f5; font-size: 24px; font-weight: 700;">Genova Genova</h1>
-=======
-  return sendEmail(to, 'Vérifiez votre adresse email — Genova AgentOS', `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 32px;">
-        <h1 style="color: #f5f5f5; font-size: 24px; font-weight: 700;">Genova AgentOS</h1>
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-      </div>
-      <div style="background: #1a1a2e; border-radius: 12px; padding: 32px; border: 1px solid #2a2a4a;">
-        <h2 style="color: #e0e0e0; margin-top: 0;">Vérification de votre email</h2>
-        <p style="color: #a0a0b0; font-size: 15px;">
-          Bonjour ${userName || ''},<br/>
-          Veuillez utiliser le code suivant pour vérifier votre adresse email :
-        </p>
-        <div style="font-size: 32px; font-weight: 700; letter-spacing: 4px; padding: 16px 24px; background: #0d0d1a; border-radius: 8px; text-align: center; color: #60a5fa; margin: 24px 0;">
-          ${code}
-        </div>
-        <p style="color: #808090; font-size: 13px;">Ce code expire dans 15 minutes.</p>
-<<<<<<< HEAD
-        <p style="color: #808090; font-size: 13px;">Si vous n'avez pas créé de compte Genova Genova, veuillez ignorer cet email.</p>
-      </div>
-      <p style="text-align: center; color: #606070; font-size: 12px; margin-top: 24px;">
-        Genova Genova — AI Operating System
-=======
-        <p style="color: #808090; font-size: 13px;">Si vous n'avez pas créé de compte Genova AgentOS, veuillez ignorer cet email.</p>
-      </div>
-      <p style="text-align: center; color: #606070; font-size: 12px; margin-top: 24px;">
-        Genova AgentOS — AI Operating System
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-      </p>
-    </div>
-  `, {
-    tags: [{ name: 'type', value: 'verification' }],
-  });
-}
-
-/**
- * Email de réinitialisation de mot de passe (6-digit code)
- */
-export async function sendPasswordResetEmail(
-  to: string,
-  code: string
-): Promise<EmailResult> {
-<<<<<<< HEAD
-  return sendEmail(to, 'Code de réinitialisation — Genova Genova', `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 32px;">
-        <h1 style="color: #f5f5f5; font-size: 24px; font-weight: 700;">Genova Genova</h1>
-=======
-  return sendEmail(to, 'Code de réinitialisation — Genova AgentOS', `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 32px;">
-        <h1 style="color: #f5f5f5; font-size: 24px; font-weight: 700;">Genova AgentOS</h1>
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-      </div>
-      <div style="background: #1a1a2e; border-radius: 12px; padding: 32px; border: 1px solid #2a2a4a;">
-        <h2 style="color: #e0e0e0; margin-top: 0;">Réinitialisation du mot de passe</h2>
-        <p style="color: #a0a0b0; font-size: 15px;">
-          Vous avez demandé une réinitialisation de votre mot de passe.
-        </p>
-        <div style="font-size: 32px; font-weight: 700; letter-spacing: 4px; padding: 16px 24px; background: #0d0d1a; border-radius: 8px; text-align: center; color: #f59e0b; margin: 24px 0;">
-          ${code}
-        </div>
-        <p style="color: #808090; font-size: 13px;">Ce code expire dans 15 minutes.</p>
-        <p style="color: #808090; font-size: 13px;">Si vous n'avez pas demandé cette réinitialisation, veuillez ignorer cet email.</p>
-      </div>
-      <p style="text-align: center; color: #606070; font-size: 12px; margin-top: 24px;">
-<<<<<<< HEAD
-        Genova Genova — AI Operating System
-=======
-        Genova AgentOS — AI Operating System
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-      </p>
-    </div>
-  `, {
-    tags: [{ name: 'type', value: 'password-reset' }],
-  });
-}
-
-/**
- * Email de bienvenue après inscription
- */
-export async function sendWelcomeEmail(
-  to: string,
-  userName: string
-): Promise<EmailResult> {
-<<<<<<< HEAD
-  return sendEmail(to, 'Bienvenue sur Genova Genova !', `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 32px;">
-        <h1 style="color: #f5f5f5; font-size: 24px; font-weight: 700;">Genova Genova</h1>
-=======
-  return sendEmail(to, 'Bienvenue sur Genova AgentOS !', `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 32px;">
-        <h1 style="color: #f5f5f5; font-size: 24px; font-weight: 700;">Genova AgentOS</h1>
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-      </div>
-      <div style="background: #1a1a2e; border-radius: 12px; padding: 32px; border: 1px solid #2a2a4a;">
-        <h2 style="color: #e0e0e0; margin-top: 0;">Bienvenue, ${userName} !</h2>
-        <p style="color: #a0a0b0; font-size: 15px;">
-<<<<<<< HEAD
-          Votre compte Genova Genova a été créé avec succès. Vous pouvez maintenant :
-=======
-          Votre compte Genova AgentOS a été créé avec succès. Vous pouvez maintenant :
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-        </p>
-        <ul style="color: #a0a0b0; font-size: 14px; line-height: 2;">
-          <li>Créer et gérer vos agents IA</li>
-          <li>Configurer des workflows d'automatisation</li>
-          <li>Connecter vos réseaux sociaux et WhatsApp</li>
-          <li>Surveiller l'utilisation et les coûts IA</li>
-        </ul>
-        <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}"
-           style="display: inline-block; padding: 12px 24px; background: #3b82f6; color: white; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 16px;">
-          Accéder au tableau de bord
+export async function sendWelcomeEmail(email: string, name: string): Promise<void> {
+  await sendEmail({
+    to: email,
+    subject: 'Bienvenue sur Genova AI 🚀',
+    html: baseHtml(`
+      <h1>Bienvenue sur Genova AI, ${name} !</h1>
+      <p>Votre compte a été créé avec succès. Vous avez accès à :</p>
+      <ul style="font-size: 14px; color: #52525b; line-height: 2;">
+        <li>🧠 Agents IA intelligents</li>
+        <li>🤖 Automatisation des tâches</li>
+        <li>📊 Analytics en temps réel</li>
+        <li>💬 Intégration WhatsApp</li>
+      </ul>
+      <p style="text-align: center;">
+        <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/agents" class="btn">
+          Créer mon premier agent
         </a>
-      </div>
-      <p style="text-align: center; color: #606070; font-size: 12px; margin-top: 24px;">
-<<<<<<< HEAD
-        Genova Genova — AI Operating System
-=======
-        Genova AgentOS — AI Operating System
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
       </p>
-    </div>
-  `, {
-    tags: [{ name: 'type', value: 'welcome' }],
+      <p>Si vous avez des questions, notre équipe est là pour vous aider.</p>
+    `),
+  });
+}
+
+export async function sendPasswordResetEmail(email: string, resetCode: string): Promise<void> {
+  await sendEmail({
+    to: email,
+    subject: 'Réinitialisation de votre mot de passe',
+    html: baseHtml(`
+      <h1>Réinitialisation de mot de passe</h1>
+      <p>Vous avez demandé la réinitialisation de votre mot de passe. Utilisez le code ci-dessous :</p>
+      <div class="code">${resetCode}</div>
+      <p>Ce code expire dans 15 minutes. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.</p>
+    `),
+  });
+}
+
+export async function sendVerificationEmail(email: string, verificationCode: string): Promise<void> {
+  await sendEmail({
+    to: email,
+    subject: 'Vérifiez votre adresse email',
+    html: baseHtml(`
+      <h1>Vérification de votre email</h1>
+      <p>Pour activer votre compte Genova AI, utilisez le code de vérification ci-dessous :</p>
+      <div class="code">${verificationCode}</div>
+      <p>Ce code expire dans 30 minutes.</p>
+    `),
+  });
+}
+
+export async function sendInvoiceEmail(email: string, amount: number, currency: string, pdfUrl?: string): Promise<void> {
+  await sendEmail({
+    to: email,
+    subject: `Votre facture Genova AI - ${amount} ${currency}`,
+    html: baseHtml(`
+      <h1>Facture ${currency} ${amount.toLocaleString()}</h1>
+      <p>Merci pour votre paiement. Votre abonnement Genova AI est actif.</p>
+      ${pdfUrl ? `<p style="text-align: center;"><a href="${pdfUrl}" class="btn">Télécharger la facture</a></p>` : ''}
+      <p>Montant : <strong>${amount.toLocaleString()} ${currency}</strong></p>
+      <p>Date : ${new Date().toLocaleDateString('fr-FR')}</p>
+    `),
   });
 }
