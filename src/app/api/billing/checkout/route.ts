@@ -4,7 +4,7 @@ import { initiatePayment, PLANS } from "@/lib/sebpay";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { planId, phone, operator } = body;
+    const { planId, customerEmail, customerName } = body;
 
     const plan = PLANS.find(p => p.id === planId);
     if (!plan) {
@@ -17,13 +17,13 @@ export async function POST(request: NextRequest) {
     const reference = `GENOVA-${planId}-${Date.now()}`;
     const payment = await initiatePayment({
       amount: plan.price,
-      currency: process.env.SEBPAY_DEFAULT_CURRENCY || "XAF",
-      phone: phone || "",
-      operator: operator || (process.env.SEBPAY_DEFAULT_OPERATOR as any) || "MTN",
+      currency: "XAF",
       description: `Abonnement ${plan.name} - Genova AI`,
       reference,
       callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/webhook`,
       redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL}/billing?success=1`,
+      customerEmail,
+      customerName,
     });
 
     return NextResponse.json({ payment, plan, reference });
