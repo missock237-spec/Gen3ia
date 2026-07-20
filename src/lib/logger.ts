@@ -1,109 +1,82 @@
-/**
- * Centralized Logger — Structured logging for Genova Genova
- *
- * Replaces raw console.log / console.error throughout the codebase.
- * Provides leveled logging (debug, info, warn, error) with structured
- * context, request IDs, and production-safe output.
- *
- * In production:  Only warn & error are emitted.
- * In development: All levels are emitted.
- */
+// ============================================================
+// LOGGER STRUCTURÉ — Remplace tous les console.log()
+// ============================================================
+// Format JSON : timestamp, level, service, operation
+// Champs optionnels standardisés : agentId, sessionId, userId
+// Niveaux : debug, info, warn, error, fatal
+// ============================================================
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal";
 
-interface LogEntry {
+export interface LogEntry {
   timestamp: string;
   level: LogLevel;
-  module: string;
-  message: string;
-  data?: Record<string, unknown>;
+  service: string;
+  operation: string;
+  agentId?: string;
+  sessionId?: string;
+  userId?: string;
+  requestId?: string;
+  durationMs?: number;
+  error?: string;
+  [key: string]: unknown;
 }
 
-const LEVEL_PRIORITY: Record<LogLevel, number> = {
+const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
   warn: 2,
   error: 3,
+  fatal: 4,
 };
 
-function getMinLevel(): LogLevel {
-  if (process.env.LOG_LEVEL) {
-    const lvl = process.env.LOG_LEVEL.toLowerCase() as LogLevel;
-    if (lvl in LEVEL_PRIORITY) return lvl;
+class StructuredLogger {
+  private service: string;
+  private minLevel: number;
+
+  constructor(service = "genova") {
+    this.service = service;
+    const envLevel = (process.env.LOG_LEVEL ?? "info") as LogLevel;
+    this.minLevel = LOG_LEVELS[envLevel] ?? LOG_LEVELS.info;
   }
-  return process.env.NODE_ENV === 'production' ? 'warn' : 'debug';
-}
 
-function shouldEmit(level: LogLevel): boolean {
-  return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[getMinLevel()];
-}
-
-function formatEntry(entry: LogEntry): string {
-  const { timestamp, level, module, message, data } = entry;
-  const prefix = `[${timestamp}] [${level.toUpperCase()}] [${module}]`;
-
-  if (data && Object.keys(data).length > 0) {
-    return `${prefix} ${message} ${JSON.stringify(data)}`;
-  }
-  return `${prefix} ${message}`;
-}
-
-/**
- * Create a scoped logger for a module.
- *
- * Usage:
- *   const log = createLogger('ai-router');
- *   log.info('Request completed', { provider: 'groq', tokens: 1500 });
- *   log.error('Provider failed', { provider: 'openrouter', error: err.message });
- */
-export function createLogger(module: string) {
-  function emit(level: LogLevel, message: string, data?: Record<string, unknown>): void {
-    if (!shouldEmit(level)) return;
-
-    const entry: LogEntry = {
+  private baseEntry(level: LogLevel, operation: string, extras?: Partial<LogEntry>): LogEntry {
+    return {
       timestamp: new Date().toISOString(),
       level,
-      module,
-      message,
-      data,
+      service: this.service,
+      operation,
+      ...extras,
     };
+  }
 
-    const formatted = formatEntry(entry);
+  private shouldLog(level: LogLevel): boolean {
+    return LOG_LEVELS[level] >= this.minLevel;
+  }
 
-    switch (level) {
-      case 'error':
-        if (process.stderr.write) {
-          process.stderr.write(formatted + '\n');
-        } else {
-          console.error(formatted);
-        }
+  private output(entry: LogEntry): void {
+    if (!this.shouldLog(entry.level)) return;
+    const line = JSON.stringify(entry);
+    switch (entry.level) {
+      case "error":
+      case "fatal":
+        console.error(line);
         break;
-      case 'warn':
-        console.warn(formatted);
+      case "warn":
+        console.warn(line);
         break;
-      case 'info':
-        console.info(formatted);
-        break;
-      case 'debug':
-        // Use stdout directly for debug to avoid console.log detection in audits
-        if (process.stdout.write) {
-          process.stdout.write(formatted + '\n');
-        } else {
-          console.log(formatted);
-        }
+      default:
+        console.log(line);
         break;
     }
   }
 
-  return {
-    debug: (message: string, data?: Record<string, unknown>) => emit('debug', message, data),
-    info: (message: string, data?: Record<string, unknown>) => emit('info', message, data),
-    warn: (message: string, data?: Record<string, unknown>) => emit('warn', message, data),
-    error: (message: string, data?: Record<string, unknown>) => emit('error', message, data),
-  };
+  debug(operation: string, extras?: Partial<LogEntry>): void { this.output(this.baseEntry("debug", operation, extras)); }
+  info(operation: string, extras?: Partial<LogEntry>): void { this.output(this.baseEntry("info", operation, extras)); }
+  warn(operation: string, extras?: Partial<LogEntry>): void { this.output(this.baseEntry("warn", operation, extras)); }
+  error(operation: string, extras?: Partial<LogEntry>): void { this.output(this.baseEntry("error", operation, extras)); }
+  fatal(operation: string, extras?: Partial<LogEntry>): void { this.output(this.baseEntry("fatal", operation, extras)); }
 }
 
-/**
- * Global application logger for cross-cutting concerns.
- */
-export const appLogger = createLogger('app');
+export const logger = new StructuredLogger();
+export default logger;
