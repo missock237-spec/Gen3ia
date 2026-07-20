@@ -1,0 +1,45 @@
+# ============================================================
+# CODEOWNERS — Propriétaires de code par dossier
+# ============================================================
+# Les personnes/équipes listées sont automatiquement
+# assignées aux PR qui modifient ces fichiers.
+# ============================================================
+
+# Propriétaires par défaut (tous les fichiers)
+* @missock237-spec
+
+# Cœur du projet - Agent ReAct
+/src/lib/checkpoint.ts   @missock237-spec
+/src/lib/supervisor.ts   @missock237-spec
+/src/lib/logger.ts       @missock237-spec
+/src/lib/errors.ts       @missock237-spec
+
+# Routes API
+/src/app/api/            @missock237-spec
+
+# Base de données
+/prisma/schema.prisma    @missock237-spec
+/prisma/seed.ts          @missock237-spec
+
+# Configuration
+/package.json            @missock237-spec
+/tsconfig.json           @missock237-spec
+/next.config.ts          @missock237-spec
+
+# Docker
+/Dockerfile              @missock237-spec
+/docker-compose*.yml     @missock237-spec
+
+# Documentation
+/README.md               @missock237-spec
+/docs/                   @missock237-spec
+
+# CI/CD
+/.github/workflows/      @missock237-spec
+
+# Paiements
+/src/lib/sebpay.ts       @missock237-spec
+/src/lib/stripe.ts       @missock237-spec
+
+# Sécurité
+/SECURITY.md             @missock237-spec
