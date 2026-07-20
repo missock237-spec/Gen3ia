@@ -8,101 +8,72 @@ datasource db {
 }
 
 model User {
-<<<<<<< HEAD
-  id              String   @id @default(cuid())
-  email           String   @unique
-  name            String
-  password        String
-  avatar          String?
-  plan            String   @default("free")
-  role            String   @default("user")
-  isActive        Boolean  @default(false)
-  stripeConnectAccountId String?  @unique
-  stripeConnectOnboarded Boolean  @default(false)
-  isEmailVerified Boolean  @default(false)
-  emailVerified   DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-=======
-  id             String   @id @default(cuid())
-  email          String   @unique
-  name           String
-  password       String
-  avatar         String?
-  plan           String   @default("free")
-  emailVerified  DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
+  id                        String    @id @default(cuid())
+  email                     String    @unique
+  name                      String
+  password                  String
+  avatar                    String?
+  plan                      String    @default("free")
+  role                      String    @default("user")
+  isActive                  Boolean   @default(false)
+  isEmailVerified           Boolean   @default(false)
+  stripeConnectAccountId    String?   @unique
+  stripeConnectOnboarded    Boolean   @default(false)
+  emailVerified             DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
-  agents           Agent[]
-  workflows        Workflow[]
-  guardrails       Guardrail[]
-  activities       ActivityLog[]
-  sessions         Session[]
-  socialAccounts   SocialAccount[]
-  whatsappConfig   WhatsAppConfig?
-  resources        UserResource[]
-  approvalRequests ApprovalRequest[]
-  agentPermissions AgentPermission[]
-  agentActionLogs  AgentActionLog[]
-<<<<<<< HEAD
-  automations      AgentAutomation[]
-  scheduledTasks   ScheduledTask[]
-  voiceProfile     VoiceProfile?
-  avatarConfigs    AvatarConfig[]
-  avatarSessions   AvatarSession[]
-  voiceCalls       VoiceCall[]
-  voiceSessions    VoiceSession[]
-  voiceMemories    VoiceMemory[]
-  personalization  UserPersonalization?
-  memoryNodes      MemoryNode[]
-  memoryEdges      MemoryEdge[]
-  browserAutomations BrowserAutomation[]
-  multimodalSessions MultimodalSession[]
-  creditTransactions CreditTransaction[]
-  subscriptions    Subscription[]
-  invoices         Invoice[]
-  workspaces       WorkspaceMember[]
-  workspaceActivities WorkspaceActivity[]
-  listings         MarketplaceListing[]
-  purchases        MarketplacePurchase[]
-  reviews          MarketplaceReview[]
-  emailVerifications EmailVerification[]
-  imageGenerations  ImageGeneration[]
-  videoGenerations  VideoGeneration[]
-=======
-  browserSessions  BrowserSession[]
-  passwordResets   PasswordReset[]
-  agentUsages      AgentUsage[]
-  aiCosts          AICost[]
-  usageDaily       UsageDaily[]
-  monitoringEvents MonitoringEvent[]
-  emailVerifications EmailVerification[]
-  imageGenerations  ImageGeneration[]
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  memories          AgentMemory[]
-  conversations     Conversation[]
-  knowledgeEntries  Knowledge[]
-  documents         Document[]
-  documentChunks    DocumentChunk[]
-<<<<<<< HEAD
-  auditLogs         AuditLog[]
-  mcpConnectors     MCPConnector[]
-  accessKeys        AccessKey[]
+  agents              Agent[]
+  workflows           Workflow[]
+  guardrails          Guardrail[]
+  activities          ActivityLog[]
+  sessions            Session[]
+  socialAccounts      SocialAccount[]
+  whatsappConfig      WhatsAppConfig?
+  resources           UserResource[]
+  approvalRequests    ApprovalRequest[]
+  agentPermissions    AgentPermission[]
+  agentActionLogs     AgentActionLog[]
+  automations         AgentAutomation[]
+  scheduledTasks      ScheduledTask[]
+  browserSessions     BrowserSession[]
+  agentUsages         AgentUsage[]
+  aiCosts             AICost[]
+  usageDaily          UsageDaily[]
+  monitoringEvents    MonitoringEvent[]
+  emailVerifications  EmailVerification[]
+  imageGenerations    ImageGeneration[]
+  videoGenerations    VideoGeneration[]
+  memories            AgentMemory[]
+  conversations       Conversation[]
+  knowledgeEntries    Knowledge[]
+  documents           Document[]
+  documentChunks      DocumentChunk[]
+  auditLogs           AuditLog[]
+  mcpConnectors       MCPConnector[]
+  accessKeys          AccessKey[]
   connectorExecutions ConnectorExecution[]
-  passwordResets    PasswordReset[]
-  browserSessions   BrowserSession[]
-  agentUsages       AgentUsage[]
-  aiCosts           AICost[]
-  usageDaily        UsageDaily[]
-  monitoringEvents  MonitoringEvent[]
+  passwordResets      PasswordReset[]
+  creditTransactions  CreditTransaction[]
+  subscriptions       Subscription[]
+  invoices            Invoice[]
+  workspaces          WorkspaceMember[]
+  workspaceActivities WorkspaceActivity[]
+  voiceProfile        VoiceProfile?
+  avatarConfigs       AvatarConfig[]
+  avatarSessions      AvatarSession[]
+  voiceCalls          VoiceCall[]
+  voiceSessions       VoiceSession[]
+  voiceMemories       VoiceMemory[]
+  personalization     UserPersonalization?
+  memoryNodes         MemoryNode[]
+  memoryEdges         MemoryEdge[]
+  browserAutomations  BrowserAutomation[]
+  multimodalSessions  MultimodalSession[]
 
   @@index([email])
   @@index([role])
   @@map("users")
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 }
 
 model Session {
@@ -112,66 +83,69 @@ model Session {
   refreshToken     String?   @unique
   expiresAt        DateTime
   refreshExpiresAt DateTime?
-<<<<<<< HEAD
   rememberMe       Boolean   @default(false)
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   createdAt        DateTime  @default(now())
   lastAccessedAt   DateTime  @default(now())
   ipAddress        String?
   userAgent        String?
 
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
 }
 
 model PasswordReset {
   id        String   @id @default(cuid())
-<<<<<<< HEAD
   token     String   @unique
-=======
   email     String
   code      String
   attempts  Int      @default(0)
   used      Boolean  @default(false)
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   expiresAt DateTime
   createdAt DateTime @default(now())
   userId    String
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-<<<<<<< HEAD
   @@index([userId])
-=======
   @@index([email, code])
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   @@map("password_resets")
 }
 
 model EmailVerification {
   id        String   @id @default(cuid())
-<<<<<<< HEAD
-  token     String   @unique
-=======
+  token     String?
   email     String
   code      String
   attempts  Int      @default(0)
   used      Boolean  @default(false)
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   expiresAt DateTime
   createdAt DateTime @default(now())
   userId    String
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-<<<<<<< HEAD
   @@index([userId])
-=======
   @@index([email, code])
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   @@map("email_verifications")
+}
+
+model SocialAccount {
+  id           String   @id @default(cuid())
+  platform     String
+  accountId    String
+  accountName  String
+  accessToken  String
+  refreshToken String?
+  isActive     Boolean  @default(true)
+  userId       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, accountId])
+  @@map("social_accounts")
 }
 
 model Agent {
@@ -186,55 +160,54 @@ model Agent {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks       Task[]
-  permissions AgentPermission[]
-  actions     AgentActionLog[]
-  browserSessions BrowserSession[]
-  agentUsages AgentUsage[]
-  memories    AgentMemory[]
-<<<<<<< HEAD
-  automations AgentAutomation[]
-  scheduledTasks ScheduledTask[]
-  sharedIn       SharedAgent[]
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks             Task[]
+  permissions       AgentPermission[]
+  actions           AgentActionLog[]
+  browserSessions   BrowserSession[]
+  agentUsages       AgentUsage[]
+  memories          AgentMemory[]
+  automations       AgentAutomation[]
+  scheduledTasks    ScheduledTask[]
+  sharedIn          SharedAgent[]
   browserAutomations BrowserAutomation[]
   multimodalSessions MultimodalSession[]
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
+  executions        AgentExecution[]
+  conversations     Conversation[]
 
   @@map("agents")
 }
 
 model AgentPermission {
-  id               String  @id @default(cuid())
+  id               String   @id @default(cuid())
   agentId          String
   permission       String
-  granted          Boolean @default(false)
-  requiresApproval Boolean @default(true)
+  granted          Boolean  @default(false)
+  requiresApproval Boolean  @default(true)
   userId           String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  agent            Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([agentId, permission])
   @@map("agent_permissions")
 }
 
 model AgentActionLog {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   agentId   String?
   action    String
   details   String
-  status    String   @default("pending")
+  status    String    @default("pending")
   result    String?
   userId    String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   resolvedAt DateTime?
 
-  agent     Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("agent_action_logs")
 }
@@ -250,84 +223,132 @@ model BrowserSession {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("browser_sessions")
 }
 
-model SocialAccount {
-  id           String   @id @default(cuid())
-  platform     String
-  accountId    String
-  accountName  String
-  accessToken  String
-  refreshToken String?
-  isActive     Boolean  @default(true)
-  userId       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, platform, accountId])
-  @@map("social_accounts")
-}
-
-model WhatsAppConfig {
-  id            String   @id @default(cuid())
-  phoneNumber   String
-  whatsappId    String?
-<<<<<<< HEAD
-  phoneNumberId String?
-=======
-  phoneNumberId String?   // WhatsApp Cloud API Phone Number ID (from Meta Business settings)
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  apiToken      String?
-  isActive      Boolean  @default(false)
-  autoMessage   Boolean  @default(false)
-  autoCall      Boolean  @default(false)
-  userId        String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId])
-  @@map("whatsapp_configs")
-}
-
-model UserResource {
+model AgentUsage {
   id        String   @id @default(cuid())
-  type      String
-  name      String
-  config    String
-  apiKey    String?
-  endpoint  String?
-  isActive  Boolean  @default(true)
+  agentId   String
   userId    String
+  action    String
+  tokensUsed Int     @default(0)
+  duration  Int      @default(0)
+  status    String   @default("success")
+  metadata  String   @default("{}")
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("user_resources")
+  @@index([agentId, createdAt])
+  @@index([userId, createdAt])
+  @@map("agent_usage")
 }
 
-model ApprovalRequest {
+model AgentMemory {
+  id            String    @id @default(cuid())
+  agentId       String
+  userId        String
+  category      String    @default("general")
+  content       String
+  context       String    @default("{}")
+  source        String    @default("interaction")
+  relevance     Float     @default(0.5)
+  accessCount   Int       @default(0)
+  tags          String    @default("[]")
+  embedding     String?
+  createdAt     DateTime  @default(now())
+  lastAccessedAt DateTime @default(now())
+  expiresAt     DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, category])
+  @@index([agentId, createdAt])
+  @@index([userId, createdAt])
+  @@map("agent_memories")
+}
+
+model AgentExecution {
+  id            String    @id @default(cuid())
+  agentId       String
+  userId        String
+  task          String    @default("")
+  steps         String    @default("[]")
+  currentStep   Int       @default(0)
+  totalSteps    Int       @default(0)
+  status        String    @default("pending")
+  totalDuration Int       @default(0)
+  totalTokens   Int       @default(0)
+  estimatedCost Float     @default(0)
+  model         String?
+  provider      String?
+  result        String?
+  error         String?
+  state         String    @default("{}")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  completedAt   DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([userId, createdAt])
+  @@map("agent_executions")
+}
+
+model AgentAutomation {
   id          String   @id @default(cuid())
-  agentId     String
-  action      String
-  details     String
-  status      String   @default("pending")
-  result      String?
+  name        String
+  description String   @default("")
+  trigger     String
+  conditions  String   @default("[]")
+  actions     String
+  isActive    Boolean  @default(true)
+  metadata    String   @default("{}")
   userId      String
+  agentId     String?
   createdAt   DateTime @default(now())
-  resolvedAt  DateTime?
+  updatedAt   DateTime @updatedAt
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
-  @@map("approval_requests")
+  @@index([userId, trigger])
+  @@index([isActive])
+  @@map("agent_automations")
+}
+
+model ScheduledTask {
+  id           String    @id @default(cuid())
+  name         String
+  description  String    @default("")
+  schedule     String
+  timezone     String    @default("UTC")
+  status       String    @default("active")
+  nextRun      DateTime?
+  lastRun      DateTime?
+  runCount     Int       @default(0)
+  failureCount Int       @default(0)
+  lastError    String?
+  result       String?   @default("")
+  payload      String    @default("{}")
+  userId       String
+  agentId      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([nextRun])
+  @@map("scheduled_tasks")
 }
 
 model Workflow {
@@ -342,8 +363,8 @@ model Workflow {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks            Task[]
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
 
   @@map("workflows")
 }
@@ -361,8 +382,8 @@ model Task {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  agent       Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  workflow    Workflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  agent     Agent?      @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  workflow  Workflow?   @relation(fields: [workflowId], references: [id], onDelete: SetNull)
   validations Validation[]
 
   @@map("tasks")
@@ -394,58 +415,39 @@ model Validation {
   taskId      String
   createdAt   DateTime @default(now())
 
-  guardrail   Guardrail @relation(fields: [guardrailId], references: [id], onDelete: Cascade)
-  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  guardrail Guardrail @relation(fields: [guardrailId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@map("validations")
 }
 
 model ActivityLog {
-  id          String   @id @default(cuid())
-  action      String
-  details     String
-  category    String
-  userId      String
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  action    String
+  details   String
+  category  String
+  userId    String
+  createdAt DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("activity_logs")
 }
 
-model AgentUsage {
-  id          String   @id @default(cuid())
-  agentId     String
-  userId      String
-  action      String
-  tokensUsed  Int      @default(0)
-  duration    Int      @default(0)
-  status      String   @default("success")
-  metadata    String   @default("{}")
-  createdAt   DateTime @default(now())
-
-  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([agentId, createdAt])
-  @@index([userId, createdAt])
-  @@map("agent_usage")
-}
-
 model AICost {
-  id              String   @id @default(cuid())
-  userId          String
-  agentId         String?
-  provider        String
-  model           String
-  promptTokens    Int      @default(0)
-  completionTokens Int     @default(0)
-  totalTokens     Int      @default(0)
-  costUsd         Float    @default(0)
-  requestId       String?
-  createdAt       DateTime @default(now())
+  id               String   @id @default(cuid())
+  userId           String
+  agentId          String?
+  provider         String
+  model            String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  costUsd          Float    @default(0)
+  requestId        String?
+  createdAt        DateTime @default(now())
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
@@ -464,7 +466,7 @@ model UsageDaily {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
   @@map("usage_daily")
@@ -482,147 +484,61 @@ model MonitoringEvent {
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
 
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([eventType, severity])
   @@map("monitoring_events")
 }
 
-<<<<<<< HEAD
-=======
-// ============================================================
-// Agent Memory — Per-agent learning database
-// Each agent has its own knowledge base that grows with use,
-// allowing it to better understand user requests over time.
-// ============================================================
-
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-model AgentMemory {
-  id            String   @id @default(cuid())
-  agentId       String
-  userId        String
-<<<<<<< HEAD
-  category      String   @default("general")
-  content       String
-  context       String   @default("{}")
-  source        String   @default("interaction")
-  relevance     Float    @default(0.5)
-  accessCount   Int      @default(0)
-  tags          String   @default("[]")
-  embedding     String?
-  createdAt     DateTime @default(now())
-  lastAccessedAt DateTime @default(now())
-  expiresAt     DateTime?
-=======
-  category      String   @default("general")   // general, preference, episodic, procedural, semantic
-  content       String                          // The learned knowledge
-  context       String   @default("{}")         // JSON: context in which this was learned
-  source        String   @default("interaction") // interaction, observation, feedback, system
-  relevance     Float    @default(0.5)          // 0-1, how important this memory is
-  accessCount   Int      @default(0)            // How often this memory is retrieved
-  tags          String   @default("[]")         // JSON array of tags for categorization
-  embedding     String?                          // Vector embedding for semantic search (JSON)
-  createdAt     DateTime @default(now())
-  lastAccessedAt DateTime @default(now())
-  expiresAt     DateTime?                        // Optional TTL for temporary memories
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-
-  agent         Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([agentId, category])
-  @@index([agentId, createdAt])
-  @@index([userId, createdAt])
-  @@map("agent_memories")
-}
-
-<<<<<<< HEAD
 model URLBlocklist {
-  id          String   @id @default(cuid())
-  domain      String   @unique
-  reason      String
-  threatType  String   @default("malware")
-  severity    String   @default("high")
-  source      String   @default("system")
-  isActive    Boolean  @default(true)
-  hits        Int      @default(0)
-=======
-// ============================================================
-// URL Blocklist — Malicious site protection
-// Stores known malicious URLs/domains to protect the system
-// from phishing, malware, and other threats.
-// ============================================================
-
-model URLBlocklist {
-  id          String   @id @default(cuid())
-  domain      String   @unique                    // Domain or URL pattern
-  reason      String                              // Why it's blocked
-  threatType  String   @default("malware")        // malware, phishing, spam, scam, suspicious
-  severity    String   @default("high")           // low, medium, high, critical
-  source      String   @default("system")         // system, user, auto_detected
-  isActive    Boolean  @default(true)
-  hits        Int      @default(0)                // How many times this was triggered
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  domain     String   @unique
+  reason     String
+  threatType String   @default("malware")
+  severity   String   @default("high")
+  source     String   @default("system")
+  isActive   Boolean  @default(true)
+  hits       Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([domain])
   @@index([isActive])
   @@map("url_blocklist")
 }
 
-<<<<<<< HEAD
 model ImageGeneration {
-  id              String   @id @default(cuid())
-  userId          String
-  prompt          String
-  model           String
-  provider        String   @default("openrouter")
-  imageUrl        String?
-  status          String   @default("pending")
-  costUsd         Float    @default(0)
-  width           Int?
-  height          Int?
-  metadata        String   @default("{}")
-=======
-// ============================================================
-// Image Generation — Track AI-generated images
-// ============================================================
+  id        String   @id @default(cuid())
+  userId    String
+  prompt    String
+  model     String
+  provider  String   @default("openrouter")
+  imageUrl  String?
+  status    String   @default("pending")
+  costUsd   Float    @default(0)
+  width     Int?
+  height    Int?
+  metadata  String   @default("{}")
+  createdAt DateTime @default(now())
 
-model ImageGeneration {
-  id              String   @id @default(cuid())
-  userId          String
-  prompt          String                          // The text prompt used
-  model           String                          // Model used for generation
-  provider        String   @default("openrouter") // Provider (openrouter, etc.)
-  imageUrl        String?                         // URL or base64 of generated image
-  status          String   @default("pending")    // pending, completed, failed
-  costUsd         Float    @default(0)
-  width           Int?
-  height          Int?
-  metadata        String   @default("{}")         // JSON metadata
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  createdAt       DateTime @default(now())
-
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
   @@map("image_generations")
 }
 
-<<<<<<< HEAD
 model VideoGeneration {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   userId          String
   prompt          String
-  mode            String   @default("t2v")
+  mode            String    @default("t2v")
   model           String
-  provider        String   @default("cogvideo")
+  provider        String    @default("cogvideo")
   videoUrl        String?
-  status          String   @default("pending")
-  costUsd         Float    @default(0)
+  status          String    @default("pending")
+  costUsd         Float     @default(0)
   duration        Float?
   durationSeconds Float?
   width           Int?
@@ -630,95 +546,64 @@ model VideoGeneration {
   fps             Int?
   numFrames       Int?
   resolution      String?
-  metadata        String   @default("{}")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  metadata        String    @default("{}")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
   @@map("video_generations")
 }
-=======
-// ============================================================
-// Conversation — Chat conversations with agents
-// ============================================================
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
 
 model Conversation {
   id        String   @id @default(cuid())
   title     String
-<<<<<<< HEAD
   type      String   @default("chat")
-=======
-  type      String   @default("chat")     // chat, automation, support
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   userId    String
   agentId   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  Message[]
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
 
   @@index([userId, createdAt])
   @@map("conversations")
 }
 
-// ============================================================
-// Message — Individual messages within conversations
-// ============================================================
-
 model Message {
   id             String   @id @default(cuid())
-<<<<<<< HEAD
   role           String
-=======
-  role           String                       // user, assistant, system
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   content        String
   model          String?
   provider       String?
   conversationId String
   createdAt      DateTime @default(now())
 
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@map("messages")
 }
 
-// ============================================================
-// Knowledge — User knowledge base for long-term memory & RAG
-// ============================================================
-
 model Knowledge {
   id        String   @id @default(cuid())
   content   String
-<<<<<<< HEAD
   category  String   @default("general")
   tags      String   @default("[]")
   source    String   @default("manual")
-=======
-  category  String   @default("general")   // preference, project, document, workflow_context, agent_learning, episodic, semantic
-  tags      String   @default("[]")
-  source    String   @default("manual")     // conversation, document, manual, episodic, summarization
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   relevance Float    @default(0.5)
   userId    String
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, category])
   @@index([userId, createdAt])
   @@map("knowledge")
 }
-
-// ============================================================
-// Document & DocumentChunk — RAG document storage
-// ============================================================
 
 model Document {
   id        String   @id @default(cuid())
@@ -726,17 +611,13 @@ model Document {
   fileType  String   @default("unknown")
   fileSize  Int      @default(0)
   content   String   @default("")
-<<<<<<< HEAD
   status    String   @default("processing")
-=======
-  status    String   @default("processing")  // processing, ready, failed
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chunks    DocumentChunk[]
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks DocumentChunk[]
 
   @@index([userId, createdAt])
   @@map("documents")
@@ -752,66 +633,79 @@ model DocumentChunk {
   userId      String
   createdAt   DateTime @default(now())
 
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([documentId])
   @@index([userId])
   @@map("document_chunks")
 }
 
-// ============================================================
-// Agent Execution — Execution state persistence for agents
-// ============================================================
+model WhatsAppConfig {
+  id            String   @id @default(cuid())
+  phoneNumber   String
+  whatsappId    String?
+  phoneNumberId String?
+  apiToken      String?
+  isActive      Boolean  @default(false)
+  autoMessage   Boolean  @default(false)
+  autoCall      Boolean  @default(false)
+  userId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-model AgentExecution {
-  id              String   @id @default(cuid())
-  agentId         String
-  userId          String
-  task            String   @default("")
-  steps           String   @default("[]")
-  currentStep     Int      @default(0)
-  totalSteps      Int      @default(0)
-<<<<<<< HEAD
-  status          String   @default("pending")
-=======
-  status          String   @default("pending")    // pending, running, completed, failed, paused
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  totalDuration   Int      @default(0)
-  totalTokens     Int      @default(0)
-  estimatedCost   Float    @default(0)
-  model           String?
-  provider        String?
-  result          String?
-  error           String?
-<<<<<<< HEAD
-  state           String   @default("{}")
-=======
-  state           String   @default("{}")         // JSON execution state
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  completedAt     DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([agentId, createdAt])
-  @@index([userId, createdAt])
-  @@map("agent_executions")
+  @@unique([userId])
+  @@map("whatsapp_configs")
 }
-<<<<<<< HEAD
+
+model UserResource {
+  id        String   @id @default(cuid())
+  type      String
+  name      String
+  config    String
+  apiKey    String?
+  endpoint  String?
+  isActive  Boolean  @default(true)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_resources")
+}
+
+model ApprovalRequest {
+  id         String    @id @default(cuid())
+  agentId    String
+  action     String
+  details    String
+  status     String    @default("pending")
+  result     String?
+  userId     String
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("approval_requests")
+}
 
 model AuditLog {
-  id          String   @id @default(cuid())
-  userId      String
-  action      String
-  resource    String   @default("")
-  resourceId  String   @default("")
-  details     String   @default("{}")
-  ipAddress   String?
-  userAgent   String?
-  severity    String   @default("info")
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  resource   String   @default("")
+  resourceId String   @default("")
+  details    String   @default("{}")
+  ipAddress  String?
+  userAgent  String?
+  severity   String   @default("info")
+  createdAt  DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([action, createdAt])
@@ -820,30 +714,30 @@ model AuditLog {
 }
 
 model MCPConnector {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   name            String
-  description     String   @default("")
+  description     String    @default("")
   serverUrl       String
-  transportType   String   @default("sse")
-  status          String   @default("disconnected")
-  authType        String   @default("none")
-  authConfig      String   @default("{}")
-  tools           String   @default("[]")
-  resources       String   @default("[]")
-  prompts         String   @default("[]")
-  capabilities    String   @default("{}")
-  serverInfo      String   @default("{}")
+  transportType   String    @default("sse")
+  status          String    @default("disconnected")
+  authType        String    @default("none")
+  authConfig      String    @default("{}")
+  tools           String    @default("[]")
+  resources       String    @default("[]")
+  prompts         String    @default("[]")
+  capabilities    String    @default("{}")
+  serverInfo      String    @default("{}")
   lastConnectedAt DateTime?
   lastError       String?
-  requestCount    Int      @default(0)
-  avgLatencyMs    Int      @default(0)
-  isActive        Boolean  @default(true)
+  requestCount    Int       @default(0)
+  avgLatencyMs    Int       @default(0)
+  isActive        Boolean   @default(true)
   userId          String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  executions      ConnectorExecution[]
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions ConnectorExecution[]
 
   @@index([userId, status])
   @@index([userId, createdAt])
@@ -851,28 +745,28 @@ model MCPConnector {
 }
 
 model AccessKey {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   name            String
-  description     String   @default("")
+  description     String    @default("")
   service         String
-  keyType         String   @default("api_key")
+  keyType         String    @default("api_key")
   keyValue        String
   endpoint        String?
-  scopes          String   @default("[]")
-  metadata        String   @default("{}")
+  scopes          String    @default("[]")
+  metadata        String    @default("{}")
   testEndpoint    String?
   lastTestedAt    DateTime?
   lastTestResult  String?
-  usageCount      Int      @default(0)
-  rateLimitInfo   String   @default("{}")
+  usageCount      Int       @default(0)
+  rateLimitInfo   String    @default("{}")
   expiresAt       DateTime?
-  isActive        Boolean  @default(true)
+  isActive        Boolean   @default(true)
   userId          String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  executions      ConnectorExecution[]
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions ConnectorExecution[]
 
   @@index([userId, service])
   @@index([userId, isActive])
@@ -881,79 +775,30 @@ model AccessKey {
 }
 
 model ConnectorExecution {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   connectorType   String
   connectorId     String
   agentId         String?
   operation       String
-  inputParams     String   @default("{}")
-  outputResult    String   @default("{}")
-  status          String   @default("pending")
+  inputParams     String    @default("{}")
+  outputResult    String    @default("{}")
+  status          String    @default("pending")
   errorMessage    String?
   statusCode      Int?
-  durationMs      Int      @default(0)
-  tokenCost       Int      @default(0)
+  durationMs      Int       @default(0)
+  tokenCost       Int       @default(0)
   userId          String
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
-  mcpConnector    MCPConnector? @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_mcp")
-  accessKey       AccessKey?    @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_ak")
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mcpConnector MCPConnector? @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_mcp")
+  accessKey    AccessKey?    @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_ak")
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([connectorType, connectorId])
   @@index([userId, createdAt])
   @@index([agentId, createdAt])
   @@index([status, createdAt])
   @@map("connector_executions")
-}
-
-model AgentAutomation {
-  id          String   @id @default(cuid())
-  name        String
-  description String   @default("")
-  trigger     String
-  conditions  String   @default("[]")
-  actions     String
-  isActive    Boolean  @default(true)
-  metadata    String   @default("{}")
-  userId      String
-  agentId     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent       Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-
-  @@index([userId, trigger])
-  @@index([isActive])
-  @@map("agent_automations")
-}
-
-model ScheduledTask {
-  id           String    @id @default(cuid())
-  name         String
-  description  String    @default("")
-  schedule     String
-  timezone     String    @default("UTC")
-  status       String    @default("active")
-  nextRun      DateTime?
-  lastRun      DateTime?
-  runCount     Int       @default(0)
-  failureCount Int       @default(0)
-  lastError    String?
-  result       String?   @default("")
-  payload      String    @default("{}")
-  userId       String
-  agentId      String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent        Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
-
-  @@index([userId, status])
-  @@index([nextRun])
-  @@map("scheduled_tasks")
 }
 
 model VoiceProfile {
@@ -970,7 +815,7 @@ model VoiceProfile {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("voice_profiles")
 }
@@ -990,8 +835,8 @@ model AvatarConfig {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessions     AvatarSession[]
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions AvatarSession[]
 
   @@index([userId])
   @@map("avatar_configs")
@@ -1014,8 +859,8 @@ model AvatarSession {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  avatarConfig   AvatarConfig? @relation(fields: [avatarConfigId], references: [id], onDelete: SetNull)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  avatarConfig AvatarConfig? @relation(fields: [avatarConfigId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([status])
@@ -1026,7 +871,7 @@ model VoiceCall {
   id                 String    @id @default(cuid())
   userId             String
   agentId            String?
-  provider           String    // twilio, whatsapp
+  provider           String
   callSid            String?   @unique
   fromNumber         String
   toNumber           String
@@ -1036,14 +881,14 @@ model VoiceCall {
   maxDurationMinutes Int       @default(30)
   recordingEnabled   Boolean   @default(false)
   recordingUrl       String?
-  transcript         String    @default("[]") // JSON
-  metadata           String    @default("{}") // JSON
+  transcript         String    @default("[]")
+  metadata           String    @default("{}")
   startedAt          DateTime  @default(now())
   endedAt            DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])
@@ -1054,20 +899,20 @@ model VoiceSession {
   id              String    @id @default(cuid())
   userId          String
   agentId         String?
-  type            String    // stt, tts, voice_chat
+  type            String
   status          String    @default("active")
   language        String?
   sttProvider     String?
   ttsProvider     String?
   transcription   String?   @default("")
   durationSeconds Int       @default(0)
-  metadata        String    @default("{}") // JSON
+  metadata        String    @default("{}")
   endedAt         DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  memories        VoiceMemory[]
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memories VoiceMemory[]
 
   @@index([userId])
   @@index([type])
@@ -1080,16 +925,16 @@ model VoiceMemory {
   voiceSessionId String?
   category       String    @default("general")
   content        String
-  embedding      String?   // JSON
+  embedding      String?
   durationMs     Int       @default(0)
   language       String    @default("en-US")
   confidence     Float     @default(0.8)
-  tags           String    @default("[]") // JSON
-  metadata       String    @default("{}") // JSON
+  tags           String    @default("[]")
+  metadata       String    @default("{}")
   createdAt      DateTime  @default(now())
 
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  voiceSession   VoiceSession? @relation(fields: [voiceSessionId], references: [id], onDelete: SetNull)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voiceSession VoiceSession? @relation(fields: [voiceSessionId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([category])
@@ -1108,30 +953,30 @@ model CreditTransaction {
   metadata     String   @default("{}")
   createdAt    DateTime @default(now())
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("credit_transactions")
 }
 
 model Subscription {
-  id           String    @id @default(cuid())
-  userId       String
-  plan         String    @default("free")
-  status       String    @default("active")
-  stripeId     String?   @unique
-  stripeCustomerId String? @unique
-  stripeSubscriptionId String? @unique
-  stripePriceId String?
-  currentPeriodStart DateTime?
-  currentPeriodEnd DateTime?
-  cancelAtPeriodEnd Boolean @default(false)
-  trialStart DateTime?
-  trialEnd DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  userId                String
+  plan                  String    @default("free")
+  status                String    @default("active")
+  stripeId              String?   @unique
+  stripeCustomerId      String?   @unique
+  stripeSubscriptionId  String?   @unique
+  stripePriceId         String?
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean   @default(false)
+  trialStart            DateTime?
+  trialEnd              DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("subscriptions")
@@ -1153,53 +998,53 @@ model Invoice {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("invoices")
 }
 
 model UserPersonalization {
-  id                 String   @id @default(cuid())
-  userId             String   @unique
-  communicationStyle String   @default("balanced")
-  technicalLevel     String   @default("intermediate")
-  preferredFormat    String   @default("mixed")
-  responseLength     String   @default("medium")
-  tonePreferences    String   @default("{}")
-  topicInterests     String   @default("[]")
-  languagePreference String   @default("en")
-  customInstructions String?  @default("")
-  interactionPatterns String  @default("{}")
-  feedbackHistory    String   @default("[]")
-  adaptationScore    Float    @default(0.5)
-  totalInteractions  Int      @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  communicationStyle   String   @default("balanced")
+  technicalLevel       String   @default("intermediate")
+  preferredFormat      String   @default("mixed")
+  responseLength       String   @default("medium")
+  tonePreferences      String   @default("{}")
+  topicInterests       String   @default("[]")
+  languagePreference   String   @default("en")
+  customInstructions   String?  @default("")
+  interactionPatterns  String   @default("{}")
+  feedbackHistory      String   @default("[]")
+  adaptationScore      Float    @default(0.5)
+  totalInteractions    Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_personalization")
 }
 
 model MemoryNode {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
   label       String
   type        String
-  content     String   @default("")
-  metadata    String   @default("{}")
-  properties  String   @default("{}")
-  weight      Float    @default(1.0)
-  accessCount Int      @default(0)
-  isActive    Boolean  @default(true)
+  content     String    @default("")
+  metadata    String    @default("{}")
+  properties  String    @default("{}")
+  weight      Float     @default(1.0)
+  accessCount Int       @default(0)
+  isActive    Boolean   @default(true)
   expiresAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  outEdges    MemoryEdge[] @relation("SourceNode")
-  inEdges     MemoryEdge[] @relation("TargetNode")
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outEdges MemoryEdge[] @relation("SourceNode")
+  inEdges  MemoryEdge[] @relation("TargetNode")
 
   @@index([userId, label, type])
   @@map("memory_nodes")
@@ -1217,9 +1062,9 @@ model MemoryEdge {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sourceNode   MemoryNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
-  targetNode   MemoryNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceNode MemoryNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode MemoryNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
 
   @@index([userId, relation])
   @@unique([sourceNodeId, targetNodeId, relation])
@@ -1253,8 +1098,8 @@ model WorkspaceMember {
   invitedBy   String?
   joinedAt    DateTime @default(now())
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
   @@map("workspace_members")
@@ -1270,8 +1115,8 @@ model SharedAgent {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agent       Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, agentId])
   @@map("shared_agents")
@@ -1288,8 +1133,8 @@ model WorkspaceActivity {
   isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt])
   @@index([userId, isRead])
@@ -1297,32 +1142,32 @@ model WorkspaceActivity {
 }
 
 model MarketplaceListing {
-  id          String    @id @default(cuid())
-  userId      String
-  type        String
-  name        String
-  slug        String    @unique
-  description String
-  category    String    @default("general")
-  tags        String    @default("[]")
-  config      String    @default("{}")
-  price       Float     @default(0)
-  currency    String    @default("USD")
-  previewUrl  String?
-  status      String    @default("draft")
-  isActive    Boolean   @default(true)
-  rating      Float     @default(0)
-  reviewCount Int       @default(0)
-  downloads   Int       @default(0)
-  installCount Int      @default(0)
-  metadata    String    @default("{}")
-  publishedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  userId       String
+  type         String
+  name         String
+  slug         String    @unique
+  description  String
+  category     String    @default("general")
+  tags         String    @default("[]")
+  config       String    @default("{}")
+  price        Float     @default(0)
+  currency     String    @default("USD")
+  previewUrl   String?
+  status       String    @default("draft")
+  isActive     Boolean   @default(true)
+  rating       Float     @default(0)
+  reviewCount  Int       @default(0)
+  downloads    Int       @default(0)
+  installCount Int       @default(0)
+  metadata     String    @default("{}")
+  publishedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purchases   MarketplacePurchase[]
-  reviews     MarketplaceReview[]
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purchases  MarketplacePurchase[]
+  reviews    MarketplaceReview[]
 
   @@index([userId])
   @@index([type])
@@ -1330,40 +1175,40 @@ model MarketplaceListing {
 }
 
 model MarketplacePurchase {
-  id          String    @id @default(cuid())
-  userId      String
-  listingId   String
-  price       Float
-  currency    String
-  status      String    @default("completed")
-  metadata    String    @default("{}")
+  id                 String   @id @default(cuid())
+  userId             String
+  listingId          String
+  price              Float
+  currency           String
+  status             String   @default("completed")
+  metadata           String   @default("{}")
   sellerRevenue      Float?
   platformCommission Float?
   transferStatus     String   @default("pending")
-  createdAt   DateTime  @default(now())
+  createdAt          DateTime @default(now())
 
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listing     MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([userId, listingId])
   @@map("marketplace_purchases")
 }
 
 model MarketplaceReview {
-  id          String    @id @default(cuid())
-  userId      String
-  listingId   String
-  rating      Int
-  title       String    @default("")
-  content     String    @default("")
-  comment     String?
-  status      String    @default("published")
-  metadata    String    @default("{}")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String    @id @default(cuid())
+  userId    String
+  listingId String
+  rating    Int
+  title     String    @default("")
+  content   String    @default("")
+  comment   String?
+  status    String    @default("published")
+  metadata  String    @default("{}")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listing     MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([userId, listingId])
   @@map("marketplace_reviews")
@@ -1388,8 +1233,8 @@ model MultimodalSession {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent       Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([status])
@@ -1415,12 +1260,10 @@ model BrowserAutomation {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent       Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([status])
   @@map("browser_automations")
 }
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
