@@ -1,50 +1,53 @@
-# Next.js
-.next/
-out/
-
-# Build
-*.tsbuildinfo
-next-env.d.ts
+# Genova — .gitignore
 
 # Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+build/
+dist/
+coverage/
 
 # Environment
 .env
 .env.local
 .env.production
-.env*.local
+.env.development
+
+# Logs
+*.log
+dev.log
+server.log
+logs/
 
 # Runtime
-*.pid
+bun.lockb
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Prisma
+prisma/migrations/*/migration.json
 
-# Tests
+# Next.js
+.next/
+
+# Testing
 coverage/
+.nyc_output/
 
-# Temp
-tmp/
-*.bak
-
-# Python
-__pycache__/
-*.pyc
-
-# Generated
-public/sitemap.xml
-*.generated.*
-
-# Node (projet utilise Bun uniquement)
-package-lock.json
+# Misc
+*.tsbuildinfo
+next-env.d.ts
