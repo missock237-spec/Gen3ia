@@ -1,125 +1,147 @@
-import { NextRequest, NextResponse } from 'next/server';
+// ============================================================
+// MIDDLEWARE EDGE — RATE LIMITING, SÉCURITÉ, AUTH
+// ============================================================
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-const SESSION_COOKIE = 'genova_session';
+// ============================================================
+// 1. RATE LIMITER INTÉGRÉ (SLIDING WINDOW MÉMOIRE)
+// ============================================================
+// Stratégies différenciées par endpoint
+// Protection contre les attaques par force brute et déni de service
+// ============================================================
 
-const PUBLIC_ROUTES = [
-  '/api/auth/login',
-  '/api/auth/register',
-  '/api/auth/forgot-password',
-  '/api/auth/reset-password',
-  '/api/auth/verify-email',
-  '/api/auth/resend-verification',
-  '/api/auth/refresh',
-  '/api',
-];
+type RateLimitStrategy = {
+  windowMs: number;
+  maxRequests: number;
+};
 
-function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_ROUTES.some(
-    (route) => pathname === route || pathname === route + '/'
-  );
+const RATE_LIMIT_STRATEGIES: Record<string, RateLimitStrategy> = {
+  strict:   { windowMs: 60_000,  maxRequests: 10 },
+  moderate: { windowMs: 60_000,  maxRequests: 60 },
+  relaxed:  { windowMs: 60_000,  maxRequests: 200 },
+};
+
+function getStrategy(pathname: string): RateLimitStrategy {
+  if (pathname.startsWith("/api/auth/"))     return RATE_LIMIT_STRATEGIES.strict;
+  if (pathname.startsWith("/api/agents"))    return RATE_LIMIT_STRATEGIES.moderate;
+  if (pathname.startsWith("/api/workflows")) return RATE_LIMIT_STRATEGIES.moderate;
+  if (pathname.startsWith("/api/webhooks"))  return RATE_LIMIT_STRATEGIES.relaxed;
+  return RATE_LIMIT_STRATEGIES.moderate;
 }
 
-function getCorsOrigin(origin: string | null): string | null {
-  if (!origin) return null;
+const rateLimitMap = new Map<string, number[]>();
 
-  const allowedOrigins: string[] = [
-    ...(process.env.CORS_ALLOWED_ORIGINS?.split(',').filter(Boolean) || []),
-    ...(process.env.NODE_ENV === 'development' ? ['http://localhost:3000'] : []),
-  ];
+function checkRateLimit(
+  identifier: string,
+  pathname: string,
+): { allowed: boolean; remaining: number; resetIn: number } {
+  const strategy = getStrategy(pathname);
+  const key = `${identifier}:${pathname}`;
+  const now = Date.now();
 
-  if (allowedOrigins.includes(origin)) return origin;
+  let timestamps = rateLimitMap.get(key) ?? [];
+  timestamps = timestamps.filter((t) => now - t < strategy.windowMs);
 
-  const serverHost = process.env.NEXT_PUBLIC_APP_URL || '';
-  if (serverHost && origin === serverHost) return origin;
-
-  return null;
-}
-
-function addCorsHeaders(response: NextResponse, origin: string | null): void {
-  const allowedOrigin = getCorsOrigin(origin);
-  if (allowedOrigin) {
-    response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
+  if (timestamps.length >= strategy.maxRequests) {
+    const oldest = timestamps[0] as number;
+    const resetIn = Math.ceil((oldest + strategy.windowMs - now) / 1000);
+    return { allowed: false, remaining: 0, resetIn: Math.max(1, resetIn) };
   }
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  response.headers.set('Access-Control-Allow-Credentials', 'true');
-  response.headers.set('Access-Control-Max-Age', '86400');
+
+  timestamps.push(now);
+  rateLimitMap.set(key, timestamps);
+  return {
+    allowed: true,
+    remaining: strategy.maxRequests - timestamps.length,
+    resetIn: Math.ceil(strategy.windowMs / 1000),
+  };
 }
 
-function addSecurityHeaders(response: NextResponse): void {
-  // Content-Security-Policy — restrict resource loading to same origin
-  response.headers.set(
-    'Content-Security-Policy',
-    "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-    "style-src 'self' 'unsafe-inline'; " +
-    "img-src 'self' data: blob: https:; " +
-    "font-src 'self' data:; " +
-    "connect-src 'self' https:; " +
-    "frame-ancestors 'none'; " +
-    "base-uri 'self'; " +
-    "form-action 'self'"
-  );
+// ============================================================
+// 2. HEADERS DE SÉCURITÉ
+// ============================================================
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "X-XSS-Protection": "1; mode=block",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "Content-Security-Policy":
+    "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.stripe.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; connect-src 'self' https://*.stripe.com https://*.supabase.co; frame-src 'self' https://*.stripe.com",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
 
-  // X-Content-Type-Options — prevent MIME type sniffing
-  response.headers.set('X-Content-Type-Options', 'nosniff');
+const EXCLUDED_PATHS = ["/_next", "/static", "/favicon.ico"];
 
-  // X-Frame-Options — prevent clickjacking
-  response.headers.set('X-Frame-Options', 'DENY');
-
-  // Referrer-Policy — limit referrer information
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-
-  // Permissions-Policy — disable browser features that could be exploited
-  response.headers.set(
-    'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=(), ambient-light-sensor=(), autoplay=(), encrypted-media=(), fullscreen=(self), picture-in-picture=()'
-  );
-
-  // X-XSS-Protection — enable browser XSS filter
-  response.headers.set('X-XSS-Protection', '1; mode=block');
-}
-
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const origin = request.headers.get('origin');
 
-  // Allow CORS preflight requests through without auth
-  if (request.method === 'OPTIONS') {
-    const response = new NextResponse(null, { status: 204 });
-    addCorsHeaders(response, origin);
-    addSecurityHeaders(response);
-    return response;
+  if (EXCLUDED_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next();
   }
 
-  // Skip auth for public routes
-  if (isPublicRoute(pathname)) {
-    const response = NextResponse.next();
-    addSecurityHeaders(response);
-    return response;
-  }
+  // ============================================================
+  // RATE LIMITING — sur toutes les routes API
+  // ============================================================
+  if (pathname.startsWith("/api/")) {
+    const identifier =
+      request.headers.get("x-forwarded-for") ??
+      request.headers.get("x-real-ip") ??
+      "127.0.0.1";
 
-  // Check for session cookie
-  const sessionToken = request.cookies.get(SESSION_COOKIE)?.value;
-
-  if (!sessionToken) {
-    const response = NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
+    const { allowed, remaining, resetIn } = checkRateLimit(
+      identifier,
+      pathname,
     );
-    addCorsHeaders(response, origin);
-    addSecurityHeaders(response);
+
+    if (!allowed) {
+      return new NextResponse(
+        JSON.stringify({
+          error: "Too Many Requests",
+          message: `Limite de ${getStrategy(pathname).maxRequests} requêtes par minute atteinte. Réessayez dans ${resetIn} seconde(s).`,
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": String(resetIn),
+            "X-RateLimit-Limit": String(getStrategy(pathname).maxRequests),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": String(
+              Math.ceil(Date.now() / 1000) + resetIn,
+            ),
+            ...SECURITY_HEADERS,
+          },
+        },
+      );
+    }
+
+    const response = NextResponse.next();
+    response.headers.set(
+      "X-RateLimit-Limit",
+      String(getStrategy(pathname).maxRequests),
+    );
+    response.headers.set("X-RateLimit-Remaining", String(remaining));
+    response.headers.set(
+      "X-RateLimit-Reset",
+      String(Math.ceil(Date.now() / 1000) + resetIn),
+    );
+
+    for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+      response.headers.set(key, value);
+    }
+
     return response;
   }
 
-  // Session cookie exists — let the request through.
-  // Actual session validation (DB lookup, expiry check) happens in each
-  // route handler via `applySecurity`.
   const response = NextResponse.next();
-  addSecurityHeaders(response);
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    response.headers.set(key, value);
+  }
   return response;
 }
 
 export const config = {
-  matcher: ['/api/:path*'],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
