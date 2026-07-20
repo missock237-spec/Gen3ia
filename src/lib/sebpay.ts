@@ -1,157 +1,218 @@
-/**
- * SebPay Africa - Service de paiement Mobile Money
- * Site: https://sebpay.africa
- * 
- * Configuration des clés :
- *   SEBPAY_PUBLIC_KEY  = Identifiant public du marchand
- *   SEBPAY_SECRET_KEY  = Clé secrète pour signer les requêtes
- *   SEBPAY_ENVIRONMENT = sandbox | production
- */
+// ============================================================
+// SEBPAY SERVICE — Paiements Mobile Money Afrique
+// ============================================================
+// Intégration SebPay Africa : Orange Money, MTN, Airtel, Moov
+// 15 pays africains supportés (Cameroun, Côte d'Ivoire, Sénégal, etc.)
+// ============================================================
+
+import { prisma } from "./prisma";
+import { logger } from "./logger";
+
+// ============================================================
+// PLANS D'ABONNEMENT
+// ============================================================
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  priceUSD: number;
+  credits: number;
+  maxAgents: number;
+  maxWorkflows: number;
+  maxTokensPerMonth: number;
+  features: string[];
+  popular?: boolean;
+}
+
+export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
+  {
+    id: "free",
+    name: "Free",
+    price: 0,
+    priceUSD: 0,
+    credits: 10,
+    maxAgents: 1,
+    maxWorkflows: 1,
+    maxTokensPerMonth: 100_000,
+    features: ["1 agent IA", "1 workflow", "100K tokens/mois", "Support communautaire"],
+  },
+  {
+    id: "starter",
+    name: "Starter",
+    price: 5000,
+    priceUSD: 9.99,
+    credits: 1000,
+    maxAgents: 10,
+    maxWorkflows: 10,
+    maxTokensPerMonth: 1_000_000,
+    features: ["10 agents IA", "10 workflows", "1M tokens/mois", "Mémoire persistante", "Outils web"],
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    price: 15000,
+    priceUSD: 29.99,
+    credits: 5000,
+    maxAgents: 50,
+    maxWorkflows: -1,
+    maxTokensPerMonth: 5_000_000,
+    features: ["50 agents IA", "Workflows illimités", "5M tokens/mois", "File d'attente prioritaire", "Webhooks sortants"],
+    popular: true,
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    price: 50000,
+    priceUSD: 99.99,
+    credits: 25000,
+    maxAgents: -1,
+    maxWorkflows: -1,
+    maxTokensPerMonth: 25_000_000,
+    features: ["Agents illimités", "Workflows illimités", "25M tokens/mois", "Support dédié 24/7", "SLA garanti", "Déploiement privé"],
+  },
+];
 
 interface SebPayConfig {
-  publicKey: string;
-  secretKey: string;
-  environment: 'sandbox' | 'production';
+  apiKey: string;
+  apiSecret: string;
+  baseUrl: string;
   webhookSecret: string;
 }
 
-interface SebPayPaymentRequest {
-  amount: number;
-  currency: string;
-  description: string;
-  reference: string;
-  callbackUrl?: string;
-  redirectUrl?: string;
-  customerEmail?: string;
-  customerName?: string;
-}
-
-interface SebPayPaymentResponse {
-  status: 'pending' | 'success' | 'failed';
-  transactionId: string;
-  reference: string;
-  paymentUrl?: string;
-  message: string;
-}
-
-const config: SebPayConfig = {
-  publicKey: process.env.SEBPAY_PUBLIC_KEY || '',
-  secretKey: process.env.SEBPAY_SECRET_KEY || '',
-  environment: (process.env.SEBPAY_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
-  webhookSecret: process.env.SEBPAY_WEBHOOK_SECRET || '',
-};
-
-function getBaseUrl(): string {
-  return config.environment === 'production'
-    ? 'https://api.sebpay.africa/v1'
-    : 'https://sandbox-api.sebpay.africa/v1';
-}
-
-function getHeaders(): HeadersInit {
+function getSebPayConfig(): SebPayConfig {
   return {
-    'Content-Type': 'application/json',
-    'X-Public-Key': config.publicKey,
-    'X-Secret-Key': config.secretKey,
+    apiKey: process.env.SEBPAY_API_KEY ?? "",
+    apiSecret: process.env.SEBPAY_API_SECRET ?? "",
+    baseUrl: process.env.SEBPAY_BASE_URL ?? "https://api.sebpay.africa/v1",
+    webhookSecret: process.env.SEBPAY_WEBHOOK_SECRET ?? "",
   };
 }
 
-/**
- * Initier un paiement via SebPay (Mobile Money automatique)
- * 
- * @example
- * const payment = await initiatePayment({
- *   amount: 5000,
- *   currency: 'XAF',
- *   description: 'Abonnement Starter - Genova AI',
- *   reference: 'GENOVA-001',
- * });
- */
-export async function initiatePayment(
-  payment: SebPayPaymentRequest
-): Promise<SebPayPaymentResponse> {
-  const response = await fetch(`${getBaseUrl()}/payments`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify({
-      amount: payment.amount,
-      currency: payment.currency || 'XAF',
-      description: payment.description,
-      reference: payment.reference,
-      callback_url: payment.callbackUrl,
-      redirect_url: payment.redirectUrl,
-      customer_email: payment.customerEmail,
-      customer_name: payment.customerName,
-    }),
-  });
+export interface SebPayPaymentRequest {
+  amount: number;
+  currency: string;
+  phone: string;
+  operator: string;
+  description: string;
+  reference: string;
+  callbackUrl: string;
+}
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Payment initiation failed' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+export interface SebPayPaymentResponse {
+  success: boolean;
+  transactionId?: string;
+  paymentUrl?: string;
+  status?: string;
+  message?: string;
+}
+
+export class SebPayService {
+  private config: SebPayConfig;
+
+  constructor() {
+    this.config = getSebPayConfig();
   }
 
-  return response.json();
+  async initiatePayment(request: SebPayPaymentRequest): Promise<SebPayPaymentResponse> {
+    logger.info("sebpay_payment_initiated", {
+      amount: request.amount,
+      currency: request.currency,
+      operator: request.operator,
+      reference: request.reference,
+    });
+
+    try {
+      const response = await fetch(`${this.config.baseUrl}/payments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": this.config.apiKey,
+          "X-Api-Secret": this.config.apiSecret,
+        },
+        body: JSON.stringify({
+          amount: request.amount,
+          currency: request.currency,
+          phone: request.phone,
+          operator: request.operator,
+          description: request.description,
+          reference: request.reference,
+          callback_url: request.callbackUrl,
+          metadata: { source: "genova", version: "1.0" },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        logger.error("sebpay_payment_failed", { reference: request.reference, status: response.status, error });
+        return { success: false, message: `Erreur SebPay: ${response.status}` };
+      }
+
+      const data = await response.json();
+      logger.info("sebpay_payment_success", { reference: request.reference, transactionId: data.transaction_id });
+
+      return { success: true, transactionId: data.transaction_id, paymentUrl: data.payment_url, status: data.status };
+    } catch (error) {
+      logger.error("sebpay_payment_error", { reference: request.reference, error: error instanceof Error ? error.message : String(error) });
+      return { success: false, message: "Erreur de connexion au service SebPay" };
+    }
+  }
+
+  async checkPaymentStatus(transactionId: string): Promise<SebPayPaymentResponse> {
+    try {
+      const response = await fetch(`${this.config.baseUrl}/payments/${transactionId}`, {
+        headers: { "X-Api-Key": this.config.apiKey, "X-Api-Secret": this.config.apiSecret },
+      });
+      if (!response.ok) return { success: false, message: "Transaction introuvable" };
+      const data = await response.json();
+      return { success: data.status === "completed", status: data.status, transactionId };
+    } catch (error) {
+      return { success: false, message: String(error) };
+    }
+  }
+
+  verifyWebhookSignature(payload: string, signature: string): boolean {
+    // Implémentation HMAC-SHA256 selon doc SebPay
+    // À compléter avec les spécifications exactes de SebPay
+    return true;
+  }
+
+  async handleWebhook(payload: {
+    event: string;
+    transaction_id: string;
+    reference: string;
+    status: string;
+    amount: number;
+    currency: string;
+    operator: string;
+    phone: string;
+  }): Promise<void> {
+    logger.info("sebpay_webhook_received", { event: payload.event, transactionId: payload.transaction_id, reference: payload.reference });
+
+    if (payload.event !== "payment.completed" || payload.status !== "completed") return;
+
+    const match = payload.reference.match(/^sub_(.+)_(.+)_(\d+)$/);
+    if (!match) { logger.warn("sebpay_webhook_invalid_reference", { reference: payload.reference }); return; }
+
+    const planId = match[1] as string;
+    const userId = match[2] as string;
+    const plan = SUBSCRIPTION_PLANS.find((p) => p.id === planId);
+    if (!plan) { logger.warn("sebpay_webhook_unknown_plan", { planId }); return; }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.subscription.upsert({
+        where: { userId },
+        update: { plan: planId, status: "active", currentPeriodStart: new Date(), currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+        create: { userId, plan: planId, status: "active", currentPeriodStart: new Date(), currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+      });
+      await tx.creditTransaction.create({
+        data: { userId, amount: plan.credits, balance: plan.credits, type: "purchase", resourceType: "subscription", description: `Abonnement ${plan.name} - ${payload.amount} ${payload.currency}` },
+      });
+      await tx.user.update({ where: { id: userId }, data: { plan: planId, credits: { increment: plan.credits } } });
+    });
+
+    logger.info("sebpay_subscription_activated", { userId, planId, credits: plan.credits });
+  }
 }
 
-/**
- * Vérifier le statut d'une transaction
- */
-export async function checkTransactionStatus(
-  transactionId: string
-): Promise<{ id: string; reference: string; amount: number; currency: string; status: string; description: string; createdAt: string }> {
-  const response = await fetch(`${getBaseUrl()}/payments/${transactionId}`, {
-    headers: getHeaders(),
-  });
-  if (!response.ok) throw new Error(`Failed to fetch transaction: ${response.status}`);
-  return response.json();
-}
-
-/**
- * Plans Genova avec prix en FCFA (XAF)
- */
-export const PLANS = [
-  {
-    id: 'free', name: 'Free', price: 0, currency: 'XAF', interval: 'month', credits: 100,
-    features: [
-      { name: '2 AI Agents', included: true }, { name: '100 credits/month', included: true },
-      { name: 'Basic agent tools', included: true }, { name: '3 scheduled tasks', included: true },
-      { name: 'Advanced guardrails', included: false }, { name: 'Priority support', included: false },
-    ],
-  },
-  {
-    id: 'starter', name: 'Starter', price: 5000, currency: 'XAF', interval: 'month', credits: 1000,
-    featured: true,
-    features: [
-      { name: '5 AI Agents', included: true }, { name: '1,000 credits/month', included: true },
-      { name: 'All agent tools', included: true }, { name: '10 scheduled tasks', included: true },
-      { name: '5 web monitors', included: true }, { name: 'Advanced guardrails', included: true },
-      { name: 'Priority support', included: false },
-    ],
-  },
-  {
-    id: 'pro', name: 'Pro', price: 15000, currency: 'XAF', interval: 'month', credits: 5000,
-    highlighted: true, badge: 'Populaire',
-    features: [
-      { name: '20 AI Agents', included: true }, { name: '5,000 credits/month', included: true },
-      { name: 'All tools + advanced', included: true }, { name: '50 scheduled tasks', included: true },
-      { name: '25 web monitors', included: true }, { name: 'Auto-reports', included: true },
-      { name: 'Priority support', included: true },
-    ],
-  },
-  {
-    id: 'enterprise', name: 'Enterprise', price: 50000, currency: 'XAF', interval: 'month', credits: -1,
-    badge: 'Meilleur Rapport Qualité/Prix',
-    features: [
-      { name: 'Unlimited Agents', included: true }, { name: 'Unlimited credits', included: true },
-      { name: 'All tools & features', included: true }, { name: 'Unlimited tasks', included: true },
-      { name: 'SSO & SAML', included: true }, { name: 'Custom integrations', included: true },
-      { name: 'SLA guarantee', included: true },
-    ],
-  },
-];
-
-export const CREDIT_PACKAGES = [
-  { id: 'credits_500', name: 'Petit Pack', credits: 500, price: 2500, currency: 'XAF' },
-  { id: 'credits_2000', name: 'Pack Standard', credits: 2000, price: 9000, currency: 'XAF' },
-  { id: 'credits_5000', name: 'Gros Pack', credits: 5000, price: 20000, currency: 'XAF' },
-  { id: 'credits_10000', name: 'Pack Pro', credits: 10000, price: 35000, currency: 'XAF' },
-];
+export const sebpay = new SebPayService();
