@@ -149,31 +149,35 @@ model SocialAccount {
 }
 
 model Agent {
-  id          String   @id @default(cuid())
-  name        String
-  type        String
-  description String
-  status      String   @default("inactive")
-  config      String
-  avatar      String?
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  type          String
+  description   String
+  status        String   @default("inactive")
+  config        String
+  avatar        String?
+  userId        String
+  maxIterations Int      @default(25)
+  maxCostLimit  Float    @default(1.0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks             Task[]
-  permissions       AgentPermission[]
-  actions           AgentActionLog[]
-  browserSessions   BrowserSession[]
-  agentUsages       AgentUsage[]
-  memories          AgentMemory[]
-  automations       AgentAutomation[]
-  scheduledTasks    ScheduledTask[]
-  sharedIn          SharedAgent[]
-  browserAutomations BrowserAutomation[]
-  multimodalSessions MultimodalSession[]
-  executions        AgentExecution[]
-  conversations     Conversation[]
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks               Task[]
+  permissions         AgentPermission[]
+  actions             AgentActionLog[]
+  browserSessions     BrowserSession[]
+  agentUsages         AgentUsage[]
+  memories            AgentMemory[]
+  automations         AgentAutomation[]
+  scheduledTasks      ScheduledTask[]
+  sharedIn            SharedAgent[]
+  browserAutomations  BrowserAutomation[]
+  multimodalSessions  MultimodalSession[]
+  executions          AgentExecution[]
+  conversations       Conversation[]
+  checkpoints         AgentCheckpoint[]
+  supervisorLogs      SupervisorLog[]
 
   @@map("agents")
 }
@@ -1266,4 +1270,58 @@ model BrowserAutomation {
   @@index([userId])
   @@index([status])
   @@map("browser_automations")
+}
+
+// ============================================================
+// CHECKPOINTS — Reprise sur panne des agents
+// ============================================================
+
+model AgentCheckpoint {
+  id        String   @id @default(cuid())
+  agentId   String
+  sessionId String
+  step      Int      @default(0)
+  context   Json
+  memory    Json
+  actions   Json
+  totalCost Float    @default(0)
+  totalTokens Int    @default(0)
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, sessionId])
+  @@index([agentId, step])
+  @@index([sessionId])
+  @@unique([agentId, sessionId, step])
+  @@map("agent_checkpoints")
+}
+
+// ============================================================
+// SUPERVISOR LOGS — Garde-fou des agents
+// ============================================================
+
+model SupervisorLog {
+  id             String   @id @default(cuid())
+  agentId        String
+  sessionId      String
+  iteration      Int      @default(0)
+  status         String   @default("running")
+  currentCost    Float    @default(0)
+  currentTokens  Int      @default(0)
+  decision       String?
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, sessionId])
+  @@index([agentId, sessionId, iteration])
+  @@index([sessionId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("supervisor_logs")
 }
