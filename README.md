@@ -6,6 +6,9 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js)](https://nextjs.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma)](https://www.prisma.io/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-vitest-brightgreen)]()
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-blue)]()
+[![Payments](https://img.shields.io/badge/payments-SebPay%20Africa-orange)]()
 
 ---
 
@@ -13,39 +16,61 @@
 
 - 🤖 **Agents IA autonomes** — Boucle ReAct avec mémoire, outils et supervision
 - 🔄 **Workflows multi-étapes** — Automatisation avec dépendances et déclencheurs
-- 💰 **Paiements Mobile Money** — Intégration SebPay pour l'Afrique (Orange Money, MTN, etc.)
-- 🛡️ **Rate Limiting** — Protection intégrée (10 req/min auth, 60 req/min API)
+- 💰 **Paiements Mobile Money** — Intégration SebPay pour l'Afrique (Orange Money, MTN, Airtel, Moov)
+- 🛡️ **Rate Limiting** — Protection intégrée (Upstash Redis + fallback mémoire)
 - ✅ **Checkpoints** — Reprise sur panne sans perte de crédits
-- 📊 **Logs structurés** — Monitoring en temps réel des exécutions
+- 📊 **Logs structurés** — Pino JSON avec redaction des secrets
+- 📈 **Métriques Prometheus** — Endpoint /api/metrics pour monitoring
 - 🐳 **Docker** — Déploiement simplifié avec Docker Compose
-- 🔒 **Sécurité** — CSP, HSTS, Headers de sécurité, validation stricte TypeScript
+- 🔒 **Sécurité** — CSP, HSTS, Headers, Zod validation, strict TypeScript
 
 ## 🏗️ Architecture
 
 ```
-- Frontend: Next.js 16 (App Router) + Tailwind CSS
-- API Routes: Edge/Serverless
-  - Agents (ReAct Loop)
-  - Workflows (BullMQ)
-  - Payments (SebPay)
-  - Auth (Better Auth)
-- Services Layer: Checkpoint, Supervisor, Logger, Cache
-- Data Layer: Prisma (PostgreSQL) + Redis + Qdrant
+┌─────────────────────────────────────────────┐
+│              Frontend Next.js 16            │
+│         App Router + Tailwind CSS           │
+├─────────────────────────────────────────────┤
+│              API Routes (Edge)              │
+├──────────┬──────────┬──────────┬────────────┤
+│  Agents  │Workflows │ Payments │   Auth     │
+│ (ReAct)  │ (BullMQ) │(SebPay)  │(BetterAuth)│
+├──────────┴──────────┴──────────┴────────────┤
+│            Services Layer                   │
+│ Checkpoint │ Supervisor │ Logger │ Cache    │
+├─────────────────────────────────────────────┤
+│          Data Layer                         │
+│  Prisma (PostgreSQL) + Redis + Qdrant      │
+└─────────────────────────────────────────────┘
 ```
 
 ## 🚀 Démarrage rapide
 
 ```bash
+# 1. Cloner le projet
 git clone https://github.com/missock237-spec/Genova.git
 cd Genova
+
+# 2. Installer les dépendances
 bun install
+
+# 3. Copier et configurer l'environnement
 cp .env.example .env
-bash scripts/start-pg.sh
+
+# 4. Lancer PostgreSQL et Redis (Docker)
+docker-compose -f docker-compose.dev.yml up -d
+
+# 5. Lancer les migrations + seed
 bunx prisma migrate dev
+bunx prisma db seed
+
+# 6. Démarrer le serveur de développement
 bun run dev
 ```
 
 ## 🔧 Configuration
+
+### Variables d'environnement essentielles
 
 | Variable | Description | Requise |
 |----------|-------------|---------|
@@ -53,49 +78,71 @@ bun run dev
 | `REDIS_URL` | Connexion Redis | ✅ |
 | `SEBPAY_API_KEY` | Clé API SebPay | ✅ |
 | `NEXT_PUBLIC_APP_URL` | URL de l'application | ✅ |
+| `UPSTASH_REDIS_REST_URL` | Rate limiting distribué | ❌ |
 
 ### Plans d'abonnement
 
-| Plan | Prix | Crédits | Features |
-|------|------|---------|----------|
-| Free | 0 FCFA | 10 | Agents de base, 1 workflow |
-| Starter | 5 000 FCFA/mois | 1 000 | Agents illimités, 10 workflows |
-| Pro | 15 000 FCFA/mois | 5 000 | Workflows illimités, prioritaire |
-| Enterprise | 50 000 FCFA/mois | 25 000 | Support dédié, SLA, custom |
+| Plan | Prix | Crédits | Agents |
+|------|------|---------|--------|
+| Free | **0 FCFA** | 10 | 1 |
+| Starter | **5 000 FCFA/mois** | 1 000 | 10 |
+| Pro ⭐ | **15 000 FCFA/mois** | 5 000 | 50 |
+| Enterprise | **50 000 FCFA/mois** | 25 000 | Illimité |
 
 ## 📚 API
 
 | Méthode | Endpoint | Description |
 |---------|----------|-------------|
 | `GET` | `/api/health` | État du service |
-| `POST` | `/api/auth/register` | Inscription |
-| `POST` | `/api/auth/login` | Connexion |
-| `GET` | `/api/agents` | Liste des agents |
-| `POST` | `/api/agents` | Créer un agent |
-| `POST` | `/api/agents/:id/execute` | Exécuter un agent |
-| `GET` | `/api/workflows` | Liste des workflows |
+| `GET` | `/api/metrics` | Métriques Prometheus |
+| `POST` | `/api/agents/run` | Exécuter un agent (ReAct) |
+| `GET` | `/api/payments/plans` | Plans d'abonnement |
 | `POST` | `/api/payments/subscribe` | S'abonner via SebPay |
 | `POST` | `/api/payments/webhook` | Webhook SebPay |
-| `GET` | `/api/payments/plans` | Plans d'abonnement |
 
 ## 📦 Déploiement
 
-Déploiement Vercel recommandé :
+### Vercel (recommandé)
+
 ```bash
 vercel --prod
 ```
 
-Ou avec Docker :
+### Docker
+
 ```bash
 docker-compose up -d
 ```
 
+## 📊 Métriques
+
+L'endpoint `/api/metrics` expose :
+- `genova_users_total` — Utilisateurs actifs
+- `genova_active_agents_total` — Agents actifs
+- `genova_executions_total` — Exécutions totales
+- `genova_active_subscriptions_total` — Abonnements actifs
+- `genova_uptime_seconds` — Uptime
+
 ## 🧪 Tests
 
 ```bash
-bun run test          # Tests unitaires
-bun run security:audit # Audit de sécurité
+bun run test              # Tests unitaires (Vitest)
+bun run typecheck         # Vérification TypeScript
+bun run security:audit    # Audit de sécurité
+bun run lint              # ESLint
 ```
+
+## 🌱 Seed (Données de démo)
+
+```bash
+bunx prisma db seed
+```
+
+Crée :
+- Admin : `admin@genova.ai` / `Admin123!`
+- Démo : `demo@genova.ai` / `Demo123!`
+- 3 agents de démonstration
+- Abonnement Pro + crédits
 
 ## 📄 Licence
 
