@@ -1,0 +1,1 @@
+{"name":"genova-cli","version":"1.0.0","description":"CLI pour Genova AI Platform","bin":{"genova":"./index.ts"},"dependencies":{},"devDependencies":{"bun-types":"^1","typescript":"^5"}}
