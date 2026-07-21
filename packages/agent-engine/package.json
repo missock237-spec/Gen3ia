@@ -1,0 +1,1 @@
+{"name":"@genova/agent-engine","version":"1.0.0","description":"Moteur d'agents IA autonomes - Checkpoint, Supervisor, Rate Limiter, Guardrail, Cache semantique","main":"dist/index.js","types":"dist/index.d.ts","scripts":{"build":"tsc","test":"vitest run"},"dependencies":{},"devDependencies":{"typescript":"^5","vitest":"^3"}}
