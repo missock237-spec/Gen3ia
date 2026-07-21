@@ -70,6 +70,10 @@ model User {
   memoryEdges         MemoryEdge[]
   browserAutomations  BrowserAutomation[]
   multimodalSessions  MultimodalSession[]
+  executions          AgentExecution[]
+  marketplaceListings MarketplaceListing[]
+  marketplacePurchases MarketplacePurchase[]
+  marketplaceReviews  MarketplaceReview[]
 
   @@index([email])
   @@index([role])
@@ -571,6 +575,7 @@ model Conversation {
   updatedAt DateTime @updatedAt
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@index([userId, createdAt])
