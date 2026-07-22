@@ -633,3 +633,113 @@ model Message {
   @@index([conversationId])
   @@map("messages")
 }
+
+model Knowledge {
+  id        String   @id @default(cuid())
+  content   String
+  category  String   @default("general")
+  tags      String   @default("[]")
+  source    String   @default("manual")
+  relevance Float    @default(0.5)
+  userId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, category])
+  @@index([userId, createdAt])
+  @@map("knowledge")
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  fileName  String
+  fileType  String   @default("unknown")
+  fileSize  Int      @default(0)
+  content   String   @default("")
+  status    String   @default("processing")
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks DocumentChunk[]
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id          String   @id @default(cuid())
+  content     String
+  chunkIndex  Int      @default(0)
+  pageNumber  Int?
+  metadata    Json     @default("{}")
+  documentId  String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([userId])
+  @@unique([documentId, chunkIndex])
+  @@map("document_chunks")
+}
+
+model WhatsAppConfig {
+  id            String   @id @default(cuid())
+  phoneNumber   String
+  whatsappId    String?
+  phoneNumberId String?
+  apiToken      String?
+  isActive      Boolean  @default(false)
+  autoMessage   Boolean  @default(false)
+  autoCall      Boolean  @default(false)
+  userId        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@map("whatsapp_configs")
+}
+
+model UserResource {
+  id        String   @id @default(cuid())
+  type      String
+  name      String
+  config    Json     @default("{}")
+  apiKey    String?
+  endpoint  String?
+  isActive  Boolean  @default(true)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("user_resources")
+}
+
+model ApprovalRequest {
+  id         String    @id @default(cuid())
+  agentId    String
+  action     String
+  details    String
+  status     String    @default("pending")
+  result     String?
+  userId     String
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([agentId, status])
+  @@map("approval_requests")
+}
