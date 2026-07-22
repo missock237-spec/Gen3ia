@@ -13,7 +13,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
-    "audit": "bun audit --production || true",
+    "audit": "bun audit --production",
     "test": "vitest run",
     "test:watch": "vitest",
     "diagnostic": "bash scripts/diagnostic.sh",
@@ -23,6 +23,7 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "db:studio": "prisma studio",
+    "prebuild": "prisma generate",
     "security:audit": "bun audit --production && vitest run src/__tests__/security/"
   },
   "dependencies": {
