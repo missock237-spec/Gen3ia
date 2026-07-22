@@ -1,81 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
-import {
-  hashPassword,
-  sanitizeEmail,
-  validateEmail,
-  validatePassword,
-  checkRateLimit,
-} from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { hashPassword, createSession } from "@/lib/auth/auth";
+import { SESSION_COOKIE } from "@/lib/auth/auth";
+import { registerSchema, validate } from "@/lib/validators";
+import { validatePasswordStrength, checkIpRateLimit } from "@/lib/auth/security";
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.headers.get('x-forwarded-for') || 'unknown';
-    if (!checkRateLimit(`register:${ip}`, 3, 60000)) {
-      return NextResponse.json(
-        { error: 'Trop de tentatives. Réessayez dans une minute.' },
-        { status: 429 }
-      );
-    }
-
     const body = await request.json();
-    const email = sanitizeEmail(body.email || '');
-    const { password, name } = body;
+    const ip = request.headers.get("x-forwarded-for") || "unknown";
 
-    if (!email || !password || !name) {
-      return NextResponse.json(
-        { error: 'Email, mot de passe et nom requis' },
-        { status: 400 }
-      );
+    const ipCheck = checkIpRateLimit(ip);
+    if (!ipCheck.allowed) {
+      return NextResponse.json({ error: "Trop de requetes. Reessayez dans une minute." }, { status: 429 });
     }
 
-    if (!validateEmail(email)) {
-      return NextResponse.json(
-        { error: 'Format d\'email invalide' },
-        { status: 400 }
-      );
+    const validation = validate(registerSchema, body);
+    if (!validation.success) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const passwordCheck = validatePassword(password);
-    if (!passwordCheck.valid) {
-      return NextResponse.json(
-        { error: passwordCheck.message },
-        { status: 400 }
-      );
+    const { name, email, password } = validation.data;
+
+    const strengthCheck = validatePasswordStrength(password);
+    if (!strengthCheck.valid) {
+      return NextResponse.json({ error: "Mot de passe trop faible", details: strengthCheck.errors }, { status: 400 });
     }
 
-    if (name.length < 2 || name.length > 50) {
-      return NextResponse.json(
-        { error: 'Le nom doit contenir entre 2 et 50 caractères' },
-        { status: 400 }
-      );
+    const exists = await prisma.user.findUnique({ where: { email } });
+    if (exists) {
+      await new Promise(r => setTimeout(r, 1000));
+      return NextResponse.json({ error: "Email deja utilise" }, { status: 409 });
     }
 
-    const passwordHash = hashPassword(password);
+    const hashed = await hashPassword(password);
+    const user = await prisma.user.create({ data: { name, email, passwordHash: hashed } });
 
-    // Simulated user creation (replace with Prisma)
-    const user = {
-      id: `usr_${Buffer.from(email).toString('hex').slice(0, 16)}`,
-      email,
-      name,
-      plan: 'free' as const,
-      role: 'user' as const,
-      createdAt: new Date().toISOString(),
-    };
-
-    return NextResponse.json({
-      message: 'Inscription réussie. Vérifiez votre email pour activer votre compte.',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        plan: user.plan,
-      },
-    }, { status: 201 });
-  } catch (err) {
-    console.error('[Register Error]:', err);
-    return NextResponse.json(
-      { error: 'Erreur interne du serveur' },
-      { status: 500 }
-    );
+    const token = await createSession(user.id);
+    const response = NextResponse.json({ user: { id: user.id, email: user.email, name: user.name, role: "user", plan: "free" }, token }, { status: 201 });
+    response.cookies.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 7 * 24 * 60 * 60, path: "/" });
+    return response;
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
   }
 }
