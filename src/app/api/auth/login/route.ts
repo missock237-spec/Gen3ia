@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { verifyPassword, createSession } from "@/lib/auth/auth";
-import { SESSION_COOKIE } from "@/lib/auth/auth";
+import { verifyPassword, createSession, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth/auth";
 import { loginSchema, validate } from "@/lib/validators";
 import { checkLoginAttempts, recordLoginAttempt, slowDown, checkIpRateLimit } from "@/lib/auth/security";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown";
+    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || (request as any).ip || "unknown";
     const email = body.email || "";
 
     const ipCheck = checkIpRateLimit(ip);
@@ -24,7 +23,7 @@ export async function POST(request: NextRequest) {
     const attemptCheck = checkLoginAttempts(email);
     if (!attemptCheck.allowed) {
       const minutesLeft = Math.ceil(((attemptCheck.lockedUntil || 0) - Date.now()) / 60000);
-      return NextResponse.json({ error: `Compte bloque. Reessayez dans ${minutesLeft} min.`, locked: true }, { status: 429 });
+      return NextResponse.json({ error: "Compte bloque. Reessayez dans " + minutesLeft + " min.", locked: true }, { status: 429 });
     }
 
     await slowDown(email);
@@ -45,9 +44,19 @@ export async function POST(request: NextRequest) {
     }
 
     recordLoginAttempt(email, true, ip);
-    const token = await createSession(user.id);
-    const response = NextResponse.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role, plan: user.plan }, token });
-    response.cookies.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 7 * 24 * 60 * 60, path: "/" });
+    const tokens = await createSession(user.id);
+    const response = NextResponse.json({
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, plan: user.plan },
+      accessToken: tokens.accessToken,
+    });
+    response.cookies.set(SESSION_COOKIE, tokens.accessToken, {
+      httpOnly: true, secure: process.env.NODE_ENV === "production",
+      sameSite: "lax", maxAge: 15 * 60, path: "/",
+    });
+    response.cookies.set(REFRESH_COOKIE, tokens.refreshToken, {
+      httpOnly: true, secure: process.env.NODE_ENV === "production",
+      sameSite: "lax", maxAge: 7 * 24 * 60 * 60, path: "/api/auth",
+    });
     return response;
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
