@@ -21,37 +21,11 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: '2mb' },
   },
 
-  serverExternalPackages: ['argon2', 'bcryptjs'],
+  serverExternalPackages: ['argon2'],
 
-  eslint: { ignoreDuringBuilds: true },
+  // CSP géré dans middleware.ts avec nonce — pas ici
+  eslint: { ignoreDuringBuilds: false },
   typescript: { ignoreBuildErrors: false },
-
-  async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'Content-Security-Policy',
-            value:
-              "default-src 'self'; " +
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-              "style-src 'self' 'unsafe-inline'; " +
-              "img-src 'self' data: blob: https:; " +
-              "font-src 'self' data:; " +
-              "connect-src 'self' https: wss:; " +
-              "frame-ancestors 'none'; " +
-              "base-uri 'self'; " +
-              "form-action 'self'",
-          },
-          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
-        ],
-      },
-    ];
-  },
 };
 
 export default nextConfig;
