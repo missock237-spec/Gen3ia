@@ -100,3 +100,299 @@ model Session {
   @@index([token])
   @@map("sessions")
 }
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  code      String
+  attempts  Int      @default(0)
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([email, code])
+  @@map("password_resets")
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  token     String?
+  email     String
+  code      String
+  attempts  Int      @default(0)
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([email, code])
+  @@map("email_verifications")
+}
+
+model SocialAccount {
+  id           String   @id @default(cuid())
+  platform     String
+  accountId    String
+  accountName  String
+  accessToken  String
+  refreshToken String?
+  isActive     Boolean  @default(true)
+  userId       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, accountId])
+  @@index([platform, accountId])
+  @@map("social_accounts")
+}
+
+model Agent {
+  id            String   @id @default(cuid())
+  name          String
+  type          String
+  description   String
+  status        String   @default("inactive")
+  config        Json     @default("{}")
+  avatar        String?
+  userId        String
+  maxIterations Int      @default(25)
+  maxCostLimit  Float    @default(1.0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks               Task[]
+  permissions         AgentPermission[]
+  actions             AgentActionLog[]
+  browserSessions     BrowserSession[]
+  agentUsages         AgentUsage[]
+  memories            AgentMemory[]
+  automations         AgentAutomation[]
+  scheduledTasks      ScheduledTask[]
+  sharedIn            SharedAgent[]
+  browserAutomations  BrowserAutomation[]
+  multimodalSessions  MultimodalSession[]
+  executions          AgentExecution[]
+  conversations       Conversation[]
+  checkpoints         AgentCheckpoint[]
+  supervisorLogs      SupervisorLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([type])
+  @@map("agents")
+}
+
+model AgentPermission {
+  id               String   @id @default(cuid())
+  agentId          String
+  permission       String
+  granted          Boolean  @default(false)
+  requiresApproval Boolean  @default(true)
+  userId           String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, permission])
+  @@index([userId])
+  @@map("agent_permissions")
+}
+
+model AgentActionLog {
+  id        String    @id @default(cuid())
+  agentId   String?
+  action    String
+  details   String
+  status    String    @default("pending")
+  result    String?
+  userId    String
+  createdAt DateTime  @default(now())
+  resolvedAt DateTime?
+
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([agentId, status])
+  @@map("agent_action_logs")
+}
+
+model BrowserSession {
+  id         String   @id @default(cuid())
+  agentId    String
+  url        String   @default("about:blank")
+  title      String?
+  status     String   @default("idle")
+  screenshot String?
+  userId     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([agentId])
+  @@map("browser_sessions")
+}
+
+model AgentUsage {
+  id        String   @id @default(cuid())
+  agentId   String
+  userId    String
+  action    String
+  tokensUsed Int     @default(0)
+  duration  Int      @default(0)
+  status    String   @default("success")
+  metadata  String   @default("{}")
+  createdAt DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([userId, createdAt])
+  @@index([userId, action])
+  @@map("agent_usage")
+}
+
+model AgentMemory {
+  id            String    @id @default(cuid())
+  agentId       String
+  userId        String
+  category      String    @default("general")
+  content       String
+  context       Json      @default("{}")
+  source        String    @default("interaction")
+  relevance     Float     @default(0.5)
+  accessCount   Int       @default(0)
+  tags          String    @default("[]")
+  embedding     String?
+  createdAt     DateTime  @default(now())
+  lastAccessedAt DateTime @default(now())
+  expiresAt     DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, category])
+  @@index([agentId, createdAt])
+  @@index([userId, category])
+  @@index([agentId, userId, category])
+  @@map("agent_memories")
+}
+
+model AgentExecution {
+  id            String    @id @default(cuid())
+  agentId       String
+  userId        String
+  task          String    @default("")
+  steps         Json      @default("[]")
+  currentStep   Int       @default(0)
+  totalSteps    Int       @default(0)
+  status        String    @default("pending")
+  totalDuration Int       @default(0)
+  totalTokens   Int       @default(0)
+  estimatedCost Float     @default(0)
+  model         String?
+  provider      String?
+  result        String?
+  error         String?
+  state         Json      @default("{}")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  completedAt   DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([status])
+  @@map("agent_executions")
+}
+
+model AgentAutomation {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  trigger     String
+  conditions  Json     @default("[]")
+  actions     String
+  isActive    Boolean  @default(true)
+  metadata    Json     @default("{}")
+  userId      String
+  agentId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, trigger])
+  @@index([isActive])
+  @@map("agent_automations")
+}
+
+model ScheduledTask {
+  id           String    @id @default(cuid())
+  name         String
+  description  String    @default("")
+  schedule     String
+  timezone     String    @default("UTC")
+  status       String    @default("active")
+  nextRun      DateTime?
+  lastRun      DateTime?
+  runCount     Int       @default(0)
+  failureCount Int       @default(0)
+  lastError    String?
+  result       String?   @default("")
+  payload      Json      @default("{}")
+  userId       String
+  agentId      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([nextRun])
+  @@index([status, nextRun])
+  @@map("scheduled_tasks")
+}
+
+model Workflow {
+  id               String   @id @default(cuid())
+  name             String
+  description      String
+  status           String   @default("draft")
+  steps            Json     @default("[]")
+  trigger          String
+  currentTaskIndex Int      @default(0)
+  userId           String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@index([userId, status])
+  @@index([status])
+  @@map("workflows")
+}
