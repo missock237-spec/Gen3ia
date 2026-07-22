@@ -1,0 +1,107 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Genova AI API",
+    "version": "1.0.0",
+    "description": "API REST de Genova — Système d'exploitation pour agents IA"
+  },
+  "servers": [
+    { "url": "https://missock237-spec.github.io/Genova", "description": "Production" },
+    { "url": "http://localhost:3000", "description": "Développement local" }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Vérification de santé",
+        "tags": ["Système"],
+        "responses": {
+          "200": {
+            "description": "Statut du service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["healthy", "degraded", "down"] },
+                    "version": { "type": "string" },
+                    "uptime": { "type": "integer" },
+                    "timestamp": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "summary": "Liste tous les agents",
+        "tags": ["Agents"],
+        "responses": {
+          "200": { "description": "Liste des agents" },
+          "401": { "description": "Non authentifié" }
+        }
+      },
+      "post": {
+        "summary": "Crée un nouvel agent",
+        "tags": ["Agents"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "type"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string" },
+                  "description": { "type": "string" },
+                  "config": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Agent créé" }
+        }
+      }
+    },
+    "/api/export": {
+      "get": {
+        "summary": "Export des données",
+        "tags": ["Export"],
+        "parameters": [
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["agents", "executions", "users", "workflows"] } },
+          { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["csv", "json"] } }
+        ],
+        "responses": {
+          "200": { "description": "Fichier exporté" }
+        }
+      }
+    },
+    "/api/monitoring/dashboard": {
+      "get": {
+        "summary": "Métriques du dashboard",
+        "tags": ["Monitoring"],
+        "responses": {
+          "200": { "description": "Métriques en temps réel" }
+        }
+      }
+    },
+    "/api/admin/audit": {
+      "get": {
+        "summary": "Consulter l'audit trail",
+        "tags": ["Admin"],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } },
+          { "name": "action", "in": "query", "schema": { "type": "string" } },
+          { "name": "severity", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Entrées d'audit" } }
+      }
+    }
+  }
+}
