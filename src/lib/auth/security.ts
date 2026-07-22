@@ -1,14 +1,7 @@
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
-interface AttemptEntry {
-  count: number;
-  firstAttempt: number;
-  lastAttempt: number;
-  lockedUntil?: number;
-}
-
-const attemptsMap = new Map<string, AttemptEntry>();
+const attemptsMap = new Map();
 
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
@@ -27,73 +20,54 @@ export const AUTH_CONFIG = {
   SLOW_DOWN_DELAY: 1000,
 };
 
-export function checkLoginAttempts(identifier: string) {
+export function checkLoginAttempts(identifier) {
   const now = Date.now();
   const entry = attemptsMap.get(identifier);
-  if (!entry) {
-    return { allowed: true, remaining: AUTH_CONFIG.MAX_ATTEMPTS, lockedUntil: null, delay: 0 };
-  }
+  if (!entry) return { allowed: true, remaining: 5, lockedUntil: null, delay: 0 };
   if (entry.lockedUntil && now < entry.lockedUntil) {
-    logger.warn('Tentative bloquee', { identifier, count: entry.count });
+    logger.warn('Tentative bloquee', { identifier });
     return { allowed: false, remaining: 0, lockedUntil: entry.lockedUntil, delay: 0 };
   }
-  if (now - entry.firstAttempt > AUTH_CONFIG.WINDOW_MS) {
+  if (now - entry.firstAttempt > 300000) {
     attemptsMap.delete(identifier);
-    return { allowed: true, remaining: AUTH_CONFIG.MAX_ATTEMPTS, lockedUntil: null, delay: 0 };
+    return { allowed: true, remaining: 5, lockedUntil: null, delay: 0 };
   }
-  const delay = entry.count >= 3 ? AUTH_CONFIG.SLOW_DOWN_DELAY : 0;
+  const delay = entry.count >= 3 ? 1000 : 0;
   return {
-    allowed: entry.count < AUTH_CONFIG.MAX_ATTEMPTS,
-    remaining: Math.max(0, AUTH_CONFIG.MAX_ATTEMPTS - entry.count),
-    lockedUntil: null, delay,
+    allowed: entry.count < 5,
+    remaining: Math.max(0, 5 - entry.count),
+    lockedUntil: null,
+    delay,
   };
 }
 
-export function recordLoginAttempt(identifier: string, success: boolean, ip?: string) {
+export function recordLoginAttempt(identifier, success, ip) {
   const now = Date.now();
   let entry = attemptsMap.get(identifier);
   if (!entry) entry = { count: 0, firstAttempt: now, lastAttempt: now };
   entry.lastAttempt = now;
   if (!success) {
     entry.count++;
-    if (entry.count >= AUTH_CONFIG.MAX_ATTEMPTS) {
-      const escalatedEntry = attemptsMap.get('escalated_' + identifier);
-      const escalated = escalatedEntry ? escalatedEntry.count >= 2 : false;
-      entry.lockedUntil = now + (escalated ? AUTH_CONFIG.LOCKOUT_DURATION_ESCALATED : AUTH_CONFIG.LOCKOUT_DURATION) * 60 * 1000;
-      logger.error('COMPTE BLOQUE', { identifier, attempts: entry.count, ip });
-      prisma.monitoringEvent.create({
-        data: {
-          userId: identifier, eventType: 'security.brute_force', source: 'auth',
-          message: 'Compte bloque apres ' + entry.count + ' tentatives',
-          details: JSON.stringify({ ip, attempts: entry.count, escalated }),
-          severity: 'error',
-        },
-      }).catch(() => {});
-      if (!escalatedEntry) {
-        attemptsMap.set('escalated_' + identifier, { count: 1, firstAttempt: now, lastAttempt: now });
-      } else {
-        escalatedEntry.count++;
-      }
-    } else if (entry.count >= 3) {
-      logger.warn('Tentatives echouees', { identifier, attempts: entry.count, ip });
+    if (entry.count >= 5) {
+      entry.lockedUntil = now + 15 * 60 * 1000;
+      logger.error('COMPTE BLOQUE 15min', { identifier, ip });
+      prisma.monitoringEvent.create({ data: { userId: identifier, eventType: 'security.brute_force', source: 'auth', message: 'Compte bloque', details: '{}', severity: 'error' } }).catch(() => {});
     }
   } else {
     attemptsMap.delete(identifier);
-    attemptsMap.delete('escalated_' + identifier);
   }
   attemptsMap.set(identifier, entry);
 }
 
-export async function slowDown(identifier: string) {
+export async function slowDown(identifier) {
   const entry = attemptsMap.get(identifier);
   if (entry && entry.count >= 3) {
-    const delay = Math.min(3000, (entry.count - 2) * AUTH_CONFIG.SLOW_DOWN_DELAY);
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise(r => setTimeout(r, Math.min(3000, (entry.count - 2) * 1000)));
   }
 }
 
-export function validatePasswordStrength(password: string): { valid: boolean; score: number; errors: string[] } {
-  const errors: string[] = [];
+export function validatePasswordStrength(password) {
+  const errors = [];
   let score = 0;
   if (password.length >= 8) score += 20; else errors.push('Minimum 8 caracteres');
   if (password.length >= 12) score += 10;
@@ -104,9 +78,8 @@ export function validatePasswordStrength(password: string): { valid: boolean; sc
   return { valid: score >= 60, score, errors };
 }
 
-const ipRateMap = new Map<string, { count: number; resetAt: number }>();
-
-export function checkIpRateLimit(ip: string): { allowed: boolean; remaining: number } {
+const ipRateMap = new Map();
+export function checkIpRateLimit(ip) {
   const now = Date.now();
   const entry = ipRateMap.get(ip);
   if (!entry || now > entry.resetAt) {
