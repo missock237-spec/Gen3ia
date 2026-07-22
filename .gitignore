@@ -1,5 +1,3 @@
-# Genova — .gitignore
-
 # Dependencies
 node_modules/
 .pnp
@@ -8,24 +6,16 @@ node_modules/
 # Build
 .next/
 out/
-build/
 dist/
-coverage/
+build/
+*.tsbuildinfo
 
-# Environment
+# Env
 .env
 .env.local
-.env.production
-.env.development
-
-# Logs
-*.log
-dev.log
-server.log
-logs/
-
-# Runtime
-bun.lockb
+.env.development.local
+.env.test.local
+.env.production.local
 
 # IDE
 .vscode/
@@ -38,16 +28,44 @@ bun.lockb
 .DS_Store
 Thumbs.db
 
-# Prisma
-prisma/migrations/*/migration.json
+# Logs
+*.log
+dev.log
+server.log
+npm-debug.log*
 
-# Next.js
-.next/
+# Runtime
+*.pid
+*.seed
+*.pid.lock
 
-# Testing
+# Cache
+.cache/
+.eslintcache
+.next/cache/
+
+# Lock files (use only one)
+bun.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Tests
 coverage/
 .nyc_output/
 
-# Misc
-*.tsbuildinfo
-next-env.d.ts
+# Temp
+tmp/
+temp/
+test-*
+generate_*
+keep-*
+start-*
+run-*
+worklog.*
+schema_backup.*
+test-write.*
+
+# Prisma (keep migrations, ignore generated)
+prisma/migrations/
+!prisma/migrations/migration_lock.toml
