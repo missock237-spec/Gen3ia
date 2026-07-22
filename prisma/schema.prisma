@@ -396,3 +396,154 @@ model Workflow {
   @@index([status])
   @@map("workflows")
 }
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("pending")
+  priority    String   @default("medium")
+  result      String?
+  agentId     String?
+  workflowId  String?
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agent     Agent?      @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  workflow  Workflow?   @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  validations Validation[]
+
+  @@index([userId, status])
+  @@index([workflowId])
+  @@index([agentId])
+  @@map("tasks")
+}
+
+model Guardrail {
+  id          String   @id @default(cuid())
+  name        String
+  type        String
+  description String
+  rules       String
+  severity    String   @default("warning")
+  isActive    Boolean  @default(true)
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  validations Validation[]
+
+  @@index([userId])
+  @@index([type, severity])
+  @@map("guardrails")
+}
+
+model Validation {
+  id          String   @id @default(cuid())
+  status      String
+  result      String
+  guardrailId String
+  taskId      String
+  createdAt   DateTime @default(now())
+
+  guardrail Guardrail @relation(fields: [guardrailId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([guardrailId])
+  @@index([taskId])
+  @@map("validations")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  action    String
+  details   String
+  category  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, category])
+  @@map("activity_logs")
+}
+
+model AICost {
+  id               String   @id @default(cuid())
+  userId           String
+  agentId          String?
+  provider         String
+  model            String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  costUsd          Float    @default(0)
+  requestId        String?
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([provider, createdAt])
+  @@index([userId, provider])
+  @@map("ai_costs")
+}
+
+model UsageDaily {
+  id           String   @id @default(cuid())
+  userId       String
+  date         DateTime
+  agentCount   Int      @default(0)
+  taskCount    Int      @default(0)
+  totalTokens  Int      @default(0)
+  totalCostUsd Float    @default(0)
+  apiCalls     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("usage_daily")
+}
+
+model MonitoringEvent {
+  id         String    @id @default(cuid())
+  userId     String
+  eventType  String
+  source     String
+  message    String
+  details    Json      @default("{}")
+  severity   String    @default("info")
+  resolved   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([eventType, severity])
+  @@index([severity, resolved])
+  @@index([createdAt])
+  @@map("monitoring_events")
+}
+
+model URLBlocklist {
+  id         String   @id @default(cuid())
+  domain     String   @unique
+  reason     String
+  threatType String   @default("malware")
+  severity   String   @default("high")
+  source     String   @default("system")
+  isActive   Boolean  @default(true)
+  hits       Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([domain])
+  @@index([isActive])
+  @@map("url_blocklist")
+}
