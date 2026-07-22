@@ -1,0 +1,15 @@
+# ATTENTION: Copie ce fichier vers .github/workflows/main.yml
+# Ensuite ajoute à la section env du job build:
+#   HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+
+name: HF Token Reference
+
+on:
+  workflow_dispatch:
+
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Ajoute cette ligne dans .github/workflows/main.yml sous env:"
+      - run: echo "  HUGGINGFACE_API_KEY: \${{ secrets.HUGGINGFACE_API_KEY }}"
