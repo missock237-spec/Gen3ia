@@ -9,7 +9,7 @@ export class UserService {
 
     const hashed = await hashPassword(data.password);
     const user = await prisma.user.create({
-      data: { name: data.name, email: data.email, password: hashed },
+      data: { name: data.name, email: data.email, passwordHash: hashed },
       select: { id: true, name: true, email: true, role: true, plan: true, createdAt: true },
     });
 
@@ -21,7 +21,7 @@ export class UserService {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) throw new Error("Identifiants invalides");
 
-    const valid = await verifyPassword(password, user.password);
+    const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) throw new Error("Identifiants invalides");
 
     const token = signToken({ userId: user.id, email: user.email, role: user.role });
