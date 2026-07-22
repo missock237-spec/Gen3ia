@@ -743,3 +743,131 @@ model ApprovalRequest {
   @@index([agentId, status])
   @@map("approval_requests")
 }
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  resource   String   @default("")
+  resourceId String   @default("")
+  details    Json     @default("{}")
+  ipAddress  String?
+  userAgent  String?
+  severity   String   @default("info")
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([severity, createdAt])
+  @@index([userId, action])
+  @@map("audit_logs")
+}
+
+model MCPConnector {
+  id              String    @id @default(cuid())
+  name            String
+  description     String    @default("")
+  serverUrl       String
+  transportType   String    @default("sse")
+  status          String    @default("disconnected")
+  authType        String    @default("none")
+  authConfig      Json      @default("{}")
+  tools           Json      @default("[]")
+  resources       Json      @default("[]")
+  prompts         Json      @default("[]")
+  capabilities    Json      @default("{}")
+  serverInfo      Json      @default("{}")
+  lastConnectedAt DateTime?
+  lastError       String?
+  requestCount    Int       @default(0)
+  avgLatencyMs    Int       @default(0)
+  isActive        Boolean   @default(true)
+  userId          String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions ConnectorExecution[]
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("mcp_connectors")
+}
+
+model AccessKey {
+  id              String    @id @default(cuid())
+  name            String
+  description     String    @default("")
+  service         String
+  keyType         String    @default("api_key")
+  keyValue        String
+  endpoint        String?
+  scopes          Json      @default("[]")
+  metadata        Json      @default("{}")
+  testEndpoint    String?
+  lastTestedAt    DateTime?
+  lastTestResult  String?
+  usageCount      Int       @default(0)
+  rateLimitInfo   Json      @default("{}")
+  expiresAt       DateTime?
+  isActive        Boolean   @default(true)
+  userId          String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions ConnectorExecution[]
+
+  @@index([userId, service])
+  @@index([userId, isActive])
+  @@index([userId, createdAt])
+  @@map("access_keys")
+}
+
+model ConnectorExecution {
+  id              String    @id @default(cuid())
+  connectorType   String
+  connectorId     String
+  agentId         String?
+  operation       String
+  inputParams     Json      @default("{}")
+  outputResult    Json      @default("{}")
+  status          String    @default("pending")
+  errorMessage    String?
+  statusCode      Int?
+  durationMs      Int       @default(0)
+  tokenCost       Int       @default(0)
+  userId          String
+  createdAt       DateTime  @default(now())
+
+  mcpConnector MCPConnector? @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_mcp")
+  accessKey    AccessKey?    @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_ak")
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([connectorType, connectorId])
+  @@index([userId, createdAt])
+  @@index([agentId, createdAt])
+  @@index([status, createdAt])
+  @@map("connector_executions")
+}
+
+model VoiceProfile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  language   String   @default("en-US")
+  voiceModel String   @default("alloy")
+  speed      Float    @default(1.0)
+  pitch      Float    @default(1.0)
+  volume     Float    @default(1.0)
+  provider   String   @default("huggingface")
+  isActive   Boolean  @default(true)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("voice_profiles")
+}
