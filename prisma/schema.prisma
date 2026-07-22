@@ -547,3 +547,89 @@ model URLBlocklist {
   @@index([isActive])
   @@map("url_blocklist")
 }
+
+model ImageGeneration {
+  id        String   @id @default(cuid())
+  userId    String
+  prompt    String
+  model     String
+  provider  String   @default("huggingface")
+  imageUrl  String?
+  status    String   @default("pending")
+  costUsd   Float    @default(0)
+  width     Int?
+  height    Int?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([provider, createdAt])
+  @@index([userId, status])
+  @@map("image_generations")
+}
+
+model VideoGeneration {
+  id              String    @id @default(cuid())
+  userId          String
+  prompt          String
+  mode            String    @default("t2v")
+  model           String
+  provider        String    @default("huggingface")
+  videoUrl        String?
+  status          String    @default("pending")
+  costUsd         Float     @default(0)
+  duration        Float?
+  durationSeconds Float?
+  width           Int?
+  height          Int?
+  fps             Int?
+  numFrames       Int?
+  resolution      String?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([provider, createdAt])
+  @@index([userId, status])
+  @@map("video_generations")
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String
+  type      String   @default("chat")
+  userId    String
+  agentId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  messages Message[]
+
+  @@index([userId, createdAt])
+  @@index([agentId])
+  @@index([userId, agentId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  role           String
+  content        String
+  model          String?
+  provider       String?
+  conversationId String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId])
+  @@map("messages")
+}
