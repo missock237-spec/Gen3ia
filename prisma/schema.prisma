@@ -80,3 +80,23 @@ model User {
   @@index([createdAt])
   @@map("users")
 }
+
+model Session {
+  id               String    @id @default(cuid())
+  token            String    @unique
+  userId           String
+  refreshToken     String?   @unique
+  expiresAt        DateTime
+  refreshExpiresAt DateTime?
+  rememberMe       Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  lastAccessedAt   DateTime  @default(now())
+  ipAddress        String?
+  userAgent        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([token])
+  @@map("sessions")
+}
