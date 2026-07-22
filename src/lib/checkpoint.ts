@@ -1,143 +1,127 @@
 // ============================================================
-// CHECKPOINT MANAGER — Reprise sur panne des agents
-// ============================================================
-// Persiste l'état complet à chaque étape de la boucle ReAct.
-// En cas de panne (crash, timeout, erreur API), l'agent peut
-// reprendre exactement là où il s'est arrêté sans perte de crédits.
+// CHECKPOINT MANAGER — Sauvegarde et restauration d'état
 // ============================================================
 
-import { prisma } from "./prisma";
-import { logger } from "./logger";
+import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
-export interface CheckpointState {
+export interface CheckpointData {
   agentId: string;
   sessionId: string;
   step: number;
   context: Record<string, unknown>;
   memory: Array<{ role: string; content: string; timestamp: string }>;
-  actions: Array<{
-    action: string;
-    input: unknown;
-    output: unknown;
-    timestamp: string;
-    cost: number;
-  }>;
+  actions: Array<{ action: string; input: unknown; output: unknown; timestamp: string; cost: number }>;
   totalCost: number;
   totalTokens: number;
   metadata?: Record<string, unknown>;
 }
 
-export class CheckpointManager {
-  async save(state: CheckpointState): Promise<void> {
-    const start = performance.now();
+class CheckpointManager {
+  private cache = new Map<string, CheckpointData>();
+
+  async save(data: CheckpointData): Promise<void> {
+    const key = `${data.agentId}:${data.sessionId}:${data.step}`;
+    this.cache.set(key, data);
+
     try {
       await prisma.agentCheckpoint.upsert({
         where: {
           agentId_sessionId_step: {
-            agentId: state.agentId,
-            sessionId: state.sessionId,
-            step: state.step,
+            agentId: data.agentId,
+            sessionId: data.sessionId,
+            step: data.step,
           },
         },
-        update: {
-          context: state.context,
-          memory: state.memory,
-          actions: state.actions,
-          totalCost: state.totalCost,
-          totalTokens: state.totalTokens,
-          metadata: state.metadata ?? {},
-        },
         create: {
-          agentId: state.agentId,
-          sessionId: state.sessionId,
-          step: state.step,
-          context: state.context,
-          memory: state.memory,
-          actions: state.actions,
-          totalCost: state.totalCost,
-          totalTokens: state.totalTokens,
-          metadata: state.metadata ?? {},
+          agentId: data.agentId,
+          sessionId: data.sessionId,
+          step: data.step,
+          context: data.context,
+          memory: data.memory,
+          actions: data.actions,
+          totalCost: data.totalCost,
+          totalTokens: data.totalTokens,
+          metadata: data.metadata ?? null,
         },
-      });
-      logger.info("checkpoint_saved", {
-        agentId: state.agentId,
-        sessionId: state.sessionId,
-        step: state.step,
-        totalCost: state.totalCost,
-        totalTokens: state.totalTokens,
-        durationMs: Math.round(performance.now() - start),
+        update: {
+          context: data.context,
+          memory: data.memory,
+          actions: data.actions,
+          totalCost: data.totalCost,
+          totalTokens: data.totalTokens,
+          metadata: data.metadata ?? null,
+        },
       });
     } catch (error) {
-      logger.error("checkpoint_save_failed", {
-        agentId: state.agentId,
-        sessionId: state.sessionId,
-        step: state.step,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
+      logger.error("checkpoint_save_failed", { key, error: String(error) });
     }
   }
 
-  async getLatest(agentId: string, sessionId: string): Promise<CheckpointState | null> {
+  async restore(agentId: string, sessionId: string, step?: number): Promise<CheckpointData | null> {
     try {
-      const cp = await prisma.agentCheckpoint.findFirst({
-        where: { agentId, sessionId },
+      const checkpoint = await prisma.agentCheckpoint.findFirst({
+        where: {
+          agentId,
+          sessionId,
+          ...(step !== undefined ? { step } : {}),
+        },
         orderBy: { step: "desc" },
       });
-      if (!cp) return null;
+
+      if (!checkpoint) return null;
+
       return {
-        agentId: cp.agentId,
-        sessionId: cp.sessionId,
-        step: cp.step,
-        context: cp.context as Record<string, unknown>,
-        memory: cp.memory as Array<{ role: string; content: string; timestamp: string }>,
-        actions: cp.actions as Array<{ action: string; input: unknown; output: unknown; timestamp: string; cost: number }>,
-        totalCost: cp.totalCost,
-        totalTokens: cp.totalTokens,
-        metadata: cp.metadata as Record<string, unknown> | undefined,
+        agentId: checkpoint.agentId,
+        sessionId: checkpoint.sessionId,
+        step: checkpoint.step,
+        context: checkpoint.context as Record<string, unknown>,
+        memory: checkpoint.memory as Array<{ role: string; content: string; timestamp: string }>,
+        actions: checkpoint.actions as Array<{ action: string; input: unknown; output: unknown; timestamp: string; cost: number }>,
+        totalCost: checkpoint.totalCost,
+        totalTokens: checkpoint.totalTokens,
+        metadata: checkpoint.metadata as Record<string, unknown> | undefined,
       };
     } catch (error) {
-      logger.error("checkpoint_load_failed", {
-        agentId,
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error("checkpoint_restore_failed", { agentId, sessionId, error: String(error) });
       return null;
     }
   }
 
-  async resume(agentId: string, sessionId: string): Promise<{
-    state: CheckpointState | null;
-    hasHistory: boolean;
-    stepsDone: number;
-  }> {
-    const state = await this.getLatest(agentId, sessionId);
-    if (!state) {
-      return { state: null, hasHistory: false, stepsDone: 0 };
-    }
-    logger.info("agent_resumed_from_checkpoint", {
-      agentId,
-      sessionId,
-      fromStep: state.step,
-      actionsDone: state.actions.length,
-      totalCost: state.totalCost,
-      totalTokens: state.totalTokens,
-    });
-    return { state, hasHistory: true, stepsDone: state.step };
+  getFromCache(agentId: string, sessionId: string, step: number): CheckpointData | undefined {
+    return this.cache.get(`${agentId}:${sessionId}:${step}`);
   }
 
-  async cleanup(agentId: string, sessionId: string): Promise<void> {
+  async listSessions(agentId: string): Promise<string[]> {
     try {
-      const { count } = await prisma.agentCheckpoint.deleteMany({
-        where: { agentId, sessionId },
+      const checkpoints = await prisma.agentCheckpoint.findMany({
+        where: { agentId },
+        select: { sessionId: true },
+        distinct: ["sessionId"],
+        orderBy: { createdAt: "desc" },
       });
-      logger.info("checkpoint_cleanup_done", { agentId, sessionId, deletedCount: count });
+      return checkpoints.map((c) => c.sessionId);
     } catch (error) {
-      logger.error("checkpoint_cleanup_failed", {
-        agentId,
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
+      logger.error("checkpoint_list_failed", { agentId, error: String(error) });
+      return [];
+    }
+  }
+
+  async cleanOldSessions(agentId: string, keepLast: number = 10): Promise<void> {
+    try {
+      const sessions = await this.listSessions(agentId);
+      if (sessions.length <= keepLast) return;
+
+      const toDelete = sessions.slice(keepLast);
+      await prisma.agentCheckpoint.deleteMany({
+        where: {
+          agentId,
+          sessionId: { in: toDelete },
+        },
       });
+      logger.info("checkpoint_cleanup", { agentId, deleted: toDelete.length });
+    } catch (error) {
+      logger.error("checkpoint_cleanup_failed", { agentId, error: String(error) });
     }
   }
 }
