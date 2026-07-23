@@ -1,40 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { env } from '@/lib/env';
-import { checkRateLimit } from '@/middleware/rate-limit';
-import crypto from 'crypto';
+import { NextResponse, type NextRequest } from "next/server";
 
-const SESSION_COOKIE = 'genova_session';
-const PUBLIC_ROUTES = [
-  '/api/auth/login', '/api/auth/register', '/api/auth/forgot-password',
-  '/api/auth/reset-password', '/api/auth/verify-email',
-  '/api', '/api/status', '/api/docs', '/api/health',
-];
+export function middleware(req: NextRequest) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = [
+    `default-src 'self'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `style-src 'self' 'unsafe-inline'`,
+    `img-src 'self' data: https:`,
+    `font-src 'self' data:`,
+    `connect-src 'self' https://api.openai.com https://*.sentry.io`,
+    `frame-ancestors 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+  ].join("; ");
 
-function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_ROUTES.some(route => pathname === route || pathname === route + '/');
+  const res = NextResponse.next({ request: { headers: new Headers(req.headers) } });
+  res.headers.set("Content-Security-Policy", csp);
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("X-Frame-Options", "DENY");
+  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  res.headers.set("x-nonce", nonce);
+  return res;
 }
 
-function addSecurityHeaders(response: NextResponse, nonce: string): void {
-  response.headers.set(
-    'Content-Security-Policy',
-    `default-src 'self'; ` +
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'; ` +
-    `style-src 'self' 'nonce-${nonce}'; ` +
-    `img-src 'self' data: blob: https:; ` +
-    `font-src 'self' data:; ` +
-    `connect-src 'self' https: wss:; ` +
-    `frame-ancestors 'none'; ` +
-    `base-uri 'self'; ` +
-    `form-action 'self'`
-  );
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  response.headers.set(
-    'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)'
-  );
-}
+export const config = { matcher: "/((?!_next/static|_next/image|favicon.ico).*)" };
 
 function getCorsOrigin(origin: string | null): string | null {
   if (!origin) return null;
