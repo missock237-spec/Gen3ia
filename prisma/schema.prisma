@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// USER & AUTH
+// ═══════════════════════════════════════════════════════════════
+
+model User {
+  id                        String    @id @default(cuid())
+  email                     String    @unique
+  name                      String
+  passwordHash              String
+  avatar                    String?
+  plan                      String    @default("free")
+  role                      String    @default("user")
+  isActive                  Boolean   @default(false)
+  isEmailVerified           Boolean   @default(false)
+  stripeConnectAccountId    String?   @unique
+  stripeConnectOnboarded    Boolean   @default(false)
+  emailVerified             DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  agents              Agent[]
+  workflows           Workflow[]
+  guardrails          Guardrail[]
+  activities          ActivityLog[]
+  sessions            Session[]
+  socialAccounts      SocialAccount[]
+  whatsappConfig      WhatsAppConfig?
+  resources           UserResource[]
+  approvalRequests    ApprovalRequest[]
+  agentPermissions    AgentPermission[]
+  agentActionLogs     AgentActionLog[]
+  automations         AgentAutomation[]
+  scheduledTasks      ScheduledTask[]
+  browserSessions     BrowserSession[]
+  agentUsages         AgentUsage[]
+  aiCosts             AICost[]
+  usageDaily          UsageDaily[]
+  monitoringEvents    MonitoringEvent[]
+  emailVerifications  EmailVerification[]
+  imageGenerations    ImageGeneration[]
+  videoGenerations    VideoGeneration[]
+  memories            AgentMemory[]
+  conversations       Conversation[]
+  knowledgeEntries    Knowledge[]
+  documents           Document[]
+  documentChunks      DocumentChunk[]
+  auditLogs           AuditLog[]
+  mcpConnectors       MCPConnector[]
+  accessKeys          AccessKey[]
+  connectorExecutions ConnectorExecution[]
+  passwordResets      PasswordReset[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
