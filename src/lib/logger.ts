@@ -1,45 +1,65 @@
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+/**
+ * Logger structuré avec niveaux et contexte.
+ * Compatible avec les services cloud (Vercel, Datadog, etc.)
+ */
 
-const SENSITIVE_FIELDS = [
-  'password', 'passwordHash', 'token', 'secret', 'apiKey', 'api_key',
-  'accessToken', 'refreshToken', 'authorization', 'cookie', 'session',
-  'jwt', 'creditCard', 'cvv', 'ssn', 'stripeKey', 'stripe_secret',
-];
+type LogLevel = "debug" | "info" | "warn" | "error";
 
-const isDev = process.env.NODE_ENV === 'development';
+interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  context?: Record<string, unknown>;
+  error?: Error;
+}
 
-function redact(data: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
-    const lowerKey = key.toLowerCase();
-    if (SENSITIVE_FIELDS.some(f => lowerKey.includes(f))) {
-      result[key] = '[REDACTED]';
-    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      result[key] = redact(value as Record<string, unknown>);
+class Logger {
+  private isProd = process.env.NODE_ENV === "production";
+  private isTest = process.env.NODE_ENV === "test";
+
+  private log(level: LogLevel, message: string, context?: Record<string, unknown>): void {
+    if (this.isTest) return;
+
+    const entry: LogEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      context,
+    };
+
+    if (this.isProd) {
+      console[level](JSON.stringify(entry));
     } else {
-      result[key] = value;
+      const prefix = `[${entry.timestamp}] [${level.toUpperCase()}]`;
+      const suffix = context ? ` ${JSON.stringify(context)}` : "";
+      console[level](`${prefix} ${message}${suffix}`);
     }
   }
-  return result;
-}
 
-function log(level: LogLevel, message: string, data?: Record<string, unknown>) {
-  const timestamp = new Date().toISOString();
-  const safeData = data ? redact(data) : undefined;
-  if (isDev) {
-    const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
-    if (safeData) console[level](`${prefix} ${message}`, JSON.stringify(safeData, null, 2));
-    else console[level](`${prefix} ${message}`);
-  } else {
-    const entry = JSON.stringify({ timestamp, level, message, ...safeData });
-    if (level === 'error') console.error(entry);
-    else console.log(entry);
+  debug(message: string, context?: Record<string, unknown>): void {
+    this.log("debug", message, context);
+  }
+
+  info(message: string, context?: Record<string, unknown>): void {
+    this.log("info", message, context);
+  }
+
+  warn(message: string, context?: Record<string, unknown>): void {
+    this.log("warn", message, context);
+  }
+
+  error(message: string, context?: Record<string, unknown>): void {
+    if (context?.error instanceof Error) {
+      const { error, ...rest } = context;
+      this.log("error", message, {
+        ...rest,
+        errorMessage: error.message,
+        stack: error.stack,
+      });
+    } else {
+      this.log("error", message, context);
+    }
   }
 }
 
-export const logger = {
-  debug: (msg: string, data?: Record<string, unknown>) => log('debug', msg, data),
-  info: (msg: string, data?: Record<string, unknown>) => log('info', msg, data),
-  warn: (msg: string, data?: Record<string, unknown>) => log('warn', msg, data),
-  error: (msg: string, data?: Record<string, unknown>) => log('error', msg, data),
-};
+export const logger = new Logger();
