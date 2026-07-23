@@ -1,40 +1,87 @@
 import { prisma } from "@/lib/db";
 
-class BatchLoader {
-  constructor(batchFn, keyFn, options = {}) {
-    this.batchFn = batchFn;
+type BatchLoadFn<T> = (keys: readonly unknown[]) => Promise<T[]>;
+type KeyFn<T> = (item: T) => unknown;
+
+class DataLoader<T extends object> {
+  private queue: Map<string, { keys: unknown[]; resolve: (value: (T | Error)[]) => void }> = new Map();
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private batchLoadFn: BatchLoadFn<T>;
+  private keyFn: KeyFn<T>;
+  private options: { maxBatchSize: number; delayMs: number };
+
+  constructor(batchLoadFn: BatchLoadFn<T>, keyFn: KeyFn<T>, options: { maxBatchSize?: number; delayMs?: number } = {}) {
+    this.batchLoadFn = batchLoadFn;
     this.keyFn = keyFn;
-    this.queue = new Map();
-    this.timer = null;
-    this.options = { maxBatchSize: 100, delayMs: 10, ...options };
+    this.options = { maxBatchSize: options.maxBatchSize ?? 100, delayMs: options.delayMs ?? 10 };
   }
 
-  load(key) {
-    return new Promise((resolve, reject) => {
-      const batchKey = "default";
-      if (!this.queue.has(batchKey)) { this.queue.set(batchKey, { keys: [], resolve: () => {}, reject: () => {} }); this.schedule(); }
-      const batch = this.queue.get(batchKey);
+  async load(key: unknown): Promise<T | null> {
+    return new Promise<T | null>((resolve) => {
+      const batchKey = "_default";
+      if (!this.queue.has(batchKey)) {
+        this.queue.set(batchKey, { keys: [], resolve: () => {} });
+      }
+      const batch = this.queue.get(batchKey)!;
       batch.keys.push(key);
-      this.queue.set(batchKey, { keys: batch.keys, resolve: (results) => resolve(results.find(item => this.keyFn(item) === key)), reject });
+      const originalKey = key;
+      this.queue.set(batchKey, {
+        keys: batch.keys,
+        resolve: (results: (T | Error)[]) => {
+          const item = results.find((r) => !(r instanceof Error) && this.keyFn(r) === originalKey) as T | undefined;
+          resolve(item ?? null);
+        },
+      });
+      if (batch.keys.length >= this.options.maxBatchSize) this.flush();
+      else this.scheduleFlush();
     });
   }
 
-  schedule() { if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), this.options.delayMs); }
-
-  async flush() {
+  private scheduleFlush(): void {
     if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    for (const [, batch] of this.queue) {
-      if (batch.keys.length === 0) continue;
-      try { batch.resolve(await this.batchFn(batch.keys)); }
-      catch (e) { batch.reject(e); }
+    this.timer = setTimeout(() => this.flush(), this.options.delayMs);
+  }
+
+  private async flush(): Promise<void> {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    const batch = this.queue.get("_default");
+    if (!batch || batch.keys.length === 0) return;
+    const keys = [...batch.keys];
+    this.queue.delete("_default");
+    try {
+      const results = await this.batchLoadFn(keys);
+      const resultMap = new Map<unknown, T>();
+      for (const item of results) resultMap.set(this.keyFn(item), item);
+      batch.resolve(keys.map((k) => resultMap.get(k) ?? new Error(`Not found: ${k}`)));
+    } catch {
+      batch.resolve(keys.map(() => new Error("Batch load failed")));
     }
-    this.queue.clear();
   }
 }
 
-export const userLoader = new BatchLoader(ids => prisma.user.findMany({ where: { id: { in: ids } } }), u => u.id);
-export const agentLoader = new BatchLoader(ids => prisma.agent.findMany({ where: { id: { in: ids } }, include: { _count: { select: { tasks: true, memories: true, executions: true } } } }), a => a.id);
-export const workflowLoader = new BatchLoader(ids => prisma.workflow.findMany({ where: { id: { in: ids } } }), w => w.id);
+export const userLoader = new DataLoader(
+  async (ids: readonly unknown[]) => prisma.user.findMany({ where: { id: { in: ids as string[] } }, select: { id: true, name: true, email: true, role: true, plan: true, avatar: true, createdAt: true } }) as Promise<object[]>,
+  (user) => (user as { id: string }).id,
+);
 
-export { BatchLoader };
+export const agentLoader = new DataLoader(
+  async (ids: readonly unknown[]) => prisma.agent.findMany({ where: { id: { in: ids as string[] } }, include: { _count: { select: { tasks: true, memories: true, executions: true } } } }) as Promise<object[]>,
+  (agent) => (agent as { id: string }).id,
+);
+
+export const agentActionLogLoader = new DataLoader(
+  async (agentIds: readonly unknown[]) => prisma.agentActionLog.findMany({ where: { agentId: { in: agentIds as string[] } }, orderBy: { createdAt: "desc" }, take: 1000 }) as Promise<object[]>,
+  (log) => (log as { agentId: string }).agentId,
+);
+
+export const workflowLoader = new DataLoader(
+  async (ids: readonly unknown[]) => prisma.workflow.findMany({ where: { id: { in: ids as string[] } } }) as Promise<object[]>,
+  (wf) => (wf as { id: string }).id,
+);
+
+export const sessionLoader = new DataLoader(
+  async (userIds: readonly unknown[]) => prisma.session.findMany({ where: { userId: { in: userIds as string[] }, expiresAt: { gt: new Date() } } }) as Promise<object[]>,
+  (session) => (session as { userId: string }).userId,
+);
+
+export { DataLoader };
