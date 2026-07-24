@@ -1,166 +1,107 @@
 'use client';
 
+import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
 import { useAppStore, useAuthStore } from '@/lib/store';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import {
   LayoutDashboard,
   Bot,
-  Wand2,
+  Radio,
   Shield,
   GitBranch,
   Settings,
-<<<<<<< HEAD
-=======
-  Cpu,
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  LogOut,
-  X,
-  CheckCircle2,
   BarChart3,
-<<<<<<< HEAD
-  Package,
-  Link2,
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+  Sparkles,
 } from 'lucide-react';
-import { GenovaLogo } from '@/components/ui/genova-logo';
-
-const navItems = [
-  { id: 'dashboard' as const, label: 'Tableau de bord', icon: LayoutDashboard },
-  { id: 'agents' as const, label: 'Agents IA', icon: Bot },
-  { id: 'automation' as const, label: 'Automatisation', icon: Wand2 },
-<<<<<<< HEAD
-  { id: 'integrations' as const, label: 'Intégrations', icon: Package },
-  { id: 'connectors' as const, label: 'Connecteurs', icon: Link2 },
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-  { id: 'guardrails' as const, label: 'Garde-fous', icon: Shield },
-  { id: 'coordination' as const, label: 'Coordination', icon: GitBranch },
-  { id: 'approvals' as const, label: 'Approbations', icon: CheckCircle2 },
-  { id: 'analytics' as const, label: 'Analytics', icon: BarChart3 },
-  { id: 'settings' as const, label: 'Paramètres', icon: Settings },
-];
 
 export function AppSidebar() {
-  const { currentView, setCurrentView, sidebarOpen, setSidebarOpen, pendingApprovalCount } = useAppStore();
+  const [collapsed, setCollapsed] = useState(false);
+  const { currentView, setCurrentView, approvalCount } = useAppStore();
   const { user, logout } = useAuthStore();
-<<<<<<< HEAD
+  const pathname = usePathname();
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch {
-      // Force client-side cleanup even if server logout fails
-      useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
-    }
-  };
-=======
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
+  const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'agents', label: 'Agents', icon: Bot },
+    { id: 'automation', label: 'Automation', icon: Radio },
+    { id: 'guardrails', label: 'Guardrails', icon: Shield },
+    { id: 'coordination', label: 'Coordination', icon: GitBranch },
+    { id: 'analytics', label: 'Analytiques', icon: BarChart3 },
+    { id: 'approvals', label: 'Approbations', icon: Sparkles, badge: approvalCount },
+    { id: 'settings', label: 'Paramètres', icon: Settings },
+  ];
 
   return (
-    <>
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
+    <aside
+      className={cn(
+        'flex flex-col border-r border-border bg-card transition-all duration-300',
+        collapsed ? 'w-16' : 'w-60'
       )}
+    >
+      {/* Logo */}
+      <div className="flex items-center justify-between p-4 border-b border-border">
+        {!collapsed && (
+          <Link href="/" className="flex items-center gap-2 font-bold text-lg">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <span>Genova</span>
+          </Link>
+        )}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="p-1 rounded-lg hover:bg-accent text-muted-foreground"
+        >
+          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </button>
+      </div>
 
-      <aside className={`
-        fixed top-0 left-0 z-50 h-full w-64 bg-sidebar border-r border-sidebar-border flex flex-col
-        transform transition-transform duration-200 ease-in-out
-        lg:translate-x-0 lg:static lg:z-auto
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        {/* Header */}
-        <div className="p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-<<<<<<< HEAD
-            <GenovaLogo size="sm" showText={true} compact={true} />
-=======
-            <div className="p-1.5 rounded-lg bg-primary/10">
-              <Cpu className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h2 className="font-bold text-sm tracking-tight">AgentOS</h2>
-              <p className="text-[10px] text-muted-foreground">AI Operating System</p>
-            </div>
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden h-8 w-8"
-            onClick={() => setSidebarOpen(false)}
+      {/* Navigation */}
+      <nav className="flex-1 p-2 space-y-1">
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setCurrentView(item.id)}
+            className={cn(
+              'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+              currentView === item.id
+                ? 'bg-primary/10 text-primary font-medium'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            )}
+            title={collapsed ? item.label : undefined}
           >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <Separator className="bg-sidebar-border" />
-
-        {/* Navigation */}
-        <ScrollArea className="flex-1 px-3 py-4">
-          <nav className="space-y-1">
-            {navItems.map((item) => (
-              <Button
-                key={item.id}
-                variant={currentView === item.id ? 'secondary' : 'ghost'}
-                className={`w-full justify-start gap-3 h-10 text-sm relative ${
-                  currentView === item.id
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                    : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
-                }`}
-                onClick={() => {
-                  setCurrentView(item.id);
-                  setSidebarOpen(false);
-                }}
-              >
-                <item.icon className={`h-4 w-4 ${currentView === item.id ? 'text-primary' : ''}`} />
-                {item.label}
-                {item.id === 'approvals' && pendingApprovalCount > 0 && (
-                  <Badge className="ml-auto bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px] h-5 min-w-[20px] flex items-center justify-center">
-                    {pendingApprovalCount}
-                  </Badge>
-                )}
-              </Button>
-            ))}
-          </nav>
-        </ScrollArea>
-
-        <Separator className="bg-sidebar-border" />
-
-        {/* User section */}
-        <div className="p-3">
-          <div className="flex items-center gap-3 p-2 rounded-lg">
-            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-primary">
-                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+            <item.icon className="h-4 w-4 shrink-0" />
+            {!collapsed && (
+              <span className="flex-1 text-left truncate">{item.label}</span>
+            )}
+            {!collapsed && item.badge && item.badge > 0 && (
+              <span className="bg-primary text-primary-foreground text-xs rounded-full px-2 py-0.5">
+                {item.badge}
               </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{user?.name || 'Utilisateur'}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{user?.plan || 'free'}</p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive"
-<<<<<<< HEAD
-              onClick={handleLogout}
-=======
-              onClick={logout}
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      {/* User */}
+      <div className="p-3 border-t border-border">
+        {!collapsed && user && (
+          <div className="mb-2 px-2 text-xs text-muted-foreground truncate">
+            {user.email}
           </div>
-        </div>
-      </aside>
-    </>
+        )}
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-destructive transition-colors"
+          title="Déconnexion"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          {!collapsed && <span>Déconnexion</span>}
+        </button>
+      </div>
+    </aside>
   );
 }
