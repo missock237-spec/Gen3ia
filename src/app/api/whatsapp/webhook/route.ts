@@ -1,31 +1,15 @@
-// ============================================================
-// WhatsApp Webhook — Réception des messages Meta
-// GET  : Vérification du webhook (Meta challenge)
-// POST : Réception des messages entrants
-// ============================================================
-import { NextRequest, NextResponse } from "next/server";
-import { whatsappService } from "@/lib/whatsapp";
-import { logger } from "@/lib/logger";
-
-export async function GET(request: NextRequest) {
-  const mode = request.nextUrl.searchParams.get("hub.mode");
-  const token = request.nextUrl.searchParams.get("hub.verify_token");
-  const challenge = request.nextUrl.searchParams.get("hub.challenge");
-
-  const result = whatsappService.verifyWebhook(mode, token, challenge);
-  if (result) {
-    return new NextResponse(result);
-  }
-  return NextResponse.json({ error: "Invalid verification token" }, { status: 403 });
+import { NextRequest, NextResponse } from 'next/server';
+export async function GET(r: NextRequest) {
+  const mode = r.nextUrl.searchParams.get('hub.mode');
+  const token = r.nextUrl.searchParams.get('hub.verify_token');
+  const challenge = r.nextUrl.searchParams.get('hub.challenge');
+  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) return new NextResponse(challenge, { status: 200 });
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 }
-
-export async function POST(request: NextRequest) {
+export async function POST(r: NextRequest) {
   try {
-    const payload = await request.json();
-    await whatsappService.handleIncomingMessage(payload);
+    const b = await r.json();
+    console.log('WhatsApp:', JSON.stringify(b).slice(0, 500));
     return NextResponse.json({ success: true });
-  } catch (error) {
-    logger.error("whatsapp_webhook_error", { error: String(error) });
-    return NextResponse.json({ success: false }, { status: 200 });
-  }
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }
