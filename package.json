@@ -25,7 +25,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "prebuild": "prisma generate",
     "postinstall": "prisma generate || true",
-    "security:audit": "npm audit --production && vitest run src/__tests__/security/"
+    "security:audit": "npm audit --production & vitest run src/__tests__/security/"
   },
   "dependencies": {
     "@prisma/client": "^6.11.1",
