@@ -428,8 +428,8 @@ model Validation {
   task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@map("validations")
-  @@index([agentId])
   @@index([guardrailId])
+  @@index([taskId])
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1193,7 +1193,7 @@ model MarketplacePurchase {
   @@unique([userId, listingId])
   @@map("marketplace_purchases")
   @@index([userId])
-  @@index([agentId])
+  @@index([listingId])
 }
 
 model MarketplaceReview {
@@ -1215,7 +1215,7 @@ model MarketplaceReview {
   @@unique([userId, listingId])
   @@map("marketplace_reviews")
   @@index([userId])
-  @@index([agentId])
+  @@index([listingId])
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1314,7 +1314,8 @@ model AccessKey {
 model ConnectorExecution {
   id              String    @id @default(cuid())
   connectorType   String
-  connectorId     String
+  mcpConnectorId  String?
+  accessKeyId     String?
   agentId         String?
   operation       String
   inputParams     String    @default("{}")
@@ -1327,11 +1328,12 @@ model ConnectorExecution {
   userId          String
   createdAt       DateTime  @default(now())
 
-  mcpConnector MCPConnector? @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_mcp")
-  accessKey    AccessKey?    @relation(fields: [connectorId], references: [id], onDelete: SetNull, map: "fk_connector_exec_ak")
+  mcpConnector MCPConnector? @relation(fields: [mcpConnectorId], references: [id], onDelete: SetNull)
+  accessKey    AccessKey?    @relation(fields: [accessKeyId], references: [id], onDelete: SetNull)
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([connectorType, connectorId])
+  @@index([connectorType, mcpConnectorId])
+  @@index([connectorType, accessKeyId])
   @@index([userId, createdAt])
   @@index([agentId, createdAt])
   @@index([status, createdAt])
@@ -1374,6 +1376,7 @@ model ApprovalRequest {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("approval_requests")
-  @@index([requestorId])
-  @@index([reviewerId])
+  @@index([userId])
+  @@index([agentId])
+  @@index([status])
 }
