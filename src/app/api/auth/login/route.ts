@@ -1,64 +1,62 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { verifyPassword, createSession, SESSION_COOKIE, REFRESH_COOKIE } from "@/lib/auth/auth";
-import { loginSchema, validate } from "@/lib/validators";
-import { checkLoginAttempts, recordLoginAttempt, slowDown, checkIpRateLimit } from "@/lib/auth/security";
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import * as argon2 from 'argon2';
+import { sign } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.AUTH_SECRET || 'genova-dev-secret-change-in-production';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || (request as any).ip || "unknown";
-    const email = body.email || "";
+    const { email, password } = await request.json();
 
-    const ipCheck = checkIpRateLimit(ip);
-    if (!ipCheck.allowed) {
-      return NextResponse.json({ error: "Trop de requetes. Reessayez dans une minute." }, { status: 429 });
+    if (!email || !password) {
+      return NextResponse.json({ error: 'Email et mot de passe requis' }, { status: 400 });
     }
 
-    const validation = validate(loginSchema, body);
-    if (!validation.success) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+    // Vérifier l'utilisateur
+    const user = await db.user.findUnique({ where: { email } });
+    if (!user) {
+      return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
     }
 
-    const attemptCheck = checkLoginAttempts(email);
-    if (!attemptCheck.allowed) {
-      const minutesLeft = Math.ceil(((attemptCheck.lockedUntil || 0) - Date.now()) / 60000);
-      return NextResponse.json({ error: "Compte bloque. Reessayez dans " + minutesLeft + " min.", locked: true }, { status: 429 });
-    }
-
-    await slowDown(email);
-
-    const { password } = validation.data;
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !user.isActive) {
-      recordLoginAttempt(email, false, ip);
-      await new Promise(r => setTimeout(r, 500));
-      return NextResponse.json({ error: "Identifiants invalides" }, { status: 401 });
-    }
-
-    const valid = await verifyPassword(password, user.passwordHash);
+    // Vérifier le mot de passe
+    const valid = await argon2.verify(user.password, password);
     if (!valid) {
-      recordLoginAttempt(email, false, ip);
-      await new Promise(r => setTimeout(r, 500));
-      return NextResponse.json({ error: "Identifiants invalides" }, { status: 401 });
+      return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
     }
 
-    recordLoginAttempt(email, true, ip);
-    const tokens = await createSession(user.id);
-    const response = NextResponse.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, plan: user.plan },
-      accessToken: tokens.accessToken,
+    // Générer le token JWT
+    const token = sign(
+      { userId: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    const refreshToken = sign(
+      { userId: user.id, type: 'refresh' },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    // Log activité
+    await db.activityLog.create({
+      data: {
+        action: 'Connexion',
+        details: JSON.stringify({ email }),
+        category: 'auth',
+        userId: user.id,
+      },
     });
-    response.cookies.set(SESSION_COOKIE, tokens.accessToken, {
-      httpOnly: true, secure: process.env.NODE_ENV === "production",
-      sameSite: "lax", maxAge: 15 * 60, path: "/",
+
+    const { password: _, ...userWithoutPassword } = user;
+
+    return NextResponse.json({
+      token,
+      refreshToken,
+      user: userWithoutPassword,
     });
-    response.cookies.set(REFRESH_COOKIE, tokens.refreshToken, {
-      httpOnly: true, secure: process.env.NODE_ENV === "production",
-      sameSite: "lax", maxAge: 7 * 24 * 60 * 60, path: "/api/auth",
-    });
-    return response;
-  } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+  } catch (error) {
+    console.error('Login error:', error);
+    return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 });
   }
 }
