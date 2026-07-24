@@ -1,18 +1,13 @@
 // ============================================================
-// MARKETPLACE WEBHOOK — Notifications pour les developpeurs
-// ============================================================
-// Envoie des evenements aux webhooks enregistres lors des
-// installations, publications, et mises a jour du marketplace.
+// MARKETPLACE WEBHOOK — Notifications avec ResourceGuard
 // ============================================================
 
 import { logger } from "@/lib/logger";
+import { ResourceGuard, limitString } from "@/lib/resource-guard";
 
-export type MarketplaceEvent =
-  | "item.published"
-  | "item.installed"
-  | "item.updated"
-  | "item.deleted"
-  | "item.reviewed";
+const guard = new ResourceGuard({ timeoutMs: 15000, maxArraySize: 50 });
+
+export type MarketplaceEvent = "item.published" | "item.installed" | "item.updated" | "item.deleted" | "item.reviewed";
 
 interface WebhookPayload {
   event: MarketplaceEvent;
@@ -24,23 +19,20 @@ interface WebhookPayload {
   metadata?: Record<string, unknown>;
 }
 
-// Enregistrement des webhooks (stockes en memoire, a persister en DB)
 const webhookSubscriptions = new Map<string, Array<{ url: string; secret: string; events: MarketplaceEvent[] }>>();
 
 class WebhookNotifier {
-  /**
-   * Enregistre un webhook pour un utilisateur.
-   */
   subscribe(params: { userId: string; url: string; secret: string; events: MarketplaceEvent[] }): void {
     const existing = webhookSubscriptions.get(params.userId) ?? [];
+    if (existing.length >= 20) { // Hard limit: max 20 webhooks par user
+      logger.warn("webhook_limit_reached", { userId: params.userId.slice(0, 8) });
+      return;
+    }
     existing.push({ url: params.url, secret: params.secret, events: params.events });
     webhookSubscriptions.set(params.userId, existing);
     logger.info("webhook_subscribed", { userId: params.userId.slice(0, 8), events: params.events.length });
   }
 
-  /**
-   * Notifie tous les webhooks concernes par un evenement.
-   */
   async notify(payload: WebhookPayload): Promise<void> {
     const subscribers: Array<{ url: string; secret: string }> = [];
 
@@ -54,18 +46,25 @@ class WebhookNotifier {
 
     if (subscribers.length === 0) return;
 
-    const body = JSON.stringify(payload);
+    // Limiter le nombre de webhooks a notifier
+    const limitedSubscribers = guard.limitArray(subscribers, 50);
 
-    await Promise.allSettled(
-      subscribers.map(async (sub) => {
+    const body = JSON.stringify(guard.limitDepth(payload, 5));
+
+    await guard.concurrentLimit(
+      limitedSubscribers.map((sub) => async () => {
         try {
-          const signature = await this.sign(body, sub.secret);
+          const encoder = new TextEncoder();
+          const key = await crypto.subtle.importKey("raw", encoder.encode(sub.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+          const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+          const sigHex = Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
+
           const response = await fetch(sub.url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "X-Genova-Event": payload.event,
-              "X-Genova-Signature": signature,
+              "X-Genova-Signature": sigHex,
               "X-Genova-Timestamp": payload.timestamp,
               "User-Agent": "Genova-Webhook/1.0",
             },
@@ -73,34 +72,14 @@ class WebhookNotifier {
           });
 
           if (!response.ok) {
-            logger.warn("webhook_delivery_failed", {
-              url: sub.url.slice(0, 50),
-              event: payload.event,
-              status: response.status,
-            });
+            logger.warn("webhook_delivery_failed", { url: limitString(sub.url, 50), event: payload.event, status: response.status });
           }
         } catch (error) {
-          logger.error("webhook_delivery_error", {
-            url: sub.url.slice(0, 50),
-            error: String(error),
-          });
+          logger.error("webhook_delivery_error", { url: limitString(sub.url, 50), error: String(error) });
         }
       }),
+      10 // Max 10 webhooks concurrents
     );
-  }
-
-  /**
-   * Signe le payload avec HMAC-SHA256.
-   */
-  private async sign(payload: string, secret: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      "raw", encoder.encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false, ["sign"],
-    );
-    const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
-    return Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 }
 
