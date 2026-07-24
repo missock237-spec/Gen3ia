@@ -102,5 +102,5 @@
     "test:e2e:ui": "npx playwright test --ui --config=src/__tests__/e2e/playwright.config.ts",
     "test:security": "vitest run src/__tests__/security/",
     "test:all": "npm run test && npm run test:security",
-    "owasp:audit": "npm audit --production && vitest run src/__tests__/security/owasp-top10.test.ts",
+    "owasp:audit": "npm audit --production && vitest run src/__tests__/security/owasp-top10.test.ts"
 }
