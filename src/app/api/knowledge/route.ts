@@ -1,56 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgentEngine } from '@/lib/agent-engine';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { validateBody, createKnowledgeSchema, deleteKnowledgeSchema } from '@/lib/validation';
-
-export async function GET(request: NextRequest) {
+import { db } from '@/lib/db';
+export async function GET(r: NextRequest) {
   try {
-    const { auth, error } = await applySecurity(request, { requireAuth: true });
-    if (error || !auth) return error || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-    const category = request.nextUrl.searchParams.get('category');
-    const engine = getAgentEngine();
-    const entries = await engine.longTermMemory.getAll(auth.userId, category || undefined);
-
-    return secureResponse(NextResponse.json({ entries }), request);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Erreur serveur' }, { status: 500 });
-  }
+    const a = r.headers.get('authorization');
+    if (!a?.startsWith('Bearer ')) return NextResponse.json({ error: 'Auth' }, { status: 401 });
+    const { verify } = await import('jsonwebtoken');
+    const d = verify(a.slice(7), process.env.AUTH_SECRET || 's') as any;
+    const k = await db.knowledge.findMany({ where: { userId: d.userId }, orderBy: { createdAt: 'desc' }, take: 50 });
+    return NextResponse.json(k);
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }
-
-export async function POST(request: NextRequest) {
+export async function POST(r: NextRequest) {
   try {
-    const { auth, error } = await applySecurity(request, { requireAuth: true });
-    if (error || !auth) return error || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-    const body = await request.json();
-    const validation = validateBody(createKnowledgeSchema, body);
-    if (!validation.success) return validation.error;
-
-    const { content, category, tags, source } = validation.data;
-    const engine = getAgentEngine();
-    const id = await engine.longTermMemory.store({ content, category, tags, source, relevance: 0.5, userId: auth.userId });
-
-    return secureResponse(NextResponse.json({ id, success: true }), request);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Erreur serveur' }, { status: 500 });
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { auth, error } = await applySecurity(request, { requireAuth: true });
-    if (error || !auth) return error || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-    const id = request.nextUrl.searchParams.get('id');
-    const validation = validateBody(deleteKnowledgeSchema, { id: id || '' });
-    if (!validation.success) return validation.error;
-
-    const engine = getAgentEngine();
-    await engine.longTermMemory.delete(validation.data.id);
-
-    return secureResponse(NextResponse.json({ success: true }), request);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Erreur serveur' }, { status: 500 });
-  }
+    const b = await r.json();
+    const { content, category, userId } = b;
+    if (!content || !userId) return NextResponse.json({ error: 'content et userId requis' }, { status: 400 });
+    const k = await db.knowledge.create({ data: { content, category: category || 'general', userId } });
+    return NextResponse.json(k, { status: 201 });
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }
