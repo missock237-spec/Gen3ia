@@ -1,0 +1,8 @@
+{
+  "kind": "postgresql",
+  "provider": "postgresql",
+  "environment": {
+    "client": "prisma-client-js",
+    "datasourceProvider": "postgresql"
+  }
+}
