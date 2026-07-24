@@ -1,0 +1,44 @@
+name: Issue Management
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  stale:
+    name: Stale Management
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-message: 'Cette issue est inactive depuis 30 jours. Marquée comme stale.'
+          stale-pr-message: 'Cette PR est inactive depuis 14 jours.'
+          days-before-stale: 30
+          days-before-close: 7
+          stale-issue-label: 'stale'
+          stale-pr-label: 'stale'
+          exempt-issue-labels: 'bug,enhancement,pinned,security'
+          exempt-pr-labels: 'dependencies,security'
+
+  greeting:
+    name: First Interaction
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: |
+            Merci pour votre première issue sur Genova ! 🎉
+            Notre équipe va l'examiner rapidement.
+          pr-message: |
+            Merci pour votre première PR sur Genova ! 🚀
+            Un mainteneur va la reviewer sous peu.
