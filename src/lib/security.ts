@@ -1,8 +1,6 @@
-// ============================================================
-// SECURITY — Middleware de sécurité pour les routes API
-// ============================================================
-
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { verify } from 'jsonwebtoken';
+import { db } from '@/lib/db';
 
 export interface SecurityContext {
   userId: string;
@@ -11,59 +9,67 @@ export interface SecurityContext {
 
 interface SecurityOptions {
   requireAuth?: boolean;
-  rateLimit?: { limit: number; windowMs: number };
   roles?: string[];
 }
+
+const JWT_SECRET = process.env.AUTH_SECRET || 'genova-dev-secret-change-in-production';
 
 export async function applySecurity(
   request: NextRequest,
   options: SecurityOptions = {}
 ): Promise<{ auth?: SecurityContext; error?: NextResponse }> {
-  const apiKey = request.headers.get("x-api-key");
-  const authHeader = request.headers.get("authorization");
+  const apiKey = request.headers.get('x-api-key');
+  const authHeader = request.headers.get('authorization');
 
-  // Vérification par API Key
   if (apiKey) {
     const auth = await authenticateApiKey(apiKey);
-    if (auth) {
-      return validateRole(auth, options);
-    }
+    if (auth) return validateRole(auth, options);
   }
 
-  // Vérification par Bearer token
-  if (authHeader?.startsWith("Bearer ")) {
+  if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
     const auth = await authenticateToken(token);
-    if (auth) {
-      return validateRole(auth, options);
-    }
+    if (auth) return validateRole(auth, options);
   }
 
   if (options.requireAuth) {
-    return { error: NextResponse.json({ error: "Authentification requise" }, { status: 401 }) };
+    return { error: NextResponse.json({ error: 'Authentification requise' }, { status: 401 }) };
   }
 
-  return { auth: { userId: "anonymous", role: "guest" } };
+  return { auth: { userId: 'anonymous', role: 'guest' } };
 }
 
-export function secureResponse(response: NextResponse, request: NextRequest): NextResponse {
-  const correlationId = request.headers.get("x-correlation-id") ?? crypto.randomUUID();
-  response.headers.set("X-Correlation-ID", correlationId);
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
+export function secureResponse(response: NextResponse, _request: NextRequest): NextResponse {
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
   return response;
 }
 
 async function authenticateApiKey(apiKey: string): Promise<SecurityContext | null> {
-  if (apiKey.length < 16) return null;
-  // TODO: vérifier dans la base de données AccessKey
-  return { userId: "api-user", role: "api" };
+  try {
+    const key = await db.accessKey.findFirst({
+      where: { keyValue: apiKey, isActive: true },
+      include: { user: { select: { id: true, role: true } } },
+    });
+    if (!key || !key.user) return null;
+    return { userId: key.user.id, role: key.user.role };
+  } catch {
+    return null;
+  }
 }
 
 async function authenticateToken(token: string): Promise<SecurityContext | null> {
-  if (token.length < 20) return null;
-  // TODO: vérifier le JWT / session
-  return { userId: "session-user", role: "user" };
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string };
+    const user = await db.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, role: true },
+    });
+    if (!user) return null;
+    return { userId: user.id, role: user.role };
+  } catch {
+    return null;
+  }
 }
 
 function validateRole(
@@ -73,7 +79,7 @@ function validateRole(
   if (options.roles && !options.roles.includes(auth.role)) {
     return {
       auth,
-      error: NextResponse.json({ error: "Permissions insuffisantes" }, { status: 403 }),
+      error: NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 }),
     };
   }
   return { auth };
