@@ -1,50 +1,112 @@
-/**
- * GET /api/integrations — List all integrations
- *
- * Returns all registered integrations with their status, functions,
- * and health check information.
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { getIntegrationRegistry } from '@/lib/integration-engine/registry';
+import { getIntegrationManager, N8nClient } from '@/lib/integrations/n8n-client';
+import { getAuthenticatedUser } from '@/lib/session';
 
 export async function GET(request: NextRequest) {
-  try {
-    const registry = getIntegrationRegistry();
-    const integrations = registry.getAll();
+  const user = await getAuthenticatedUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  }
 
-    // Group by category
-    const byCategory: Record<string, typeof integrations> = {};
-    for (const integration of integrations) {
-      if (!byCategory[integration.category]) {
-        byCategory[integration.category] = [];
+  const searchParams = request.nextUrl.searchParams;
+  const action = searchParams.get('action') || 'list';
+  const service = searchParams.get('service');
+
+  try {
+    const manager = getIntegrationManager();
+
+    switch (action) {
+      case 'list': {
+        const integrations = await manager.getUserIntegrations(user.userId);
+        const available = manager.getAvailableIntegrations();
+        return NextResponse.json({
+          connected: integrations,
+          available,
+        });
       }
-      byCategory[integration.category].push(integration);
+
+      case 'health': {
+        const health = await manager.healthCheck();
+        return NextResponse.json(health);
+      }
+
+      case 'logs': {
+        if (!service) {
+          return NextResponse.json({ error: 'Service requis' }, { status: 400 });
+        }
+        const logs = await manager.getExecutionLogs(user.userId, service);
+        return NextResponse.json({ logs });
+      }
+
+      default:
+        return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erreur interne';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const user = await getAuthenticatedUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const { action, service, credentials, credentialName } = body;
+
+    if (!action || !service) {
+      return NextResponse.json({ error: 'Action et service requis' }, { status: 400 });
     }
 
-    // Summary stats
-    const stats = {
-      total: integrations.length,
-      active: integrations.filter(i => i.status === 'active').length,
-      inactive: integrations.filter(i => i.status === 'inactive').length,
-      error: integrations.filter(i => i.status === 'error').length,
-      discovered: integrations.filter(i => i.status === 'discovered').length,
-      categories: Object.keys(byCategory).length,
-      totalFunctions: integrations.reduce((sum, i) => sum + i.functions.length, 0),
-    };
+    const manager = getIntegrationManager();
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        integrations,
-        byCategory,
-        stats,
-      },
-    });
+    switch (action) {
+      case 'connect': {
+        if (!credentials) {
+          return NextResponse.json({ error: 'Credentials requis' }, { status: 400 });
+        }
+        const result = await manager.connectService(
+          user.userId,
+          service,
+          credentials,
+          credentialName
+        );
+        return NextResponse.json(result);
+      }
+
+      case 'disconnect': {
+        await manager.disconnectService(user.userId, service);
+        return NextResponse.json({ success: true });
+      }
+
+      case 'test': {
+        const result = await manager.testConnection(user.userId, service);
+        return NextResponse.json(result);
+      }
+
+      case 'create-workflow': {
+        const n8n = new N8nClient();
+        const { name, template, activate } = body;
+        if (!name || !template) {
+          return NextResponse.json({ error: 'Nom et template requis' }, { status: 400 });
+        }
+        const workflow = await manager.createUserWorkflow(
+          user.userId,
+          name,
+          template,
+          activate
+        );
+        return NextResponse.json(workflow);
+      }
+
+      default:
+        return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
+    }
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to list integrations' },
-      { status: 500 },
-    );
+    const message = error instanceof Error ? error.message : 'Erreur interne';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
