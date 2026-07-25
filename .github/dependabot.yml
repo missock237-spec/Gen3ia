@@ -7,7 +7,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Africa/Douala"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 15
     labels:
       - "dependencies"
       - "security"
@@ -19,6 +19,8 @@ updates:
       include: "scope"
     allow:
       - dependency-type: "direct"
+      - dependency-type: "indirect"
+    versioning-strategy: increase-if-necessary
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -29,3 +31,11 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "docker"
