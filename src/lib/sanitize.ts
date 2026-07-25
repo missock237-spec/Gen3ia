@@ -27,6 +27,9 @@ const ALLOWED_ATTRS = new Set([
 // Protocoles autorises dans href/src
 const ALLOWED_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:', 'ftp:'];
 
+// Protocoles TOUJOURS bloques quelque soit le contexte
+const FORBIDDEN_PROTOCOLS = ['data:', 'javascript:', 'vbscript:', 'file:'];
+
 // Tags dangereux TOUJOURS supprimes
 const FORBIDDEN_TAGS = new Set([
   'script', 'style', 'svg', 'template', 'iframe', 'object', 'embed',
@@ -69,20 +72,34 @@ function decodeHtmlEntities(input: string): string {
 }
 
 /**
+ * Verifie si un protocole est interdit (data:, javascript:, etc.)
+ */
+function hasForbiddenProtocol(url: string): boolean {
+  const protocolMatch = url.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*):/);
+  if (protocolMatch) {
+    const protocol = protocolMatch[1].toLowerCase() + ':';
+    return FORBIDDEN_PROTOCOLS.includes(protocol);
+  }
+  return false;
+}
+
+/**
  * Sanitise le HTML avec une approche DOMPurify:
- * 1. Parse les balises HTML
- * 2. Supprime les tags interdits
- * 3. Ne garde que les tags autorises (liste blanche)
- * 4. Supprime les attributs dangereux (on*)
- * 5. Valide les protocoles des URLs
  */
 export function sanitizeHtml(input: string, options?: { allowSafeTags?: boolean }): string {
   if (typeof input !== 'string') return '';
   let s = decodeHtmlEntities(truncate(input));
 
-  // Phase 1: Supprimer les tags interdits COMPLETEMENT (avec leur contenu)
+  // Phase 0: Supprimer les protocoles interdits dans les attributs href/src
+  s = s.replace(/(href|src)\s*=\s*"\s*data:/gi, '$1="');
+  s = s.replace(/(href|src)\s*=\s*'\s*data:/gi, "$1='");
+  s = s.replace(/(href|src)\s*=\s*"\s*javascript:/gi, '$1="');
+  s = s.replace(/(href|src)\s*=\s*'\s*javascript:/gi, "$1='");
+  s = s.replace(/(href|src)\s*=\s*"\s*vbscript:/gi, '$1="');
+  s = s.replace(/(href|src)\s*=\s*'\s*vbscript:/gi, "$1='");
+
+  // Phase 1: Supprimer les tags interdits COMPLETEMENT
   for (const tag of FORBIDDEN_TAGS) {
-    // Suppression recursive: tant qu'il y a des tags interdits
     while (s.includes(`<${tag}`) || s.includes(`</${tag}>`)) {
       s = s.replace(new RegExp(`<${tag}[^>]*>[\s\S]*?<\/${tag}>`, 'gi'), ' ');
       s = s.replace(new RegExp(`<${tag}[^>]*/>`, 'gi'), ' ');
@@ -91,35 +108,28 @@ export function sanitizeHtml(input: string, options?: { allowSafeTags?: boolean 
     }
   }
 
-  // Phase 2: Si safe tags only, filtrer les tags non autorises
+  // Phase 2: Filtrer les tags
   if (options?.allowSafeTags !== true) {
-    // Mode texte brut: supprimer toutes les balises HTML
     s = s.replace(/<[\/]*?[a-zA-Z][^>]*>/g, ' ');
   } else {
-    // Mode rich text: ne garder que les tags autorises
     s = s.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, (match, tagName) => {
       const lowerTag = tagName.toLowerCase();
       if (ALLOWED_TAGS.has(lowerTag)) {
-        // Valider les attributs
         return match.replace(/\s+([a-zA-Z-]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, (attrMatch, attrName) => {
           const lowerAttr = attrName.toLowerCase();
-          // Bloquer les event handlers
           if (lowerAttr.startsWith('on')) return ' ';
-          // Bloquer les attributs dangereux
           if (['formaction', 'action', 'formnovalidate', 'formenctype', 'formmethod', 'formtarget', 'xlink:href', 'xmlns'].includes(lowerAttr)) return ' ';
-          // Ne garder que les attributs autorises
           if (ALLOWED_ATTRS.has(lowerAttr)) {
-            // Valider les URLs dans href/src
             if (lowerAttr === 'href' || lowerAttr === 'src') {
               const urlMatch = attrMatch.match(/=\s*"([^"]+)"/) || attrMatch.match(/=\s*'([^']+)'/);
               if (urlMatch) {
-                const url = urlMatch[1]!;
+                const url = urlMatch[1];
+                if (hasForbiddenProtocol(url)) return ' ';
                 try {
                   const parsed = new URL(url);
                   if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) return ' ';
                 } catch {
-                  // URL relative: autoriser
-                  if (url.startsWith('#')) return ' '; // anchor only
+                  if (url.startsWith('#')) return ' ';
                 }
               }
             }
@@ -152,6 +162,10 @@ export function sanitizeHtml(input: string, options?: { allowSafeTags?: boolean 
 export function sanitizeUrl(url: string): string {
   if (typeof url !== 'string') return '';
   let s = decodeHtmlEntities(url.trim()).slice(0, 2000);
+
+  // Bloquer les protocoles interdits en premier
+  if (hasForbiddenProtocol(s)) return '';
+
   const m = s.match(/^([a-zA-Z][a-zA-Z0-9+\-.]*):/);
   if (m) {
     const p = m[1].toLowerCase() + ':';
@@ -161,7 +175,7 @@ export function sanitizeUrl(url: string): string {
 }
 
 /**
- * Nettoie pour la base de donnees (echappement simple)
+ * Nettoie pour la base de donnees
  */
 export function sanitizeForDb(input: string): string {
   if (typeof input !== 'string') return '';
@@ -201,7 +215,7 @@ export function escapeShellArg(input: string): string {
 }
 
 /**
- * Nettoie un prompt (caracteres de controle, unicode dangereux)
+ * Nettoie un prompt
  */
 export function sanitizePrompt(input: string): string {
   if (typeof input !== 'string') return '';
