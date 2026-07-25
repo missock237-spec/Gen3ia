@@ -26,7 +26,11 @@ const BLOCKED_HOSTNAMES = [
   'metadata.internal',
 ];
 
+// Protocoles autorisés pour les URLs
 const ALLOWED_HTTP_PROTOCOLS = ['http:', 'https:'];
+
+// Protocoles TOUJOURS bloqués (même si new URL les accepte)
+const FORBIDDEN_PROTOCOLS = ['data:', 'javascript:', 'vbscript:', 'file:'];
 
 const ALLOWED_DOMAINS_BY_CATEGORY: Record<string, string[]> = {
   huggingface: [
@@ -89,7 +93,6 @@ function isIPAddress(hostname: string): boolean {
 
 function isPrivateIP(hostname: string): boolean {
   if (!isIPAddress(hostname) && !hostname.startsWith('::ffff:')) {
-    // Essayer de résoudre le hostname — en environnement serveur on bloque les privés
     return BLOCKED_HOSTNAMES.includes(hostname.toLowerCase());
   }
 
@@ -108,8 +111,7 @@ function matchDomainAgainstList(hostname: string, allowedDomains: string[]): boo
 
   for (const domain of allowedDomains) {
     if (domain.startsWith('*.')) {
-      // Wildcard domain: *.example.com
-      const suffix = domain.slice(1); // .example.com
+      const suffix = domain.slice(1);
       if (lowerHostname.endsWith(suffix) || lowerHostname === suffix.slice(1)) {
         return true;
       }
@@ -122,7 +124,6 @@ function matchDomainAgainstList(hostname: string, allowedDomains: string[]): boo
 
 /**
  * Valide une URL contre les risques SSRF.
- * Vérifie que le domaine est autorisé selon la catégorie fournie.
  */
 export function validateUrl(
   url: string,
@@ -139,7 +140,12 @@ export function validateUrl(
     return { safe: false, error: 'URL malformée' };
   }
 
-  // Vérifier le protocole
+  // Bloquer les protocoles dangereux en premier (data:, javascript:, etc.)
+  if (FORBIDDEN_PROTOCOLS.includes(parsed.protocol)) {
+    return { safe: false, error: `Protocole interdit: ${parsed.protocol}` };
+  }
+
+  // Vérifier le protocole http/https
   if (!ALLOWED_HTTP_PROTOCOLS.includes(parsed.protocol)) {
     return { safe: false, error: `Protocole non autorisé: ${parsed.protocol}` };
   }
@@ -153,7 +159,6 @@ export function validateUrl(
 
   // Bloquer les hostnames dangereux connus
   if (BLOCKED_HOSTNAMES.includes(hostname.toLowerCase())) {
-    // Autoriser localhost seulement pour les catégories internes
     if (allowedCategory !== 'internal') {
       return { safe: false, error: `Accès à ${hostname} non autorisé` };
     }
@@ -170,13 +175,11 @@ export function validateUrl(
     return { safe: true, sanitizedUrl: url, category: allowedCategory };
   }
 
-  // Sans catégorie spécifique, vérifier juste qu'on n'attaque pas l'interne
   return { safe: true, sanitizedUrl: url };
 }
 
 /**
  * Effectue un fetch sécurisé avec validation SSRF.
- * Utilise validateUrl en interne avant d'exécuter la requête.
  */
 export async function safeFetch(
   url: string,
@@ -188,7 +191,6 @@ export async function safeFetch(
     throw new Error(`SSRF bloqué: ${validation.error}`);
   }
 
-  // Timeout par défaut de 10 secondes
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
 
@@ -205,25 +207,21 @@ export async function safeFetch(
 
 /**
  * Valide qu'un path de modèle HuggingFace est sûr.
- * Exemple: "black-forest-labs/FLUX.1-schnell"
  */
 export function validateModelPath(modelPath: string): SSRFCheckResult {
   if (!modelPath || typeof modelPath !== 'string') {
     return { safe: false, error: 'Model path invalide' };
   }
 
-  // Validation stricte: seulement lettres, chiffres, tirets, points, slashes
   const validPattern = /^[a-zA-Z0-9_\-.\/]+$/;
   if (!validPattern.test(modelPath)) {
     return { safe: false, error: 'Model path contient des caractères non autorisés' };
   }
 
-  // Limiter la longueur
   if (modelPath.length > 200) {
     return { safe: false, error: 'Model path trop long' };
   }
 
-  // Empêcher les tentatives de path traversal
   if (modelPath.includes('..') || modelPath.includes('~')) {
     return { safe: false, error: 'Path traversal détecté' };
   }
