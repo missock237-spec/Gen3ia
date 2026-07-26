@@ -1,30 +1,30 @@
 # Changelog
 
-## [0.7.0] - 2026-07-26
-### Systeme de Relais Multi-Provider avec Tracking de Quotas
+## [0.7.1] - 2026-07-26
+### Integration Relay System dans AI Router + API endpoints
 
-#### Relay System
-- 5 chaines de relais : reasoning, voice, image, video, audio
-- Tracking quotas daily + monthly avec persistance DB
-- Cache memoire avec flush periodique (30s) vers DB
-- Selection auto du provider : priorite, quota restant, cout
-- Fallback automatique en cascade
+#### Relay Router
+- relayChat(): remplace AI Router, utilise Groq -> OpenRouter -> OpenAI -> Anthropic
+- relaySynthesizeSpeech(): TTS via HuggingFace -> ElevenLabs
+- relayGenerateImage(): image via HuggingFace SD3.5 -> OpenAI DALL-E
+- relayGenerateVideo(): video via HuggingFace ModelScope
+- relayGenerateAudio(): audio via HuggingFace MusicGen -> OpenAI TTS
+- getRelayStatus(): rapport complet de toutes les chaines
 
-#### Chaines
-- **Reasoning**: Groq (free) -> OpenRouter (free) -> OpenAI -> Anthropic
-- **Voice**: HuggingFace (free) -> ElevenLabs
-- **Image**: HuggingFace (free) -> OpenAI DALL-E
-- **Video**: HuggingFace (free) -> OpenAI
-- **Audio**: HuggingFace MusicGen (free) -> OpenAI TTS
-
-#### Relay Integrator
-- chat(), synthesizeSpeech(), generateImage(), generateVideo(), generateAudio()
-- getRelayReport() pour le monitoring des quotas
+#### API Endpoint /api/relay
+- GET: retourne le statut de toutes les chaines de relais
+- POST action=chat: chat avec relay automatique
+- POST action=tts: synthese vocale avec relay
+- POST action=image: generation image avec relay
+- POST action=video: generation video avec relay
+- POST action=audio: generation audio avec relay
 
 ### Fichiers
-- src/lib/relay/relay-system.ts (16.9 KB)
-- src/lib/relay/relay-integrator.ts (13.7 KB)
-- prisma/migrations/00006_add_relay_usage.sql
+- src/lib/relay/relay-router.ts (4.1 KB)
+- src/app/api/relay/route.ts (2.8 KB)
+
+## [0.7.0] - 2026-07-26
+### Systeme de Relais Multi-Provider avec tracking quotas
 
 ## [0.6.2] - 2026-07-26
 ### Integration Compute V2 - Voice Memory + Replit
