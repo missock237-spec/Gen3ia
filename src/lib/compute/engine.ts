@@ -20,13 +20,6 @@ export interface ComputeResult<T = unknown> {
   error?: string;
 }
 
-const DEFAULT_CONFIG: ComputeConfig = {
-  preferredBackend: 'webgpu',
-  maxWorkers: navigator?.hardwareConcurrency || 4,
-  enableWasmFallback: true,
-  timeoutMs: 30_000,
-};
-
 export class ComputeEngine {
   private config: ComputeConfig;
   private gpuDevice: GPUDevice | null = null;
@@ -34,34 +27,41 @@ export class ComputeEngine {
   private isInitialized = false;
 
   constructor(config?: Partial<ComputeConfig>) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // BUGFIX: navigator peut ne pas exister en SSR Node.js — valeur par défaut 4
+    const cpuCores = typeof navigator !== 'undefined' && navigator?.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
+    this.config = {
+      preferredBackend: 'webgpu',
+      maxWorkers: cpuCores,
+      enableWasmFallback: true,
+      timeoutMs: 30_000,
+      ...config,
+    };
   }
 
   async initialize(): Promise<boolean> {
     if (this.isInitialized) return true;
 
-    // Tentative WebGPU d'abord
-    if (this.config.preferredBackend === 'webgpu' || this.config.preferredBackend === 'auto') {
+    // Tentative WebGPU d'abord (uniquement côté client)
+    if (typeof navigator !== 'undefined' && 'gpu' in navigator &&
+        (this.config.preferredBackend === 'webgpu' || this.config.preferredBackend === 'auto')) {
       try {
-        if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
-          const adapter = await (navigator as any).gpu.requestAdapter();
-          if (adapter) {
-            this.gpuDevice = await adapter.requestDevice();
-            log.info('WebGPU initialized', {
-              adapter: adapter.name,
-              features: Array.from(adapter.features || []),
-            });
-          }
+        const adapter = await (navigator as any).gpu.requestAdapter();
+        if (adapter) {
+          this.gpuDevice = await adapter.requestDevice();
+          log.info('WebGPU initialized', {
+            adapter: adapter.name,
+            features: Array.from(adapter.features || []),
+          });
         }
       } catch (err) {
         log.warn('WebGPU non disponible, fallback CPU', { error: err instanceof Error ? err.message : String(err) });
       }
     }
 
-    // Initialisation du pool de Workers
+    // Initialisation du pool de Workers (côté client uniquement)
     if (typeof Worker !== 'undefined') {
       try {
-        const workerCount = Math.min(this.config.maxWorkers, navigator?.hardwareConcurrency || 4);
+        const workerCount = Math.min(this.config.maxWorkers, cpuCores);
         for (let i = 0; i < workerCount; i++) {
           const worker = new Worker(
             new URL('./worker-pool.ts', import.meta.url),
@@ -88,7 +88,6 @@ export class ComputeEngine {
     const backend = options?.backend || this.config.preferredBackend;
 
     try {
-      // 1. WebGPU - Calcul GPU natif
       if (backend === 'webgpu' && this.gpuDevice) {
         const result = await this.runWebGPU<T>(operation, input, options?.shaderName);
         if (result.success) {
@@ -96,7 +95,6 @@ export class ComputeEngine {
         }
       }
 
-      // 2. Web Worker - Calcul parallélisé CPU
       if (backend === 'webworker' || backend === 'auto') {
         const result = await this.runWorker<T>(operation, input);
         if (result.success) {
@@ -104,7 +102,6 @@ export class ComputeEngine {
         }
       }
 
-      // 3. Fallback CPU direct
       return {
         success: true,
         data: await this.runCPU<T>(operation, input),
@@ -122,46 +119,21 @@ export class ComputeEngine {
     }
   }
 
-  private async runWebGPU<T>(
-    operation: string,
-    input: Float32Array | Int32Array | number[],
-    shaderName?: string
-  ): Promise<ComputeResult<T>> {
+  private async runWebGPU<T>(operation: string, input: Float32Array | Int32Array | number[], shaderName?: string): Promise<ComputeResult<T>> {
     if (!this.gpuDevice) throw new Error('WebGPU non initialisé');
-
     const device = this.gpuDevice;
-    const data = input instanceof Float32Array || input instanceof Int32Array
-      ? input
-      : new Float32Array(input);
+    const data = input instanceof Float32Array || input instanceof Int32Array ? input : new Float32Array(input);
 
-    // Buffer GPU pour les données d'entrée
-    const inputBuffer = device.createBuffer({
-      size: data.byteLength,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
+    const inputBuffer = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(inputBuffer, 0, data);
 
-    // Buffer GPU pour les résultats
-    const outputBuffer = device.createBuffer({
-      size: data.byteLength,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-    });
-
-    const shaderModule = device.createShaderModule({
-      code: this.getWGSLShader(operation, shaderName),
-    });
-
-    const computePipeline = device.createComputePipeline({
-      layout: 'auto',
-      compute: { module: shaderModule, entryPoint: 'main' },
-    });
+    const outputBuffer = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    const shaderModule = device.createShaderModule({ code: this.getWGSLShader(operation, shaderName) });
+    const computePipeline = device.createComputePipeline({ layout: 'auto', compute: { module: shaderModule, entryPoint: 'main' } });
 
     const bindGroup = device.createBindGroup({
       layout: computePipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: inputBuffer } },
-        { binding: 1, resource: { buffer: outputBuffer } },
-      ],
+      entries: [{ binding: 0, resource: { buffer: inputBuffer } }, { binding: 1, resource: { buffer: outputBuffer } }],
     });
 
     const commandEncoder = device.createCommandEncoder();
@@ -172,13 +144,8 @@ export class ComputeEngine {
     passEncoder.dispatchWorkgroups(workgroupCount, 1, 1);
     passEncoder.end();
 
-    // Copie du résultat
-    const stagingBuffer = device.createBuffer({
-      size: data.byteLength,
-      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-    });
+    const stagingBuffer = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     commandEncoder.copyBufferToBuffer(outputBuffer, 0, stagingBuffer, 0, data.byteLength);
-
     device.queue.submit([commandEncoder.finish()]);
 
     await stagingBuffer.mapAsync(GPUMapMode.READ);
@@ -186,154 +153,73 @@ export class ComputeEngine {
     const result = Array.from(resultArray) as unknown as T;
     stagingBuffer.unmap();
 
-    // Nettoyage
-    inputBuffer.destroy();
-    outputBuffer.destroy();
-    stagingBuffer.destroy();
-
-    return {
-      success: true,
-      data: result,
-      backend: 'webgpu',
-      durationMs: 0,
-    };
+    inputBuffer.destroy(); outputBuffer.destroy(); stagingBuffer.destroy();
+    return { success: true, data: result, backend: 'webgpu', durationMs: 0 };
   }
 
   private async runWorker<T>(operation: string, input: Float32Array | Int32Array | number[]): Promise<ComputeResult<T>> {
     if (this.workerPool.length === 0) throw new Error('Aucun worker disponible');
-
     const worker = this.workerPool[Math.floor(Math.random() * this.workerPool.length)];
+    const workerId = `op_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Worker timeout')), this.config.timeoutMs);
 
-      worker.postMessage({ operation, input: Array.from(input as any) });
+      worker.postMessage({ operation, input: Array.from(input as any), id: workerId });
       worker.onmessage = (event) => {
         clearTimeout(timeout);
+        const resultData = event.data as { result?: number[]; error?: string };
         resolve({
-          success: true,
-          data: event.data as T,
+          success: !resultData.error,
+          data: (resultData.result || []) as unknown as T,
           backend: 'webworker',
           durationMs: 0,
+          error: resultData.error,
         });
       };
       worker.onerror = (error) => {
         clearTimeout(timeout);
-        reject(error);
+        reject(new Error(error.message || 'Worker error'));
       };
     });
   }
 
   private async runCPU<T>(operation: string, input: Float32Array | Int32Array | number[]): Promise<T> {
     const arr = Array.from(input as any);
-
     switch (operation) {
-      case 'matrix_multiply':
-        return this.matrixMultiply(arr as unknown as number[][]) as unknown as T;
-      case 'vector_add':
-        return arr.map(v => v + 1) as unknown as T;
-      case 'vector_multiply':
-        return arr.map(v => v * 2) as unknown as T;
-      case 'normalize': {
-        const max = Math.max(...arr.map(Math.abs));
-        return arr.map(v => v / (max || 1)) as unknown as T;
-      }
-      case 'sigmoid':
-        return arr.map(v => 1 / (1 + Math.exp(-v))) as unknown as T;
-      case 'relu':
-        return arr.map(v => Math.max(0, v)) as unknown as T;
-      case 'softmax': {
-        const exp = arr.map(v => Math.exp(v));
-        const sum = exp.reduce((a, b) => a + b, 0);
-        return exp.map(v => v / sum) as unknown as T;
-      }
-      default:
-        return arr as unknown as T;
+      case 'matrix_multiply': return this.matrixMultiply(arr) as unknown as T;
+      case 'vector_add': return arr.map(v => v + 1) as unknown as T;
+      case 'vector_multiply': return arr.map(v => v * 2) as unknown as T;
+      case 'normalize': { const max = Math.max(...arr.map(Math.abs)); return arr.map(v => v / (max || 1)) as unknown as T; }
+      case 'sigmoid': return arr.map(v => 1 / (1 + Math.exp(-v))) as unknown as T;
+      case 'relu': return arr.map(v => Math.max(0, v)) as unknown as T;
+      case 'softmax': { const exp = arr.map(v => Math.exp(v)); const sum = exp.reduce((a, b) => a + b, 0); return exp.map(v => v / sum) as unknown as T; }
+      default: return arr as unknown as T;
     }
   }
 
-  private matrixMultiply(matrices: number[][]): number[][] {
-    const [a, b] = matrices;
-    const size = Math.round(Math.sqrt(a.length));
+  private matrixMultiply(arr: number[]): number[] {
+    const size = Math.round(Math.sqrt(arr.length));
     const result: number[] = [];
     for (let i = 0; i < size; i++) {
       for (let j = 0; j < size; j++) {
         let sum = 0;
         for (let k = 0; k < size; k++) {
-          sum += a[i * size + k] * b[k * size + j];
+          sum += arr[i * size + k] * arr[k * size + j];
         }
         result.push(sum);
       }
     }
-    return [result];
+    return result;
   }
 
   private getWGSLShader(operation: string, shaderName?: string): string {
-    // Shaders WGSL pour opérations courantes
     const shaders: Record<string, string> = {
-      vector_add: `
-        @group(0) @binding(0) var<storage, read> input: array<f32>;
-        @group(0) @binding(1) var<storage, read_write> output: array<f32>;
-
-        @compute @workgroup_size(64)
-        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-            let index = id.x;
-            if (index >= arrayLength(&input)) { return; }
-            output[index] = input[index] + 1.0;
-        }
-      `,
-      vector_multiply: `
-        @group(0) @binding(0) var<storage, read> input: array<f32>;
-        @group(0) @binding(1) var<storage, read_write> output: array<f32>;
-
-        @compute @workgroup_size(64)
-        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-            let index = id.x;
-            if (index >= arrayLength(&input)) { return; }
-            output[index] = input[index] * 2.0;
-        }
-      `,
-      sigmoid: `
-        @group(0) @binding(0) var<storage, read> input: array<f32>;
-        @group(0) @binding(1) var<storage, read_write> output: array<f32>;
-
-        @compute @workgroup_size(64)
-        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-            let index = id.x;
-            if (index >= arrayLength(&input)) { return; }
-            output[index] = 1.0 / (1.0 + exp(-input[index]));
-        }
-      `,
-      relu: `
-        @group(0) @binding(0) var<storage, read> input: array<f32>;
-        @group(0) @binding(1) var<storage, read_write> output: array<f32>;
-
-        @compute @workgroup_size(64)
-        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-            let index = id.x;
-            if (index >= arrayLength(&input)) { return; }
-            output[index] = max(0.0, input[index]);
-        }
-      `,
-      matrix_multiply: `
-        @group(0) @binding(0) var<storage, read> input: array<f32>;
-        @group(0) @binding(1) var<storage, read_write> output: array<f32>;
-
-        @compute @workgroup_size(8, 8)
-        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-            let size = u32(sqrt(f32(arrayLength(&input))));
-            let row = id.x;
-            let col = id.y;
-            if (row >= size || col >= size) { return; }
-            var sum = 0.0;
-            for (var k = 0u; k < size; k = k + 1u) {
-                sum = sum + input[row * size + k] * input[k * size + col];
-            }
-            output[row * size + col] = sum;
-        }
-      `,
+      vector_add: `@group(0) @binding(0) var<storage, read> input: array<f32>;\n@group(0) @binding(1) var<storage, read_write> output: array<f32>;\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) id: vec3<u32>) {\nlet index = id.x;\nif (index >= arrayLength(&input)) { return; }\noutput[index] = input[index] + 1.0;\n}`,
+      sigmoid: `@group(0) @binding(0) var<storage, read> input: array<f32>;\n@group(0) @binding(1) var<storage, read_write> output: array<f32>;\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) id: vec3<u32>) {\nlet index = id.x;\nif (index >= arrayLength(&input)) { return; }\noutput[index] = 1.0 / (1.0 + exp(-input[index]));\n}`,
+      relu: `@group(0) @binding(0) var<storage, read> input: array<f32>;\n@group(0) @binding(1) var<storage, read_write> output: array<f32>;\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) id: vec3<u32>) {\nlet index = id.x;\nif (index >= arrayLength(&input)) { return; }\noutput[index] = max(0.0, input[index]);\n}`,
+      matrix_multiply: `@group(0) @binding(0) var<storage, read> input: array<f32>;\n@group(0) @binding(1) var<storage, read_write> output: array<f32>;\n@compute @workgroup_size(8, 8)\nfn main(@builtin(global_invocation_id) id: vec3<u32>) {\nlet size = u32(sqrt(f32(arrayLength(&input))));\nlet row = id.x; let col = id.y;\nif (row >= size || col >= size) { return; }\nvar sum = 0.0;\nfor (var k = 0u; k < size; k = k + 1u) {\nsum = sum + input[row * size + k] * input[k * size + col];\n}\noutput[row * size + col] = sum;\n}`,
     };
-
     const key = shaderName || operation;
     return shaders[key] || shaders.vector_add;
   }
