@@ -1,42 +1,95 @@
-import { NextRequest, NextResponse } from "next/server";
-import { initiatePayment, CREDIT_PACKAGES } from "@/lib/sebpay";
+// ============================================================
+// Credit API — Interrogation du solde et historique des crédits
+// ============================================================
 
-export async function GET() {
-  const balance = 500;
-  return NextResponse.json({
-    balance,
-    isUnlimited: false,
-    packages: CREDIT_PACKAGES.map(p => ({
-      ...p,
-      pricePerCredit: parseFloat((p.price / p.credits).toFixed(4)),
-    })),
-    history: [],
-  });
-}
+import { NextRequest, NextResponse } from 'next/server';
+import { getCreditEngine } from '@/lib/billing/credit-engine';
+import { getAuthenticatedUser } from '@/lib/session';
+import { db } from '@/lib/db';
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const user = await getAuthenticatedUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  }
+
   try {
-    const body = await request.json();
-    const { packageId, customerEmail, customerName } = body;
-    const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
-    if (!pkg) {
-      return NextResponse.json({ error: "Pack de crédits invalide" }, { status: 400 });
+    const searchParams = request.nextUrl.searchParams;
+    const action = searchParams.get('action') || 'balance';
+    const engine = getCreditEngine();
+
+    switch (action) {
+      case 'balance': {
+        const balance = await engine.getUserBalance(user.userId);
+        const userProfile = await db.user.findUnique({
+          where: { id: user.userId },
+          select: { plan: true },
+        });
+        return NextResponse.json({
+          balance,
+          plan: userProfile?.plan || 'free',
+        });
+      }
+
+      case 'history': {
+        const page = parseInt(searchParams.get('page') || '1', 10);
+        const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100);
+        const skip = (page - 1) * limit;
+
+        const [transactions, total] = await Promise.all([
+          db.creditTransaction.findMany({
+            where: { userId: user.userId },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            skip,
+          }),
+          db.creditTransaction.count({ where: { userId: user.userId } }),
+        ]);
+
+        return NextResponse.json({
+          transactions,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+          },
+        });
+      }
+
+      case 'usage-today': {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const [totalSpent, callCount] = await Promise.all([
+          db.creditTransaction.aggregate({
+            where: {
+              userId: user.userId,
+              type: 'debit',
+              createdAt: { gte: today },
+            },
+            _sum: { amount: true },
+          }),
+          db.creditTransaction.count({
+            where: {
+              userId: user.userId,
+              type: 'debit',
+              createdAt: { gte: today },
+            },
+          }),
+        ]);
+
+        return NextResponse.json({
+          creditsUsedToday: Math.abs(totalSpent._sum.amount || 0),
+          transactionsToday: callCount,
+        });
+      }
+
+      default:
+        return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
     }
-    const reference = `GENOVA-CREDIT-${packageId}-${Date.now()}`;
-    const payment = await initiatePayment({
-      amount: pkg.price,
-      currency: "XAF",
-      description: `${pkg.name} - ${pkg.credits} crédits Genova AI`,
-      reference,
-      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/webhook`,
-      customerEmail,
-      customerName,
-    });
-    return NextResponse.json({ payment, package: pkg, reference });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erreur d'achat" },
-      { status: 500 }
-    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erreur interne';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
