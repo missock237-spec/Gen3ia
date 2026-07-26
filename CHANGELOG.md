@@ -1,23 +1,16 @@
 # Changelog
 
+## [0.8.1] - 2026-07-26
+### Fix: Corrections de code, API version, endpoints manquants
+
+#### Corrections
+- src/app/api/route.ts: version 0.3.0 -> 0.8.0 + 15 nouveaux endpoints
+- src/lib/billing/credits.ts: typage where clause corrige
+- .github/workflows/main.yml: HUGGINGFACE_API_KEY -> HUGGINGFACE_TOKEN
+- .github/workflows/ci.yml: ajout nouvelles cles API
+
 ## [0.8.0] - 2026-07-26
-### Recherche Web Temps Reel avec SerpAPI + DuckDuckGo fallback
-
-#### Web Search Engine
-- Recherche via SerpAPI (Google) en priorite
-- Fallback automatique DuckDuckGo
-- Cache 5 min, 6 types: web, images, news, video, shopping, scholar
-
-#### Search AI
-- searchWithAISummary(): resume via relayChat (Groq/OpenRouter)
-
-#### API Endpoint /api/search
-- GET /api/search?q=...&type=web|images|news&limit=10&summarize=true
-
-### Fichiers
-- src/lib/search/web-search.ts
-- src/lib/search/search-ai.ts
-- src/app/api/search/route.ts
+### Recherche Web Temps Reel SerpAPI + DuckDuckGo
 
 ## [0.7.2] - 2026-07-26
 ### Integration Relay complete dans AI Router + endpoints
@@ -30,3 +23,9 @@
 
 ## [0.6.2] - 2026-07-26
 ### Integration Compute V2 Voice Memory + Replit
+
+## [0.6.1] - 2026-07-26
+### Integration Compute V2 Embeddings + Agent Safety
+
+## [0.6.0] - 2026-07-26
+### Compute Engine V2 Cache LRU + Pipeline + Predictor
