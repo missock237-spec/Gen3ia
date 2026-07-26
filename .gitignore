@@ -51,6 +51,8 @@ coverage/
 # Temp
 tmp/
 temp/
+
+# Orphan / Generated files (cleanup)
 test-*
 generate_*
 keep-*
@@ -59,6 +61,7 @@ run-*
 worklog.*
 schema_backup.*
 test-write.*
+next-server.pid
 
 # Prisma (keep migrations, ignore generated)
 prisma/migrations/
