@@ -1,238 +1,155 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash, randomBytes } from 'node:crypto';
-import { db } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
+import { db } from '@/lib/db';
+import { getServerSession } from 'next-auth';
+import { v4 as uuidv4 } from 'uuid';
 
 const log = createLogger('api-keys');
 
-// ============================================================
-// Types
-// ============================================================
-
-interface ApiKeyInput {
-  name: string;
-  scopes?: string[];
-  expiresInDays?: number;
-}
-
-interface ApiKeyResponse {
+interface ApiKey {
   id: string;
   name: string;
-  keyPrefix: string;
+  key: string;
+  prefix: string;
   scopes: string[];
-  createdAt: string;
+  lastUsedAt: string | null;
   expiresAt: string | null;
   isActive: boolean;
-  lastUsedAt: string | null;
-  /**
-   * La clef complete (visible uniquement a la creation)
-   */
-  key?: string;
+  createdAt: string;
 }
 
-// ============================================================
-// Helpers
-// ============================================================
-
-const KEY_PREFIX = 'gv_';
-const DEFAULT_SCOPES = ['chat:read', 'chat:write'];
-const ALL_SCOPES = [
-  'chat:read', 'chat:write',
-  'agent:read', 'agent:write', 'agent:execute',
-  'billing:read', 'billing:write',
-  'admin:read', 'admin:write',
-  'webhook:read', 'webhook:write',
-  'voice:read', 'voice:write',
-  'media:read', 'media:write',
-  'user:read', 'user:write',
-  '*',
-];
-
-function generateApiKey(): { fullKey: string; hashedKey: string; prefix: string } {
-  const randomPart = randomBytes(32).toString('hex');
-  const fullKey = `${KEY_PREFIX}${randomPart}`;
-  const hashedKey = createHash('sha256').update(fullKey).digest('hex');
-  const prefix = fullKey.substring(0, 10) + '...';
-  return { fullKey, hashedKey, prefix };
+function generateApiKey(prefix: string = 'gv'): string {
+  const key = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
+  return `${prefix}_${key}`;
 }
 
-function validateScopes(scopes: string[]): { valid: boolean; error?: string } {
-  for (const scope of scopes) {
-    if (scope === '*') continue;
-    if (!ALL_SCOPES.includes(scope)) {
-      return { valid: false, error: `Scope invalide: ${scope}` };
-    }
+function hashKey(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    const char = key.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
   }
-  return { valid: true };
+  return Math.abs(hash).toString(36);
 }
 
-// ============================================================
-// GET /api/keys — Lister les clefs API de l'utilisateur
-// ============================================================
+const VALID_SCOPES = ['agents:read', 'agents:write', 'voice:call', 'messages:send', 'billing:read', 'admin:read'];
 
-export async function GET(request: NextRequest) {
-  try {
-    // Recuperer l'utilisateur depuis la session via header ou auth
-    const userId = request.headers.get('x-user-id') || 'system';
-
-    const apiKeys = await db.accessKey.findMany({
-      where: { userId, keyType: 'api_key', service: 'developer' },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        keyValue: true,
-        scopes: true,
-        createdAt: true,
-        expiresAt: true,
-        isActive: true,
-        lastTestedAt: true,
-        usageCount: true,
-      },
-    });
-
-    const response: ApiKeyResponse[] = apiKeys.map(k => ({
-      id: k.id,
-      name: k.name,
-      keyPrefix: k.keyValue.substring(0, 10) + '...',
-      scopes: JSON.parse(k.scopes || '[]'),
-      createdAt: k.createdAt.toISOString(),
-      expiresAt: k.expiresAt?.toISOString() || null,
-      isActive: k.isActive,
-      lastUsedAt: k.lastTestedAt?.toISOString() || null,
-    }));
-
-    return NextResponse.json({ success: true, data: response });
-  } catch (err) {
-    log.error('Failed to list API keys', { error: err instanceof Error ? err.message : String(err) });
-    return NextResponse.json({ success: false, error: 'Erreur lors de la recuperation des clefs' }, { status: 500 });
-  }
-}
-
-// ============================================================
-// POST /api/keys — Creer une nouvelle clef API
-// ============================================================
-
+// POST — Créer une nouvelle clé API
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id') || 'system';
-    const body: ApiKeyInput = await request.json();
-
-    if (!body.name || body.name.trim().length < 2) {
-      return NextResponse.json({ success: false, error: 'Le nom doit contenir au moins 2 caracteres' }, { status: 400 });
+    const session = await getServerSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    if (body.name.length > 64) {
-      return NextResponse.json({ success: false, error: 'Le nom ne doit pas depasser 64 caracteres' }, { status: 400 });
+    const body = await request.json();
+    const { name, scopes = ['agents:read'], expiresInDays } = body;
+
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return NextResponse.json({ error: 'Le nom est requis' }, { status: 400 });
     }
 
-    const scopes = body.scopes || DEFAULT_SCOPES;
-    const scopeValidation = validateScopes(scopes);
-    if (!scopeValidation.valid) {
-      return NextResponse.json({ success: false, error: scopeValidation.error }, { status: 400 });
+    if (scopes.length === 0) {
+      return NextResponse.json({ error: 'Au moins un scope est requis' }, { status: 400 });
     }
 
-    const { fullKey, hashedKey, prefix } = generateApiKey();
+    const invalidScopes = scopes.filter((s: string) => !VALID_SCOPES.includes(s));
+    if (invalidScopes.length > 0) {
+      return NextResponse.json({
+        error: `Scopes invalides: ${invalidScopes.join(', ')}`,
+        validScopes: VALID_SCOPES,
+      }, { status: 400 });
+    }
 
-    const expiresAt = body.expiresInDays
-      ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
-      : null;
+    const rawKey = generateApiKey();
+    const keyHash = hashKey(rawKey);
+    const prefix = rawKey.slice(0, 8);
 
-    const apiKey = await db.accessKey.create({
-      data: {
-        name: body.name.trim(),
-        description: `API key created: ${body.name.trim()}`,
-        service: 'developer',
-        keyType: 'api_key',
-        keyValue: hashedKey,
-        scopes: JSON.stringify(scopes),
-        metadata: JSON.stringify({ prefix, scopes, createdVia: 'api' }),
-        expiresAt,
-        isActive: true,
-        userId,
-      },
-      select: {
-        id: true,
-        name: true,
-        scopes: true,
-        createdAt: true,
-        expiresAt: true,
-        isActive: true,
-      },
+    const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null;
+
+    await db.$executeRawUnsafe(`
+      INSERT INTO api_keys (id, user_id, name, key_hash, prefix, scopes, expires_at, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
+    `,
+      `key_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      session.user.id,
+      name.trim(),
+      keyHash,
+      prefix,
+      JSON.stringify(scopes),
+      expiresAt
+    );
+
+    log.info('API key created', { name: name.trim(), scopes, userId: session.user.id });
+
+    return NextResponse.json({
+      success: true,
+      key: rawKey,
+      prefix,
+      name: name.trim(),
+      scopes,
+      expiresAt,
     });
-
-    log.info('API key created', { userId, keyName: apiKey.name, scopes });
-
-    const response: ApiKeyResponse = {
-      id: apiKey.id,
-      name: apiKey.name,
-      keyPrefix: prefix,
-      key: fullKey, // UNIQUEMENT retourne a la creation !
-      scopes: JSON.parse(apiKey.scopes || '[]'),
-      createdAt: apiKey.createdAt.toISOString(),
-      expiresAt: apiKey.expiresAt?.toISOString() || null,
-      isActive: apiKey.isActive,
-      lastUsedAt: null,
-    };
-
-    return NextResponse.json({ success: true, data: response, warning: 'Conservez cette clef. Elle ne sera plus jamais affichee.' }, { status: 201 });
-  } catch (err) {
-    log.error('Failed to create API key', { error: err instanceof Error ? err.message : String(err) });
-    return NextResponse.json({ success: false, error: 'Erreur lors de la creation de la clef' }, { status: 500 });
+  } catch (error) {
+    log.error('API key creation error', { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: 'Erreur lors de la création' }, { status: 500 });
   }
 }
 
-// ============================================================
-// PATCH /api/keys — Activer/Desactiver/Supprimer une clef
-// ============================================================
-
-export async function PATCH(request: NextRequest) {
+// GET — Lister les clés API
+export async function GET() {
   try {
-    const userId = request.headers.get('x-user-id') || 'system';
-    const body = await request.json();
-    const { keyId, action } = body;
+    const session = await getServerSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    }
+
+    const keys = await db.$queryRawUnsafe<ApiKey[]>(`
+      SELECT id, name, prefix, scopes, last_used_at as "lastUsedAt", expires_at as "expiresAt", is_active as "isActive", created_at as "createdAt"
+      FROM api_keys
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+    `, session.user.id);
+
+    return NextResponse.json({
+      success: true,
+      keys: keys.map(k => ({
+        ...k,
+        scopes: typeof k.scopes === 'string' ? JSON.parse(k.scopes) : k.scopes,
+      })),
+    });
+  } catch (error) {
+    log.error('API keys listing error', { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: 'Erreur de lecture' }, { status: 500 });
+  }
+}
+
+// DELETE — Révoquer une clé API
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getServerSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const keyId = searchParams.get('id');
 
     if (!keyId) {
-      return NextResponse.json({ success: false, error: 'keyId requis' }, { status: 400 });
+      return NextResponse.json({ error: 'ID de clé requis' }, { status: 400 });
     }
 
-    const existingKey = await db.accessKey.findFirst({
-      where: { id: keyId, userId, keyType: 'api_key' },
-    });
+    await db.$executeRawUnsafe(`
+      UPDATE api_keys SET is_active = false, updated_at = NOW()
+      WHERE id = $1 AND user_id = $2
+    `, keyId, session.user.id);
 
-    if (!existingKey) {
-      return NextResponse.json({ success: false, error: 'Clef introuvable' }, { status: 404 });
-    }
+    log.info('API key revoked', { keyId, userId: session.user.id });
 
-    switch (action) {
-      case 'revoke':
-        await db.accessKey.update({
-          where: { id: keyId },
-          data: { isActive: false },
-        });
-        log.info('API key revoked', { userId, keyId });
-        return NextResponse.json({ success: true, message: 'Clef revoquee' });
-
-      case 'activate':
-        await db.accessKey.update({
-          where: { id: keyId },
-          data: { isActive: true },
-        });
-        log.info('API key activated', { userId, keyId });
-        return NextResponse.json({ success: true, message: 'Clef activee' });
-
-      case 'delete':
-        await db.accessKey.delete({
-          where: { id: keyId },
-        });
-        log.info('API key deleted', { userId, keyId });
-        return NextResponse.json({ success: true, message: 'Clef supprimee definitivement' });
-
-      default:
-        return NextResponse.json({ success: false, error: 'Action non reconnue. Utilisez revoke, activate, ou delete.' }, { status: 400 });
-    }
-  } catch (err) {
-    log.error('Failed to update API key', { error: err instanceof Error ? err.message : String(err) });
-    return NextResponse.json({ success: false, error: 'Erreur lors de la mise a jour' }, { status: 500 });
+    return NextResponse.json({ success: true, message: 'Clé révoquée' });
+  } catch (error) {
+    log.error('API key revocation error', { error: error instanceof Error ? error.message : String(error) });
+    return NextResponse.json({ error: 'Erreur lors de la révocation' }, { status: 500 });
   }
 }
