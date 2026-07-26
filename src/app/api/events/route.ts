@@ -1,114 +1,92 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@/lib/logger';
+import { db } from '@/lib/db';
 
-const log = createLogger('events');
+const log = createLogger('events-sse');
+
+interface SSEEvent {
+  type: 'llm_completion' | 'voice_call' | 'credit_deduction' | 'agent_execution' | 'image_generation' | 'system_alert';
+  data: Record<string, unknown>;
+  timestamp: string;
+}
 
 interface SSEClient {
   id: string;
   userId: string;
   controller: ReadableStreamDefaultController;
-  encoder: TextEncoder;
+  filters?: string[];
 }
 
-class EventManager {
-  private clients: Map<string, SSEClient[]> = new Map();
-  private encoder = new TextEncoder();
+const clients = new Map<string, SSEClient>();
 
-  addClient(client: SSEClient): void {
-    const existing = this.clients.get(client.userId) || [];
-    existing.push(client);
-    this.clients.set(client.userId, existing);
-    log.debug('SSE client connected', { userId: client.userId, clientId: client.id });
-    this.sendToClient(client, { type: 'connected', data: { clientId: client.id, timestamp: new Date().toISOString() } });
-  }
+function generateClientId(): string {
+  return `sse_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
-  removeClient(client: SSEClient): void {
-    const existing = this.clients.get(client.userId) || [];
-    const filtered = existing.filter(c => c.id !== client.id);
-    if (filtered.length === 0) {
-      this.clients.delete(client.userId);
-    } else {
-      this.clients.set(client.userId, filtered);
-    }
-    log.debug('SSE client disconnected', { userId: client.userId, clientId: client.id });
-  }
-
-  sendToClient(client: SSEClient, event: { type: string; data: unknown }): void {
-    try {
-      const payload = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
-      client.controller.enqueue(client.encoder.encode(payload));
-    } catch (err) {
-      log.warn('SSE send failed (client disconnected)', { clientId: client.id, error: err instanceof Error ? err.message : String(err) });
-      this.removeClient(client);
-    }
-  }
-
-  broadcast(userId: string, type: string, data: unknown): void {
-    const clients = this.clients.get(userId) || [];
-    for (const client of clients) {
-      this.sendToClient(client, { type, data });
-    }
-  }
-
-  broadcastAll(type: string, data: unknown): void {
-    for (const [, clients] of this.clients) {
-      for (const client of clients) {
-        this.sendToClient(client, { type, data });
-      }
-    }
-  }
-
-  getStats(): { totalClients: number; totalUsers: number } {
-    let totalClients = 0;
-    for (const [, clients] of this.clients) {
-      totalClients += clients.length;
-    }
-    return { totalClients, totalUsers: this.clients.size };
+function sendToClient(client: SSEClient, event: SSEEvent): void {
+  try {
+    const encoder = new TextEncoder();
+    const message = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+    client.controller.enqueue(encoder.encode(message));
+  } catch (err) {
+    log.warn('SSE send error, removing client', { clientId: client.id });
+    clients.delete(client.id);
   }
 }
 
-// Singleton global
-const eventManager = new EventManager();
+export async function broadcastEvent(event: SSEEvent): Promise<void> {
+  if (clients.size === 0) return;
 
-export function getEventManager(): EventManager {
-  return eventManager;
-}
+  const timestamp = new Date().toISOString();
+  const fullEvent = { ...event, timestamp };
 
-// Fonction utilitaire pour broadcast depuis d'autres parties du code
-export function notifyUser(userId: string, type: string, data: unknown): void {
-  eventManager.broadcast(userId, type, data);
+  for (const [id, client] of clients) {
+    if (client.filters && client.filters.length > 0) {
+      if (!client.filters.includes(event.type)) continue;
+    }
+    sendToClient(client, fullEvent);
+  }
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId') || 'anonymous';
+  const filtersParam = searchParams.get('filters');
+  const filters = filtersParam ? filtersParam.split(',') : undefined;
+
+  const clientId = generateClientId();
 
   const stream = new ReadableStream({
     start(controller) {
-      const clientId = `sse_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-      const client: SSEClient = {
-        id: clientId,
-        userId,
-        controller,
-        encoder: new TextEncoder(),
+      const client: SSEClient = { id: clientId, userId, controller, filters };
+      clients.set(clientId, client);
+
+      log.info('SSE client connected', { clientId, userId, activeClients: clients.size });
+
+      // Envoyer un événement de connexion initial
+      const encoder = new TextEncoder();
+      const initEvent = {
+        type: 'connected',
+        data: { clientId, message: 'Connexion SSE établie', activeClients: clients.size },
+        timestamp: new Date().toISOString(),
       };
+      controller.enqueue(encoder.encode(`event: connected\ndata: ${JSON.stringify(initEvent)}\n\n`));
 
-      eventManager.addClient(client);
-
-      // Envoi d'un keepalive toutes les 30 secondes
-      const keepalive = setInterval(() => {
+      // Heartbeat toutes les 30s
+      const heartbeat = setInterval(() => {
         try {
-          const payload = `:keepalive\n\n`;
-          controller.enqueue(new TextEncoder().encode(payload));
+          controller.enqueue(encoder.encode(`:heartbeat\n\n`));
         } catch {
-          clearInterval(keepalive);
+          clearInterval(heartbeat);
+          clients.delete(clientId);
         }
-      }, 30_000);
+      }, 30000);
 
-      // Nettoyage a la fermeture
+      // Nettoyage à la déconnexion
       request.signal.addEventListener('abort', () => {
-        clearInterval(keepalive);
-        eventManager.removeClient(client);
+        clearInterval(heartbeat);
+        clients.delete(clientId);
+        log.info('SSE client disconnected', { clientId, remainingClients: clients.size });
       });
     },
   });
@@ -123,44 +101,25 @@ export async function GET(request: NextRequest) {
   });
 }
 
-// Endpoint POST pour emettre un evenement (interne)
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { userId, type, data } = body;
+/**
+ * Hook pour tracker les événements depuis n'importe où dans l'app
+ */
+export async function trackEvent(
+  type: SSEEvent['type'],
+  data: Record<string, unknown>,
+  options?: { async?: boolean }
+): Promise<void> {
+  const event: SSEEvent = {
+    type,
+    data,
+    timestamp: new Date().toISOString(),
+  };
 
-    if (!type) {
-      return new Response(JSON.stringify({ error: 'Le champ type est requis' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (userId) {
-      eventManager.broadcast(userId, type, data || {});
-    } else {
-      eventManager.broadcastAll(type, data || {});
-    }
-
-    const stats = eventManager.getStats();
-
-    return new Response(JSON.stringify({ success: true, clientsNotified: stats.totalClients }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Erreur interne' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (options?.async === false) {
+    await broadcastEvent(event);
+  } else {
+    broadcastEvent(event).catch(err =>
+      log.warn('Async broadcast failed', { error: err instanceof Error ? err.message : String(err) })
+    );
   }
-}
-
-// Endpoint stats
-export async function PUT() {
-  const stats = eventManager.getStats();
-  return new Response(JSON.stringify({ success: true, ...stats }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
