@@ -1,11 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 
 function resolveDatabaseUrl(): string {
-  const databaseUrl = process.env.GENOVA_DATABASE_URL || process.env.DATABASE_URL;
-  if (!databaseUrl?.startsWith('postgresql://') && !databaseUrl?.startsWith('postgres://')) {
-    throw new Error('DATABASE_URL must be a PostgreSQL connection string');
+  // BUGFIX: DATABASE_URL d'abord, puis GENOVA_DATABASE_URL (ordre de priorité standard)
+  const databaseUrl = process.env.DATABASE_URL || process.env.GENOVA_DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL must be set. Define DATABASE_URL or GENOVA_DATABASE_URL in your environment.');
   }
-  return databaseUrl!;
+  if (!databaseUrl.startsWith('postgresql://') && !databaseUrl.startsWith('postgres://')) {
+    throw new Error('DATABASE_URL must be a PostgreSQL connection string starting with postgresql:// or postgres://');
+  }
+  return databaseUrl;
 }
 
 const databaseUrl = resolveDatabaseUrl();
@@ -24,3 +28,5 @@ export const db =
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = db;
 }
+
+export default db;
