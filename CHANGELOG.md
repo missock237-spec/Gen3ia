@@ -1,13 +1,17 @@
 # Changelog
 
 ## [0.8.1] - 2026-07-26
-### Fix: Corrections de code, API version, endpoints manquants
+### Fix: Corrections package, env, API route, versions
 
 #### Corrections
-- src/app/api/route.ts: version 0.3.0 -> 0.8.0 + 15 nouveaux endpoints
-- src/lib/billing/credits.ts: typage where clause corrige
-- .github/workflows/main.yml: HUGGINGFACE_API_KEY -> HUGGINGFACE_TOKEN
-- .github/workflows/ci.yml: ajout nouvelles cles API
+- package.json: version 0.5.0 -> 0.8.1, ajout @sentry/nextjs
+- .env.example: ajout SERPAPI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, NEXTAUTH_SECRET, HUGGINGFACE_TOKEN, ELEVENLABS_API_KEY
+- src/app/api/route.ts: version 0.3.0 -> 0.8.0, ajout 15 endpoints
+- CHANGELOG.md: v0.8.1 avec historique
+
+#### Reminder: Secrets GitHub a ajouter
+HUGGINGFACE_TOKEN, GROQ_API_KEY, OPENROUTER_API_KEY, SERPAPI_API_KEY
+ELEVENLABS_API_KEY, NEXTAUTH_SECRET, ANTHROPIC_API_KEY
 
 ## [0.8.0] - 2026-07-26
 ### Recherche Web Temps Reel SerpAPI + DuckDuckGo
