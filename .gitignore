@@ -51,8 +51,6 @@ coverage/
 # Temp
 tmp/
 temp/
-
-# Orphan / Generated files (cleanup)
 test-*
 generate_*
 keep-*
@@ -61,8 +59,14 @@ run-*
 worklog.*
 schema_backup.*
 test-write.*
-next-server.pid
+test-api.*
+test-autonomous.*
+test-connectivity.*
+test-whatsapp.*
 
 # Prisma (keep migrations, ignore generated)
 prisma/migrations/
 !prisma/migrations/migration_lock.toml
+
+# Rust
+target/
