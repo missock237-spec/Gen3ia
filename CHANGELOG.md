@@ -1,44 +1,23 @@
 # Changelog
 
+## [0.5.1] - 2026-07-26
+### 🐛 Audit Round 3 — Sécurité & Dépendances
+
+#### 🔴 Critiques
+| # | Fichier | Problème | Fix |
+|---|---------|----------|-----|
+| 1 | `next.config.ts` | `hostname: '**'` autorise TOUS les domaines d'images | Remplacé par 8 domaines explicites |
+| 2 | `package.json` | `stripe` manquant alors que `stripe-client.ts` l'importe (build cassé) | Ajout `stripe: ^17.6.0` |
+| 3 | `package.json` | Script `test:coverage` absent malgré `vitest.config.ts` | Ajouté avec `@vitest/coverage-v8` |
+
+#### 🟡 Mineurs
+| # | Fichier | Problème | Fix |
+|---|---------|----------|-----|
+| 4 | `stripe-client.ts` | Indentation erronée dans `handleInvoicePaymentFailed` | Corrigée |
+| 5 | `next.config.ts` | `images.unoptimized` activé en dev seulement | Ajout domaines HF, Google, GitHub |
+
 ## [0.5.0] - 2026-07-26
-
-### 🚀 Nouvelles fonctionnalités
-
-#### 🏢 Multi-Tenant
-- Isolation complète des données par tenant (agents, conversations, uploads)
-- 4 plans : free, pro, enterprise
-- 4 rôles : owner, admin, member, viewer
-- Permissions granulaires par rôle
-- Cache tenant (5 min TTL)
-- Rate limiting par quota (API, agents, stockage, utilisateurs)
-- Comptage des membres avec limite par plan
-
-#### 💻 Agent Répl.IT
-- Agent de développement interactif
-- Commandes : write, read, run, install, search, fix
-- Sessions persistantes avec historique d\'exécution
-- Itération automatique : analyse → génération → exécution → correction
-- Jusqu\'à 3 itérations de correction automatique
-- Support des langages : TypeScript, JavaScript, Python, HTML, CSS, JSON
-
-#### 🎮 API Playground
-- Interface interactive pour tester tous les endpoints Genova
-- Endpoint POST `/api/playground` avec documentation GET
-- 7 endpoints testables : chat, image, audio, translate, summarize, compute, stream
-- Documentation automatique avec exemples et paramètres
-- Messages d\'erreur explicites
-
-#### 🛍️ Plugin Store
-- 6 plugins pré-installés : Web Scraper, Email Sender, PDF Generator, SQL Query Engine, Image Editor Pro, WhatsApp Broadcast
-- Catégories : tool, connector, template, skill, integration
-- Système de permissions par plugin
-- Hooks : before-agent-think, after-tool-execution, after-agent-response
-- Installation/désinstallation avec suivi d\'utilisation
-
-### 🗄️ Base de Données
-- Migration 00005 : tables tenants, tenant_members, webhook_logs, api_usage
-- Ajout colonne tenant_id aux tables agents, conversations, uploads
-- Index optimisés pour les requêtes multi-tenant
+### 🚀 Multi-Tenant, Agent Répl.IT, Playground API, Plugin Store
 
 ## [0.4.0] - 2026-07-26
 ### 📊 Dashboard temps réel, Templates vocaux, Webhook engine, Coverage 80%
