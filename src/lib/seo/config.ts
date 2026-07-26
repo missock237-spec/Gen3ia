@@ -2,7 +2,7 @@ export const siteConfig = {
   name: "Genova AI",
   shortName: "Genova",
   description:
-    "Genova AI est la plateforme SaaS qui vous permet de créer, gérer et coordonner vos agents IA. Outils, automatisation, ReAct Loop, WhatsApp, Marketplace.",
+    "Genova AI est la plateforme SaaS qui vous permet de créer, gérer et coordonner vos agents IA. Outils, automatisation, ReAct Loop, WhatsApp, Marketplace, appels vocaux.",
   url:
     process.env.NEXT_PUBLIC_APP_URL ||
     "https://missock237-spec.github.io/Genova",
@@ -12,9 +12,16 @@ export const siteConfig = {
   author: "Genova AI",
   twitterHandle: "@genova_ai",
   githubUrl: "https://github.com/missock237-spec/Genova",
+  sameAs: [
+    "https://github.com/missock237-spec/Genova",
+    "https://twitter.com/genova_ai",
+    "https://www.linkedin.com/company/genova-ai",
+    "https://www.facebook.com/genovaAI",
+  ],
   links: {
     github: "https://github.com/missock237-spec/Genova",
     twitter: "https://twitter.com/genova_ai",
     linkedin: "https://www.linkedin.com/company/genova-ai",
+    facebook: "https://www.facebook.com/genovaAI",
   },
 };
