@@ -1,4 +1,3 @@
-import ZAI from 'z-ai-web-dev-sdk';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ai-router');
@@ -57,27 +56,38 @@ const DEFAULT_CONFIG: AIRouterConfig = {
       name: 'openrouter', priority: 2,
       models: { default: 'meta-llama/llama-3.1-8b-instruct:free', fast: 'meta-llama/llama-3.1-8b-instruct:free', powerful: 'meta-llama/llama-3.1-70b-instruct' },
     },
+    {
+      name: 'openai', priority: 3,
+      models: { default: 'gpt-4o', fast: 'gpt-4o-mini', powerful: 'o3-mini' },
+    },
+    {
+      name: 'anthropic', priority: 4,
+      models: { default: 'claude-3.5-sonnet', fast: 'claude-3-haiku', powerful: 'claude-4-sonnet' },
+    },
   ],
   maxRetries: 3,
   retryDelayMs: 500,
   timeoutMs: 60_000,
 };
 
-const GROQ_COST_PER_K: Record<string, { prompt: number; completion: number }> = {
-  default:  { prompt: 0.00059, completion: 0.00079 },
-  fast:     { prompt: 0.00005, completion: 0.00008 },
-  powerful: { prompt: 0.00059, completion: 0.00079 },
-};
-
-const OPENROUTER_COST_PER_K: Record<string, { prompt: number; completion: number }> = {
-  'meta-llama/llama-3.1-8b-instruct:free': { prompt: 0, completion: 0 },
-  'meta-llama/llama-3.1-70b-instruct':      { prompt: 0.00065, completion: 0.00075 },
+const PRICING: Record<string, { input: number; output: number }> = {
+  'groq/llama-3.3-70b-versatile': { input: 0.00059, output: 0.00079 },
+  'groq/llama-3.1-8b-instant': { input: 0.00005, output: 0.00008 },
+  'openrouter/meta-llama/llama-3.1-8b-instruct:free': { input: 0, output: 0 },
+  'openrouter/meta-llama/llama-3.1-70b-instruct': { input: 0.00065, output: 0.00075 },
+  'openai/gpt-4o': { input: 0.0025, output: 0.010 },
+  'openai/gpt-4o-mini': { input: 0.00015, output: 0.0006 },
+  'openai/o3-mini': { input: 0.0011, output: 0.0044 },
+  'anthropic/claude-3.5-sonnet': { input: 0.003, output: 0.015 },
+  'anthropic/claude-3-haiku': { input: 0.00025, output: 0.00125 },
+  'anthropic/claude-4-sonnet': { input: 0.015, output: 0.075 },
 };
 
 function getCostPerK(provider: string, model: string): { prompt: number; completion: number } {
-  if (provider === 'groq') return GROQ_COST_PER_K[model] ?? { prompt: 0, completion: 0 };
-  if (provider === 'openrouter') return OPENROUTER_COST_PER_K[model] ?? { prompt: 0.0005, completion: 0.0006 };
-  return { prompt: 0, completion: 0 };
+  const key = `${provider}/${model}`;
+  const p = PRICING[key];
+  if (p) return { prompt: p.input, completion: p.output };
+  return { prompt: 0.001, completion: 0.002 };
 }
 
 function isTransientError(error: unknown): boolean {
@@ -94,13 +104,11 @@ function isTransientError(error: unknown): boolean {
       return s === 429 || (s >= 500 && s <= 599);
     }
     if (msg.includes('network') || msg.includes('timeout') || msg.includes('econnreset') ||
-        msg.includes('econnrefused') || msg.includes('rate limit') || msg.includes('overloaded')) {
+        msg.includes('econnrefused') || msg.includes('rate limit') || msg.includes('overloaded'))
       return true;
-    }
     if (msg.includes('forbidden') || msg.includes('unauthorized') || msg.includes('invalid api') ||
-        msg.includes('authentication')) {
+        msg.includes('authentication'))
       return false;
-    }
   }
   return false;
 }
@@ -120,18 +128,51 @@ interface ProviderCallResult {
   model: string;
 }
 
-async function callZAI(messages: AIMessage[], model: string, provider: string, timeoutMs: number): Promise<ProviderCallResult> {
-  const zai = await ZAI.create();
+async function callOpenAI(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY not set');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const completion = await zai.chat.completions.create({ messages, model, stream: false });
-    const content = completion.choices?.[0]?.message?.content ?? '';
-    const usage = completion.usage ?? {};
-    return { content, usage: { promptTokens: usage.prompt_tokens ?? 0, completionTokens: usage.completion_tokens ?? 0, totalTokens: usage.total_tokens ?? 0 }, provider, model };
-  } finally {
-    clearTimeout(timer);
-  }
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages, stream: false }),
+      signal: controller.signal,
+    });
+    if (!res.ok) { const e = new Error(`OpenAI API error: status ${res.status}`); (e as any).status = res.status; throw e; }
+    const data = await res.json();
+    return {
+      content: data.choices?.[0]?.message?.content ?? '',
+      usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.total_tokens ?? 0 },
+      provider: 'openai', model,
+    };
+  } finally { clearTimeout(timer); }
+}
+
+async function callAnthropic(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const systemMsg = messages.find(m => m.role === 'system')?.content || '';
+    const userMsgs = messages.filter(m => m.role !== 'system');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: 4096, system: systemMsg, messages: userMsgs }),
+      signal: controller.signal,
+    });
+    if (!res.ok) { const e = new Error(`Anthropic API error: status ${res.status}`); (e as any).status = res.status; throw e; }
+    const data = await res.json();
+    const text = data.content?.find((c: any) => c.type === 'text')?.text || '';
+    return {
+      content: text,
+      usage: { promptTokens: data.usage?.input_tokens ?? 0, completionTokens: data.usage?.output_tokens ?? 0, totalTokens: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0) },
+      provider: 'anthropic', model,
+    };
+  } finally { clearTimeout(timer); }
 }
 
 async function callGroqDirect(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> {
@@ -148,8 +189,11 @@ async function callGroqDirect(messages: AIMessage[], model: string, timeoutMs: n
     });
     if (!res.ok) { const e = new Error(`Groq API error: status ${res.status}`); (e as any).status = res.status; throw e; }
     const data = await res.json();
-    const content = data.choices?.[0]?.message?.content ?? '';
-    return { content, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.total_tokens ?? 0 }, provider: 'groq', model };
+    return {
+      content: data.choices?.[0]?.message?.content ?? '',
+      usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.total_tokens ?? 0 },
+      provider: 'groq', model,
+    };
   } finally { clearTimeout(timer); }
 }
 
@@ -167,8 +211,11 @@ async function callOpenRouterDirect(messages: AIMessage[], model: string, timeou
     });
     if (!res.ok) { const e = new Error(`OpenRouter API error: status ${res.status}`); (e as any).status = res.status; throw e; }
     const data = await res.json();
-    const content = data.choices?.[0]?.message?.content ?? '';
-    return { content, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.total_tokens ?? 0 }, provider: 'openrouter', model };
+    return {
+      content: data.choices?.[0]?.message?.content ?? '',
+      usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.total_tokens ?? 0 },
+      provider: 'openrouter', model,
+    };
   } finally { clearTimeout(timer); }
 }
 
@@ -201,7 +248,7 @@ export class AIRouter {
         } catch (error) {
           lastError = error;
           const transient = isTransientError(error);
-          log.warn(`Provider ${provider.name}/${model} failed (attempt ${attempt + 1}/${this.config.maxRetries + 1})`, { transient, error: error instanceof Error ? error.message : String(error) });
+          log.warn(`Provider ${provider.name}/${model} failed`, { transient, error: error instanceof Error ? error.message : String(error), attempt: attempt + 1 });
           if (!transient) break;
           if (attempt < this.config.maxRetries) await sleep(this.config.retryDelayMs * Math.pow(2, attempt));
         }
@@ -218,25 +265,21 @@ export class AIRouter {
   private async callProvider(messages: AIMessage[], model: string, providerName: string): Promise<ProviderCallResult> {
     switch (providerName) {
       case 'groq':
-        if (process.env.GROQ_API_KEY) {
-          try { return await callGroqDirect(messages, model, this.config.timeoutMs); }
-          catch (error) {
-            if (!isTransientError(error)) { log.info(`Groq direct failed, falling back to z-ai-sdk`); break; }
-            throw error;
-          }
-        }
+        if (process.env.GROQ_API_KEY) return callGroqDirect(messages, model, this.config.timeoutMs);
         break;
       case 'openrouter':
-        if (process.env.OPENROUTER_API_KEY) {
-          try { return await callOpenRouterDirect(messages, model, this.config.timeoutMs); }
-          catch (error) {
-            if (!isTransientError(error)) { log.info(`OpenRouter direct failed, falling back to z-ai-sdk`); break; }
-            throw error;
-          }
-        }
+        if (process.env.OPENROUTER_API_KEY) return callOpenRouterDirect(messages, model, this.config.timeoutMs);
+        break;
+      case 'openai':
+        if (process.env.OPENAI_API_KEY) return callOpenAI(messages, model, this.config.timeoutMs);
+        break;
+      case 'anthropic':
+        if (process.env.ANTHROPIC_API_KEY) return callAnthropic(messages, model, this.config.timeoutMs);
         break;
     }
-    return callZAI(messages, model, providerName, this.config.timeoutMs);
+    // Fallback universel : OpenAI si disponible
+    if (process.env.OPENAI_API_KEY) return callOpenAI(messages, 'gpt-4o-mini', this.config.timeoutMs);
+    throw new Error('No AI provider configured. Set at least OPENAI_API_KEY.');
   }
 
   private async trackUsage(provider: string, model: string, promptTokens: number, completionTokens: number, costUsd: number): Promise<void> {
@@ -253,7 +296,7 @@ export function createAIRouter(userId: string, config?: Partial<AIRouterConfig>)
   return new AIRouter(userId, config);
 }
 
-export async function chatCompletion(messages: AIMessage[], mode: 'default' | 'fast' | 'powerful' | 'quick_chat' | 'analysis' | 'reasoning' | 'orchestration' = 'default'): Promise<{ content: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; provider: string; model: string; costUsd: number }> {
+export async function chatCompletion(messages: AIMessage[], mode: 'default' | 'fast' | 'powerful' | 'quick_chat' | 'analysis' | 'reasoning' | 'orchestration' = 'default'): Promise<AIResponse> {
   const modelTier = (mode === 'fast' || mode === 'quick_chat') ? 'fast' as const
     : (mode === 'powerful' || mode === 'analysis' || mode === 'reasoning' || mode === 'orchestration') ? 'powerful' as const
     : 'default' as const;
