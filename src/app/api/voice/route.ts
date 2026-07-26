@@ -1,133 +1,99 @@
-// ============================================================
-// Voice Agent API — Créer, gérer et exécuter des appels
-// via les agents IA vocaux
-// ============================================================
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getVoiceAgentEngine } from '@/lib/voice/voice-agent';
 import { getAuthenticatedUser } from '@/lib/session';
 import { db } from '@/lib/db';
+import { errorResponse, successResponse, ErrorCode, handleApiError } from '@/lib/api-error';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user) {
-    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-  }
-
-  const searchParams = request.nextUrl.searchParams;
-  const action = searchParams.get('action') || 'list';
-
   try {
+    const user = await getAuthenticatedUser(request);
+    if (!user) return errorResponse('Non authentifié', ErrorCode.UNAUTHORIZED, 401);
+
+    const searchParams = request.nextUrl.searchParams;
+    const action = searchParams.get('action') || 'list';
+
     switch (action) {
-      case 'list': {
-        const agents = await db.voiceCall.findMany({
-          where: { userId: user.userId },
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-        });
-        return NextResponse.json({ agents });
-      }
-
-      case 'history': {
-        const calls = await db.voiceCall.findMany({
-          where: { userId: user.userId },
-          orderBy: { createdAt: 'desc' },
-          take: 20,
-        });
-        return NextResponse.json({ calls });
-      }
-
-      case 'active': {
-        const engine = getVoiceAgentEngine();
-        const activeCalls = engine.getActiveCallsByUser(user.userId);
-        return NextResponse.json({ activeCalls });
-      }
-
       case 'agents': {
-        const voiceAgents = await db.agent.findMany({
+        const agents = await db.agent.findMany({
           where: { userId: user.userId, type: 'voice' },
           orderBy: { createdAt: 'desc' },
         });
-        return NextResponse.json({ agents: voiceAgents });
+        return successResponse({ agents });
+      }
+
+      case 'history': {
+        const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100);
+        const cursor = searchParams.get('cursor');
+        const calls = await db.voiceCall.findMany({
+          where: { userId: user.userId },
+          orderBy: { createdAt: 'desc' },
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+        const hasMore = calls.length > limit;
+        const data = hasMore ? calls.slice(0, limit) : calls;
+        return successResponse({
+          calls: data,
+          pagination: { hasMore, nextCursor: data.length > 0 ? data[data.length - 1].id : null },
+        });
       }
 
       case 'stats': {
-        const total = await db.voiceCall.count({ where: { userId: user.userId } });
-        const completed = await db.voiceCall.count({ where: { userId: user.userId, status: 'completed' } });
-        const totalDuration = await db.voiceCall.aggregate({
-          where: { userId: user.userId },
-          _sum: { durationSeconds: true },
-        });
-        return NextResponse.json({
+        const [total, completed, duration] = await Promise.all([
+          db.voiceCall.count({ where: { userId: user.userId } }),
+          db.voiceCall.count({ where: { userId: user.userId, status: 'completed' } }),
+          db.voiceCall.aggregate({ where: { userId: user.userId }, _sum: { durationSeconds: true } }),
+        ]);
+        return successResponse({
           totalCalls: total,
           completedCalls: completed,
-          totalDurationSeconds: totalDuration._sum.durationSeconds || 0,
+          totalDurationSeconds: duration._sum.durationSeconds || 0,
         });
       }
 
       default:
-        return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
+        return errorResponse('Action non reconnue', ErrorCode.BAD_REQUEST, 400);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erreur interne';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user) {
-    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-  }
-
   try {
+    const user = await getAuthenticatedUser(request);
+    if (!user) return errorResponse('Non authentifié', ErrorCode.UNAUTHORIZED, 401);
+
     const body = await request.json();
     const { action, ...params } = body;
-
     const engine = getVoiceAgentEngine();
 
     switch (action) {
       case 'create-agent': {
-        const { name, config } = params;
-        if (!name) {
-          return NextResponse.json({ error: 'Nom requis' }, { status: 400 });
-        }
-        const result = await engine.createVoiceAgent(user.userId, name, config || {});
-        return NextResponse.json(result);
+        if (!params.name) return errorResponse('Nom requis', ErrorCode.VALIDATION_ERROR, 400);
+        const result = await engine.createVoiceAgent(user.userId, params.name, params.config || {});
+        return successResponse(result, 201);
       }
 
       case 'make-call': {
-        const { agentId, toNumber, fromNumber, context } = params;
+        const { agentId, toNumber, fromNumber } = params;
         if (!agentId || !toNumber || !fromNumber) {
-          return NextResponse.json({ error: 'agentId, toNumber et fromNumber requis' }, { status: 400 });
+          return errorResponse('agentId, toNumber et fromNumber requis', ErrorCode.VALIDATION_ERROR, 400);
         }
-        const result = await engine.makeCall(user.userId, agentId, toNumber, fromNumber, context);
-        return NextResponse.json(result);
+        const result = await engine.makeCall(user.userId, agentId, toNumber, fromNumber, params.context);
+        return successResponse(result);
       }
 
       case 'end-call': {
-        const { callSid } = params;
-        if (!callSid) {
-          return NextResponse.json({ error: 'callSid requis' }, { status: 400 });
-        }
-        await engine.endCall(callSid);
-        return NextResponse.json({ success: true });
-      }
-
-      case 'delete-agent': {
-        const { agentId } = params;
-        if (!agentId) {
-          return NextResponse.json({ error: 'agentId requis' }, { status: 400 });
-        }
-        await db.agent.delete({ where: { id: agentId, userId: user.userId } });
-        return NextResponse.json({ success: true });
+        if (!params.callSid) return errorResponse('callSid requis', ErrorCode.VALIDATION_ERROR, 400);
+        await engine.endCall(params.callSid);
+        return successResponse({ success: true });
       }
 
       default:
-        return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
+        return errorResponse('Action non reconnue', ErrorCode.BAD_REQUEST, 400);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erreur interne';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleApiError(error);
   }
 }
