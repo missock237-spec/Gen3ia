@@ -59,7 +59,14 @@ run-*
 worklog.*
 schema_backup.*
 test-write.*
+test-api.*
+test-autonomous.*
+test-connectivity.*
+test-whatsapp.*
 
 # Prisma (keep migrations, ignore generated)
 prisma/migrations/
 !prisma/migrations/migration_lock.toml
+
+# Rust
+target/

@@ -1,42 +1,57 @@
-# Changelog — Genova AI Agent Operating System
+# Changelog
 
-## [Unreleased]
+## [0.2.0] - 2026-07-26
 
-### Added (Session en cours — Juillet 2026)
-- 🏥 **Healthcheck enrichi** — Tests des 4 providers LLM (OpenAI, Anthropic, Groq, OpenRouter), Redis, version depuis package.json, headers X-Health
-- ⚡ **Endpoint SSE** — Server-Sent Events temps réel pour notifications (appels vocaux, crédits, publicités) avec keepalive et broadcast multi-utilisateur
-- 📤 **Upload amélioré** — Upload par chunks, matrice de types MIME (7 catégories), limites par type, vérification SHA-256, support des dimensions d'images via sharp
-- 🔑 **API Keys développeurs** — Endpoint CRUD pour clés avec hash SHA-256, scopes, expiration, prefixe `gv_`
-- 🌍 **Fichiers i18n** — Dictionnaires complets FR/EN/PT (JSON), +200 clés par langue (nav, auth, agents, billing, common, workspace, voice, marketplace, ads, monitoring, settings, errors)
-- 🧪 **Config Vitest** — Couverture V8 avec seuils (60% statements), setup de tests global avec mocks, helpers createMockRequest/createMockFormData
-- 🕸️ **Webhooks configurables** — Endpoint CRUD, test de livraison, signature HMAC-SHA256, logs de livraison, retry configurable
+### 🚀 Nouvelles fonctionnalités
 
-### Added (Session precedente)
-- Moteur Rust agent-safety (PromptInspector, ToolValidator, ResourceLimiter, ExecutionTracker, Sandbox)
-- Agents IA vocaux avec Twilio (passer/répondre appels, STT→LLM→TTS, analyse post-appel)
-- Système d'intégration n8n (40+ connecteurs, 5 templates de workflows)
-- Moteur de crédits avec déduction automatique basée sur l'effort et le coût des fournisseurs
-- Sélection intelligente du fournisseur LLM selon le budget et la tâche
-- Tests unitaires pour le credit-engine
-- CHANGELOG.md
+#### 🔥 WebGPU Compute Engine
+- Moteur de calcul avec support WebGPU (shaders WGSL) pour calculs GPU dans le navigateur
+- Fallback automatique vers Web Workers (parallélisme CPU) puis CPU direct
+- Opérations supportées : multiplication matricielle, convolution, attention, sigmoid, ReLU, softmax
+- Pool de Workers avec répartition de charge aléatoire
 
-### Fixed
-- Conflits de merge résolus dans api.ts, session.ts, ai-router.ts, human-in-the-loop.ts
-- Vulnérabilités Dependabot corrigées (23 overrides dans package.json)
-- CSP renforcé dans middleware.ts (form-action, retrait de unsafe-eval)
-- Import crypto → node:crypto dans secret-vault.ts
-- Blocage des protocoles data: et javascript: dans ssrf-protect.ts et sanitize.ts
-- Workflow permissions ajoutées dans deploy.yml et main.yml (CodeQL alert #66)
-- Fichier vide proxy.ts supprimé
+#### 🤖 AI Router Amélioré
+- Routage adaptatif basé sur les performances historiques (fiabilité, latence, coût)
+- Cache intelligent des réponses (TTL configurable)
+- Nouveau provider : Hugging Face (modèles gratuits)
+- Filtrage par capacité (vision, reasoning, code, security)
+- Budget maximum configurable par requête
+- Mode "preferFree" pour prioriser les providers gratuits
 
-### Security
-- Overrides pour cookies, axios, follow-redirects, path-to-regexp, micromatch, minimatch, tar, word-wrap, tough-cookie, json5, loader-utils, express, ejs, nth-check, postcss, rollup, preact, undici, jose
-- Secret-vault chiffre les credentials Twilio avec AES-256-GCM
-- Audit logs pour toutes les sessions utilisateur
-- Clés API hashées en SHA-256 avant stockage
-- Signatures HMAC-SHA256 pour les webhooks sortants
+#### 🖼️ Génération de contenu Hugging Face
+- Client complet pour les modèles gratuits Hugging Face
+- Génération d'images (Stable Diffusion 3.5, FLUX.1-schnell)
+- Génération audio/musique (MusicGen, Bark TTS)
+- Génération de texte (Mistral, Zephyr)
+- Traduction (NLLB-200) et résumé (BART)
+- TTS — Text-to-Speech
 
-### Changed
-- next-auth mis à jour 4.24.11 → 4.24.13 (CVE-2026-22028)
-- npm engine mis à jour >=10.0.0 → >=12.0.0
-- SEO enrichi (Open Graph, JSON-LD, sitemap, robots.txt)
+### 🔒 Sécurité
+- Healthcheck : ne plus envoyer les clés API aux endpoints externes
+- Ajout vérification de la validité des clés (longueur minimale)
+- Variables d'environnement : ajout HUGGINGFACE_TOKEN, HEAP_THRESHOLD_MB
+
+### 🛠️ Infrastructure
+- Workflow CI amélioré avec cache, builds parallélisés, security scan
+- Workflow de Release automatisé avec versioning sémantique (auto-détection major/minor/patch)
+- Dependabot configuré pour npm, GitHub Actions, Docker, Cargo
+- CODEOWNERS pour la revue de code par module
+- Variables d'environnement complétées (20+ nouvelles entrées)
+
+### 📝 Documentation
+- CHANGELOG maintenu avec historique complet
+
+## [0.1.0] - 2026-05-29
+
+### 🚀 Première version
+- Architecture Next.js + Prisma + PostgreSQL
+- 55+ endpoints API
+- Pipeline WhatsApp
+- Routeur AI (Groq, OpenAI, Anthropic, OpenRouter)
+- Moteur ReAct Loop
+- Voice Agent (Twilio)
+- Billing & Credits Engine
+- Advertising Engine
+- n8n intégration
+- Docker Compose (dev, prod, GPU)
+- Sentry monitoring
