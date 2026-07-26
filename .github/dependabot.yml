@@ -1,41 +1,60 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
-      timezone: "Africa/Douala"
-    open-pull-requests-limit: 15
+      interval: 'weekly'
+      day: 'monday'
+      time: '08:00'
+      timezone: 'Africa/Douala'
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
     labels:
-      - "dependencies"
-      - "security"
+      - 'dependencies'
+      - 'automerge'
     reviewers:
-      - "missock237-spec"
-    commit-message:
-      prefix: "fix"
-      prefix-development: "chore"
-      include: "scope"
+      - 'missock237-spec'
     allow:
-      - dependency-type: "direct"
-      - dependency-type: "indirect"
-    versioning-strategy: increase-if-necessary
+      - dependency-type: 'direct'
+    ignore:
+      - dependency-name: 'next'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react-dom'
+        update-types: ['version-update:semver-major']
+    commit-message:
+      prefix: 'fix'
+      prefix-development: 'chore'
+      include: 'scope'
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
+      interval: 'weekly'
+      day: 'monday'
     labels:
-      - "dependencies"
-      - "github-actions"
+      - 'dependencies'
+      - 'github-actions'
+    commit-message:
+      prefix: 'ci'
 
-  - package-ecosystem: "docker"
-    directory: "/"
+  - package-ecosystem: 'docker'
+    directory: '/'
     schedule:
-      interval: "monthly"
+      interval: 'monthly'
     labels:
-      - "dependencies"
-      - "docker"
+      - 'dependencies'
+      - 'docker'
+    commit-message:
+      prefix: 'docker'
+
+  - package-ecosystem: 'cargo'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    labels:
+      - 'dependencies'
+      - 'rust'
+    commit-message:
+      prefix: 'rust'
