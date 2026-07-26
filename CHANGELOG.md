@@ -1,57 +1,53 @@
 # Changelog
 
-## [0.4.0] - 2026-07-26
+## [0.5.0] - 2026-07-26
 
 ### 🚀 Nouvelles fonctionnalités
 
-#### 📊 Dashboard Temps Réel
-- Composant `LiveMetrics` connecté aux événements SSE en temps réel
-- Métriques en direct : providers, requêtes/min, coût, crédits, latence
-- Flux d'événements avec filtrage visuel par type
-- Indicateur de connexion SSE avec reconnexion automatique
+#### 🏢 Multi-Tenant
+- Isolation complète des données par tenant (agents, conversations, uploads)
+- 4 plans : free, pro, enterprise
+- 4 rôles : owner, admin, member, viewer
+- Permissions granulaires par rôle
+- Cache tenant (5 min TTL)
+- Rate limiting par quota (API, agents, stockage, utilisateurs)
+- Comptage des membres avec limite par plan
 
-#### 🎤 Templates d'Agents Vocaux (6 templates)
-- **Service Client 🇫🇷** — Support client empathique, gestion réclamations
-- **Sales Agent 🇬🇧** — Qualification leads, présentation produits, closing
-- **Support Technique 🛠️** — Diagnostic, guide pas-à-pas, escalade
-- **Prise de Rendez-vous 📅** — Disponibilités, confirmation, rappel
-- **Enquête Satisfaction 📋** — Notation, commentaires, feedback structuré
-- **Recepcionista 🇧🇷** — Accueil en portugais, routage appels
-- Fonction `applyTemplate()` pour appliquer une config complète
+#### 💻 Agent Répl.IT
+- Agent de développement interactif
+- Commandes : write, read, run, install, search, fix
+- Sessions persistantes avec historique d\'exécution
+- Itération automatique : analyse → génération → exécution → correction
+- Jusqu\'à 3 itérations de correction automatique
+- Support des langages : TypeScript, JavaScript, Python, HTML, CSS, JSON
 
-#### 🚀 Webhook Engine Amélioré
-- `webhook-delivery.ts` — Moteur de livraison avec file d'attente
-- Retry exponentiel (backoff: 1s, 2s, 4s — configurable)
-- Signature HMAC-SHA256 pour sécuriser les payloads
-- Logs de toutes les tentatives dans `webhook_logs`
-- `deliverToAllSubscribers()` — Broadcasting multi-webhook
-- Timeout configurable par webhook
+#### 🎮 API Playground
+- Interface interactive pour tester tous les endpoints Genova
+- Endpoint POST `/api/playground` avec documentation GET
+- 7 endpoints testables : chat, image, audio, translate, summarize, compute, stream
+- Documentation automatique avec exemples et paramètres
+- Messages d\'erreur explicites
 
-#### 🧪 Couverture de Code (Vitest + V8)
-- Seuils : statements 80%, branches 75%, functions 80%, lines 80%
-- Rapports : text, json, lcov, html, clover
-- Alias `@test` pour les imports de tests
-- `test:coverage` script dans package.json
+#### 🛍️ Plugin Store
+- 6 plugins pré-installés : Web Scraper, Email Sender, PDF Generator, SQL Query Engine, Image Editor Pro, WhatsApp Broadcast
+- Catégories : tool, connector, template, skill, integration
+- Système de permissions par plugin
+- Hooks : before-agent-think, after-tool-execution, after-agent-response
+- Installation/désinstallation avec suivi d\'utilisation
 
-### 🔧 Améliorations
-- Migration : table `webhook_logs` pour historique des livraisons
+### 🗄️ Base de Données
+- Migration 00005 : tables tenants, tenant_members, webhook_logs, api_usage
+- Ajout colonne tenant_id aux tables agents, conversations, uploads
+- Index optimisés pour les requêtes multi-tenant
+
+## [0.4.0] - 2026-07-26
+### 📊 Dashboard temps réel, Templates vocaux, Webhook engine, Coverage 80%
 
 ## [0.3.0] - 2026-07-26
-
-### 🚀 Nouvelles fonctionnalités
-- SSE Events pour monitoring temps réel
-- TTS multi-provider (OpenAI, ElevenLabs, HuggingFace)
-- API Keys développeurs avec scopes
-- Upload fichiers avec validation
-- Tests E2E Playwright
+### 📡 SSE events, TTS multi-provider, API Keys, Upload, Tests E2E
 
 ## [0.2.0] - 2026-07-26
-
-### 🚀 Nouvelles fonctionnalités
-- WebGPU Compute Engine
-- AI Router amélioré
-- Génération contenu HuggingFace
+### 🖥️ WebGPU Compute, AI Router adaptatif, HuggingFace gratuit, CI/CD
 
 ## [0.1.0] - 2026-05-29
-
 ### 🚀 Première version
