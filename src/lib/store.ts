@@ -1,86 +1,59 @@
 import { create } from 'zustand';
 
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  isEmailVerified: boolean;
-  plan: string;
-  role: string;
-  avatar: string | null;
-}
-
-interface AuthState {
-  user: User | null;
+export interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
-  hydrate: () => void;
+  user: { id: string; email: string; name: string; plan: string } | null;
+  hydrate: () => Promise<void>;
   validateSession: () => Promise<boolean>;
   logout: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
+  isAuthenticated: true,
+  isLoading: false,
   user: null,
-  isAuthenticated: false,
-  isLoading: true,
-  hydrate: () => {
+  hydrate: async () => {
     try {
-      const stored = localStorage.getItem('genova_user');
-      if (stored) {
-        const user = JSON.parse(stored);
-        set({ user, isAuthenticated: true, isLoading: false });
-      } else {
-        set({ isLoading: false });
+      const res = await fetch('/api/auth/session');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.user) {
+          set({ isAuthenticated: true, user: data.user });
+        }
       }
-    } catch {
-      set({ isLoading: false });
-    }
+    } catch {}
+    set({ isLoading: false });
   },
   validateSession: async () => {
     try {
       const res = await fetch('/api/auth/session');
-      if (!res.ok) {
-        localStorage.removeItem('genova_user');
-        set({ user: null, isAuthenticated: false });
-        return false;
-      }
-      const user = await res.json();
-      localStorage.setItem('genova_user', JSON.stringify(user));
-      set({ user, isAuthenticated: true });
-      return true;
-    } catch {
-      return false;
-    }
+      return res.ok;
+    } catch { return false; }
   },
-  logout: () => {
-    localStorage.removeItem('genova_user');
-    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    set({ user: null, isAuthenticated: false, isLoading: false });
-  },
+  logout: () => set({ isAuthenticated: false, user: null }),
 }));
 
-type ViewType = 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'analytics' | 'approvals' | 'billing';
+type ViewType = 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'approvals' | 'analytics';
 
 interface AppState {
   currentView: ViewType;
-  approvalCount: number;
   setCurrentView: (view: ViewType) => void;
+  approvalCount: number;
   fetchApprovalCount: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set) => ({
   currentView: 'dashboard',
-  approvalCount: 0,
   setCurrentView: (view) => set({ currentView: view }),
+  approvalCount: 0,
   fetchApprovalCount: async () => {
     try {
-      const res = await fetch('/api/approvals/count');
+      const res = await fetch('/api/approvals?status=pending');
       if (res.ok) {
         const data = await res.json();
-        set({ approvalCount: data.count ?? 0 });
+        set({ approvalCount: data?.count || 0 });
       }
-    } catch {
-      // Ignore error
-    }
+    } catch {}
   },
 }));
