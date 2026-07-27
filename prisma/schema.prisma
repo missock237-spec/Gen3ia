@@ -78,6 +78,8 @@ model User {
   browserAutomations  BrowserAutomation[]
   multimodalSessions  MultimodalSession[]
   workflowAuthorizations WorkflowAuthorization[]
+  oAuthStates         OAuthState[]
+  codeProjects        CodeProject[]
 
   @@index([email])
   @@index([role])
@@ -1407,4 +1409,49 @@ model WorkflowAuthorization {
   @@index([userId])
   @@index([service])
   @@map("workflow_authorizations")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OAUTH STATE (Suivi des etats des flows OAuth)
+// ═══════════════════════════════════════════════════════════════
+
+model OAuthState {
+  id         String    @id @default(cuid())
+  service    String
+  state      String    @unique
+  codeVerifier String?
+  redirectUri  String?
+  userId     String
+  scopes     String    @default("[]")
+  expiresAt  DateTime
+  used       Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([state])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CODE PROJECTS (Sauvegarde des projets du studio)
+// ═══════════════════════════════════════════════════════════════
+
+model CodeProject {
+  id        String   @id @default(cuid())
+  name      String
+  language  String   @default("javascript")
+  files     String   @default("[]")
+  fileCount Int      @default(1)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, updatedAt])
+  @@map("code_projects")
 }
