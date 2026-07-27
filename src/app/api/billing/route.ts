@@ -1,16 +1,66 @@
+// ============================================================
+// GET /api/billing — Informations de facturation
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
-export async function GET(r: NextRequest) {
+import { applySecurity, secureResponse } from '@/lib/security';
+
+const log = createLogger('billing');
+
+export async function GET(request: NextRequest) {
+  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
+  if (secError || !auth) {
+    return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+  }
+
   try {
-    const a = r.headers.get('authorization');
-    if (!a?.startsWith('Bearer ')) return NextResponse.json({ error: 'Auth' }, { status: 401 });
-    const { verify } = await import('jsonwebtoken');
-    const d = verify(a.slice(7), process.env.AUTH_SECRET || 's') as any;
-    const [sub, invs, crs] = await Promise.all([
-      db.subscription.findUnique({ where: { userId: d.userId } }),
-      db.invoice.findMany({ where: { userId: d.userId }, orderBy: { createdAt: 'desc' }, take: 12 }),
-      db.creditTransaction.findMany({ where: { userId: d.userId }, orderBy: { createdAt: 'desc' }, take: 20 }),
+    const [subscription, invoices, creditTransactions, credits, usage] = await Promise.all([
+      db.subscription.findUnique({ where: { userId: auth.userId } }),
+      db.invoice.findMany({
+        where: { userId: auth.userId },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+      }),
+      db.creditTransaction.findMany({
+        where: { userId: auth.userId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+      db.credit.findFirst({
+        where: { userId: auth.userId },
+        select: { balance: true, used: true, expiresAt: true },
+      }),
+      db.agentExecution.aggregate({
+        where: {
+          userId: auth.userId,
+          createdAt: { gte: new Date(Date.now() - 30 * 86400000) },
+        },
+        _sum: { estimatedCost: true, totalTokens: true },
+        _count: { id: true },
+      }),
     ]);
-    return NextResponse.json({ subscription: sub, invoices: invs, credits: crs });
-  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
+
+    const res = NextResponse.json({
+      success: true,
+      data: {
+        subscription,
+        invoices,
+        creditTransactions,
+        credits: credits || { balance: 0, used: 0, expiresAt: null },
+        monthlyUsage: {
+          executions: usage._count.id,
+          totalCost: usage._sum?.estimatedCost || 0,
+          totalTokens: usage._sum?.totalTokens || 0,
+        },
+      },
+    });
+
+    return secureResponse(res, request);
+  } catch (error) {
+    log.error('billing_fetch_error', { error: String(error) });
+    const res = NextResponse.json({ error: 'Erreur de chargement' }, { status: 500 });
+    return secureResponse(res, request);
+  }
 }
