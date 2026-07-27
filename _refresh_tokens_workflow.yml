@@ -1,0 +1,15 @@
+# A copier dans .github/workflows/refresh-tokens.yml
+name: Refresh OAuth Tokens
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call refresh tokens endpoint
+        run: |
+          curl -s -X GET "https://missock237-spec.github.io/Genova/api/cron/refresh-tokens" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" || \
+            echo "Endpoint non disponible"
