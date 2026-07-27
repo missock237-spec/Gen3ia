@@ -1,0 +1,27 @@
+AJOUTER DANS prisma/schema.prisma:
+
+1. Dans le model User, ajouter apres 'workflowAuthorizations WorkflowAuthorization[]':
+   oAuthStates OAuthState[]
+
+2. Ajouter le modele complet APRES le bloc '// USER & AUTH' et AVANT le bloc '// AGENTS':
+
+// ============================================================
+// OAUTH STATE (pour le flux OAuth temporaire)
+// ============================================================
+
+model OAuthState {
+  id           String   @id @default(cuid())
+  state        String   @unique
+  codeVerifier String
+  userId       String
+  service      String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([state])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
