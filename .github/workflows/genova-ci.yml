@@ -1,0 +1,71 @@
+name: Genova CI
+on: [push, pull_request]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: genova
+          POSTGRES_PASSWORD: genova
+          POSTGRES_DB: genova_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2'
+      - run: bun install --frozen-lockfile
+      - run: bunx prisma generate
+      - run: bunx prisma db push
+      - run: bun run lint
+      - run: bunx tsc --noEmit
+      - run: bun run test
+        env:
+          AUTH_SECRET: test-secret
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2'
+      - run: bun install --frozen-lockfile
+      - run: bun audit
+      - uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+  build:
+    name: Build
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2'
+      - run: bun install --frozen-lockfile
+      - run: bunx prisma generate
+      - run: bun run build
+        env:
+          NEXTAUTH_SECRET: build-secret
+          NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
