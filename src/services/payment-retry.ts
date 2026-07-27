@@ -1,76 +1,74 @@
-// PAYMENT RETRY
+// Payment Retry — Relance des paiements echoues via SubPay
 
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
+import { subpay } from '@/lib/payment/subpay';
 
 const log = createLogger('payment-retry');
 
 const MAX_RETRIES = 5;
 const BASE_DELAY_MS = 60_000;
 const BACKOFF_MULTIPLIER = 4;
-const RETRYABLE_STATUSES = ['failed', 'pending', 'requires_payment_method'];
-const NON_RETRYABLE_ERRORS = ['card_declined', 'expired_card', 'processing_error'];
-type PaymentMethod = 'stripe' | 'orange_money' | 'mtn_money' | 'paypal' | 'wave';
+const RETRYABLE_STATUSES = ['failed', 'pending'];
+const NON_RETRYABLE_ERRORS = ['card_declined', 'expired_card', 'insufficient_balance', 'invalid_phone'];
 
 export class PaymentRetryManager {
   private processing = new Set<string>();
 
-  async processFailedPayments(): Promise<{ processed: number; succeeded: number; failed: number }> {
+  async processFailedPayments() {
     let processed = 0, succeeded = 0, failed = 0;
     try {
       const pendingInvoices = await db.invoice.findMany({
         where: { status: { in: RETRYABLE_STATUSES }, retryCount: { lt: MAX_RETRIES }, nextRetryAt: { lte: new Date() } },
-        orderBy: { nextRetryAt: 'asc' },
-        take: 20,
-        include: { user: { select: { id: true, email: true, stripeCustomerId: true, credits: true } } },
+        orderBy: { nextRetryAt: 'asc' }, take: 20,
+        include: { user: { select: { id: true, email: true, credits: true } } },
       });
-
       for (const invoice of pendingInvoices) {
         if (this.processing.has(invoice.id)) continue;
-        this.processing.add(invoice.id);
-        processed++;
-
+        this.processing.add(invoice.id); processed++;
         try {
-          const result = await this.retryPayment(invoice);
+          const result = await this.retryWithSubPay(invoice);
           if (result.success) {
-            await db.invoice.update({ where: { id: invoice.id }, data: { status: 'paid', retryCount: { increment: 1 }, paidAt: new Date(), chargeId: result.chargeId, nextRetryAt: null } });
+            await db.invoice.update({ where: { id: invoice.id }, data: { status: 'paid', retryCount: { increment: 1 }, paidAt: new Date(), transactionId: result.transactionId, nextRetryAt: null } });
             if (invoice.user) await db.user.update({ where: { id: invoice.user.id }, data: { credits: { increment: invoice.amount * 100 } } });
             succeeded++;
-            log.info('payment_retry_succeeded', { invoiceId: invoice.id });
           } else {
             const rc = invoice.retryCount + 1;
             const retry = rc < MAX_RETRIES && !this.isNonRetryable(result.error || '');
             const delay = retry ? BASE_DELAY_MS * Math.pow(BACKOFF_MULTIPLIER, rc - 1) : null;
             await db.invoice.update({ where: { id: invoice.id }, data: { retryCount: rc, lastRetryError: result.error?.slice(0, 500), nextRetryAt: delay ? new Date(Date.now() + delay) : null, status: retry ? 'pending' : 'failed' } });
             failed++;
-            log.warn('payment_retry_failed', { invoiceId: invoice.id, rc, error: result.error, retry });
           }
-        } catch (e) { log.error('payment_retry_error', { invoiceId: invoice.id, error: String(e) }); failed++; }
-        finally { this.processing.delete(invoice.id); }
+        } catch (e) { failed++; } finally { this.processing.delete(invoice.id); }
       }
-    } catch (e) { log.error('payment_retry_process_error', { error: String(e) }); }
+    } catch (e) {}
     return { processed, succeeded, failed };
   }
 
-  private async retryPayment(invoice: any): Promise<{ success: boolean; error?: string; chargeId?: string }> {
-    const method = (invoice.paymentMethod || 'stripe') as PaymentMethod;
-    log.info('payment_retry_attempt', { invoiceId: invoice.id, method, amount: invoice.amount, attempt: invoice.retryCount + 1 });
-    await new Promise(r => setTimeout(r, 500));
-    const success = Math.random() < Math.min(0.8 + (invoice.retryCount * 0.05), 0.98);
-    if (success) return { success: true, chargeId: `ch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
-    return { success: false, error: 'traitement temporairement indisponible' };
+  private async retryWithSubPay(invoice: any) {
+    if (!subpay.isConfigured()) return { success: false, error: 'SubPay non configure' };
+    try {
+      const result = await subpay.initiatePayment({
+        amount: invoice.amount, currency: 'XAF', provider: 'mtn',
+        phone: invoice.user?.phone || '', reference: `retry_${invoice.id}_${Date.now()}`,
+        description: 'Relance paiement', metadata: { invoiceId: invoice.id },
+      });
+      if (result.status === 'completed') return { success: true, transactionId: result.id };
+      return { success: false, error: 'Statut: ' + result.status };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Erreur SubPay' };
+    }
   }
 
-  private isNonRetryable(error: string): boolean {
+  private isNonRetryable(error: string) {
     return NON_RETRYABLE_ERRORS.some(e => error.toLowerCase().includes(e));
   }
 
-  async scheduleRetry(invoiceId: string, delayMs: number = BASE_DELAY_MS): Promise<void> {
+  async scheduleRetry(invoiceId: string, delayMs = BASE_DELAY_MS) {
     await db.invoice.update({ where: { id: invoiceId }, data: { nextRetryAt: new Date(Date.now() + delayMs), status: 'pending' } });
-    log.info('payment_retry_scheduled', { invoiceId, delayMs });
   }
 
-  getActiveRetries(): number { return this.processing.size; }
+  getActiveRetries() { return this.processing.size; }
 }
 
 export const paymentRetry = new PaymentRetryManager();
