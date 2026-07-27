@@ -1,115 +1,18 @@
-<<<<<<< HEAD
-/**
- * GENOVA AI OS — GET /api/auth/verify-email
- * Server-side email verification via token.
- *
- * Flow:
- *  1. Accept token parameter from searchParams
- *  2. Hash token, look up in EmailVerification
- *  3. Check token expiry
- *  4. Set isEmailVerified: true, isActive: true on user
- *  5. Delete verification record
- *  6. Redirect to /login?success=email_verified
- */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { hashToken, createAuditLog } from '@/lib/auth';
-import { createLogger } from '@/lib/logger';
-
-const log = createLogger('verify-email');
-
-export async function GET(req: NextRequest): Promise<NextResponse> {
-  const token = req.nextUrl.searchParams.get('token');
-
-  if (!token) {
-    return NextResponse.redirect(new URL('/login?error=invalid_token', req.url));
-  }
-
-  const hashedToken = await hashToken(token);
-
-  const verification = await db.emailVerification.findFirst({
-    where: { token: hashedToken },
-    select: { id: true, userId: true, expiresAt: true },
-  });
-
-  if (!verification) {
-    log.warn('Invalid verification token attempt');
-    return NextResponse.redirect(new URL('/login?error=invalid_token', req.url));
-  }
-
-  if (verification.expiresAt < new Date()) {
-    await db.emailVerification.delete({ where: { id: verification.id } }).catch(() => {});
-    return NextResponse.redirect(new URL('/login?error=token_expired', req.url));
-  }
-
-  try {
-    await db.$transaction([
-      db.user.update({
-        where: { id: verification.userId },
-        data: { isEmailVerified: true, isActive: true, emailVerified: new Date() },
-      }),
-      db.emailVerification.delete({ where: { id: verification.id } }),
-    ]);
-
-    await createAuditLog({
-      userId: verification.userId,
-      action: 'EMAIL_VERIFIED',
-      resource: 'user',
-      resourceId: verification.userId,
-      severity: 'info',
-    });
-
-    log.info('Email verified successfully', { userId: verification.userId });
-  } catch (err) {
-    log.error('Email verification failed', { err, userId: verification.userId });
-    return NextResponse.redirect(new URL('/login?error=verification_failed', req.url));
-  }
-
-  return NextResponse.redirect(new URL('/login?success=email_verified', req.url));
-=======
+import { sendVerificationCode } from '@/lib/email/auth-emails';
 import crypto from 'crypto';
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { applySecurity, secureResponse } from '@/lib/security';
-
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
 
 export async function POST(request: NextRequest) {
-  const { error: secError } = await applySecurity(request, {
-    rateLimit: { limit: 5, windowMs: 60000 },
-  });
-  if (secError) return secError;
-
   try {
-    const body = await request.json();
-    const { email, code } = body;
+    const { email, code } = await request.json();
 
     if (!email || !code) {
-      const res = NextResponse.json(
-        { error: 'Email and verification code are required' },
-        { status: 400 }
-      );
-      return secureResponse(res, request);
+      return NextResponse.json({ error: 'Email et code requis' }, { status: 400 });
     }
 
-    // Normalize email
-    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedEmail = email.toLowerCase().trim();
 
-    // Input length validation
-    if (normalizedEmail.length > 255) {
-      const res = NextResponse.json(
-        { error: 'Email must be at most 255 characters' },
-        { status: 400 }
-      );
-      return secureResponse(res, request);
-    }
-
-    // Find the latest unused verification entry for this email
     const verification = await db.emailVerification.findFirst({
       where: {
         email: normalizedEmail,
@@ -120,31 +23,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (!verification) {
-      const res = NextResponse.json(
-        { error: 'Invalid or expired verification code' },
-        { status: 400 }
-      );
-      return secureResponse(res, request);
+      return NextResponse.json({ error: 'Code invalide ou expire' }, { status: 400 });
     }
 
-    // Check max attempts
-    if (verification.attempts >= 3) {
-      await db.emailVerification.update({
-        where: { id: verification.id },
-        data: { used: true },
-      });
-      const res = NextResponse.json(
-        { error: 'Maximum attempts exceeded. Please request a new verification code.' },
-        { status: 400 }
-      );
-      return secureResponse(res, request);
+    if (verification.attempts >= 5) {
+      await db.emailVerification.update({ where: { id: verification.id }, data: { used: true } });
+      return NextResponse.json({ error: 'Trop de tentatives. Demandez un nouveau code.' }, { status: 400 });
     }
 
-    // Timing-safe code comparison
-    const storedBuffer = Buffer.from(String(verification.code), 'utf-8');
-    const inputBuffer = Buffer.from(String(code), 'utf-8');
-    const codeMatches =
-      storedBuffer.length === inputBuffer.length &&
+    // Comparaison anti-timing
+    const storedBuffer = Buffer.from(verification.code);
+    const inputBuffer = Buffer.from(code);
+    const codeMatches = storedBuffer.length === inputBuffer.length &&
       crypto.timingSafeEqual(storedBuffer, inputBuffer);
 
     if (!codeMatches) {
@@ -152,46 +42,74 @@ export async function POST(request: NextRequest) {
         where: { id: verification.id },
         data: { attempts: verification.attempts + 1 },
       });
-      const remaining = 3 - (verification.attempts + 1);
-      const res = NextResponse.json(
-        { error: `Invalid verification code. ${remaining} attempts remaining.` },
-        { status: 400 }
-      );
-      return secureResponse(res, request);
+      return NextResponse.json({
+        error: 'Code invalide',
+        remaining: 5 - (verification.attempts + 1),
+      }, { status: 400 });
     }
 
-    // Mark verification as used
-    await db.emailVerification.update({
-      where: { id: verification.id },
-      data: { used: true },
-    });
+    await db.$transaction([
+      db.emailVerification.update({
+        where: { id: verification.id },
+        data: { used: true },
+      }),
+      db.user.update({
+        where: { id: verification.userId },
+        data: { isEmailVerified: true, emailVerified: new Date() },
+      }),
+      db.emailVerification.updateMany({
+        where: { email: normalizedEmail, used: false },
+        data: { used: true },
+      }),
+    ]);
 
-    // Set emailVerified on the user
-    await db.user.update({
-      where: { id: verification.userId },
-      data: { emailVerified: new Date() },
-    });
-
-    // Invalidate all other unused verification codes for this email
-    await db.emailVerification.updateMany({
-      where: {
-        email: normalizedEmail,
-        used: false,
-        id: { not: verification.id },
-      },
-      data: { used: true },
-    });
-
-    const res = NextResponse.json({
-      message: 'Email verified successfully',
-    });
-    return secureResponse(res, request);
-  } catch {
-    const res = NextResponse.json(
-      { error: 'Email verification failed' },
-      { status: 500 }
-    );
-    return secureResponse(res, request);
+    return NextResponse.json({ message: 'Email verifie avec succes' });
+  } catch (error) {
+    console.error('Verify-email error:', error);
+    return NextResponse.json({ error: 'Erreur verification' }, { status: 500 });
   }
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const { email } = await request.json();
+    if (!email) {
+      return NextResponse.json({ error: 'Email requis' }, { status: 400 });
+    }
+
+    const verification = await db.emailVerification.findFirst({
+      where: { email: email.toLowerCase().trim(), used: false, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (verification) {
+      await db.emailVerification.update({
+        where: { id: verification.id },
+        data: { used: true },
+      });
+    }
+
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const user = await db.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+
+    await db.emailVerification.create({
+      data: {
+        email: email.toLowerCase().trim(),
+        code,
+        userId: user?.id || 'unknown',
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    });
+
+    if (user) {
+      sendVerificationCode(email, user.name, code).catch(err =>
+        console.error('[Email] Erreur renvoi code:', err)
+      );
+    }
+
+    return NextResponse.json({ message: 'Nouveau code envoye' });
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    return NextResponse.json({ error: 'Erreur' }, { status: 500 });
+  }
 }
