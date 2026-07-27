@@ -89,5 +89,5 @@ jobs:
       - run: bun run build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          secrets.NEXTAUTH_SECRET }}
           NEXT_PUBLIC_APP_URL: "http://localhost:3000"
