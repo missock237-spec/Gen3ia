@@ -1,14 +1,14 @@
-# ============================================================
 # GENOVA — Docker Compose Production
-# Stack complète : Next.js + PostgreSQL + Redis + n8n
+# Stack complete : Next.js + PostgreSQL + Redis + n8n
 # Usage: docker compose -f docker-compose.prod.yml up -d
-# ============================================================
 
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - BUN_VERSION=1.2
     container_name: genova-app
     restart: unless-stopped
     ports:
@@ -19,16 +19,43 @@ services:
       REDIS_URL: redis://redis:6379
       N8N_BASE_URL: http://n8n:5678
       AUTH_SECRET: ${AUTH_SECRET}
+      NEXTAUTH_URL: ${APP_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${AUTH_SECRET}
+      
+      # Providers IA
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
-      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      LLM_API_KEY: ${OPENAI_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      
+      # Hugging Face (embedding + images + audio)
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_API_KEY}
+      NEXT_PUBLIC_HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
+      
+      # Auth OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      
+      # WhatsApp
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-genova_whatsapp_verify}
+      
+      # Monitoring
+      SENTRY_DSN: ${SENTRY_DSN}
       VAULT_MASTER_KEY: ${VAULT_MASTER_KEY}
+      MCP_ENCRYPTION_KEY: ${AUTH_SECRET}
+      
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      HEAP_THRESHOLD_MB: '500'
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
@@ -59,11 +86,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   redis:
     image: redis:7-alpine
@@ -104,7 +126,6 @@ services:
       postgres:
         condition: service_healthy
 
-  # Backup automatique PostgreSQL (quotidien à 3h du matin)
   backup:
     image: postgres:16-alpine
     container_name: genova-backup
@@ -114,7 +135,7 @@ services:
     entrypoint: |
       sh -c '
         while true; do
-          echo "[$$(date)] Running backup..."
+          echo "[$$(date)] Running daily backup..."
           PGPASSWORD=${DB_PASSWORD:-genova_pass} pg_dump -h postgres -U genova -d genova -F c -f /backups/genova_$$(date +%Y%m%d_%H%M%S).dump
           echo "[$$(date)] Cleaning backups older than 30 days..."
           find /backups -name "*.dump" -mtime +30 -delete
