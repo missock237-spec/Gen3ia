@@ -20,7 +20,7 @@ export function MCPConnector() {
   const mcpConfig = {
     mcpServers: {
       genova: {
-        url: 'https://genova.ai/api/mcp',
+        url: 'https://genova.ai/api/mcp-server',
         headers: {
           Authorization: 'Bearer votre_cle_api',
         },
@@ -55,12 +55,12 @@ export function MCPConnector() {
             <Info className="h-4 w-4" />
             <AlertDescription>
               Compatible avec Cursor, Claude Desktop, Windsurf et tout client MCP.
-              Créez d'abord une clé API dans l'onglet "Clés API".
+              Créez d'abord une clé API dans l'onglet Clés API.
             </AlertDescription>
           </Alert>
 
           <div className="space-y-2">
-            <Label>Configuration MCP</Label>
+            <Label>Configuration MCP (clients JSON)</Label>
             <div className="relative">
               <pre className="rounded-lg bg-muted p-4 text-xs font-mono overflow-x-auto">
                 <code>{configJson}</code>
@@ -84,14 +84,14 @@ export function MCPConnector() {
             <Label>Ou via terminal (npx)</Label>
             <div className="relative">
               <pre className="rounded-lg bg-muted p-4 text-xs font-mono">
-                <code>{'npx @genova/mcp-server --api-key votre_cle_api'}</code>
+                <code>{'npx @genova/mcp-server --api-key votre_cle_api --endpoint https://genova.ai/api/mcp-server'}</code>
               </pre>
               <Button
                 size="sm"
                 variant="outline"
                 className="absolute top-2 right-2"
                 onClick={() => {
-                  navigator.clipboard.writeText('npx @genova/mcp-server --api-key votre_cle_api');
+                  navigator.clipboard.writeText('npx @genova/mcp-server --api-key votre_cle_api --endpoint https://genova.ai/api/mcp-server');
                   setCopied('terminal');
                   setTimeout(() => setCopied(null), 2000);
                 }}
@@ -105,6 +105,20 @@ export function MCPConnector() {
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label>Exemple : appel JSON-RPC</Label>
+            <pre className="rounded-lg bg-muted p-4 text-xs font-mono">
+              <code>{`curl -X POST https://genova.ai/api/mcp-server \\
+  -H "Authorization: Bearer votre_cle_api" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list"
+  }'`}</code>
+            </pre>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
             <div className="rounded-lg border p-4">
               <h4 className="font-medium flex items-center gap-2 mb-2">
@@ -116,6 +130,7 @@ export function MCPConnector() {
                 <li><code>genova_execute_agent</code></li>
                 <li><code>genova_get_credits</code></li>
                 <li><code>genova_search_memory</code></li>
+                <li><code>genova_create_agent</code></li>
               </ul>
             </div>
             <div className="rounded-lg border p-4">
@@ -128,6 +143,7 @@ export function MCPConnector() {
                 <li><code>genova://agent/{'{id}'}</code></li>
                 <li><code>genova://conversations</code></li>
                 <li><code>genova://usage</code></li>
+                <li><code>genova://credits</code></li>
               </ul>
             </div>
             <div className="rounded-lg border p-4">
