@@ -1,73 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { applySecurity, secureResponse } from '@/lib/security';
+import { getServerSession } from '@/lib/auth';
+import { getPendingConsents, approveConsent, denyConsent } from '@/lib/agent-engine/consent-manager';
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
-
-export async function GET(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, {
-    requireAuth: true,
-  });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
+export async function GET() {
   try {
-    const statusFilter = request.nextUrl.searchParams.get('status');
-
-    // Validate status filter
-    if (statusFilter && !['pending', 'approved', 'rejected'].includes(statusFilter)) {
-      const res = NextResponse.json(
-        { error: 'Invalid status filter' },
-        { status: 400 }
-      );
-      return secureResponse(res, request);
+    const session = await getServerSession();
+    if (!session?.userId) {
+      return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
 
-    const approvals = await db.approvalRequest.findMany({
-      where: {
-        userId: auth.userId,
-        ...(statusFilter ? { status: statusFilter } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: {
-          select: { name: true, email: true },
-        },
-      },
-    });
+    const consents = await getPendingConsents(session.userId);
+    return NextResponse.json({ consents, total: consents.length });
+  } catch (error) {
+    console.error('GET /approvals error:', error);
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
+  }
+}
 
-    // Enrich with agent name
-    const enrichedApprovals = await Promise.all(
-      approvals.map(async (approval) => {
-        const agent = await db.agent.findUnique({
-          where: { id: approval.agentId },
-          select: { name: true, type: true },
-        });
-        return {
-          id: approval.id,
-          agentId: approval.agentId,
-          agentName: agent?.name || 'Unknown Agent',
-          agentType: agent?.type || 'unknown',
-          action: approval.action,
-          details: approval.details,
-          status: approval.status,
-          result: approval.result,
-          createdAt: approval.createdAt,
-          resolvedAt: approval.resolvedAt,
-        };
-      })
-    );
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getServerSession();
+    if (!session?.userId) {
+      return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+    }
 
-    const res = NextResponse.json(enrichedApprovals);
-    return secureResponse(res, request);
-  } catch {
-    const res = NextResponse.json(
-      { error: 'Failed to fetch approval requests' },
-      { status: 500 }
-    );
-    return secureResponse(res, request);
+    const body = await request.json();
+    const { requestId, action } = body;
+
+    if (!requestId || !action) {
+      return NextResponse.json({ error: 'Champs requis: requestId, action' }, { status: 400 });
+    }
+
+    if (action === 'approve') {
+      const success = await approveConsent(requestId, session.userId);
+      if (!success) {
+        return NextResponse.json({ error: 'Impossible d\'approuver la demande' }, { status: 404 });
+      }
+      return NextResponse.json({ message: 'Demande approuvee', status: 'approved' });
+    }
+
+    if (action === 'deny') {
+      const success = await denyConsent(requestId, session.userId);
+      if (!success) {
+        return NextResponse.json({ error: 'Impossible de refuser la demande' }, { status: 404 });
+      }
+      return NextResponse.json({ message: 'Demand refuse', status: 'denied' });
+    }
+
+    return NextResponse.json({ error: 'Action invalide. Utilise "approve" ou "deny"' }, { status: 400 });
+  } catch (error) {
+    console.error('POST /approvals error:', error);
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
