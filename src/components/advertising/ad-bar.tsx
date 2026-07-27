@@ -3,39 +3,32 @@
 import { useState, useEffect, useCallback } from 'react';
 
 interface AdCampaign {
-  id: string;
-  name: string;
-  advertiserName: string;
-  advertiserUrl: string;
-  imageUrl: string;
-  textContent: string;
-  ctaText: string;
-  ctaUrl: string;
+  id: string; name: string; advertiserName: string; advertiserUrl: string;
+  imageUrl: string; videoUrl?: string; textContent: string; ctaText: string; ctaUrl: string;
+  format?: string; placement?: string;
 }
 
 interface AdDecision {
-  shouldShow: boolean;
-  adType: 'unrewarded' | 'rewarded';
-  campaign: AdCampaign | null;
-  reason: string;
+  shouldShow: boolean; adType: 'unrewarded' | 'rewarded';
+  campaign: AdCampaign | null; reason: string;
+  placement?: string; format?: string;
 }
 
 interface AdPreferences {
-  adsEnabled: boolean;
-  rewardedAdsEnabled: boolean;
-  totalCreditsEarned: number;
-  totalAdsViewed: number;
-  isEligible: boolean;
-  adType: 'unrewarded' | 'rewarded';
+  adsEnabled: boolean; rewardedAdsEnabled: boolean;
+  totalCreditsEarned: number; totalAdsViewed: number;
+  isEligible: boolean; adType: 'unrewarded' | 'rewarded';
 }
 
 interface AdBarProps {
-  sessionId: string;
-  conversationId?: string;
+  sessionId: string; conversationId?: string;
+  placement?: string;
   onAdClicked?: (rewarded: boolean, amount: number) => void;
 }
 
-export function AdBar({ sessionId, conversationId, onAdClicked }: AdBarProps) {
+const DISMISSED_KEY = 'genova_dismissed_ads';
+
+export function AdBar({ sessionId, conversationId, placement = 'bottom_bar', onAdClicked }: AdBarProps) {
   const [decision, setDecision] = useState<AdDecision | null>(null);
   const [preferences, setPreferences] = useState<AdPreferences | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,11 +37,24 @@ export function AdBar({ sessionId, conversationId, onAdClicked }: AdBarProps) {
   const [rewardAmount, setRewardAmount] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(false);
 
-  // Charger les préférences au montage
-  useEffect(() => {
-    loadPreferences();
-  }, []);
+  useEffect(() => { loadPreferences(); }, []);
+
+  const isDismissed = (id: string) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]');
+      return stored.includes(id);
+    } catch { return false; }
+  };
+
+  const markDismissed = (id: string) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]');
+      stored.push(id);
+      localStorage.setItem(DISMISSED_KEY, JSON.stringify(stored.slice(-20)));
+    } catch {}
+  };
 
   const loadPreferences = useCallback(async () => {
     try {
@@ -56,311 +62,134 @@ export function AdBar({ sessionId, conversationId, onAdClicked }: AdBarProps) {
       if (res.ok) {
         const data = await res.json();
         setPreferences(data);
-        if (data.isEligible) {
-          fetchAd(data.adType);
-        } else {
-          setLoading(false);
-        }
+        if (data.isEligible) fetchAd(data.adType);
+        else setLoading(false);
       }
-    } catch {}
+    } catch { setLoading(false); }
   }, []);
 
   const fetchAd = useCallback(async (adType: string) => {
     try {
-      const url = `/api/advertising?action=decide&sessionId=${sessionId}${conversationId ? `&conversationId=${conversationId}` : ''}`;
-      const res = await fetch(url);
+      const params = new URLSearchParams({ action: 'decide', sessionId, placement });
+      if (conversationId) params.set('conversationId', conversationId);
+      const res = await fetch('/api/advertising?' + params.toString());
       if (res.ok) {
         const data = await res.json();
         setDecision(data);
         if (data.shouldShow && data.campaign) {
+          if (isDismissed(data.campaign.id)) {
+            setDismissed(true);
+            setTimeout(() => fetchAd(adType), 45000);
+            return;
+          }
           setDismissed(false);
-          // Enregistrer l'impression
           recordImpression(data.campaign.id, data.adType);
         }
       }
     } catch {}
     setLoading(false);
-  }, [sessionId, conversationId]);
+  }, [sessionId, conversationId, placement]);
 
   const recordImpression = useCallback(async (campaignId: string, adType: string) => {
     try {
       const res = await fetch('/api/advertising', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'impression',
-          campaignId,
-          adType,
-          sessionId,
-          conversationId,
-        }),
+        body: JSON.stringify({ action: 'impression', campaignId, adType, sessionId, conversationId }),
       });
       if (res.ok) {
         const data = await res.json();
         setImpressionId(data.impressionId);
-        if (data.rewardCredited) {
-          setRewarded(true);
-          setRewardAmount(data.rewardAmount);
-        }
+        if (data.rewardCredited) { setRewarded(true); setRewardAmount(data.rewardAmount); }
       }
     } catch {}
   }, [sessionId, conversationId]);
 
   const handleClick = useCallback(async () => {
     if (!impressionId || !decision?.campaign) return;
-
     try {
       const res = await fetch('/api/advertising', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'click',
-          impressionId,
-        }),
+        body: JSON.stringify({ action: 'click', impressionId }),
       });
-
       if (res.ok) {
         const data = await res.json();
-        if (data.rewardCredited && data.rewardAmount > 0) {
-          onAdClicked?.(true, data.rewardAmount);
-        }
-        // Ouvrir dans un nouvel onglet
-        window.open(decision.campaign!.ctaUrl, '_blank', 'noopener,noreferrer');
+        if (data.rewardCredited && data.rewardAmount > 0) onAdClicked?.(true, data.rewardAmount);
+        window.open(decision.campaign.ctaUrl, '_blank', 'noopener,noreferrer');
       }
     } catch {}
   }, [impressionId, decision, onAdClicked]);
 
-  const toggleRewardedAds = useCallback(async () => {
-    if (!preferences) return;
-    const newValue = !preferences.rewardedAdsEnabled;
-
-    try {
-      const res = await fetch('/api/advertising', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'preferences',
-          rewardedAdsEnabled: newValue,
-        }),
-      });
-
-      if (res.ok) {
-        setPreferences(prev => prev ? { ...prev, rewardedAdsEnabled: newValue } : null);
-        if (newValue) {
-          fetchAd('rewarded');
-        }
-      }
-    } catch {}
-  }, [preferences, fetchAd]);
-
   const dismissAd = useCallback(() => {
     setDismissed(true);
-    setTimeout(() => {
-      fetchAd(decision?.adType || 'unrewarded');
-    }, 30000);
+    if (decision?.campaign) markDismissed(decision.campaign.id);
+    setTimeout(() => { if (decision) fetchAd(decision.adType); }, 60000);
   }, [decision, fetchAd]);
 
-  if (loading || dismissed || !decision?.shouldShow || !decision?.campaign) {
-    return null;
-  }
+  if (loading || dismissed || !decision?.shouldShow || !decision?.campaign) return null;
 
   const campaign = decision.campaign;
   const isRewarded = decision.adType === 'rewarded';
+  const adFormat = campaign.format || 'banner';
+  const isVideo = adFormat === 'video' && campaign.videoUrl;
+
+  if (placement === 'sidebar' || placement === 'banner_top') {
+    return (
+      <div style={{
+        width: '100%', padding: '8px 12px', margin: '8px 0',
+        borderRadius: '8px', background: 'linear-gradient(135deg, rgba(124,58,237,0.05), rgba(59,130,246,0.05))',
+        border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer',
+      }} onClick={handleClick}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+          <span style={{
+            fontSize: 9, padding: '1px 5px', borderRadius: 3,
+            background: isRewarded ? 'rgba(251,191,36,0.2)' : 'rgba(107,114,128,0.2)',
+            color: isRewarded ? '#fbbf24' : '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap',
+          }}>{isRewarded ? 'Sponsorise' : 'Pub'}</span>
+          {campaign.imageUrl && <img src={campaign.imageUrl} alt='' style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />}
+          <span style={{ color: '#9ca3af', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaign.textContent}</span>
+          <span style={{
+            padding: '3px 10px', borderRadius: 4, fontSize: 10, fontWeight: 500,
+            background: isRewarded ? 'rgba(251,191,36,0.15)' : 'rgba(124,58,237,0.15)',
+            color: isRewarded ? '#fbbf24' : '#a78bfa',
+          }}>{campaign.ctaText}</span>
+          {rewarded && rewardAmount > 0 && <span style={{ color: '#34d399', fontSize: 10 }}>+{rewardAmount}</span>}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="ad-bar-container">
-      {/* Style injecté */}
-      <style>{`
-        .ad-bar-container {
-          width: 100%;
-          border-top: 1px solid rgba(255,255,255,0.1);
-          background: linear-gradient(135deg, rgba(124,58,237,0.05) 0%, rgba(59,130,246,0.05) 100%);
-        }
-        .ad-bar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 8px 12px;
-          max-width: 1200px;
-          margin: 0 auto;
-          gap: 12px;
-        }
-        .ad-badge {
-          font-size: 10px;
-          padding: 1px 6px;
-          border-radius: 4px;
-          white-space: nowrap;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .ad-badge-unrewarded {
-          background: rgba(107,114,128,0.2);
-          color: #9ca3af;
-        }
-        .ad-badge-rewarded {
-          background: rgba(251,191,36,0.2);
-          color: #fbbf24;
-        }
-        .ad-content {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          cursor: pointer;
-          min-width: 0;
-        }
-        .ad-image {
-          width: 28px;
-          height: 28px;
-          border-radius: 6px;
-          object-fit: cover;
-          flex-shrink: 0;
-        }
-        .ad-text {
-          font-size: 12px;
-          color: #d1d5db;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          line-height: 1.3;
-        }
-        .ad-cta {
-          flex-shrink: 0;
-          font-size: 11px;
-          padding: 4px 12px;
-          border-radius: 6px;
-          border: none;
-          cursor: pointer;
-          font-weight: 500;
-          transition: all 0.15s;
-        }
-        .ad-cta-unrewarded {
-          background: rgba(124,58,237,0.15);
-          color: #a78bfa;
-        }
-        .ad-cta-unrewarded:hover {
-          background: rgba(124,58,237,0.25);
-        }
-        .ad-cta-rewarded {
-          background: rgba(251,191,36,0.15);
-          color: #fbbf24;
-        }
-        .ad-cta-rewarded:hover {
-          background: rgba(251,191,36,0.25);
-        }
-        .ad-reward-notification {
-          font-size: 10px;
-          color: #34d399;
-          font-weight: 500;
-        }
-        .ad-settings-toggle {
-          background: none;
-          border: none;
-          color: #6b7280;
-          cursor: pointer;
-          font-size: 14px;
-          padding: 2px;
-        }
-        .ad-settings-panel {
-          position: absolute;
-          bottom: 100%;
-          right: 0;
-          background: #1f2937;
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 8px;
-          padding: 8px 12px;
-          font-size: 11px;
-          white-space: nowrap;
-          z-index: 50;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
-        .ad-settings-toggle-wrapper {
-          position: relative;
-        }
-        .ad-settings-label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          cursor: pointer;
-        }
-        .ad-settings-label input {
-          accent-color: #7c3aed;
-        }
-        .ad-dismiss {
-          background: none;
-          border: none;
-          color: #4b5563;
-          cursor: pointer;
-          font-size: 14px;
-          padding: 2px 4px;
-        }
-        .ad-dismiss:hover {
-          color: #9ca3af;
-        }
-      `}</style>
+    <div style={{ width: '100%', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'linear-gradient(135deg, rgba(124,58,237,0.03), rgba(59,130,246,0.03))' }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '6px 12px', gap: 8, maxWidth: 1200, margin: '0 auto' }}>
+        <span style={{
+          fontSize: 9, padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap', fontWeight: 600,
+          background: isRewarded ? 'rgba(251,191,36,0.2)' : 'rgba(107,114,128,0.2)',
+          color: isRewarded ? '#fbbf24' : '#9ca3af',
+        }}>{isRewarded ? 'Sponsorise' : 'Publicite'}</span>
 
-      <div className="ad-bar">
-        {/* Badge */}
-        <span className={`ad-badge ${isRewarded ? 'ad-badge-rewarded' : 'ad-badge-unrewarded'}`}>
-          {isRewarded ? '★ Pub Récompensée' : 'Publicité'}
-        </span>
-
-        {/* Contenu de la pub */}
-        <div className="ad-content" onClick={handleClick} title={campaign.textContent}>
-          {campaign.imageUrl && (
-            <img
-              src={campaign.imageUrl}
-              alt=""
-              className="ad-image"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-            />
-          )}
-          <span className="ad-text">{campaign.textContent}</span>
-          <span className={`ad-cta ${isRewarded ? 'ad-cta-rewarded' : 'ad-cta-unrewarded'}`}>
-            {campaign.ctaText}
+        <div onClick={handleClick} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', minWidth: 0 }}>
+          {isVideo ? (
+            <video src={campaign.videoUrl} style={{ width: 40, height: 28, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
+              muted autoPlay loop playsInline onMouseEnter={() => setVideoPlaying(true)} onMouseLeave={() => setVideoPlaying(false)} />
+          ) : campaign.imageUrl ? (
+            <img src={campaign.imageUrl} alt='' style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          ) : null}
+          <span style={{ fontSize: 12, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {campaign.textContent}
           </span>
+          <span style={{
+            flexShrink: 0, fontSize: 10, padding: '3px 10px', borderRadius: 4, fontWeight: 500,
+            background: isRewarded ? 'rgba(251,191,36,0.15)' : 'rgba(124,58,237,0.15)',
+            color: isRewarded ? '#fbbf24' : '#a78bfa',
+          }}>{campaign.ctaText}</span>
         </div>
 
-        {/* Notification de récompense */}
-        {rewarded && rewardAmount > 0 && (
-          <span className="ad-reward-notification">+{rewardAmount} crédits</span>
-        )}
+        {rewarded && rewardAmount > 0 && <span style={{ fontSize: 10, color: '#34d399', whiteSpace: 'nowrap' }}>+{rewardAmount} credits</span>}
 
-        {/* Paramètres (uniquement pour utilisateurs payants) */}
-        {preferences && !preferences.isEligible && (
-          <div className="ad-settings-toggle-wrapper">
-            <button
-              className="ad-settings-toggle"
-              onClick={() => setShowSettings(!showSettings)}
-              title="Paramètres des publicités"
-            >
-              ⚙
-            </button>
-            {showSettings && (
-              <div className="ad-settings-panel">
-                <label className="ad-settings-label">
-                  <input
-                    type="checkbox"
-                    checked={preferences.rewardedAdsEnabled}
-                    onChange={toggleRewardedAds}
-                  />
-                  <span>Pubs récompensées</span>
-                  {preferences.rewardedAdsEnabled && (
-                    <span style={{ color: '#34d399' }}>
-                      (+{preferences.totalCreditsEarned} crédits gagnés)
-                    </span>
-                  )}
-                </label>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Bouton fermer */}
-        <button className="ad-dismiss" onClick={dismissAd} title="Fermer">
-          ✕
-        </button>
+        <button onClick={dismissAd} style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>x</button>
       </div>
     </div>
   );
