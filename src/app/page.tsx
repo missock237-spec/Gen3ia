@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore, useAppStore } from '@/lib/store';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppHeader } from '@/components/layout/app-header';
@@ -11,51 +11,85 @@ import { GuardrailsView } from '@/components/guardrails/guardrails-view';
 import { CoordinationView } from '@/components/coordination/coordination-view';
 import { SettingsView } from '@/components/settings/settings-view';
 import { AnalyticsView } from '@/components/analytics/analytics-view';
+import BillingPage from './(dashboard)/billing/page';
+import DevelopersPage from './(dashboard)/developers/page';
 import { ThemeProvider } from 'next-themes';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 function AppContent() {
-  const { isAuthenticated, isLoading, user } = useAuthStore();
-  const { currentView } = useAppStore();
-  const hydrateRef = useRef(false);
+  const { isAuthenticated, isLoading, hydrate, validateSession, logout } = useAuthStore();
+  const { currentView, fetchApprovalCount } = useAppStore();
+  const hydratedRef = useRef(false);
   const validatedRef = useRef(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!hydrateRef.current) {
-      hydrateRef.current = true;
-      useAuthStore.getState().hydrate();
+    if (!hydratedRef.current) {
+      hydratedRef.current = true;
+      hydrate().catch((err: Error) => {
+        setLoadError(err.message || 'Erreur de chargement');
+      });
     }
-  }, []);
+  }, [hydrate]);
 
   useEffect(() => {
-    if (isAuthenticated && !validatedRef.current) {
+    if (isAuthenticated && !validatedRef.current && !loadError) {
       validatedRef.current = true;
-      (async () => {
-        const valid = await useAuthStore.getState().validateSession();
-        if (valid) {
-          useAppStore.getState().fetchApprovalCount();
-        }
-      })();
+      validateSession().then(valid => {
+        if (valid) fetchApprovalCount();
+      }).catch(() => {
+        setLoadError('Session expirée, veuillez vous reconnecter');
+      });
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadError, validateSession, fetchApprovalCount]);
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      useAuthStore.getState().logout();
       validatedRef.current = false;
+      logout();
     };
     window.addEventListener('auth:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
-  }, []);
+  }, [logout]);
 
-  if (!isAuthenticated) {
+  if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Chargement...</p>
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
       </div>
     );
   }
+
+  if (!isAuthenticated || isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">
+          {isLoading ? 'Chargement de Genova...' : 'Redirection vers la connexion...'}
+        </p>
+      </div>
+    );
+  }
+
+  const renderView = () => {
+    switch (currentView) {
+      case 'dashboard': return <DashboardView />;
+      case 'agents': return <AgentsView />;
+      case 'automation': return <AutomationView />;
+      case 'guardrails': return <GuardrailsView />;
+      case 'coordination': return <CoordinationView />;
+      case 'settings': return <SettingsView />;
+      case 'approvals': return <SettingsView initialTab="approvals" />;
+      case 'analytics': return <AnalyticsView />;
+      case 'billing': return <BillingPage />;
+      case 'developers': return <DevelopersPage />;
+      default: return <DashboardView />;
+    }
+  };
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -63,14 +97,7 @@ function AppContent() {
       <main className="flex-1 flex flex-col min-w-0">
         <AppHeader />
         <div className="flex-1 p-4 sm:p-6 overflow-auto">
-          {currentView === 'dashboard' && <DashboardView />}
-          {currentView === 'agents' && <AgentsView />}
-          {currentView === 'automation' && <AutomationView />}
-          {currentView === 'guardrails' && <GuardrailsView />}
-          {currentView === 'coordination' && <CoordinationView />}
-          {currentView === 'settings' && <SettingsView />}
-          {currentView === 'approvals' && <SettingsView initialTab="approvals" />}
-          {currentView === 'analytics' && <AnalyticsView />}
+          {renderView()}
         </div>
       </main>
     </div>
