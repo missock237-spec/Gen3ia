@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-vi.mock('@/lib/db', () => ({ prisma: { agentMemory: { findMany: vi.fn() } } }));
-vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+
+vi.mock('@/lib/db', () => ({
+  prisma: { agentMemory: { findMany: vi.fn() } },
+}));
+vi.mock('@/lib/logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
 describe('EmbeddingService', () => {
   describe('fallbackEmbed', () => {
     it('produit un vecteur 128 dims', async () => {
@@ -21,24 +27,26 @@ describe('EmbeddingService', () => {
       expect(vec.every((v: number) => v === 0)).toBe(true);
     });
   });
+
   describe('cosineSimilarity', () => {
-    it('retourne 1.0 pour identiques', async () => {
+    it('1.0 pour identiques', async () => {
       const { embeddingService } = await import('@/lib/agent/embedding');
-      expect((embeddingService as any).cosineSimilarity([1,0,0], [1,0,0])).toBeCloseTo(1.0);
+      expect((embeddingService as any).cosineSimilarity([1, 0, 0], [1, 0, 0])).toBeCloseTo(1.0);
     });
-    it('retourne 0 pour orthogonaux', async () => {
+    it('0 pour orthogonaux', async () => {
       const { embeddingService } = await import('@/lib/agent/embedding');
-      expect((embeddingService as any).cosineSimilarity([1,0], [0,1])).toBeCloseTo(0);
+      expect((embeddingService as any).cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0);
     });
-    it('retourne -1 pour opposes', async () => {
+    it('-1 pour opposes', async () => {
       const { embeddingService } = await import('@/lib/agent/embedding');
-      expect((embeddingService as any).cosineSimilarity([1,0], [-1,0])).toBeCloseTo(-1);
+      expect((embeddingService as any).cosineSimilarity([1, 0], [-1, 0])).toBeCloseTo(-1);
     });
-    it('retourne 0 pour tailles differentes', async () => {
+    it('0 pour tailles differentes', async () => {
       const { embeddingService } = await import('@/lib/agent/embedding');
-      expect((embeddingService as any).cosineSimilarity([1], [1,0])).toBe(0);
+      expect((embeddingService as any).cosineSimilarity([1], [1, 0])).toBe(0);
     });
   });
+
   describe('fallbackSimilarity', () => {
     it('1.0 pour identiques', async () => {
       const { embeddingService } = await import('@/lib/agent/embedding');
