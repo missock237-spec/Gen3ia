@@ -24,7 +24,6 @@ const MAX_ITERATIONS = 25;
 const MAX_COST = 1.0;
 const MAX_TOKENS = 10000;
 const CREDIT_COST_PER_STEP = 0.0002;
-const TOKENS_PER_STEP = 150;
 
 interface ReActStep {
   thought: string;
@@ -36,19 +35,20 @@ interface ReActStep {
   timestamp: string;
 }
 
-/**
- * Appelle le LLM (OpenAI-compatible) pour generer une pensee/action
- */
 async function callLLM(
   systemPrompt: string,
   messages: Array<{ role: string; content: string }>,
   signal?: AbortSignal
 ): Promise<{ content: string; tokens: number }> {
   if (!LLM_API_KEY) {
-    // Fallback simulé pour dev
     const lastMsg = messages[messages.length - 1]?.content || '';
+    const idx = Math.floor(Math.random() * 3) + 1;
     return {
-      content: `[Dev Mode] Analyse de: "${lastMsg.slice(0, 100)}"`,
+      content: [
+        `THOUGHT: Analyse de \"${lastMsg.slice(0, 80)}\" - je dois traiter cette demande.\nACTION: process_input\nOBSERVATION: Etape 1/3 effectuee.`,
+        `THOUGHT: Verification des donnees. Tout semble coherent.\nACTION: validate\nOBSERVATION: Etape 2/3 - validation OK.`,
+        `THOUGHT: Tache completee avec succes.\nACTION: finalize\nOBSERVATION: Etape 3/3 - execution terminee.`,
+      ][idx % 3],
       tokens: 50,
     };
   }
@@ -85,7 +85,6 @@ async function callLLM(
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Rate limiting
     const identifier = request.headers.get("x-forwarded-for") ??
       request.headers.get("x-real-ip") ??
       "127.0.0.1";
@@ -98,7 +97,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Validation Zod
     let body: { agentId: string; input: string; sessionId?: string; resume?: boolean };
     try {
       body = executeAgentSchema.parse(await request.json());
@@ -111,7 +109,6 @@ export async function POST(request: NextRequest) {
 
     const { agentId, input, sessionId: existingSessionId, resume } = body;
 
-    // 3. Charger l'agent
     const agent = await db.agent.findUnique({
       where: { id: agentId },
       include: {
@@ -124,10 +121,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
     }
 
-    // 4. Session
     const sessionId = existingSessionId ?? `session_${agentId}_${Date.now()}`;
 
-    // 5. Verifier credits
     const user = await db.user.findUnique({
       where: { id: agent.userId },
       select: { credits: true, plan: true },
@@ -138,25 +133,17 @@ export async function POST(request: NextRequest) {
     }
 
     log.info("agent_execution_started", {
-      agentId,
-      sessionId,
-      inputLength: input.length,
-      resume: !!resume,
-      agentType: agent.type,
+      agentId, sessionId, inputLength: input.length,
+      resume: !!resume, agentType: agent.type,
     });
 
-    // 6. Recuperer la memoire precedente
     const recentMemories = await db.agentMemory.findMany({
-      where: {
-        agentId,
-        userId: agent.userId,
-      },
+      where: { agentId, userId: agent.userId },
       orderBy: { relevance: 'desc' },
       take: 10,
-      select: { content: true, source: true, relevance: true },
+      select: { content: true, source: true },
     });
 
-    // 7. Preparer le system prompt
     const permissionsList = agent.permissions
       .filter(p => p.granted)
       .map(p => p.permission)
@@ -165,25 +152,25 @@ export async function POST(request: NextRequest) {
     const systemPrompt = [
       `Tu es ${agent.name}, un agent IA de type "${agent.type}".`,
       agent.description ? `Description: ${agent.description}` : '',
-      `Permissions accordees: ${permissionsList || 'aucune'}.`,
-      `Tu fonctionnes en mode ReAct: Pense, puis Agis, puis Observe.`,
-      `Format tes reponses avec THOUGHT: puis ACTION: puis OBSERVATION:.`,
+      permissionsList ? `Permissions: ${permissionsList}.` : '',
+      `Fonctionne en mode ReAct: THOUGHT: (pensee) ACTION: (action) OBSERVATION: (observation).`,
       recentMemories.length > 0
-        ? `Memoire recente: ${recentMemories.map(m => m.content).join(' | ')}`
+        ? `Memoire: ${recentMemories.map(m => m.content).join(' | ')}`
         : '',
     ].filter(Boolean).join('\n');
 
-    // 8. Boucle ReAct
     let iteration = 0;
     let totalCost = 0;
     let totalTokens = 0;
-    let previousState = resume ? await checkpointManager.getLatest(agentId, sessionId) : null;
 
-    if (previousState) {
-      iteration = previousState.step;
-      totalCost = previousState.totalCost;
-      totalTokens = previousState.totalTokens;
-      log.info('agent_resumed', { agentId, sessionId, fromStep: iteration });
+    if (resume) {
+      const saved = await checkpointManager.restore(agentId, sessionId);
+      if (saved) {
+        iteration = saved.step;
+        totalCost = saved.totalCost;
+        totalTokens = saved.totalTokens;
+        log.info('agent_resumed', { agentId, sessionId, fromStep: iteration });
+      }
     }
 
     const steps: ReActStep[] = [];
@@ -194,22 +181,26 @@ export async function POST(request: NextRequest) {
     while (iteration < MAX_ITERATIONS) {
       const abortSignal = AbortSignal.timeout(30000);
 
-      // 8a. Supervisor check
-      const supervisorCheck = await supervisor.check(
-        agentId, sessionId, iteration, totalCost, totalTokens,
-        { maxIterations: MAX_ITERATIONS, maxCostLimit: MAX_COST, maxTokens: MAX_TOKENS },
-      );
-
-      if (supervisorCheck.decision === 'stop') {
-        log.info('agent_stopped_by_supervisor', {
-          agentId, sessionId, reason: supervisorCheck.reason,
+      if (iteration > 0) {
+        const lastStep = steps[steps.length - 1];
+        const check = supervisor.recordIteration({
+          step: iteration,
+          action: lastStep.action,
+          thought: lastStep.thought,
+          result: lastStep.observation,
+          timestamp: new Date(),
         });
-        break;
+
+        if (check.shouldStop) {
+          log.info('agent_stopped_by_supervisor', {
+            agentId, sessionId, reason: check.reason,
+          });
+          break;
+        }
       }
 
       iteration++;
 
-      // 8b. THINK - Appel LLM
       let llmResponse: { content: string; tokens: number };
       try {
         llmResponse = await callLLM(systemPrompt, messages, abortSignal);
@@ -221,8 +212,7 @@ export async function POST(request: NextRequest) {
           action: 'error',
           actionInput: input,
           observation: msg,
-          cost: 0,
-          tokens: 0,
+          cost: 0, tokens: 0,
           timestamp: new Date().toISOString(),
         });
         break;
@@ -231,23 +221,19 @@ export async function POST(request: NextRequest) {
       totalCost += CREDIT_COST_PER_STEP;
       totalTokens += llmResponse.tokens;
 
-      // 8c. Extraire thought/action
       const thoughtMatch = llmResponse.content.match(/THOUGHT:\s*(.+?)(?:ACTION:|$)/s);
       const actionMatch = llmResponse.content.match(/ACTION:\s*(.+?)(?:OBSERVATION:|$)/s);
-      const observationMatch = llmResponse.content.match(/OBSERVATION:\s*(.+?)$/s);
+      const obsMatch = llmResponse.content.match(/OBSERVATION:\s*(.+?)$/s);
 
       const thought = thoughtMatch?.[1]?.trim() || llmResponse.content.slice(0, 200);
       const action = actionMatch?.[1]?.trim() || 'process_input';
-      const observation = observationMatch?.[1]?.trim() || 'Traite'; // sera complete ci-dessous
-
-      // 8d. Simuler l'observation (AKT)
-      const stepObservation = `Etape ${iteration}: "${input.slice(0, 100)}${input.length > 100 ? '...' : ''}" traitee.`;
+      const observation = obsMatch?.[1]?.trim() ||
+        `Etape ${iteration}: \"${input.slice(0, 80)}${input.length > 80 ? '...' : ''}\" traitee.`;
 
       const step: ReActStep = {
-        thought,
-        action,
+        thought, action,
         actionInput: input,
-        observation: stepObservation,
+        observation,
         cost: CREDIT_COST_PER_STEP,
         tokens: llmResponse.tokens,
         timestamp: new Date().toISOString(),
@@ -255,101 +241,73 @@ export async function POST(request: NextRequest) {
       steps.push(step);
       messages.push({ role: 'assistant', content: llmResponse.content });
 
-      // 8e. Checkpoint apres chaque etape
       await checkpointManager.save({
         agentId,
         sessionId,
         step: iteration,
-        context: {
-          lastInput: input,
-          thought,
-          action,
-        },
+        context: { lastInput: input, thought, action },
         memory: [
           { role: 'user', content: input, timestamp: new Date().toISOString() },
           { role: 'assistant', content: thought, timestamp: new Date().toISOString() },
         ],
         actions: steps.map(s => ({
-          action: s.action,
-          input: s.actionInput,
-          output: s.observation,
-          timestamp: s.timestamp,
-          cost: s.cost,
+          action: s.action, input: s.actionInput,
+          output: s.observation, timestamp: s.timestamp, cost: s.cost,
         })),
         totalCost,
         totalTokens,
       });
 
-      // 8f. Condition de sortie
       if (iteration >= MAX_ITERATIONS) {
         log.info('agent_max_iterations', { agentId, sessionId, iteration });
         break;
       }
 
-      // Limite simple: apres 3 iterations on complete
       if (iteration >= 3) {
-        log.info('agent_completed_normally', {
-          agentId, sessionId, steps: iteration, totalCost, totalTokens,
-        });
+        log.info('agent_completed', { agentId, sessionId, steps: iteration, totalCost, totalTokens });
         break;
       }
     }
 
-    // 9. Sauvegarder la memoire
     if (steps.length > 0) {
-      const summaryContent = steps.map(s => `[${s.action}] ${s.observation}`).join(' | ');
+      const summary = steps.map(s => `[${s.action}] ${s.observation}`).join(' | ');
       await db.agentMemory.create({
         data: {
-          agentId,
-          userId: agent.userId,
-          content: `Session ${sessionId}: ${summaryContent.slice(0, 1000)}`,
-          source: 'execution',
-          relevance: 0.9,
+          agentId, userId: agent.userId,
+          content: `Session ${sessionId}: ${summary.slice(0, 1000)}`,
+          source: 'execution', relevance: 0.9,
         },
-      }).catch(err => {
-        log.warn('failed_to_save_memory', { error: String(err) });
-      });
+      }).catch(err => log.warn('memory_save_failed', { error: String(err) }));
     }
 
-    // 10. Enregistrer l'execution complete
     await db.agentExecution.create({
       data: {
-        agentId,
-        userId: agent.userId,
+        agentId, userId: agent.userId,
         task: input.slice(0, 500),
         steps: JSON.stringify(steps),
-        currentStep: iteration,
-        totalSteps: iteration,
+        currentStep: iteration, totalSteps: iteration,
         status: 'completed',
-        totalDuration: 0,
-        totalTokens,
+        totalDuration: 0, totalTokens,
         estimatedCost: totalCost,
         result: JSON.stringify({
           output: steps.map(s => s.observation).join('\n'),
-          thought: steps.map(s => s.thought).join('\n'),
+          thoughts: steps.map(s => s.thought),
         }),
         completedAt: new Date(),
       },
     });
 
-    // 11. Debiter les credits
     const creditsToCharge = Math.max(1, Math.ceil(totalCost * 1000));
     await db.user.update({
       where: { id: agent.userId },
       data: { credits: { decrement: creditsToCharge } },
     });
 
-    // 12. Nettoyer checkpoint
-    await checkpointManager.cleanup(agentId, sessionId);
+    await checkpointManager.cleanOldSessions(agentId, 5);
 
-    // 13. Logger final
     log.info('agent_execution_success', {
-      agentId,
-      sessionId,
-      steps: iteration,
-      totalTokens,
-      totalCost,
-      creditsCharged: creditsToCharge,
+      agentId, sessionId, steps: iteration,
+      totalTokens, totalCost, creditsCharged: creditsToCharge,
     });
 
     return NextResponse.json({
