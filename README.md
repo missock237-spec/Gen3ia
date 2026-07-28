@@ -1,4 +1,4 @@
-# 🤖 Genova — AI Agent Operating System
+# 🤖 Gen3ia — AI Agent Operating System
 
 **Plateforme SaaS d'agents IA autonomes** — Next.js 16 + Prisma + PostgreSQL + TypeScript
 
@@ -48,8 +48,8 @@
 
 ```bash
 # 1. Cloner le projet
-git clone https://github.com/missock237-spec/Genova.git
-cd Genova
+git clone https://github.com/missock237-spec/Gen3ia.git
+cd Gen3ia
 
 # 2. Installer les dépendances
 bun install
@@ -117,11 +117,11 @@ docker-compose up -d
 ## 📊 Métriques
 
 L'endpoint `/api/metrics` expose :
-- `genova_users_total` — Utilisateurs actifs
-- `genova_active_agents_total` — Agents actifs
-- `genova_executions_total` — Exécutions totales
-- `genova_active_subscriptions_total` — Abonnements actifs
-- `genova_uptime_seconds` — Uptime
+- `gen3ia_users_total` — Utilisateurs actifs
+- `gen3ia_active_agents_total` — Agents actifs
+- `gen3ia_executions_total` — Exécutions totales
+- `gen3ia_active_subscriptions_total` — Abonnements actifs
+- `gen3ia_uptime_seconds` — Uptime
 
 ## 🧪 Tests
 
@@ -139,8 +139,8 @@ bunx prisma db seed
 ```
 
 Crée :
-- Admin : `admin@genova.ai` / `Admin123!`
-- Démo : `demo@genova.ai` / `Demo123!`
+- Admin : `admin@gen3ia.ai` / `Admin123!`
+- Démo : `demo@gen3ia.ai` / `Demo123!`
 - 3 agents de démonstration
 - Abonnement Pro + crédits
 
