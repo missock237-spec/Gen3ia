@@ -4,6 +4,7 @@
 // Documentation: https://docs.subpay.app
 // ============================================================
 
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 
@@ -69,9 +70,6 @@ class SubPayClient {
     return !!(this.apiKey && SUBPAY_STORE_ID);
   }
 
-  /**
-   * Initier un paiement mobile
-   */
   async initiatePayment(params: {
     amount: number;
     currency: SubPayCurrency;
@@ -126,9 +124,6 @@ class SubPayClient {
     return data as SubPayTransaction;
   }
 
-  /**
-   * Verifier le statut d'un paiement
-   */
   async checkStatus(transactionId: string): Promise<SubPayTransaction> {
     const response = await fetch(`${this.baseUrl}/payments/${transactionId}`, {
       headers: this.getHeaders(),
@@ -143,24 +138,23 @@ class SubPayClient {
   }
 
   /**
-   * Verifier la signature d'un webhook SubPay
+   * Verifie la signature HMAC SHA-256 avec constant-time compare
    */
   verifyWebhookSignature(body: string, signature: string): boolean {
+    if (!SUBPAY_WEBHOOK_SECRET || !signature || !body) return false;
     try {
-      const crypto = require('crypto');
-      const expected = crypto
-        .createHmac('sha256', SUBPAY_WEBHOOK_SECRET)
+      const expected = createHmac('sha256', SUBPAY_WEBHOOK_SECRET)
         .update(body)
         .digest('hex');
-      return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+      const expectedBuf = Buffer.from(expected, 'utf-8');
+      const signatureBuf = Buffer.from(signature, 'utf-8');
+      if (expectedBuf.length !== signatureBuf.length) return false;
+      return timingSafeEqual(expectedBuf, signatureBuf);
     } catch {
-      return signature === SUBPAY_WEBHOOK_SECRET;
+      return false;
     }
   }
 
-  /**
-   * Lister les providers disponibles
-   */
   async getAvailableProviders(): Promise<SubPayProvider[]> {
     try {
       const response = await fetch(`${this.baseUrl}/providers`, {

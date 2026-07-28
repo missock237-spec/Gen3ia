@@ -2,6 +2,7 @@
 // SEBPAY SERVICE — Paiements Mobile Money Afrique
 // ============================================================
 
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { prisma } from "./prisma";
 import { logger } from "./logger";
 import { parseSubscriptionReference } from "./safe-regex";
@@ -100,8 +101,21 @@ export class SebPayService {
     } catch (error) { return { success: false, message: String(error) }; }
   }
 
-  verifyWebhookSignature(_payload: string, _signature: string): boolean {
-    return true;
+  /**
+   * Verifie la signature HMAC SHA-256 d'un webhook SebPay avec constant-time compare
+   */
+  verifyWebhookSignature(payload: string, signature: string): boolean {
+    const secret = this.config.webhookSecret;
+    if (!secret || !signature || !payload) return false;
+    try {
+      const expected = createHmac('sha256', secret).update(payload).digest('hex');
+      const expectedBuf = Buffer.from(expected, 'utf-8');
+      const signatureBuf = Buffer.from(signature, 'utf-8');
+      if (expectedBuf.length !== signatureBuf.length) return false;
+      return timingSafeEqual(expectedBuf, signatureBuf);
+    } catch {
+      return false;
+    }
   }
 
   async handleWebhook(payload: {
@@ -117,7 +131,6 @@ export class SebPayService {
     logger.info("sebpay_webhook_received", { event: payload.event, transactionId: payload.transaction_id, reference: payload.reference });
     if (payload.event !== "payment.completed" || payload.status !== "completed") return;
 
-    // Securise: utilise parseSubscriptionReference au lieu de (.+)_(.+)_(.+)
     const parsed = parseSubscriptionReference(payload.reference);
     if (!parsed.planId || !parsed.userId) {
       logger.warn("sebpay_webhook_invalid_reference", { reference: payload.reference });
