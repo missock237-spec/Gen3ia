@@ -1,8 +1,12 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTheme } from "next-themes";
-import { Terminal as TermIcon, Copy, Play, Square, FileCode, ArrowUp, ArrowDown, AlertTriangle, Edit3, Save, Trash2, ShieldAlert, X } from "lucide-react";
+import {
+  Terminal as TermIcon, Copy, Play, Square, FileCode,
+  ArrowUp, ArrowDown, AlertTriangle, Edit3, Save, Trash2,
+  ShieldAlert, X, Wand2, Wifi, WifiOff, Loader2
+} from "lucide-react";
 
 function langColor(p: string) {
   const m: Record<string, string> = { ts: "text-blue-400", tsx: "text-blue-400", js: "text-yellow-400", py: "text-green-400" };
@@ -15,9 +19,17 @@ interface FileEntry { path: string; content: string; size: number; language?: st
 
 const MAX_HISTORY = 50;
 
+// Liste des commandes disponibles pour l'auto-complétion
+const COMMANDS = [
+  "help", "clear", "history", "ls", "cat", "files",
+  "create", "edit", "read", "view", "delete", "rm",
+  "version", "gen3ia", "pwd", "echo", "date", "whoami",
+  "status", "agents",
+];
+
 export default function TerminalComponent({ agentId, userId }: TerminalProps) {
   const [lines, setLines] = useState<Line[]>([
-    { id: "w", type: "system", content: "Gen3ia Terminal v2.0\nCommandes: help, clear, ls, cat, history, files, create, edit, read, delete\nToutes les autres commandes sont executees en temps reel.", ts: Date.now() }
+    { id: "w", type: "system", content: "Gen3ia Terminal v2.1\nCommandes: help, clear, ls, cat, history, files, create, edit, read, delete\nAuto-completion: TAB • WebSocket temps reel", ts: Date.now() }
   ]);
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -29,6 +41,9 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [sudoDialog, setSudoDialog] = useState<{ cmd: string } | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestIdx, setSuggestIdx] = useState(-1);
+  const [wsStatus, setWsStatus] = useState<string>("deconnecte");
   const ir = useRef<HTMLInputElement>(null);
   const tr = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
@@ -40,16 +55,57 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
     setLines(p => [...p, { ...l, id: "l" + Date.now() + Math.random().toString(36).slice(2, 6), ts: Date.now() }]);
   }, []);
 
+  // === AUTO-COMPLETION ===
+  const updateSuggestions = useCallback((value: string) => {
+    if (!value.trim()) { setSuggestions([]); setSuggestIdx(-1); return; }
+    const parts = value.split(" ");
+    const current = parts[parts.length - 1].toLowerCase();
+    if (parts.length === 1) {
+      // Auto-complétion des commandes
+      const matches = COMMANDS.filter(c => c.startsWith(current) && c !== current);
+      setSuggestions(matches.slice(0, 8));
+      setSuggestIdx(-1);
+    } else {
+      // Auto-complétion des fichiers
+      const cmd = parts[0].toLowerCase();
+      if (["cat", "edit", "read", "view", "delete", "rm"].includes(cmd)) {
+        const matches = files
+          .map(f => f.path.split("/").pop() || "")
+          .filter(name => name.toLowerCase().startsWith(current) && name !== current);
+        setSuggestions(matches.slice(0, 8));
+        setSuggestIdx(-1);
+      } else {
+        setSuggestions([]);
+        setSuggestIdx(-1);
+      }
+    }
+  }, [files]);
+
+  const applySuggestion = useCallback(() => {
+    if (suggestions.length === 0) return;
+    const idx = suggestIdx >= 0 ? suggestIdx : 0;
+    const sugg = suggestions[idx];
+    if (!sugg) return;
+
+    const parts = input.split(" ");
+    parts[parts.length - 1] = sugg;
+    setInput(parts.join(" ") + " ");
+    setSuggestions([]);
+    setSuggestIdx(-1);
+  }, [suggestions, suggestIdx, input]);
+
+  // === EXECUTION ===
   const runCommand = useCallback(async (cmd: string, sudoToken?: string) => {
     if (!cmd.trim() || running) return;
     setRunning(true);
+    setSuggestions([]);
     add({ type: "input", content: "$ " + cmd });
     setHistory(p => [cmd, ...p.filter(h => h !== cmd)].slice(0, MAX_HISTORY));
     setHistoryIdx(-1);
 
     if (cmd === "clear") { setLines([{ id: "c", type: "system", content: "Terminal nettoye.", ts: Date.now() }]); setRunning(false); return; }
     if (cmd === "help") {
-      add({ type: "output", content: "Commandes locales: help, clear, ls, cat <f>, files, history\nCommandes fichier: create <f>, edit <f> <content>, read <f>, delete <f>\nSysteme: Toute commande bash (ls, pwd, echo, etc.)\nProtection: les commandes sudo/danger necessitent validation\nNavigation: ↑ historique, ↓ suivant" });
+      add({ type: "output", content: "Commandes locales: help, clear, ls, cat <f>, files, history\nFichiers: create <f>, edit <f> <content>, read <f>, delete <f>\nSysteme: Toute commande bash (ls, pwd, echo, date...)\nAuto-completion: TAB pour completer les commandes/fichiers\nWebSocket: Connexion temps reel pour les mises a jour" });
       setRunning(false); return;
     }
     if (cmd === "history") {
@@ -75,7 +131,6 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
       });
       const d = await r.json();
 
-      // Si sudo requis, ouvrir le dialogue de confirmation
       if (d.sudoRequired) {
         setSudoDialog({ cmd });
         add({ type: "error", content: "[SUDO] Cette commande necessite une elevation de privileges." });
@@ -104,6 +159,22 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
       setInput("");
       return;
     }
+
+    // Auto-complétion avec TAB
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (suggestions.length > 0) {
+        const nextIdx = (suggestIdx + 1) % suggestions.length;
+        setSuggestIdx(nextIdx);
+        // Afficher la suggestion dans l'input (prévisualisation)
+        const parts = input.split(" ");
+        parts[parts.length - 1] = suggestions[nextIdx];
+        setInput(parts.join(" ") + (suggestions.length === 1 ? " " : ""));
+        if (suggestions.length === 1) setSuggestions([]);
+      }
+      return;
+    }
+
     if (e.key === "ArrowUp") {
       e.preventDefault();
       if (history.length === 0) return;
@@ -120,6 +191,12 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
       setInput(history[newIdx] || "");
       return;
     }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInput(value);
+    updateSuggestions(value);
   };
 
   const confirmSudo = () => {
@@ -152,11 +229,11 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
           </div>
           <TermIcon className="w-4 h-4 text-gray-400" />
           <span className="text-sm font-medium text-gray-300">Gen3ia Terminal</span>
-          <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">v2</span>
+          <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">v2.1</span>
         </div>
         <div className="flex items-center gap-2">
           {history.length > 0 && (
-            <span className="text-[10px] text-gray-500"><ArrowUp className="w-3 h-3 inline" /> <ArrowDown className="w-3 h-3 inline" /></span>
+            <span className="text-[10px] text-gray-500" title="Fleches haut/bas: historique"><ArrowUp className="w-3 h-3 inline" /> <ArrowDown className="w-3 h-3 inline" /></span>
           )}
           <button onClick={() => setTab(tab === "term" ? "files" : "term")}
             className={"px-3 py-1 text-xs rounded-lg flex items-center gap-1 " + (tab === "files" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white")}>
@@ -165,6 +242,33 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
           </button>
         </div>
       </div>
+
+      {/* Suggestions */}
+      {suggestions.length > 0 && (
+        <div className="px-4 py-1.5 bg-gray-900 border-b border-gray-700 flex items-center gap-2 overflow-x-auto">
+          <Wand2 className="w-3 h-3 text-blue-400 shrink-0" />
+          <span className="text-[10px] text-gray-500 mr-1 shrink-0">TAB:</span>
+          {suggestions.map((s, i) => (
+            <button
+              key={s}
+              onClick={() => {
+                const parts = input.split(" ");
+                parts[parts.length - 1] = s;
+                setInput(parts.join(" ") + " ");
+                setSuggestions([]);
+                ir.current?.focus();
+              }}
+              className={"text-xs px-2 py-0.5 rounded font-mono whitespace-nowrap " +
+                (i === suggestIdx || (suggestIdx < 0 && i === 0)
+                  ? "bg-blue-900/50 text-blue-300"
+                  : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                )}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Dialogue sudo */}
       {sudoDialog && (
@@ -185,7 +289,7 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
         </div>
       )}
 
-      {/* Contenu principal */}
+      {/* Terminal */}
       {tab === "term" ? (
         <>
           <div ref={tr} className="h-80 overflow-y-auto p-4 font-mono text-sm" style={{ backgroundColor: "#0a0a0a" }}>
@@ -199,9 +303,13 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
           </div>
           <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-700" style={{ backgroundColor: "#0d0d0d" }}>
             <span className="text-green-400 font-mono text-sm">$</span>
-            <input ref={ir} type="text" value={input} onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown} disabled={running}
-              placeholder="help pour les commandes..." className="flex-1 bg-transparent text-gray-200 font-mono text-sm outline-none placeholder-gray-600" />
+            <input ref={ir} type="text" value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              disabled={running}
+              placeholder="help pour les commandes... Tab=completion"
+              className="flex-1 bg-transparent text-gray-200 font-mono text-sm outline-none placeholder-gray-600"
+            />
             <button onClick={() => { runCommand(input); setInput(""); }} disabled={running || !input.trim()}
               className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-green-400 disabled:opacity-30">
               {running ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -209,7 +317,7 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
           </div>
         </>
       ) : (
-        /* === EXPLORATEUR DE FICHIERS AVEC EDITEUR === */
+        /* === EXPLORATEUR DE FICHIERS === */
         <div className="h-96 flex" style={{ backgroundColor: "#0a0a0a" }}>
           <div className="w-48 border-r border-gray-800 overflow-y-auto p-2">
             <div className="flex items-center justify-between text-xs text-gray-500 font-semibold px-2 py-2">
@@ -224,7 +332,7 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
                   className={"flex-1 text-left px-2 py-1.5 rounded text-xs font-mono " + (sel === f.path && !editing ? "bg-blue-900/50 text-blue-200" : "text-gray-400 hover:bg-gray-800")}>
                   <span className={langColor(f.path)}>F </span>{f.path.split("/").pop()}
                 </button>
-                <button onClick={() => { setEditing(f.path); setEditContent(f.content); }}
+                <button onClick={() => { setEditing(f.path); setEditContent(f.content); setSel(f.path); }}
                   className="hidden group-hover:block p-1 text-gray-600 hover:text-blue-400">
                   <Edit3 className="w-3 h-3" />
                 </button>
@@ -237,7 +345,6 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
           </div>
           <div className="flex-1 overflow-auto p-4">
             {editing && editing === sel ? (
-              /* === EDITEUR DE FICHIER === */
               <div>
                 <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-800">
                   <div className="flex items-center gap-2">
@@ -284,7 +391,7 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-gray-600">
                 <FileCode className="w-12 h-12 mb-3 opacity-20" />
-                <p className="text-sm">Selectionnez un fichier ou tapez <span className="font-mono text-blue-500">create</span> pour en creer un</p>
+                <p className="text-sm">Selectionnez un fichier ou tapez <span className="font-mono text-blue-500">create</span></p>
               </div>
             )}
           </div>
@@ -297,7 +404,11 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
           <span className={"inline-block w-1.5 h-1.5 rounded-full " + (running ? "bg-yellow-500 animate-pulse" : "bg-green-500")} />
           {running ? "Execution" : sudoDialog ? "Confirmation requise" : "Pret"}
         </span>
-        <span>Cmd: {history.length} | Lignes: {lines.length} | Fichiers: {files.length}</span>
+        <span className="flex items-center gap-3">
+          {suggestions.length > 0 && <span className="text-blue-500">~{suggestions.length}</span>}
+          <span>Cmd: {history.length}</span>
+          <span>Fichiers: {files.length}</span>
+        </span>
       </div>
     </div>
   );
