@@ -1,0 +1,30 @@
+# ============================================================
+# Gen3ia — Snyk Policy
+# Exclusions et seuils pour le scan des vulnérabilités
+# ============================================================
+
+exclude:
+  global:
+    - node_modules/**
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+    - '**/*.spec.ts'
+    - coverage/**
+    - .next/**
+
+patch:
+  # Patches connus pour les vulnérabilités reportées
+  # Exemple:
+  #   SNYK-JS-LODASH-567746:
+  #     - 'package > subpackage > lodash@*':
+  #         patched: '2024-01-01'
+  #         patch: []
+  
+  # Aucun patch requis actuellement
+  {}
+
+disabled:
+  # Vulnérabilités ignorées avec justification
+  # - id: SNYK-JS-EXAMPLE-12345
+  #   reason: "Fausse alerte - dépendance uniquement dev"
+  #   expires: '2026-12-31'
