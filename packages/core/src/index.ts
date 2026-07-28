@@ -1,16 +1,25 @@
 // ============================================================
-// Gen3ia Core — Shared library exports
+// Gen3ia Core — Index barrel
 // ============================================================
-export { db, prisma } from './db';
-export { createLogger, logger } from './logger';
+
+export { db, prisma } from './db.js';
+export { createLogger, logger } from './logger.js';
 export {
-  executeAgentSchema,
-  createAgentSchema,
-  loginSchema,
-  registerSchema,
-} from './validation';
-export { handleApiError, AppError, ErrorCode } from './errors';
-export { rateLimiter } from './rate-limiter';
-export { checkpointManager } from './checkpoint';
-export { supervisor } from './agent/supervisor';
-export { encrypt, decrypt, hashToken } from './security';
+  AppError, NotFoundError, UnauthorizedError, ForbiddenError,
+  ValidationError, RateLimitError, InsufficientCreditsError,
+  TimeoutError, ExternalServiceError,
+  handleApiError, apiHandler, apiSuccess,
+  ApiResponse, ApiSuccessResponse, ApiErrorResponse,
+} from './errors.js';
+export {
+  executeAgentSchema, createAgentSchema, loginSchema, registerSchema, formatZodErrors,
+} from './validation.js';
+export { encrypt, decrypt, hashToken } from './security.js';
+export { checkpointManager, CheckpointData } from './checkpoint.js';
+export { rateLimiter, getCategory, EndpointCategory, RateLimitResult } from './rate-limiter.js';
+export {
+  signPayload, verifySignature, createSecurePayload,
+  validateWebhook, webhookSecurityMiddleware,
+  WebhookPayload,
+} from './webhook-security.js';
+export { supervisor, SupervisorAgent } from './agent/supervisor.js';
