@@ -7,10 +7,10 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-description = "Genova AI Agent Operating System - Rust Security & Performance Engine"
-authors = ["Genova AI Team"]
+description = "Gen3ia AI Agent Operating System - Rust Security & Performance Engine"
+authors = ["Gen3ia Team"]
 license = "MIT"
-repository = "https://github.com/missock237-spec/Genova"
+repository = "https://github.com/missock237-spec/Gen3ia"
 
 [workspace.dependencies]
 napi = { version = "3", features = ["default", "napi6", "serde-json"] }
