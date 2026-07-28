@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     capable: true,
     title: siteName,
     statusBarStyle: 'black-translucent',
-    startupImage: `${siteUrl}/favicon-genova.png`,
+    startupImage: `${siteUrl}/favicon-gen3ia.png`,
   },
   openGraph: {
     type: 'website', locale: siteConfig.locale, alternateLocale: siteConfig.alternateLocale,
