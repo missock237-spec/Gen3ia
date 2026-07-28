@@ -1,66 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { applySecurity, secureResponse } from '@/lib/security';
+import { verify } from 'jsonwebtoken';
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
+const JWT_SECRET = process.env.AUTH_SECRET;
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-    const { id } = await params;
-    const guardrail = await db.guardrail.findUnique({ where: { id } });
-
-    if (!guardrail) {
-      return secureResponse(
-        NextResponse.json({ error: 'Garde-fou non trouvé' }, { status: 404 }),
-        request
-      );
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ') || !JWT_SECRET || JWT_SECRET.length < 32) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
+    const token = authHeader.slice(7);
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
 
-    if (guardrail.userId !== auth.userId) {
-      return secureResponse(
-        NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 }),
-        request
-      );
-    }
+    const guardrail = await db.guardrail.findFirst({
+      where: { id: params.id, userId: decoded.userId },
+    });
+    if (!guardrail) return NextResponse.json({ error: 'Garde-fou non trouvé' }, { status: 404 });
 
-    // Use atomic conditional update to prevent race condition
-    const newIsActive = !guardrail.isActive;
-    const updateResult = await db.guardrail.updateMany({
-      where: { id, isActive: guardrail.isActive },
-      data: { isActive: newIsActive },
+    const updated = await db.guardrail.update({
+      where: { id: params.id },
+      data: { isActive: !guardrail.isActive },
+      select: { isActive: true },
     });
 
-    if (updateResult.count === 0) {
-      return secureResponse(
-        NextResponse.json({ error: 'Le garde-fou a été modifié par une autre requête' }, { status: 409 }),
-        request
-      );
-    }
-
-    await db.activityLog.create({
-      data: {
-        action: `Garde-fou ${newIsActive ? 'activé' : 'désactivé'}`,
-        details: JSON.stringify({ guardrailName: guardrail.name }),
-        category: 'guardrail',
-        userId: guardrail.userId,
-      },
-    });
-
-    return secureResponse(NextResponse.json({ id: guardrail.id, isActive: newIsActive }), request);
+    return NextResponse.json(updated);
   } catch {
-    return secureResponse(
-      NextResponse.json({ error: 'Erreur serveur' }, { status: 500 }),
-      request
-    );
+    return NextResponse.json({ error: 'Erreur' }, { status: 500 });
   }
 }
