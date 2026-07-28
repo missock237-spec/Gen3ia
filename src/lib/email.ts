@@ -1,8 +1,8 @@
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY || '');
-const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@genova.ai';
-const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Genova AI';
+const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@gen3ia.ai';
+const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Gen3ia';
 
 interface EmailOptions {
   to: string | string[];
@@ -46,7 +46,7 @@ function baseHtml(content: string): string {
       ${content}
     </div>
     <div class="footer">
-      <p>© ${new Date().getFullYear()} Genova AI. Tous droits réservés.</p>
+      <p>© ${new Date().getFullYear()} Gen3ia. Tous droits réservés.</p>
       <p><a href="{{unsubscribe_url}}">Se désabonner</a></p>
     </div>
   </div>
@@ -86,9 +86,9 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
 export async function sendWelcomeEmail(email: string, name: string): Promise<void> {
   await sendEmail({
     to: email,
-    subject: 'Bienvenue sur Genova AI 🚀',
+    subject: 'Bienvenue sur Gen3ia 🚀',
     html: baseHtml(`
-      <h1>Bienvenue sur Genova AI, ${name} !</h1>
+      <h1>Bienvenue sur Gen3ia, ${name} !</h1>
       <p>Votre compte a été créé avec succès. Vous avez accès à :</p>
       <ul style="font-size: 14px; color: #52525b; line-height: 2;">
         <li>🧠 Agents IA intelligents</li>
@@ -125,7 +125,7 @@ export async function sendVerificationEmail(email: string, verificationCode: str
     subject: 'Vérifiez votre adresse email',
     html: baseHtml(`
       <h1>Vérification de votre email</h1>
-      <p>Pour activer votre compte Genova AI, utilisez le code de vérification ci-dessous :</p>
+      <p>Pour activer votre compte Gen3ia, utilisez le code de vérification ci-dessous :</p>
       <div class="code">${verificationCode}</div>
       <p>Ce code expire dans 30 minutes.</p>
     `),
@@ -135,10 +135,10 @@ export async function sendVerificationEmail(email: string, verificationCode: str
 export async function sendInvoiceEmail(email: string, amount: number, currency: string, pdfUrl?: string): Promise<void> {
   await sendEmail({
     to: email,
-    subject: `Votre facture Genova AI - ${amount} ${currency}`,
+    subject: `Votre facture Gen3ia - ${amount} ${currency}`,
     html: baseHtml(`
       <h1>Facture ${currency} ${amount.toLocaleString()}</h1>
-      <p>Merci pour votre paiement. Votre abonnement Genova AI est actif.</p>
+      <p>Merci pour votre paiement. Votre abonnement Gen3ia est actif.</p>
       ${pdfUrl ? `<p style="text-align: center;"><a href="${pdfUrl}" class="btn">Télécharger la facture</a></p>` : ''}
       <p>Montant : <strong>${amount.toLocaleString()} ${currency}</strong></p>
       <p>Date : ${new Date().toLocaleDateString('fr-FR')}</p>
