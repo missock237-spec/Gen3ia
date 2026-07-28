@@ -4,52 +4,95 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTheme } from "next-themes";
 import { Terminal as TermIcon, Copy, Play, Square, FileCode } from "lucide-react";
 
-function langColor(p) {
-  const m = { ts: "text-blue-400", tsx: "text-blue-400", js: "text-yellow-400", py: "text-green-400" };
-  return m[p.split(".").pop()] || "text-gray-300";
+function langColor(p: string) {
+  const m: Record<string, string> = { ts: "text-blue-400", tsx: "text-blue-400", js: "text-yellow-400", py: "text-green-400" };
+  return m[p.split(".").pop() || ""] || "text-gray-300";
 }
 
-export default function TerminalComponent({ agentId, userId }) {
-  const [lines, setLines] = useState([{ id: "w", type: "system", content: "Genova Terminal v1.0\nhelp: clear, ls, cat, status, files", ts: Date.now() }]);
+interface TerminalProps {
+  agentId?: string;
+  userId?: string;
+}
+
+interface Line {
+  id: string;
+  type: "input" | "output" | "error" | "system" | "info";
+  content: string;
+  ts: number;
+}
+
+interface FileEntry {
+  path: string;
+  content: string;
+  size: number;
+  language?: string;
+  action?: string;
+}
+
+export default function TerminalComponent({ agentId, userId }: TerminalProps) {
+  const [lines, setLines] = useState<Line[]>([
+    { id: "w", type: "system", content: "Gen3ia Terminal v1.0\nCommandes: help, clear, ls, cat <f>, status, files, history, create <f>\nToutes les autres commandes sont executees en temps reel.", ts: Date.now() }
+  ]);
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
-  const [files, setFiles] = useState([]);
-  const [tab, setTab] = useState("term");
-  const [sel, setSel] = useState(null);
-  const ir = useRef(null);
-  const tr = useRef(null);
+  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [tab, setTab] = useState<"term" | "files">("term");
+  const [sel, setSel] = useState<string | null>(null);
+  const ir = useRef<HTMLInputElement>(null);
+  const tr = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const dark = theme === "dark";
 
   useEffect(() => { tr.current?.scrollTo({ top: tr.current.scrollHeight, behavior: "smooth" }); }, [lines]);
 
-  const add = useCallback((l) => { setLines(p => [...p, { ...l, id: "l" + Date.now() + Math.random().toString(36).slice(2, 6), ts: Date.now() }]); }, []);
+  const add = useCallback((l: Omit<Line, "id" | "ts">) => {
+    setLines(p => [...p, { ...l, id: "l" + Date.now() + Math.random().toString(36).slice(2, 6), ts: Date.now() }]);
+  }, []);
 
-  const exec = useCallback(async (c) => {
+  const exec = useCallback(async (c: string) => {
     const t = c.trim();
     if (!t || running) return;
     setRunning(true);
     add({ type: "input", content: "$ " + t });
 
-    if (t === "clear") { setLines([{ id: "c", type: "system", content: "Nettoye.", ts: Date.now() }]); setRunning(false); return; }
-    if (t === "help") { add({ type: "output", content: "Commandes: help, clear, ls, cat <f>, status, files, history, create <f>" }); setRunning(false); return; }
+    if (t === "clear") {
+      setLines([{ id: "c", type: "system", content: "Terminal nettoye.", ts: Date.now() }]);
+      setRunning(false);
+      return;
+    }
+    if (t === "help") {
+      add({ type: "output", content: "Commandes locales: help, clear, ls, cat <fichier>, files, history\nToutes les autres commandes sont executees en temps reel sur le serveur (bash)." });
+      setRunning(false);
+      return;
+    }
     if (t === "ls") {
-      add({ type: "output", content: files.length === 0 ? "Aucun fichier." : files.map(f => "  " + f.path + " (" + (f.size / 1024).toFixed(1) + " KB)").join("\n") });
-      setRunning(false); return;
+      add({ type: "output", content: files.length === 0 ? "Aucun fichier dans la session." : files.map(f => "  " + f.path + " (" + (f.size / 1024).toFixed(1) + " KB)").join("\n") });
+      setRunning(false);
+      return;
     }
     if (t.startsWith("cat ")) {
       const f = files.find(x => x.path === t.slice(4).trim());
       add({ type: f ? "output" : "error", content: f ? f.content.substring(0, 2000) : "Fichier non trouve" });
-      setRunning(false); return;
+      setRunning(false);
+      return;
     }
     if (t === "files") { setTab("files"); setRunning(false); return; }
 
     try {
-      const r = await fetch("/api/terminal/execute", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: t, agentId, userId }) });
+      const r = await fetch("/api/terminal/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: t, agentId, userId }),
+      });
       const d = await r.json();
       add({ type: d.success ? "output" : "error", content: d.output || JSON.stringify(d) });
-      if (d.files?.length > 0) { setFiles(p => [...p, ...d.files]); add({ type: "info", content: d.files.length + " fichier(s)." }); }
-    } catch { add({ type: "error", content: "Erreur reseau" }); }
+      if (d.files?.length > 0) {
+        setFiles(p => [...p, ...d.files]);
+        add({ type: "info", content: d.files.length + " fichier(s) genere(s)." });
+      }
+    } catch {
+      add({ type: "error", content: "Erreur reseau" });
+    }
     setRunning(false);
   }, [add, agentId, userId, files, running]);
 
@@ -63,7 +106,7 @@ export default function TerminalComponent({ agentId, userId }) {
             <div className="w-3 h-3 rounded-full bg-green-500" />
           </div>
           <TermIcon className="w-4 h-4 text-gray-400" />
-          <span className="text-sm font-medium text-gray-300">Agent Terminal</span>
+          <span className="text-sm font-medium text-gray-300">Gen3ia Terminal</span>
         </div>
         <button onClick={() => setTab(tab === "term" ? "files" : "term")}
           className={"px-3 py-1 text-xs rounded-lg flex items-center gap-1 " + (tab === "files" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white")}>
@@ -81,13 +124,13 @@ export default function TerminalComponent({ agentId, userId }) {
                 <pre className="whitespace-pre-wrap m-0">{l.content}</pre>
               </div>
             ))}
-            {running && <div className="text-yellow-400 animate-pulse">Execution...</div>}
+            {running && <div className="text-yellow-400 animate-pulse">Execution en cours...</div>}
           </div>
           <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-700" style={{ backgroundColor: "#0d0d0d" }}>
             <span className="text-green-400 font-mono text-sm">$</span>
             <input ref={ir} type="text" value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") { exec(input); setInput(""); } }} disabled={running}
-              placeholder="help..." className="flex-1 bg-transparent text-gray-200 font-mono text-sm outline-none placeholder-gray-600" />
+              placeholder="help pour les commandes..." className="flex-1 bg-transparent text-gray-200 font-mono text-sm outline-none placeholder-gray-600" />
             <button onClick={() => { exec(input); setInput(""); }} disabled={running || !input.trim()}
               className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-green-400 disabled:opacity-30">
               {running ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
