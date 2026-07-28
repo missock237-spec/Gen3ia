@@ -1,8 +1,8 @@
 {
-  "name": "genova-ai",
+  "name": "gen3ia",
   "version": "0.8.1",
   "private": true,
-  "description": "Genova AI Agent Operating System - SaaS Plateforme IA",
+  "description": "Gen3ia AI Agent Operating System - SaaS Plateforme IA",
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
