@@ -12,12 +12,21 @@ interface SecurityOptions {
   roles?: string[];
 }
 
-const JWT_SECRET = process.env.AUTH_SECRET || 'genova-dev-secret-change-in-production';
+const JWT_SECRET = process.env.AUTH_SECRET;
 
 export async function applySecurity(
   request: NextRequest,
   options: SecurityOptions = {}
 ): Promise<{ auth?: SecurityContext; error?: NextResponse }> {
+
+  if (!JWT_SECRET || JWT_SECRET.length < 32) {
+    console.error('[SECURITY] AUTH_SECRET manquant ou trop court');
+    if (options.requireAuth) {
+      return { error: NextResponse.json({ error: 'Erreur de configuration serveur' }, { status: 500 }) };
+    }
+    return { auth: { userId: 'anonymous', role: 'guest' } };
+  }
+
   const apiKey = request.headers.get('x-api-key');
   const authHeader = request.headers.get('authorization');
 
@@ -53,9 +62,7 @@ async function authenticateApiKey(apiKey: string): Promise<SecurityContext | nul
     });
     if (!key || !key.user) return null;
     return { userId: key.user.id, role: key.user.role };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function authenticateToken(token: string): Promise<SecurityContext | null> {
@@ -67,15 +74,10 @@ async function authenticateToken(token: string): Promise<SecurityContext | null>
     });
     if (!user) return null;
     return { userId: user.id, role: user.role };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
-function validateRole(
-  auth: SecurityContext,
-  options: SecurityOptions
-): { auth: SecurityContext; error?: NextResponse } {
+function validateRole(auth: SecurityContext, options: SecurityOptions): { auth: SecurityContext; error?: NextResponse } {
   if (options.roles && !options.roles.includes(auth.role)) {
     return {
       auth,
