@@ -1,4 +1,4 @@
-# 🔒 Politique de Sécurité — Genova
+# 🔒 Politique de Sécurité — Gen3ia
 
 ## Versions supportées
 
@@ -13,7 +13,7 @@ Si vous découvrez une vulnérabilité de sécurité dans Genova, merci de nous 
 
 **Ne créez pas d'issue publique.** Envoyez un email à :
 
-📧 **security@genova.ai**
+📧 **security@gen3ia**
 
 ### Notre engagement
 
