@@ -1,26 +1,43 @@
 import { createTranslator } from 'next-intl';
 
-export type Locale = 'fr' | 'en' | 'pt';
+export type Locale = 'fr' | 'en' | 'pt' | 'ar';
 
-export const LOCALES: Locale[] = ['fr', 'en', 'pt'];
+export const LOCALES: Locale[] = ['fr', 'en', 'pt', 'ar'];
 export const DEFAULT_LOCALE: Locale = 'fr';
 
+// Langues avec lecture RTL (Right-to-Left)
+export const RTL_LOCALES: Locale[] = ['ar'];
+
+export function isRTL(locale: Locale): boolean {
+  return RTL_LOCALES.includes(locale);
+}
+
 export const LOCALE_NAMES: Record<Locale, string> = {
-  fr: 'Français',
+  fr: 'Francais',
   en: 'English',
-  pt: 'Português',
+  pt: 'Portugues',
+  ar: 'العربية',
 };
 
 export const LOCALE_FLAGS: Record<Locale, string> = {
   fr: '🇫🇷',
   en: '🇬🇧',
   pt: '🇵🇹',
+  ar: '🇸🇦',
+};
+
+export const LOCALE_DIRS: Record<Locale, 'ltr' | 'rtl'> = {
+  fr: 'ltr',
+  en: 'ltr',
+  pt: 'ltr',
+  ar: 'rtl',
 };
 
 export const LOCALE_MARKETS: Record<Locale, string[]> = {
-  fr: ['Cameroun', 'Côte d\'Ivoire', 'Sénégal', 'RDC', 'Mali', 'Burkina Faso', 'France', 'Belgique', 'Suisse'],
+  fr: ['Cameroun', "Cote d'Ivoire", 'Senegal', 'RDC', 'Mali', 'Burkina Faso', 'France', 'Belgique', 'Suisse'],
   en: ['Nigeria', 'Ghana', 'Kenya', 'South Africa', 'Uganda', 'Tanzania', 'UK', 'USA'],
-  pt: ['Angola', 'Mozambique', 'Portugal', 'Brésil'],
+  pt: ['Angola', 'Mozambique', 'Portugal', 'Bresil'],
+  ar: ['Maroc', 'Algerie', 'Tunisie', 'Egypte', 'Mauritanie', 'Djibouti', 'Comores', 'Soudan'],
 };
 
 export function getLocaleFromPath(path: string): Locale {
@@ -44,158 +61,3 @@ export function getLocalizedPath(path: string, locale: Locale): string {
   const cleanPath = getPathWithoutLocale(path);
   return `/${locale}${cleanPath === '/' ? '' : cleanPath}`;
 }
-
-export const messages = {
-  fr: {
-    nav: {
-      dashboard: 'Tableau de bord',
-      agents: 'Agents',
-      billing: 'Facturation',
-      settings: 'Paramètres',
-      admin: 'Administration',
-    },
-    auth: {
-      login: 'Connexion',
-      register: 'Inscription',
-      logout: 'Déconnexion',
-      email: 'Email',
-      password: 'Mot de passe',
-      forgotPassword: 'Mot de passe oublié ?',
-      noAccount: 'Pas encore de compte ?',
-      hasAccount: 'Déjà un compte ?',
-    },
-    agents: {
-      create: 'Créer un agent',
-      myAgents: 'Mes agents',
-      noAgents: 'Aucun agent pour le moment',
-      chat: 'Discussion',
-      configure: 'Configuration',
-    },
-    billing: {
-      plans: 'Forfaits',
-      current: 'Forfait actuel',
-      upgrade: 'Passer à',
-      credits: 'Crédits',
-      purchase: 'Acheter des crédits',
-    },
-    common: {
-      loading: 'Chargement...',
-      save: 'Enregistrer',
-      cancel: 'Annuler',
-      delete: 'Supprimer',
-      confirm: 'Confirmer',
-      search: 'Rechercher',
-      noResults: 'Aucun résultat',
-      error: 'Une erreur est survenue',
-      success: 'Opération réussie',
-    },
-    ads: {
-      close: 'Fermer',
-      reward: 'crédit gagné',
-      upgrade: 'Passer à Pro pour une expérience sans pub',
-      watchToSupport: 'Regardez cette pub pour nous soutenir',
-    },
-  },
-  en: {
-    nav: {
-      dashboard: 'Dashboard',
-      agents: 'Agents',
-      billing: 'Billing',
-      settings: 'Settings',
-      admin: 'Admin',
-    },
-    auth: {
-      login: 'Login',
-      register: 'Sign Up',
-      logout: 'Logout',
-      email: 'Email',
-      password: 'Password',
-      forgotPassword: 'Forgot password?',
-      noAccount: 'Don\'t have an account?',
-      hasAccount: 'Already have an account?',
-    },
-    agents: {
-      create: 'Create agent',
-      myAgents: 'My agents',
-      noAgents: 'No agents yet',
-      chat: 'Chat',
-      configure: 'Configure',
-    },
-    billing: {
-      plans: 'Plans',
-      current: 'Current plan',
-      upgrade: 'Upgrade to',
-      credits: 'Credits',
-      purchase: 'Buy credits',
-    },
-    common: {
-      loading: 'Loading...',
-      save: 'Save',
-      cancel: 'Cancel',
-      delete: 'Delete',
-      confirm: 'Confirm',
-      search: 'Search',
-      noResults: 'No results',
-      error: 'An error occurred',
-      success: 'Operation successful',
-    },
-    ads: {
-      close: 'Close',
-      reward: 'credit earned',
-      upgrade: 'Go Pro for an ad-free experience',
-      watchToSupport: 'Watch this ad to support us',
-    },
-  },
-  pt: {
-    nav: {
-      dashboard: 'Painel',
-      agents: 'Agentes',
-      billing: 'Faturação',
-      settings: 'Configurações',
-      admin: 'Administração',
-    },
-    auth: {
-      login: 'Entrar',
-      register: 'Registrar',
-      logout: 'Sair',
-      email: 'Email',
-      password: 'Senha',
-      forgotPassword: 'Esqueceu a senha?',
-      noAccount: 'Não tem conta?',
-      hasAccount: 'Já tem conta?',
-    },
-    agents: {
-      create: 'Criar agente',
-      myAgents: 'Meus agentes',
-      noAgents: 'Nenhum agente ainda',
-      chat: 'Conversa',
-      configure: 'Configurar',
-    },
-    billing: {
-      plans: 'Planos',
-      current: 'Plano atual',
-      upgrade: 'Migrar para',
-      credits: 'Créditos',
-      purchase: 'Comprar créditos',
-    },
-    common: {
-      loading: 'Carregando...',
-      save: 'Salvar',
-      cancel: 'Cancelar',
-      delete: 'Excluir',
-      confirm: 'Confirmar',
-      search: 'Pesquisar',
-      noResults: 'Sem resultados',
-      error: 'Ocorreu um erro',
-      success: 'Operação bem-sucedida',
-    },
-    ads: {
-      close: 'Fechar',
-      reward: 'crédito ganho',
-      upgrade: 'Mude para Pro para uma experiência sem anúncios',
-      watchToSupport: 'Assista este anúncio para nos apoiar',
-    },
-  },
-} as const;
-
-export type Messages = typeof messages['fr'];
