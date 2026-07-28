@@ -75,7 +75,7 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: siteUrl,
-    languages: { 'fr-FR': siteUrl, 'en-US': `${siteUrl}/en` },
+    languages: { 'fr-FR': siteUrl, 'en-US': `${siteUrl}/en`, 'ar-SA': `${siteUrl}/ar` },
   },
   formatDetection: { telephone: true, date: true, address: true, email: true, url: true },
   other: {
