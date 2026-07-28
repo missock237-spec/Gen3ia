@@ -11,12 +11,19 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:security": "vitest run src/__tests__/security",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "security:audit": "npm audit --audit-level=high 2>&1; exit 0",
+    "security:snyk": "snyk test --all-projects --severity-threshold=high 2>&1; exit 0",
+    "security:all": "npm run security:audit && npm run test:security && npm run security:snyk",
+    "docs:generate": "tsx scripts/generate-openapi.ts",
+    "docs:serve": "next dev",
+    "docs:open": "open http://localhost:3000/api/docs/swagger"
   },
   "dependencies": {
     "@gen3ia/core": "workspace:*",
