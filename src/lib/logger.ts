@@ -6,7 +6,7 @@ class Logger {
   private isProd = process.env.NODE_ENV === 'production';
   private isTest = process.env.NODE_ENV === 'test';
 
-  constructor(service: string = 'genova') {
+  constructor(service: string = 'gen3ia') {
     this.service = service;
   }
 
