@@ -69,7 +69,7 @@ function AppContent() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <p className="text-sm text-muted-foreground">
-          {isLoading ? 'Chargement de Genova...' : 'Redirection vers la connexion...'}
+          {isLoading ? 'Chargement de Gen3ia...' : 'Redirection vers la connexion...'}
         </p>
       </div>
     );
