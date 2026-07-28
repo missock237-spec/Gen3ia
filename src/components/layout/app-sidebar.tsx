@@ -48,7 +48,7 @@ export function AppSidebar() {
         {!collapsed && (
           <Link href="/" className="flex items-center gap-2 font-bold text-lg">
             <Sparkles className="h-5 w-5 text-primary" />
-            <span>Genova</span>
+            <span>Gen3ia</span>
           </Link>
         )}
         <button
