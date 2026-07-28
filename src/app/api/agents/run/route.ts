@@ -1,7 +1,7 @@
 // ============================================================
 // POST /api/agents/run — Executer un agent (ReAct Loop)
 // Boucle ReAct complete : Think -> Act -> Observe
-// Avec appel LLM reel (OpenAI), checkpointing, supervisor, logs
+// Utilise le LLM Gateway (cache + fallback multi-provider)
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,13 +12,10 @@ import { supervisor } from "@/lib/agent/supervisor";
 import { rateLimiter } from "@/lib/rate-limiter";
 import { executeAgentSchema } from "@/lib/validation";
 import { handleApiError } from "@/lib/errors";
+import { callLLM } from "@/lib/llm";
 import { ZodError } from "zod";
 
 const log = createLogger('agent-run');
-
-const LLM_API_KEY = process.env.OPENAI_API_KEY || process.env.LLM_API_KEY;
-const LLM_MODEL = process.env.LLM_MODEL || 'gpt-4o-mini';
-const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://api.openai.com/v1';
 
 const MAX_ITERATIONS = 25;
 const MAX_COST = 1.0;
@@ -35,61 +32,13 @@ interface ReActStep {
   timestamp: string;
 }
 
-async function callLLM(
-  systemPrompt: string,
-  messages: Array<{ role: string; content: string }>,
-  signal?: AbortSignal
-): Promise<{ content: string; tokens: number }> {
-  if (!LLM_API_KEY) {
-    const lastMsg = messages[messages.length - 1]?.content || '';
-    const idx = Math.floor(Math.random() * 3) + 1;
-    return {
-      content: [
-        `THOUGHT: Analyse de \"${lastMsg.slice(0, 80)}\" - je dois traiter cette demande.\nACTION: process_input\nOBSERVATION: Etape 1/3 effectuee.`,
-        `THOUGHT: Verification des donnees. Tout semble coherent.\nACTION: validate\nOBSERVATION: Etape 2/3 - validation OK.`,
-        `THOUGHT: Tache completee avec succes.\nACTION: finalize\nOBSERVATION: Etape 3/3 - execution terminee.`,
-      ][idx % 3],
-      tokens: 50,
-    };
-  }
-
-  const response = await fetch(`${LLM_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${LLM_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages,
-      ],
-      max_tokens: 1024,
-      temperature: 0.7,
-    }),
-    signal: signal || AbortSignal.timeout(30000),
-  });
-
-  if (!response.ok) {
-    const err = await response.text().catch(() => 'unknown');
-    throw new Error(`LLM API error (${response.status}): ${err.slice(0, 200)}`);
-  }
-
-  const data = await response.json();
-  return {
-    content: data.choices?.[0]?.message?.content || '',
-    tokens: data.usage?.total_tokens || 0,
-  };
-}
-
 export async function POST(request: NextRequest) {
   try {
     const identifier = request.headers.get("x-forwarded-for") ??
       request.headers.get("x-real-ip") ??
       "127.0.0.1";
 
-    const { allowed, remaining, resetIn } = await rateLimiter.check(identifier, "/api/agents/run");
+    const { allowed, resetIn } = await rateLimiter.check(identifier, "/api/agents/run");
     if (!allowed) {
       return NextResponse.json(
         { error: "Trop de requetes", retryAfter: resetIn },
@@ -175,12 +124,11 @@ export async function POST(request: NextRequest) {
 
     const steps: ReActStep[] = [];
     const messages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: input },
     ];
 
     while (iteration < MAX_ITERATIONS) {
-      const abortSignal = AbortSignal.timeout(30000);
-
       if (iteration > 0) {
         const lastStep = steps[steps.length - 1];
         const check = supervisor.recordIteration({
@@ -203,7 +151,16 @@ export async function POST(request: NextRequest) {
 
       let llmResponse: { content: string; tokens: number };
       try {
-        llmResponse = await callLLM(systemPrompt, messages, abortSignal);
+        // Utiliser le LLM Gateway (cache + fallback multi-provider)
+        const result = await callLLM({
+          messages: messages.map(m => ({ role: m.role as 'system' | 'user' | 'assistant', content: m.content })),
+          maxTokens: 1024,
+          temperature: 0.7,
+          signal: AbortSignal.timeout(30000),
+        }, {
+          tag: `agent-run:${agentId}`,
+        });
+        llmResponse = { content: result.content, tokens: result.tokens };
       } catch (llmError) {
         const msg = llmError instanceof Error ? llmError.message : String(llmError);
         log.error('LLM call failed', { agentId, sessionId, iteration, error: msg });
@@ -241,9 +198,9 @@ export async function POST(request: NextRequest) {
       steps.push(step);
       messages.push({ role: 'assistant', content: llmResponse.content });
 
+      // Checkpoint à chaque étape
       await checkpointManager.save({
-        agentId,
-        sessionId,
+        agentId, sessionId,
         step: iteration,
         context: { lastInput: input, thought, action },
         memory: [
@@ -254,19 +211,10 @@ export async function POST(request: NextRequest) {
           action: s.action, input: s.actionInput,
           output: s.observation, timestamp: s.timestamp, cost: s.cost,
         })),
-        totalCost,
-        totalTokens,
+        totalCost, totalTokens,
       });
 
-      if (iteration >= MAX_ITERATIONS) {
-        log.info('agent_max_iterations', { agentId, sessionId, iteration });
-        break;
-      }
-
-      if (iteration >= 3) {
-        log.info('agent_completed', { agentId, sessionId, steps: iteration, totalCost, totalTokens });
-        break;
-      }
+      if (iteration >= MAX_ITERATIONS || iteration >= 3) break;
     }
 
     if (steps.length > 0) {
