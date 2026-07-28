@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { supervisor } from "@/lib/agent/supervisor";
 import { execSync } from "child_process";
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from "fs";
+import { join } from "path";
 
 const BLOCKED_COMMANDS = [
   "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){ :|:& };:",
@@ -9,14 +11,26 @@ const BLOCKED_COMMANDS = [
   "shutdown", "reboot", "halt",
 ];
 
+const SUDO_COMMANDS = [
+  "apt", "apt-get", "dpkg", "systemctl", "service",
+  "npm install -g", "pip install", "gem install",
+  "docker", "docker-compose", "kubectl",
+];
+
+const WORKSPACE = "/tmp/gen3ia-workspace";
+
 function isBlocked(cmd: string): boolean {
   return BLOCKED_COMMANDS.some(b => cmd.includes(b));
+}
+
+function needsSudo(cmd: string): boolean {
+  return SUDO_COMMANDS.some(s => cmd.startsWith(s));
 }
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
-    const { command, agentId, userId } = await request.json();
+    const { command, agentId, userId, sudoToken } = await request.json();
     if (!command) return NextResponse.json({ success: false, output: "Commande requise" }, { status: 400 });
 
     supervisor.startTask("Terminal: " + command.substring(0, 100));
@@ -25,7 +39,7 @@ export async function POST(request: NextRequest) {
     const files: any[] = [];
     let success = true;
 
-    // Commandes locales gérées par le frontend — on les exclut
+    // Commandes locales frontend
     if (["clear", "help", "ls", "files"].includes(cmd) || cmd.startsWith("cat ")) {
       return NextResponse.json({ success: true, output: "[Commande locale traitee par le terminal]", duration: 0 });
     }
@@ -46,15 +60,62 @@ export async function POST(request: NextRequest) {
       const content = "// " + name + " - Genere par Gen3ia Agent\n// " + new Date().toISOString() + "\n\n" + (tpl[ext] || "// Contenu genere\n");
       files.push({ path: "/workspace/" + name, content, language: ext, action: "create", size: content.length });
       output = "Fichier cree: " + name + " (" + (content.length / 1024).toFixed(1) + " KB)";
+
+    // === EDITEUR DE FICHIERS INTEGRE ===
+    } else if (cmd.startsWith("edit ")) {
+      const parts = command.split(" ");
+      if (parts.length < 3) {
+        output = "Usage: edit <chemin> <contenu>\nOu: edit <chemin> (pour ouvrir un fichier existant)";
+      } else {
+        const filePath = parts[1];
+        const content = parts.slice(2).join(" ");
+        const fullPath = filePath.startsWith("/") ? filePath : join(WORKSPACE, filePath);
+        const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        writeFileSync(fullPath, content, "utf-8");
+        const stats = existsSync(fullPath) ? require("fs").statSync(fullPath) : null;
+        files.push({ path: fullPath, content, size: content.length, action: "edit" });
+        output = `Fichier modifie: ${fullPath} (${(content.length / 1024).toFixed(1)} KB)`;
+      }
+
+    // === LECTURE DE FICHIER ===
+    } else if (cmd.startsWith("read ") || cmd.startsWith("view ")) {
+      const filePath = command.split(" ").slice(1).join(" ").trim();
+      const fullPath = filePath.startsWith("/") ? filePath : join(WORKSPACE, filePath);
+      if (!existsSync(fullPath)) {
+        output = "Fichier introuvable: " + fullPath;
+        success = false;
+      } else {
+        const content = readFileSync(fullPath, "utf-8");
+        files.push({ path: fullPath, content, size: content.length, action: "read" });
+        output = content;
+      }
+
+    // === SUPPRESSION DE FICHIER ===
+    } else if (cmd.startsWith("delete ") || cmd.startsWith("rm ")) {
+      const filePath = command.split(" ").slice(1).join(" ").trim();
+      const fullPath = filePath.startsWith("/") ? filePath : join(WORKSPACE, filePath);
+      if (!existsSync(fullPath)) {
+        output = "Fichier introuvable: " + fullPath;
+        success = false;
+      } else {
+        unlinkSync(fullPath);
+        output = `Fichier supprime: ${fullPath}`;
+      }
+
+    // === COMMANDES SYSTEME ===
     } else {
-      // === EXECUTION REELLE DES COMMANDES SYSTEME ===
       if (isBlocked(command)) {
         output = "[SECURITE] Commande bloquee pour des raisons de securite.";
+        success = false;
+      } else if (needsSudo(cmd) && !sudoToken) {
+        output = "[SUDO] Cette commande necessite une elevation de privileges.\nUtilisez: " + command + " avec le code de validation envoye.";
+        // Le frontend affichera un dialogue de confirmation
         success = false;
       } else {
         try {
           const result = execSync(command, {
-            cwd: "/tmp",
+            cwd: WORKSPACE,
             timeout: 10000,
             maxBuffer: 1024 * 100,
             encoding: "utf-8",
@@ -91,6 +152,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success,
       output,
+      sudoRequired: !success && needsSudo(cmd),
       files: files.length > 0 ? files : undefined,
       duration: Date.now() - startTime,
     });
