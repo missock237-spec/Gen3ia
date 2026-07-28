@@ -2,18 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
+  Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertCircle, Check, Copy, Eye, EyeOff, Key, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, Check, Copy, Eye, EyeOff, Key, Plus, RefreshCw, Trash2, Shield } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface ApiKey {
@@ -25,11 +20,19 @@ interface ApiKey {
   scopes: string[];
 }
 
+const SCOPE_OPTIONS = [
+  { value: 'agents:read', label: 'Lecture agents' },
+  { value: 'agents:write', label: 'Écriture agents' },
+  { value: 'agents:execute', label: 'Exécution agents' },
+  { value: 'billing:read', label: 'Lecture facturation' },
+  { value: 'admin', label: 'Administration' },
+];
+
 export function ApiKeysManager() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [newKeyName, setNewKeyName] = useState('');
-  const [newKeyScope, setNewKeyScope] = useState('agents:read,agents:execute');
+  const [selectedScopes, setSelectedScopes] = useState<Set<string>>(new Set(['agents:read', 'agents:execute']));
   const [showKey, setShowKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,12 +46,19 @@ export function ApiKeysManager() {
       setKeys(data.keys || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load keys');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchKeys(); }, [fetchKeys]);
+
+  const toggleScope = (scope: string) => {
+    setSelectedScopes(prev => {
+      const next = new Set(prev);
+      if (next.has(scope)) next.delete(scope);
+      else next.add(scope);
+      return next;
+    });
+  };
 
   const createKey = async () => {
     if (!newKeyName.trim()) return;
@@ -57,7 +67,7 @@ export function ApiKeysManager() {
       const res = await fetch('/api/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newKeyName, scopes: newKeyScope.split(',') }),
+        body: JSON.stringify({ name: newKeyName, scopes: Array.from(selectedScopes) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create key');
@@ -70,6 +80,7 @@ export function ApiKeysManager() {
   };
 
   const deleteKey = async (id: string) => {
+    if (!confirm('Supprimer cette clé API ? Les services qui l\'utilisent seront coupés.')) return;
     try {
       const res = await fetch('/api/keys', {
         method: 'DELETE',
@@ -88,7 +99,7 @@ export function ApiKeysManager() {
       await navigator.clipboard.writeText(key);
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 2000);
-    } catch { /* ignore */ }
+    } catch {}
   };
 
   const maskKey = (key: string) => {
@@ -106,10 +117,10 @@ export function ApiKeysManager() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
-            API Keys
+            Clés API
           </CardTitle>
           <CardDescription>
-            Gérez vos clés API pour accéder à Genova via l'API REST
+            Gérez vos clés API pour accéder à Gen3ia via l&apos;API REST et MCP
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -128,14 +139,8 @@ export function ApiKeysManager() {
               <AlertDescription className="text-green-600">
                 <p className="mb-2">Copiez votre clé maintenant. Elle ne sera plus jamais affichée.</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 rounded bg-green-100 dark:bg-green-900 p-2 text-xs font-mono break-all">
-                    {newlyCreatedKey}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => { copyToClipboard(newlyCreatedKey); setNewlyCreatedKey(null); }}
-                  >
+                  <code className="flex-1 rounded bg-green-100 dark:bg-green-900 p-2 text-xs font-mono break-all">{newlyCreatedKey}</code>
+                  <Button size="sm" variant="outline" onClick={() => { copyToClipboard(newlyCreatedKey); setNewlyCreatedKey(null); }}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
@@ -151,40 +156,34 @@ export function ApiKeysManager() {
           ) : (
             <div className="space-y-3">
               {keys.map((apiKey) => (
-                <div
-                  key={apiKey.id}
-                  className="flex items-center justify-between rounded-lg border p-4"
-                >
+                <div key={apiKey.id} className="flex items-center justify-between rounded-lg border p-4">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{apiKey.name}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <code className="text-xs font-mono text-muted-foreground">
                         {showKey === apiKey.id ? apiKey.key : maskKey(apiKey.key)}
                       </code>
-                      <button
-                        onClick={() => setShowKey(showKey === apiKey.id ? null : apiKey.id)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
+                      <button onClick={() => setShowKey(showKey === apiKey.id ? null : apiKey.id)} className="text-muted-foreground hover:text-foreground">
                         {showKey === apiKey.id ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                       </button>
-                      <button
-                        onClick={() => copyToClipboard(apiKey.key)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
+                      <button onClick={() => copyToClipboard(apiKey.key)} className="text-muted-foreground hover:text-foreground">
                         {copiedKey === apiKey.key ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                       </button>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Créée le {new Date(apiKey.createdAt).toLocaleDateString()}
-                      {apiKey.lastUsed ? ` · Utilisée le ${new Date(apiKey.lastUsed).toLocaleDateString()}` : ' · Jamais utilisée'}
+                    <div className="flex gap-1 mt-1.5 flex-wrap">
+                      {apiKey.scopes?.map((scope) => (
+                        <Badge key={scope} variant="outline" className="text-[10px] h-5">
+                          <Shield className="h-3 w-3 mr-1" />
+                          {scope}
+                        </Badge>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Créée le {new Date(apiKey.createdAt).toLocaleDateString('fr-FR')}
+                      {apiKey.lastUsed ? ` · Dernière utilisation le ${new Date(apiKey.lastUsed).toLocaleDateString('fr-FR')}` : ' · Jamais utilisée'}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteKey(apiKey.id)}
-                    className="text-destructive hover:text-destructive ml-4"
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => deleteKey(apiKey.id)} className="text-destructive hover:text-destructive ml-4">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -192,31 +191,35 @@ export function ApiKeysManager() {
             </div>
           )}
         </CardContent>
-        <CardFooter className="flex-col space-y-4">
-          <div className="flex w-full items-end gap-4">
+        <CardFooter className="flex-col space-y-4 items-stretch">
+          <div className="flex flex-col sm:flex-row w-full gap-4">
             <div className="flex-1">
               <Label htmlFor="key-name">Nom de la clé</Label>
-              <Input
-                id="key-name"
-                placeholder="Ma clé API"
-                value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
-              />
+              <Input id="key-name" placeholder="Ma clé API" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} />
             </div>
             <div className="flex-1">
-              <Label htmlFor="key-scope">Scopes</Label>
-              <Input
-                id="key-scope"
-                placeholder="agents:read,agents:execute"
-                value={newKeyScope}
-                onChange={(e) => setNewKeyScope(e.target.value)}
-              />
+              <Label>Permissions</Label>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {SCOPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => toggleScope(opt.value)}
+                    className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${
+                      selectedScopes.has(opt.value)
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <Button onClick={createKey} disabled={!newKeyName.trim()}>
-              <Plus className="h-4 w-4 mr-2" />
-              Créer
-            </Button>
           </div>
+          <Button onClick={createKey} disabled={!newKeyName.trim()} className="self-end">
+            <Plus className="h-4 w-4 mr-2" />
+            Créer la clé
+          </Button>
         </CardFooter>
       </Card>
     </div>
