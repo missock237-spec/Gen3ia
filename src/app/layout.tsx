@@ -4,13 +4,14 @@ import './globals.css';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { siteConfig } from '@/lib/seo/config';
+import { ErrorBoundary, ErrorProvider } from '@/components/error-boundary';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 const siteUrl = siteConfig.url;
 const siteName = siteConfig.name;
-const title = "gen3ia — Systeme d'exploitation pour agents IA";
+const title = "gen3ia - Systeme d'exploitation pour agents IA";
 const description = siteConfig.description;
 
 export const viewport: Viewport = {
@@ -97,7 +98,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          {children}
+          <ErrorProvider>
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </ErrorProvider>
           <Toaster richColors position="top-right" />
         </ThemeProvider>
         <script
