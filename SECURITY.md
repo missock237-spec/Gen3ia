@@ -9,11 +9,11 @@
 
 ## Signaler une vulnérabilité
 
-Si vous découvrez une vulnérabilité de sécurité dans Genova, merci de nous en informer rapidement.
+Si vous découvrez une vulnérabilité de sécurité dans Gen3ia, merci de nous en informer rapidement.
 
 **Ne créez pas d'issue publique.** Envoyez un email à :
 
-📧 **security@gen3ia**
+📧 **security@gen3ia.ai**
 
 ### Notre engagement
 
