@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTheme } from "next-themes";
-import { Terminal as TermIcon, Copy, Play, Square, FileCode } from "lucide-react";
+import { Terminal as TermIcon, Copy, Play, Square, FileCode, ArrowUp, ArrowDown } from "lucide-react";
 
 function langColor(p: string) {
   const m: Record<string, string> = { ts: "text-blue-400", tsx: "text-blue-400", js: "text-yellow-400", py: "text-green-400" };
@@ -29,11 +29,15 @@ interface FileEntry {
   action?: string;
 }
 
+const MAX_HISTORY = 50;
+
 export default function TerminalComponent({ agentId, userId }: TerminalProps) {
   const [lines, setLines] = useState<Line[]>([
     { id: "w", type: "system", content: "Gen3ia Terminal v1.0\nCommandes: help, clear, ls, cat <f>, status, files, history, create <f>\nToutes les autres commandes sont executees en temps reel.", ts: Date.now() }
   ]);
   const [input, setInput] = useState("");
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
   const [running, setRunning] = useState(false);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [tab, setTab] = useState<"term" | "files">("term");
@@ -55,13 +59,22 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
     setRunning(true);
     add({ type: "input", content: "$ " + t });
 
+    // Ajouter à l'historique
+    setHistory(p => [t, ...p.filter(h => h !== t)].slice(0, MAX_HISTORY));
+    setHistoryIdx(-1);
+
     if (t === "clear") {
       setLines([{ id: "c", type: "system", content: "Terminal nettoye.", ts: Date.now() }]);
       setRunning(false);
       return;
     }
     if (t === "help") {
-      add({ type: "output", content: "Commandes locales: help, clear, ls, cat <fichier>, files, history\nToutes les autres commandes sont executees en temps reel sur le serveur (bash)." });
+      add({ type: "output", content: "Commandes locales: help, clear, ls, cat <fichier>, files, history\nToutes les autres commandes sont executees en temps reel sur le serveur (bash).\n\nNavigation: ↑ (fleche haut) historique precedent, ↓ (fleche bas) suivant" });
+      setRunning(false);
+      return;
+    }
+    if (t === "history") {
+      add({ type: "output", content: history.length === 0 ? "Aucun historique." : history.map((h, i) => `  ${i + 1}. ${h}`).join("\n") });
       setRunning(false);
       return;
     }
@@ -94,7 +107,37 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
       add({ type: "error", content: "Erreur reseau" });
     }
     setRunning(false);
-  }, [add, agentId, userId, files, running]);
+  }, [add, agentId, userId, files, running, history]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      exec(input);
+      setInput("");
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (history.length === 0) return;
+      const newIdx = Math.min(historyIdx + 1, history.length - 1);
+      setHistoryIdx(newIdx);
+      setInput(history[newIdx] || "");
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (historyIdx <= 0) {
+        setHistoryIdx(-1);
+        setInput("");
+        return;
+      }
+      const newIdx = historyIdx - 1;
+      setHistoryIdx(newIdx);
+      setInput(history[newIdx] || "");
+      return;
+    }
+  };
 
   return (
     <div className={"rounded-xl border overflow-hidden shadow-2xl " + (dark ? "bg-gray-950 border-gray-800" : "bg-gray-900 border-gray-700")}>
@@ -108,11 +151,18 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
           <TermIcon className="w-4 h-4 text-gray-400" />
           <span className="text-sm font-medium text-gray-300">Gen3ia Terminal</span>
         </div>
-        <button onClick={() => setTab(tab === "term" ? "files" : "term")}
-          className={"px-3 py-1 text-xs rounded-lg flex items-center gap-1 " + (tab === "files" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white")}>
-          <FileCode className="w-3 h-3" /> Fichiers
-          {files.length > 0 && <span className="bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{files.length}</span>}
-        </button>
+        <div className="flex items-center gap-2">
+          {history.length > 0 && (
+            <span className="text-[10px] text-gray-500">
+              <ArrowUp className="w-3 h-3 inline" /> <ArrowDown className="w-3 h-3 inline" />
+            </span>
+          )}
+          <button onClick={() => setTab(tab === "term" ? "files" : "term")}
+            className={"px-3 py-1 text-xs rounded-lg flex items-center gap-1 " + (tab === "files" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white")}>
+            <FileCode className="w-3 h-3" /> Fichiers
+            {files.length > 0 && <span className="bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{files.length}</span>}
+          </button>
+        </div>
       </div>
 
       {tab === "term" ? (
@@ -129,7 +179,7 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
           <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-700" style={{ backgroundColor: "#0d0d0d" }}>
             <span className="text-green-400 font-mono text-sm">$</span>
             <input ref={ir} type="text" value={input} onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") { exec(input); setInput(""); } }} disabled={running}
+              onKeyDown={handleKeyDown} disabled={running}
               placeholder="help pour les commandes..." className="flex-1 bg-transparent text-gray-200 font-mono text-sm outline-none placeholder-gray-600" />
             <button onClick={() => { exec(input); setInput(""); }} disabled={running || !input.trim()}
               className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-green-400 disabled:opacity-30">
@@ -175,8 +225,11 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
       )}
 
       <div className="flex items-center justify-between px-4 py-1 bg-gray-800 border-t border-gray-700 text-[10px] text-gray-500">
-        <span className={"inline-block w-1.5 h-1.5 rounded-full mr-1 " + (running ? "bg-yellow-500 animate-pulse" : "bg-green-500")} />{running ? "Execution" : "Pret"}
-        <span>Lignes: {lines.length} | Fichiers: {files.length}</span>
+        <span className={"inline-flex items-center gap-1 "}>
+          <span className={"inline-block w-1.5 h-1.5 rounded-full " + (running ? "bg-yellow-500 animate-pulse" : "bg-green-500")} />
+          {running ? "Execution" : "Pret"}
+        </span>
+        <span>Cmd: {history.length} | Lignes: {lines.length} | Fichiers: {files.length}</span>
       </div>
     </div>
   );
