@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "jsx": "react-jsx",
+    "outDir": ".next",
+    "rootDir": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@gen3ia/core": ["../../packages/core/src"],
+      "@gen3ia/core/*": ["../../packages/core/src/*"]
+    },
+    "plugins": [{ "name": "next" }],
+    "tsBuildInfoFile": ".next/tsbuildinfo",
+    "incremental": true,
+    "noEmit": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.spec.ts"]
+}
