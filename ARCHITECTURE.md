@@ -1,4 +1,4 @@
-# Genova AI — Architecture Guide
+# Gen3ia — Architecture Guide
 
 ## Vue d'ensemble
 
@@ -31,57 +31,57 @@ sequenceDiagram
 
     U->>A: Prompt
     A->>R: chat()
-    R->>L: requête LLM
-    L-->>R: réponse + tool_calls
+    R->>L: requete LLM
+    L-->>R: reponse + tool_calls
     R-->>A: AIResponse
     A->>T: execute tool
     T-->>A: tool result
     A->>R: chat() avec historique
-    R->>L: nouvelle requête LLM
-    L-->>R: réponse finale
+    R->>L: nouvelle requete LLM
+    L-->>R: reponse finale
     R-->>A: AIResponse
-    A-->>U: réponse
+    A-->>U: reponse
 ```
 
-## Rôle de BullMQ
+## Role de BullMQ
 
-BullMQ (via Redis) gère les tâches asynchrones :
+BullMQ (via Redis) gere les taches asynchrones :
 - Appels vocaux sortants
 - Analyse post-appel
-- Déductions de crédits
+- Deductions de credits
 - Notifications utilisateur
 
-## Rôle de PostgreSQL
+## Role de PostgreSQL
 
 - Utilisateurs, sessions, agents
 - Historique des conversations
-- Transactions de crédits
+- Transactions de credits
 - Campagnes publicitaires
 - Configurations Twilio
 
-## Flux de déduction des crédits
+## Flux de deduction des credits
 
 ```mermaid
 flowchart LR
-    T[Tâche exécutée] --> CE[CreditEngine.calculateTaskCost]
+    T[Tache executee] --> CE[CreditEngine.calculateTaskCost]
     CE --> CI[CreditIntegrator.deductForExecution]
-    CI --> CT[CreditTransaction créée]
-    CT --> BA[Balance utilisateur mise à jour]
-    CI --> AI[AICost enregistré]
+    CI --> CT[CreditTransaction creee]
+    CT --> BA[Balance utilisateur mise a jour]
+    CI --> AI[AICost enregistre]
 ```
 
-## Sécurité
+## Securite
 
-- Toutes les clés API chiffrées avec AES-256-GCM
-- Sessions utilisateur hashées avec SHA-256
+- Toutes les cles API chiffrees avec AES-256-GCM
+- Sessions utilisateur hachees avec SHA-256
 - Rate limiting par IP (100 req/min)
 - CSP strict dans le middleware
 - Webhooks Twilio avec validation HMAC
 
-## Déploiement
+## Deploiement
 
 - Next.js App Router
 - PostgreSQL (via Prisma ORM)
 - Redis (file BullMQ, cache)
 - Twilio (voix)
-- n8n (intégrations)
+- n8n (integrations)
