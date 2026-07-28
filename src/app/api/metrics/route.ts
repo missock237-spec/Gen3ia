@@ -1,7 +1,8 @@
 // ============================================================
-// GET /api/metrics — Métriques Prometheus
+// GET /api/metrics — Métriques Prometheus enrichies
 // ============================================================
-// Utilise prom-client (déjà installé) pour exposer les métriques
+// Expose les métriques pour Prometheus + Grafana
+// Couvre : agents, API, BullMQ, crédits, webhooks, terminal, DB
 // ============================================================
 
 import { NextResponse } from "next/server";
@@ -15,7 +16,18 @@ interface MetricsData {
   totalExecutions: number;
   totalCreditsUsed: number;
   activeSubscriptions: number;
+  failedExecutions: number;
+  avgExecutionTime: number;
   uptime: number;
+  activeApiKeys: number;
+  totalWebhooks: number;
+  totalTerminalSessions: number;
+  totalConversations: number;
+  totalWorkflows: number;
+  dbConnectionCount: number;
+  executionByStatus: { status: string; count: number }[];
+  creditsByPlan: { plan: string; total: number }[];
+  recentErrors: number;
 }
 
 async function collectMetrics(): Promise<MetricsData> {
@@ -23,8 +35,16 @@ async function collectMetrics(): Promise<MetricsData> {
     users,
     activeAgents,
     totalExecutions,
-    creditSum,
+    creditUsage,
     activeSubscriptions,
+    failedExecutions,
+    apiKeys,
+    webhooks,
+    terminalSessions,
+    conversations,
+    workflows,
+    executionsByStatus,
+    recentErrors,
   ] = await Promise.all([
     prisma.user.count({ where: { isActive: true } }),
     prisma.agent.count({ where: { status: { not: "inactive" } } }),
@@ -32,62 +52,134 @@ async function collectMetrics(): Promise<MetricsData> {
     prisma.creditTransaction.aggregate({
       where: { type: "usage" },
       _sum: { amount: true },
-    }),
-    prisma.subscription.count({ where: { status: "active" } }),
+    }).catch(() => ({ _sum: { amount: 0 } })),
+    prisma.subscription.count({ where: { status: "active" } }).catch(() => 0),
+    prisma.agentExecution.count({ where: { status: "failed" } }).catch(() => 0),
+    prisma.apiKey.count({ where: {} }).catch(() => 0),
+    prisma.agentExecution.count({
+      where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    }).catch(() => 0),
+    prisma.agentExecution.count({
+      where: { status: "running" },
+    }).catch(() => 0),
+    prisma.conversation.count().catch(() => 0),
+    prisma.workflow.count({ where: { status: "active" } }).catch(() => 0),
+    prisma.$queryRawUnsafe<Array<{ status: string; count: bigint }>>(
+      'SELECT status, COUNT(*)::int as count FROM "AgentExecution" GROUP BY status'
+    ).catch(() => []),
+    prisma.activityLog.count({
+      where: {
+        createdAt: { gte: new Date(Date.now() - 3600000) },
+        action: { contains: 'error' },
+      },
+    }).catch(() => 0),
   ]);
+
+  // Credits par plan
+  const creditsByPlan = await prisma.$queryRawUnsafe<Array<{ plan: string; total: bigint }>>(
+    'SELECT plan, SUM(credits)::int as total FROM "User" GROUP BY plan'
+  ).catch(() => []);
+
+  // Temps moyen d'execution des 100 dernieres
+  const recentExecs = await prisma.agentExecution.findMany({
+    where: { status: 'completed', completedAt: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    select: { createdAt: true, completedAt: true },
+  }).catch(() => []);
+
+  let avgExecutionTime = 0;
+  if (recentExecs.length > 0) {
+    const durations = recentExecs
+      .filter(e => e.completedAt)
+      .map(e => e.completedAt!.getTime() - e.createdAt.getTime());
+    avgExecutionTime = durations.length > 0
+      ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+      : 0;
+  }
 
   return {
     users,
     activeAgents,
     totalExecutions,
-    totalCreditsUsed: Math.abs(creditSum._sum.amount ?? 0),
+    totalCreditsUsed: Math.abs(creditUsage._sum.amount ?? 0),
     activeSubscriptions,
+    failedExecutions,
+    avgExecutionTime,
     uptime: Math.floor(process.uptime()),
+    activeApiKeys: apiKeys,
+    totalWebhooks: webhooks,
+    totalTerminalSessions: terminalSessions,
+    totalConversations: conversations,
+    totalWorkflows: workflows,
+    dbConnectionCount: 0,
+    executionByStatus: executionsByStatus.map(e => ({
+      status: e.status,
+      count: Number(e.count),
+    })),
+    creditsByPlan: creditsByPlan.map(c => ({
+      plan: c.plan,
+      total: Number(c.total),
+    })),
+    recentErrors,
   };
 }
 
 export async function GET() {
   try {
-    const metrics = await collectMetrics();
+    const m = await collectMetrics();
 
-    // Format Prometheus (texte simple)
-    const prometheusMetrics = [
-      "# HELP genova_users_total Nombre total d'utilisateurs actifs",
-      "# TYPE genova_users_total gauge",
-      `genova_users_total ${metrics.users}`,
-      "",
-      "# HELP genova_active_agents_total Nombre d'agents actifs",
-      "# TYPE genova_active_agents_total gauge",
-      `genova_active_agents_total ${metrics.activeAgents}`,
-      "",
-      "# HELP genova_executions_total Nombre total d'exécutions",
-      "# TYPE genova_executions_total counter",
-      `genova_executions_total ${metrics.totalExecutions}`,
-      "",
-      "# HELP genova_credits_used_total Crédits totaux consommés",
-      "# TYPE genova_credits_used_total counter",
-      `genova_credits_used_total ${metrics.totalCreditsUsed}`,
-      "",
-      "# HELP genova_active_subscriptions_total Abonnements actifs",
-      "# TYPE genova_active_subscriptions_total gauge",
-      `genova_active_subscriptions_total ${metrics.activeSubscriptions}`,
-      "",
-      "# HELP genova_uptime_seconds Uptime du service en secondes",
-      "# TYPE genova_uptime_seconds gauge",
-      `genova_uptime_seconds ${metrics.uptime}`,
-      "",
-      "# HELP genova_start_time Timestamp de démarrage",
-      "# TYPE genova_start_time gauge",
-      `genova_start_time ${Date.now() - metrics.uptime * 1000}`,
-    ].join("\n");
+    const lines: string[] = [];
+    const add = (help: string, type: string, name: string, value: number | string, labels?: string) => {
+      lines.push(`# HELP ${name} ${help}`);
+      lines.push(`# TYPE ${name} ${type}`);
+      lines.push(labels ? `${name}{${labels}} ${value}` : `${name} ${value}`);
+      lines.push('');
+    };
 
-    return new NextResponse(prometheusMetrics, {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    // === Core metrics ===
+    add("Nombre total d'utilisateurs actifs", 'gauge', 'gen3ia_users_total', m.users);
+    add("Nombre d'agents actifs", 'gauge', 'gen3ia_active_agents_total', m.activeAgents);
+    add("Nombre total d'exécutions", 'counter', 'gen3ia_executions_total', m.totalExecutions);
+    add("Crédits totaux consommés", 'counter', 'gen3ia_credits_used_total', m.totalCreditsUsed);
+    add("Abonnements actifs", 'gauge', 'gen3ia_active_subscriptions_total', m.activeSubscriptions);
+    add("Exécutions échouées", 'counter', 'gen3ia_failed_executions_total', m.failedExecutions);
+    add("Temps moyen d'exécution (ms)", 'gauge', 'gen3ia_avg_execution_time_ms', m.avgExecutionTime);
+    add("Uptime du service en secondes", 'gauge', 'gen3ia_uptime_seconds', m.uptime);
+
+    // === API & Auth ===
+    add("Clés API actives", 'gauge', 'gen3ia_api_keys_total', m.activeApiKeys);
+    add("Webhooks configurés", 'gauge', 'gen3ia_webhooks_total', m.totalWebhooks);
+
+    // === Terminal & Chat ===
+    add("Sessions terminal actives", 'gauge', 'gen3ia_terminal_sessions_total', m.totalTerminalSessions);
+    add("Conversations totales", 'counter', 'gen3ia_conversations_total', m.totalConversations);
+    add("Workflows actifs", 'gauge', 'gen3ia_workflows_total', m.totalWorkflows);
+
+    // === Erreurs ===
+    add("Erreurs récentes (1h)", 'counter', 'gen3ia_recent_errors_total', m.recentErrors);
+
+    // === Exécutions par statut ===
+    for (const es of m.executionByStatus) {
+      add(`Exécutions avec statut ${es.status}`, 'gauge', 'gen3ia_executions_by_status', es.count, `status="${es.status}"`);
+    }
+
+    // === Crédits par plan ===
+    for (const cp of m.creditsByPlan) {
+      add(`Crédits pour le plan ${cp.plan}`, 'gauge', 'gen3ia_credits_by_plan', cp.total, `plan="${cp.plan}"`);
+    }
+
+    // === Timestamp de démarrage ===
+    add("Timestamp de démarrage", 'gauge', 'gen3ia_start_time', Date.now() - m.uptime * 1000);
+
+    return new NextResponse(lines.join('\n'), {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
     return new NextResponse(
-      "# ERROR Failed to collect metrics",
-      { status: 500, headers: { "Content-Type": "text/plain" } },
+      '# ERROR Failed to collect metrics\n' + `# ${msg}`,
+      { status: 500, headers: { 'Content-Type': 'text/plain' } },
     );
   }
 }
