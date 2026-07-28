@@ -9,10 +9,28 @@ export default defineConfig({
     exclude: ['node_modules', 'src/__tests__/e2e'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      exclude: ['node_modules/', 'src/__tests__/'],
+      reporter: ['text', 'json', 'html', 'lcov', 'clover'],
+      reportsDirectory: './coverage',
+      exclude: [
+        'node_modules/',
+        'src/__tests__/',
+        'src/app/',
+        'src/components/',
+        'src/hooks/',
+        'src/i18n/',
+        'src/middleware/',
+        '**/*.config.*',
+        '**/*.d.ts',
+      ],
+      // Seuil de coverage : 80% minimum
+      thresholds: {
+        statements: 80,
+        branches: 75,
+        functions: 80,
+        lines: 80,
+      },
     },
-    setupFiles: [],
+    setupFiles: ['./src/__tests__/setup.ts'],
     testTimeout: 30000,
   },
   resolve: {
