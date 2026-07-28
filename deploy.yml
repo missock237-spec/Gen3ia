@@ -1,0 +1,41 @@
+name: Gen3ia Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        required: true
+        default: production
+permissions:
+  contents: read
+jobs:
+  deploy-vercel:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: --prod
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build Docker
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          tags: gen3ia:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
