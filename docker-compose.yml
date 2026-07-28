@@ -1,6 +1,6 @@
 # ============================================================
 # Docker Compose — Gen3ia AI Agent OS
-# Services: app, postgres, redis
+# Services: app, postgres, redis, qdrant
 # ============================================================
 
 version: "3.9"
@@ -25,7 +25,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # === Redis ===
+  # === Redis (BullMQ + Cache) ===
   redis:
     image: redis:7-alpine
     container_name: gen3ia-redis
@@ -39,6 +39,28 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # === Qdrant (Vector Database pour la mémoire sémantique) ===
+  qdrant:
+    image: qdrant/qdrant:v1.13.5
+    container_name: gen3ia-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - ./monitoring/qdrant/config.yaml:/qdrant/config/production.yaml:ro
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__SERVICE__HTTP_PORT: 6333
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gen3ia-network
 
   # === Gen3ia App ===
   app:
@@ -54,6 +76,8 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://gen3ia:${POSTGRES_PASSWORD:-gen3ia_secret}@postgres:5432/gen3ia
       REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      VECTOR_STORE_TYPE: ${VECTOR_STORE_TYPE:-qdrant}
       AUTH_SECRET: ${AUTH_SECRET:-changer-en-production-32-caractères-minimum!!}
       NEXTAUTH_SECRET: ${AUTH_SECRET:-changer-en-production-32-caractères-minimum!!}
       NEXTAUTH_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
@@ -66,12 +90,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_started
     volumes:
       - gen3ia_workspace:/tmp/gen3ia-workspace
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.gen3ia.rule=Host(`${DOMAIN:-localhost}`)"
       - "traefik.http.services.gen3ia.loadbalancer.server.port=3000"
+    networks:
+      - gen3ia-network
 
   # === Traefik (Reverse Proxy optionnel) ===
   traefik:
@@ -86,11 +114,19 @@ services:
       - ./traefik.yml:/traefik.yml:ro
     profiles:
       - proxy
+    networks:
+      - gen3ia-network
 
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
+  qdrant_data:
+    driver: local
   gen3ia_workspace:
     driver: local
+
+networks:
+  gen3ia-network:
+    driver: bridge
