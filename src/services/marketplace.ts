@@ -1,5 +1,5 @@
 // ============================================================
-// MARKETPLACE — Store d'agents et templates Genova
+// MARKETPLACE — Store d'agents et templates Gen3ia
 // ============================================================
 // Publier, decouvrir et installer des agents, workflows
 // et templates crees par la communaute.
@@ -71,7 +71,7 @@ class MarketplaceService {
 
     if (item.price > 0) {
       const user = await prisma.user.findUnique({ where: { id: userId }, select: { credits: true } });
-      if (!user || user.credits < item.price) throw new Error("Credits insuffisants");
+      if (!user || (user.credits ?? 0) < item.price) throw new Error("Credits insuffisants");
       await prisma.user.update({ where: { id: userId }, data: { credits: { decrement: item.price } } });
     }
 
