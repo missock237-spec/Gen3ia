@@ -1,0 +1,14 @@
+# Worker BullMQ dédié
+FROM node:20-alpine
+RUN apk add --no-cache openssl postgresql-client
+RUN addgroup -S nodejs && adduser -S -G nodejs nextjs
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=ghcr.io/gen3ia/app:staging /app/node_modules ./node_modules
+COPY prisma ./prisma
+COPY src/workers ./src/workers
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+USER nextjs
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "src/workers/auto-worker.ts"]
