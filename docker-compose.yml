@@ -1,40 +1,96 @@
 # ============================================================
-# GENOVA — Docker Compose (développement local)
+# Docker Compose — Gen3ia AI Agent OS
+# Services: app, postgres, redis
 # ============================================================
 
+version: "3.9"
+
 services:
+  # === PostgreSQL ===
   postgres:
     image: postgres:16-alpine
-    container_name: genova-db
+    container_name: gen3ia-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: genova
-      POSTGRES_PASSWORD: genova_pass
-      POSTGRES_DB: genova
+      POSTGRES_USER: gen3ia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gen3ia_secret}
+      POSTGRES_DB: gen3ia
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U genova"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U gen3ia"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
+  # === Redis ===
   redis:
     image: redis:7-alpine
-    container_name: genova-redis
+    container_name: gen3ia-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - redisdata:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
 
+  # === Gen3ia App ===
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: gen3ia-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://gen3ia:${POSTGRES_PASSWORD:-gen3ia_secret}@postgres:5432/gen3ia
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:-changer-en-production-32-caractères-minimum!!}
+      NEXTAUTH_SECRET: ${AUTH_SECRET:-changer-en-production-32-caractères-minimum!!}
+      NEXTAUTH_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
+      SEED_DATABASE: ${SEED_DATABASE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - gen3ia_workspace:/tmp/gen3ia-workspace
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gen3ia.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.services.gen3ia.loadbalancer.server.port=3000"
+
+  # === Traefik (Reverse Proxy optionnel) ===
+  traefik:
+    image: traefik:v3
+    container_name: gen3ia-traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/traefik.yml:ro
+    profiles:
+      - proxy
+
 volumes:
-  pgdata:
-  redisdata:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  gen3ia_workspace:
+    driver: local
