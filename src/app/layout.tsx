@@ -10,7 +10,7 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 
 const siteUrl = siteConfig.url;
 const siteName = siteConfig.name;
-const title = "Genova AI — Systeme d'exploitation pour agents IA";
+const title = "gen3ia — Systeme d'exploitation pour agents IA";
 const description = siteConfig.description;
 
 export const viewport: Viewport = {
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: { default: title, template: `%s | ${siteName}` },
   description,
-  keywords: ['Genova', 'IA', 'agents IA', 'automatisation', 'SaaS', 'AI Operating System',
+  keywords: ['Gen3ia', 'IA', 'agents IA', 'automatisation', 'SaaS', 'AI Operating System',
     'agent autonome', 'ReAct', 'Cameroun', 'Afrique', 'AI agents', 'voice AI',
     'WhatsApp bot', 'AI automation platform', 'LLM', 'GPT', 'Claude'],
   authors: [{ name: siteConfig.author, url: siteUrl }],
@@ -41,10 +41,10 @@ export const metadata: Metadata = {
   classification: 'AI Agent Platform',
   icons: {
     icon: [
-      { url: '/favicon-genova.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-gen3ia.png', sizes: '32x32', type: 'image/png' },
       { url: '/icon.svg', type: 'image/svg+xml' },
     ],
-    apple: [{ url: '/favicon-genova.png', sizes: '180x180', type: 'image/png' }],
+    apple: [{ url: '/favicon-gen3ia.png', sizes: '180x180', type: 'image/png' }],
     other: [{ rel: 'mask-icon', url: '/icon.svg', color: '#7c3aed' }],
   },
   manifest: '/manifest.json',
@@ -58,7 +58,7 @@ export const metadata: Metadata = {
     type: 'website', locale: siteConfig.locale, alternateLocale: siteConfig.alternateLocale,
     url: siteUrl, siteName, title, description,
     countryName: 'Cameroun',
-    emails: ['contact@genova-ai.com'],
+    emails: ['contact@gen3ia.online'],
     images: [{ url: `${siteUrl}/og-image.png`, width: 1200, height: 630, alt: siteName }],
   },
   twitter: {
