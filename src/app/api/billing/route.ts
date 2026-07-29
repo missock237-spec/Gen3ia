@@ -1,6 +1,6 @@
 // ============================================================
 // GET /api/billing — Informations de facturation
-// Ajoute le champ total aux credits + disponiblePlans
+// Paiement via SebPay (Mobile Money Afrique)
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,10 +11,10 @@ import { applySecurity, secureResponse } from '@/lib/security';
 const log = createLogger('billing');
 
 const AVAILABLE_PLANS = [
-  { id: 'free', name: 'Gratuit', price: 0, credits: 10 },
-  { id: 'starter', name: 'Starter', price: 5000, credits: 1000 },
-  { id: 'pro', name: 'Pro', price: 15000, credits: 5000 },
-  { id: 'enterprise', name: 'Enterprise', price: 50000, credits: 25000 },
+  { id: 'free', name: 'Gratuit', price: 0, credits: 100, priceLabel: 'Gratuit' },
+  { id: 'starter', name: 'Starter', price: 5000, credits: 1000, priceLabel: '5 000 FCFA/mois' },
+  { id: 'pro', name: 'Pro', price: 15000, credits: 5000, priceLabel: '15 000 FCFA/mois' },
+  { id: 'enterprise', name: 'Enterprise', price: 50000, credits: 25000, priceLabel: '50 000 FCFA/mois' },
 ];
 
 export async function GET(request: NextRequest) {
@@ -63,6 +63,11 @@ export async function GET(request: NextRequest) {
           totalTokens: usage._sum?.totalTokens || 0,
         },
         availablePlans: AVAILABLE_PLANS,
+        paymentMethod: {
+          provider: 'SebPay',
+          methods: ['Orange Money', 'MTN MoMo', 'Wave', 'Carte Bancaire'],
+          currency: 'XAF',
+        },
       },
     });
 
