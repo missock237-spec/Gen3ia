@@ -21,9 +21,206 @@ model User {
   agentActionLogs AgentActionLog[] approvedActions ApprovedAction[] pendingActions PendingAction[]
   mCPConnectors MCPConnector[]
   collaboratorOn WorkflowCollaborator[]
+  agentTools AgentTool[] agentInvocations AgentInvocation[]
   @@index([email, isActive]) @@index([plan]) @@index([role]) @@index([isCreator]) @@index([lastActiveAt])
 }
 
+// ===== AGENTS SPECIAlISES =====
+model Agent {
+  id String @id @default(cuid())
+  name String
+  type String @default("assistant")
+  role String @default("assistant")
+  description String @default("")
+  systemPrompt String @default("") @db.Text
+  instructions String @default("") @db.Text
+  model String @default("gpt-4o-mini")
+  temperature Float @default(0.7)
+  maxTokens Int @default(4096)
+  status String @default("active") // active | inactive | draft | published
+  category String @default("custom") // builtin | custom | marketplace
+  tags String @default("[]") // JSON array
+  isPublic Boolean @default(false)
+  isMarketplacePublished Boolean @default(false)
+  usageCount Int @default(0)
+  ownerId String?
+  suiteId String?
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  owner User? @relation(fields: [ownerId], references: [id])
+  tools AgentTool[]
+  memories AgentMemory[]
+  delegationsReceived AgentDelegation[] @relation("AgentDelegationTarget")
+  delegationsMade AgentDelegation[] @relation("AgentDelegationSource")
+  checkpoints AgentCheckpoint[]
+  autonomousRuns AutonomousRun[]
+  @@index([ownerId, status])
+  @@index([type, role])
+  @@index([isMarketplacePublished])
+}
+
+model AgentTool {
+  id String @id @default(cuid())
+  agentId String
+  name String
+  description String @default("") @db.Text
+  type String @default("function") // function | api | webhook | mcp
+  config String @default("{}") @db.Text // JSON - URL, headers, schema, etc.
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([agentId])
+}
+
+model AgentMemory {
+  id String @id @default(cuid())
+  agentId String
+  userId String
+  category String @default("episodic") // episodic | semantic | procedural | working
+  content String @db.Text
+  metadata String @default("{}") @db.Text
+  importance Float @default(0.5)
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([agentId, userId, category])
+}
+
+// ===== DELEGATION ENTRE AGENTS =====
+model AgentDelegation {
+  id String @id @default(cuid())
+  sourceAgentId String
+  targetAgentId String
+  task String @db.Text
+  context String @default("") @db.Text
+  status String @default("pending") // pending | accepted | running | completed | failed | rejected
+  priority Int @default(0)
+  maxWaitMs Int @default(60000)
+  result String? @db.Text
+  error String? @db.Text
+  startedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  sourceAgent Agent @relation("AgentDelegationSource", fields: [sourceAgentId], references: [id], onDelete: Cascade)
+  targetAgent Agent @relation("AgentDelegationTarget", fields: [targetAgentId], references: [id], onDelete: Cascade)
+  @@index([sourceAgentId, status])
+  @@index([targetAgentId, status])
+}
+
+// ===== MODE AUTONOME =====
+model AutonomousRun {
+  id String @id @default(cuid())
+  agentId String
+  userId String
+  goal String @db.Text
+  instructions String @default("") @db.Text
+  status String @default("pending") // pending | running | paused | awaiting_approval | completed | failed | cancelled
+  schedule String @default("") // cron expression or "continuous"
+  maxDurationMs Int @default(3600000) // max duration before auto-pause
+  checkpointsConfig String @default("[]") @db.Text // JSON array of checkpoint triggers
+  currentCheckpointId String?
+  result String? @db.Text
+  progress String @default("[]") @db.Text // JSON array of progress logs
+  startedAt DateTime?
+  pausedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  checkpoints AgentCheckpoint[]
+  @@index([agentId, status])
+  @@index([userId, status])
+}
+
+model AgentCheckpoint {
+  id String @id @default(cuid())
+  runId String
+  agentId String
+  type String @default("approval") // approval | review | info | decision
+  title String
+  description String @default("") @db.Text
+  status String @default("pending") // pending | approved | rejected | reviewed
+  context String @default("{}") @db.Text // data at checkpoint time
+  decision String? @db.Text // human decision
+  decidedBy String? // userId
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  run AutonomousRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id])
+  @@index([runId, status])
+  @@index([agentId, status])
+}
+
+model AgentInvocation {
+  id String @id @default(cuid())
+  agentId String
+  userId String
+  input String @db.Text
+  output String @db.Text
+  model String
+  tokensUsed Int @default(0)
+  cost Float @default(0)
+  durationMs Int @default(0)
+  metadata String @default("{}") @db.Text
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+  @@index([agentId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// ===== SUITES MULTI-AGENTS =====
+model AgentSuite {
+  id String @id @default(cuid())
+  name String
+  goal String @default("") @db.Text
+  strategy String @default("sequential")
+  status String @default("draft")
+  userId String
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agents Agent[]
+  executions AgentSuiteExecution[]
+}
+
+model AgentSuiteAgent {
+  id String @id @default(cuid())
+  suiteId String
+  agentId String
+  order Int
+  role String @default("member")
+  createdAt DateTime @default(now())
+  suite AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+}
+
+model AgentSuiteExecution {
+  id String @id @default(cuid())
+  suiteId String
+  userId String
+  goal String @db.Text
+  context String? @db.Text
+  status String @default("running")
+  strategy String @default("sequential")
+  result String? @db.Text
+  totalCost Float @default(0)
+  totalTokens Int @default(0)
+  rounds Int @default(0)
+  startedAt DateTime @default(now())
+  completedAt DateTime?
+  suite AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  messages AgentSuiteMessage[]
+}
+
+model AgentSuiteMessage {
+  id String @id @default(cuid())
+  executionId String
+  agentId String?
+  role String
+  content String @db.Text
+  type String @default("message")
+  round Int @default(1)
+  createdAt DateTime @default(now())
+  execution AgentSuiteExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+}
+
+// ===== WORKFLOW =====
 model Workflow {
   id String @id @default(cuid()) name String description String @default("")
   steps String @default("[]") @db.Text trigger String @default("manual")
@@ -80,7 +277,7 @@ model WorkflowCollaborator {
   id String @id @default(cuid())
   workflowId String
   userId String
-  role String @default("editor") // viewer | editor | admin
+  role String @default("editor")
   lastAccessAt DateTime? @default(now())
   addedAt DateTime @default(now())
   workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
@@ -90,8 +287,6 @@ model WorkflowCollaborator {
 }
 
 model WorkflowTemplate { id String @id @default(cuid()) name String description String @default("") category String @default("general") icon String @default("zap") steps String @default("[]") @db.Text isBuiltIn Boolean @default(true) usageCount Int @default(0) isPublic Boolean @default(false) tags String @default("[]") userId String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt user User? @relation(fields: [userId], references: [id]) @@index([category]) @@index([isBuiltIn]) @@index([usageCount]) @@index([isPublic]) }
-model Agent { id String @id @default(cuid()) name String type String @default("assistant") role String @default("assistant") @@index([userId, status]) @@index([userId, type]) }
-model AgentMemory { id String @id @default(cuid()) agentId String userId String category String @default("episodic") content String @db.Text @@index([agentId, userId, category]) }
 model CreatorPayout { id String @id @default(cuid()) userId String amount Int status String @default("pending") @@index([userId, status]) }
 model Conversation { id String @id @default(cuid()) title String type String @default("chat") userId String agentId String? @@index([userId, updatedAt]) }
 model Message { id String @id @default(cuid()) role String content String @db.Text conversationId String @@index([conversationId, createdAt]) }
