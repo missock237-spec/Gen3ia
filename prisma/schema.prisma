@@ -1,7 +1,3 @@
-// ============================================================
-// GEN3IA PRISMA SCHEMA v0.10.0
-// ============================================================
-
 generator client { provider = "prisma-client-js" }
 datasource db { provider = "postgresql" url = env("DATABASE_URL") }
 
@@ -25,6 +21,8 @@ model User {
   updatedAt DateTime @updatedAt
   agents Agent[]
   agentSuites AgentSuite[]
+  agentMemories AgentMemory[]
+  improvementLogs ImprovementLog[]
   sessions Session[]
   apiKeys ApiKey[]
   conversations Conversation[]
@@ -50,39 +48,9 @@ model User {
   pendingActions PendingAction[]
   mCPConnectors MCPConnector[]
   @@index([email, isActive])
-  @@index([plan])
-  @@index([role])
+  @@index([plan]) @@index([role])
   @@index([isTwoFactorEnabled])
-  @@index([lastActiveAt])
-  @@index([createdAt])
-}
-
-model Account {
-  id String @id @default(cuid())
-  userId String
-  type String
-  provider String
-  providerAccountId String
-  refresh_token String? @db.Text
-  access_token String? @db.Text
-  expires_at Int?
-  token_type String?
-  scope String?
-  id_token String? @db.Text
-  session_state String?
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@unique([provider, providerAccountId])
-  @@index([userId])
-  @@index([expires_at])
-}
-model Session {
-  id String @id @default(cuid())
-  sessionToken String @unique
-  userId String
-  expires DateTime
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId])
-  @@index([expires])
+  @@index([lastActiveAt]) @@index([createdAt])
 }
 
 model Agent {
@@ -100,6 +68,11 @@ model Agent {
   status String @default("active")
   userId String
   suiteId String?
+  successes Int @default(0)
+  failures Int @default(0)
+  avgTokensUse Int @default(0)
+  avgExecutionTime Float @default(0)
+  lastImprovedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -110,13 +83,60 @@ model Agent {
   executions AgentExecution[]
   actionLogs AgentActionLog[]
   suiteMembers AgentSuiteAgent[]
-  @@index([userId, status])
-  @@index([userId, type])
-  @@index([userId, role])
-  @@index([suiteId])
-  @@index([status])
+  memories AgentMemory[]
+  improvements ImprovementLog[]
+  @@index([userId, status]) @@index([userId, type])
+  @@index([userId, role]) @@index([suiteId]) @@index([status])
 }
 
+// ============================================================
+// MEMORY & SELF-IMPROVEMENT
+// ============================================================
+model AgentMemory {
+  id String @id @default(cuid())
+  agentId String
+  userId String
+  category String @default("episodic")  // episodic | semantic | procedural | preference
+  content String @db.Text
+  context String? @db.Text
+  source String @default("interaction") // interaction | observation | feedback | system
+  relevance Float @default(0.5)
+  accessCount Int @default(0)
+  tags String @default("[]")
+  embedding String? @db.Text
+  createdAt DateTime @default(now())
+  lastAccessedAt DateTime @default(now())
+  expiresAt DateTime?
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([agentId, userId, category])
+  @@index([agentId, relevance])
+  @@index([agentId, lastAccessedAt])
+  @@index([userId, category])
+}
+
+model ImprovementLog {
+  id String @id @default(cuid())
+  agentId String
+  userId String
+  action String // prompt_tuning | strategy_change | model_switch | memory_prune | threshold_adjust
+  field String  // systemPrompt | temperature | model | maxTokens | strategy
+  oldValue String? @db.Text
+  newValue String? @db.Text
+  reason String @db.Text
+  metricsBefore String? @db.Text  // JSON
+  metricsAfter String? @db.Text   // JSON
+  score Float @default(0)
+  createdAt DateTime @default(now())
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([agentId, createdAt])
+  @@index([agentId, score])
+}
+
+// ============================================================
+// SUITES MULTI-AGENTS
+// ============================================================
 model AgentSuite {
   id String @id @default(cuid())
   name String
@@ -132,283 +152,16 @@ model AgentSuite {
   agents AgentSuiteAgent[]
   executions AgentSuiteExecution[]
   memberAgent Agent? @relation(fields: [id], references: [suiteId])
-  agent Agent? @relation("SuiteCoordinator")
-  @@index([userId, status])
-  @@index([status])
+  @@index([userId, status]) @@index([status])
 }
+model AgentSuiteAgent { id String @id @default(cuid()) suiteId String agentId String order Int @default(0) role String @default("member") suite AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade) agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade) @@unique([suiteId, agentId]) @@index([suiteId]) @@index([agentId]) }
+model AgentSuiteExecution { id String @id @default(cuid()) suiteId String userId String goal String @db.Text context String? @db.Text status String @default("pending") result String? @db.Text strategy String @default("sequential") rounds Int @default(0) totalCost Float @default(0) totalTokens Int @default(0) startedAt DateTime @default(now()) completedAt DateTime? suite AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade) messages AgentSuiteMessage[] @@index([suiteId]) @@index([userId, status]) @@index([startedAt]) }
+model AgentSuiteMessage { id String @id @default(cuid()) executionId String agentId String? agentName String? @default("") role String @default("agent") content String @db.Text type String @default("message") round Int @default(0) createdAt DateTime @default(now()) execution AgentSuiteExecution @relation(fields: [executionId], references: [id], onDelete: Cascade) @@index([executionId, round]) @@index([executionId, agentId]) }
+model AgentPermission { id String @id @default(cuid()) permission String granted Boolean @default(false) requiresApproval Boolean @default(true) agentId String userId String agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade) user User @relation(fields: [userId], references: [id], onDelete: Cascade) @@unique([agentId, permission]) @@index([userId]) @@index([agentId, granted]) }
+model AgentExecution { id String @id @default(cuid()) agentId String userId String task String? @db.Text status String @default("pending") provider String? result String? @db.Text error String? @db.Text totalTokens Int @default(0) estimatedCost Float @default(0) sessionId String? completedAt DateTime? createdAt DateTime @default(now()) agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade) user User @relation(fields: [userId], references: [id], onDelete: Cascade) @@index([userId, createdAt]) @@index([userId, status]) @@index([agentId, status]) @@index([agentId, completedAt]) @@index([createdAt]) @@index([provider]) }
+model AgentActionLog { id String @id @default(cuid()) agentId String action String details String? @db.Text status String @default("pending") result String? @db.Text userId String createdAt DateTime @default(now()) resolvedAt DateTime? agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade) user User @relation(fields: [userId], references: [id], onDelete: Cascade) @@index([userId, createdAt]) @@index([agentId, status]) @@index([status, createdAt]) }
 
-model AgentSuiteAgent {
-  id String @id @default(cuid())
-  suiteId String
-  agentId String
-  order Int @default(0)
-  role String @default("member")
-  suite AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  @@unique([suiteId, agentId])
-  @@index([suiteId])
-  @@index([agentId])
-}
+model Conversation { id String @id @default(cuid()) title String type String @default("chat") userId String agentId String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt user User @relation(fields: [userId], references: [id], onDelete: Cascade) agent Agent? @relation(fields: [agentId], references: [id]) messages Message[] @@index([userId, updatedAt]) @@index([userId, agentId]) @@index([userId, type]) @@index([agentId]) }
+model Message { id String @id @default(cuid()) role String content String @db.Text conversationId String provider String @default("internal") createdAt DateTime @default(now()) conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade) @@index([conversationId, createdAt]) @@index([conversationId, role]) }
 
-model AgentSuiteExecution {
-  id String @id @default(cuid())
-  suiteId String
-  userId String
-  goal String @db.Text
-  context String? @db.Text
-  status String @default("pending")
-  result String? @db.Text
-  strategy String @default("sequential")
-  rounds Int @default(0)
-  totalCost Float @default(0)
-  totalTokens Int @default(0)
-  startedAt DateTime @default(now())
-  completedAt DateTime?
-  suite AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
-  messages AgentSuiteMessage[]
-  @@index([suiteId])
-  @@index([userId, status])
-  @@index([startedAt])
-}
-
-model AgentSuiteMessage {
-  id String @id @default(cuid())
-  executionId String
-  agentId String?
-  agentName String? @default("")
-  role String @default("agent")
-  content String @db.Text
-  type String @default("message")
-  round Int @default(0)
-  createdAt DateTime @default(now())
-  execution AgentSuiteExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
-  @@index([executionId, round])
-  @@index([executionId, agentId])
-}
-
-model AgentPermission {
-  id String @id @default(cuid())
-  permission String
-  granted Boolean @default(false)
-  requiresApproval Boolean @default(true)
-  agentId String
-  userId String
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@unique([agentId, permission])
-  @@index([userId])
-  @@index([agentId, granted])
-}
-
-model AgentExecution {
-  id String @id @default(cuid())
-  agentId String
-  userId String
-  task String? @db.Text
-  status String @default("pending")
-  provider String?
-  result String? @db.Text
-  error String? @db.Text
-  totalTokens Int @default(0)
-  estimatedCost Float @default(0)
-  sessionId String?
-  completedAt DateTime?
-  createdAt DateTime @default(now())
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, createdAt])
-  @@index([userId, status])
-  @@index([agentId, status])
-  @@index([agentId, completedAt])
-  @@index([createdAt])
-  @@index([provider])
-}
-model AgentActionLog {
-  id String @id @default(cuid())
-  agentId String
-  action String
-  details String? @db.Text
-  status String @default("pending")
-  result String? @db.Text
-  userId String
-  createdAt DateTime @default(now())
-  resolvedAt DateTime?
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, createdAt])
-  @@index([agentId, status])
-  @@index([status, createdAt])
-}
-
-model Conversation {
-  id String @id @default(cuid())
-  title String
-  type String @default("chat")
-  userId String
-  agentId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent Agent? @relation(fields: [agentId], references: [id])
-  messages Message[]
-  @@index([userId, updatedAt])
-  @@index([userId, agentId])
-  @@index([userId, type])
-  @@index([agentId])
-}
-model Message {
-  id String @id @default(cuid())
-  role String
-  content String @db.Text
-  conversationId String
-  provider String @default("internal")
-  createdAt DateTime @default(now())
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  @@index([conversationId, createdAt])
-  @@index([conversationId, role])
-}
-
-model Task {
-  id String @id @default(cuid())
-  title String
-  description String @default("")
-  priority String @default("medium")
-  status String @default("pending")
-  agentId String?
-  userId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  agent Agent? @relation(fields: [agentId], references: [id])
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, status])
-  @@index([userId, priority])
-  @@index([agentId, status])
-  @@index([status, createdAt])
-  @@index([priority, status])
-}
-model Workflow {
-  id String @id @default(cuid())
-  name String
-  description String @default("")
-  steps String @default("[]") @db.Text
-  trigger String @default("manual")
-  status String @default("draft")
-  userId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, status])
-  @@index([userId, trigger])
-  @@index([trigger, status])
-  @@index([status])
-}
-
-model Credit {
-  id String @id @default(cuid())
-  balance Int @default(0)
-  used Int @default(0)
-  total Int @default(0)
-  expiresAt DateTime?
-  userId String @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([expiresAt])
-}
-model CreditTransaction {
-  id String @id @default(cuid())
-  type String @default("credit")
-  amount Int
-  balance Int @default(0)
-  description String @default("")
-  reference String?
-  resourceType String @default("general")
-  resourceId String?
-  metadata String? @db.Text
-  userId String
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, createdAt])
-  @@index([userId, type])
-  @@index([userId, resourceType])
-  @@index([reference])
-  @@index([type, createdAt])
-  @@index([resourceType, createdAt])
-}
-
-model Invoice {
-  id String @id @default(cuid())
-  amount Float
-  currency String @default("XAF")
-  status String @default("pending")
-  pdfUrl String?
-  paymentMethod String?
-  reference String?
-  userId String
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, createdAt])
-  @@index([userId, status])
-  @@index([status, createdAt])
-  @@index([reference])
-}
-
-model Subscription {
-  id String @id @default(cuid())
-  plan String @default("free")
-  status String @default("active")
-  currentPeriodStart DateTime?
-  currentPeriodEnd DateTime?
-  cancelAtPeriodEnd Boolean @default(false)
-  userId String @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([status])
-  @@index([plan, status])
-  @@index([currentPeriodEnd])
-}
-
-model MarketplaceListing {
-  id String @id @default(cuid())
-  type String @default("agent")
-  name String
-  slug String @unique
-  description String @default("")
-  category String @default("general")
-  tags String @default("[]")
-  config String @default("{}") @db.Text
-  price Int @default(0)
-  status String @default("draft")
-  rating Float @default(0)
-  downloads Int @default(0)
-  installCount Int @default(0)
-  isActive Boolean @default(true)
-  userId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purchases MarketplacePurchase[]
-  reviews MarketplaceReview[]
-  @@index([slug, isActive])
-  @@index([category, isActive])
-  @@index([type, status])
-  @@index([isActive, rating])
-  @@index([isActive, downloads])
-  @@index([userId])
-}
-
-model ActivityLog {
-  id String @id @default(cuid())
-  action String
-  details String? @db.Text
-  category String @default("general")
-  userId String
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, createdAt])
-  @@index([userId, category])
-  @@index([action, createdAt])
-  @@index([category, createdAt])
-  @@index([createdAt])
-}
+model ActivityLog { id String @id @default(cuid()) action String details String? @db.Text category String @default("general") userId String createdAt DateTime @default(now()) user User @relation(fields: [userId], references: [id], onDelete: Cascade) @@index([userId, createdAt]) @@index([userId, category]) @@index([action, createdAt]) @@index([category, createdAt]) @@index([createdAt]) }
