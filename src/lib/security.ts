@@ -1,10 +1,16 @@
+// ============================================================
+// Gen3ia — Security Middleware pour les routes API
+// Authentification JWT (access 15min) + API keys + RBAC
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { verify } from 'jsonwebtoken';
+import { verifyAccessToken } from '@/lib/auth/jwt';
 import { db } from '@/lib/db';
 
 export interface SecurityContext {
   userId: string;
   role: string;
+  email?: string;
 }
 
 interface SecurityOptions {
@@ -12,14 +18,20 @@ interface SecurityOptions {
   roles?: string[];
 }
 
-const JWT_SECRET = process.env.AUTH_SECRET;
-
+/**
+ * Middleware de sécurité pour les routes API.
+ * Supporte:
+ * - Bearer token JWT (access token 15min)
+ * - X-API-Key (API keys persistantes)
+ * - Rôles (RBAC)
+ */
 export async function applySecurity(
   request: NextRequest,
   options: SecurityOptions = {}
 ): Promise<{ auth?: SecurityContext; error?: NextResponse }> {
+  const secret = process.env.AUTH_SECRET;
 
-  if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  if (!secret || secret.length < 32) {
     console.error('[SECURITY] AUTH_SECRET manquant ou trop court');
     if (options.requireAuth) {
       return { error: NextResponse.json({ error: 'Erreur de configuration serveur' }, { status: 500 }) };
@@ -27,20 +39,29 @@ export async function applySecurity(
     return { auth: { userId: 'anonymous', role: 'guest' } };
   }
 
+  // 1. Essayer API Key d'abord
   const apiKey = request.headers.get('x-api-key');
-  const authHeader = request.headers.get('authorization');
-
   if (apiKey) {
     const auth = await authenticateApiKey(apiKey);
     if (auth) return validateRole(auth, options);
   }
 
+  // 2. Essayer Bearer token JWT
+  const authHeader = request.headers.get('authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
-    const auth = await authenticateToken(token);
-    if (auth) return validateRole(auth, options);
+    const payload = await verifyAccessToken(token);
+    if (payload) {
+      const auth: SecurityContext = {
+        userId: payload.sub,
+        role: payload.role,
+        email: payload.email,
+      };
+      return validateRole(auth, options);
+    }
   }
 
+  // 3. Si auth requise, retourner 401
   if (options.requireAuth) {
     return { error: NextResponse.json({ error: 'Authentification requise' }, { status: 401 }) };
   }
@@ -48,12 +69,18 @@ export async function applySecurity(
   return { auth: { userId: 'anonymous', role: 'guest' } };
 }
 
+/**
+ * Ajoute des en-têtes de sécurité à la réponse
+ */
 export function secureResponse(response: NextResponse, _request: NextRequest): NextResponse {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   return response;
 }
 
+/**
+ * Authentifie via API Key
+ */
 async function authenticateApiKey(apiKey: string): Promise<SecurityContext | null> {
   try {
     const key = await db.accessKey.findFirst({
@@ -61,22 +88,22 @@ async function authenticateApiKey(apiKey: string): Promise<SecurityContext | nul
       include: { user: { select: { id: true, role: true } } },
     });
     if (!key || !key.user) return null;
+
+    // Mettre à jour lastUsed
+    await db.accessKey.update({
+      where: { id: key.id },
+      data: { lastUsed: new Date() },
+    }).catch(() => {});
+
     return { userId: key.user.id, role: key.user.role };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-async function authenticateToken(token: string): Promise<SecurityContext | null> {
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string };
-    const user = await db.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, role: true },
-    });
-    if (!user) return null;
-    return { userId: user.id, role: user.role };
-  } catch { return null; }
-}
-
+/**
+ * Vérifie les permissions RBAC
+ */
 function validateRole(auth: SecurityContext, options: SecurityOptions): { auth: SecurityContext; error?: NextResponse } {
   if (options.roles && !options.roles.includes(auth.role)) {
     return {

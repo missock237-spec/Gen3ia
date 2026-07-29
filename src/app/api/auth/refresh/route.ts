@@ -1,92 +1,54 @@
-<<<<<<< HEAD
-/**
- * GENOVA AI OS — POST /api/auth/refresh
- * Refreshes session tokens using the refresh token.
- */
+// ============================================================
+// POST /api/auth/refresh — Rotation des tokens
+// Utilise un refresh token pour obtenir un nouveau
+// access token + nouveau refresh token (rotation)
+// ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { refreshSession, extractRefreshToken, refreshSessionCookie } from '@/lib/session';
-import { rateLimit } from '@/lib/rate-limit';
+import { rotateRefreshToken } from '@/lib/auth/jwt';
+import { createLogger } from '@/lib/logger';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  // Rate limit
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rl = await rateLimit(`refresh:${ip}`, { max: 20, windowMs: 60 * 1000 });
-  if (!rl.success) {
-    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
-  }
-=======
-import { NextRequest, NextResponse } from 'next/server';
-import { refreshSession, extractRefreshToken, refreshSessionCookie } from '@/lib/session';
-import { applySecurity, secureResponse } from '@/lib/security';
-
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
+const log = createLogger('auth-refresh');
 
 export async function POST(request: NextRequest) {
-  const { error: secError } = await applySecurity(request, {
-    rateLimit: { limit: 20, windowMs: 60000 },
-  });
-  if (secError) return secError;
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
-
   try {
-    const refreshToken = extractRefreshToken(request);
+    const body = await request.json().catch(() => ({}));
+    const refreshToken = body.refreshToken;
 
     if (!refreshToken) {
-<<<<<<< HEAD
       return NextResponse.json(
-        { error: 'Refresh token is required' },
+        { error: 'Refresh token requis' },
         { status: 401 }
       );
-=======
-      const res = NextResponse.json(
-        { error: 'Refresh token is required' },
-        { status: 401 }
-      );
-      return secureResponse(res, request);
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     }
 
-    const result = await refreshSession(refreshToken);
+    // Rotation du refresh token (ancien blacklisté, nouveau généré)
+    const result = await rotateRefreshToken(refreshToken);
 
     if (!result) {
-<<<<<<< HEAD
+      log.warn('refresh_failed', { reason: 'token_invalid_or_expired' });
       return NextResponse.json(
-        { error: 'Invalid or expired refresh token' },
+        { error: 'Refresh token invalide ou expiré' },
         { status: 401 }
       );
-=======
-      const res = NextResponse.json(
-        { error: 'Invalid or expired refresh token' },
-        { status: 401 }
-      );
-      return secureResponse(res, request);
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
     }
 
-    const res = NextResponse.json({
-      message: 'Session refreshed successfully',
+    log.info('refresh_success', { userId: result.userId });
+
+    const response = NextResponse.json({
+      accessToken: result.accessToken,
+      refreshToken: result.newRefreshToken,
+      expiresIn: 15 * 60,
     });
-    refreshSessionCookie(res, result.token, result.refreshToken);
-<<<<<<< HEAD
-    return res;
-  } catch {
+
+    response.headers.set('Cache-Control', 'no-store');
+
+    return response;
+  } catch (error) {
+    log.error('refresh_error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
-      { error: 'Session refresh failed' },
+      { error: 'Erreur de rafraîchissement de session' },
       { status: 500 }
     );
-=======
-    return secureResponse(res, request);
-  } catch {
-    const res = NextResponse.json(
-      { error: 'Session refresh failed' },
-      { status: 500 }
-    );
-    return secureResponse(res, request);
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
   }
 }
