@@ -1,26 +1,28 @@
 // ============================================================
-// Workflows API — CRUD pour le canvas no-code
+// Workflows API - CRUD + Versioning initial
 // ============================================================
-
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { workflowEngine, WorkflowCanvas } from '@/lib/workflow-engine';
+import { workflowVersioning } from '@/lib/workflow-versioning';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('api-workflows');
 
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
-  if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
   try {
     const workflows = await prisma.workflow.findMany({
       where: { userId: auth.userId },
       orderBy: { updatedAt: 'desc' },
-      select: { id: true, name: true, description: true, trigger: true, status: true, updatedAt: true, createdAt: true },
+      select: {
+        id: true, name: true, description: true, trigger: true, status: true,
+        updatedAt: true, createdAt: true, activeBranchId: true, currentVersionId: true,
+      },
     });
-
     return NextResponse.json({ success: true, workflows });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -29,23 +31,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
-  if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
   try {
     const body = await request.json();
     const { name, description, trigger, template } = body;
 
-    if (!name) {
-      return NextResponse.json({ error: 'name requis' }, { status: 400 });
-    }
+    if (!name) return NextResponse.json({ error: 'name requis' }, { status: 400 });
 
     let steps: WorkflowCanvas = { blocks: [], edges: [] };
 
-    // Si un template est fourni, charger ses étapes
     if (template) {
-      const tmpl = await prisma.workflowTemplate.findUnique({
-        where: { id: template },
-      });
+      const tmpl = await prisma.workflowTemplate.findUnique({ where: { id: template } });
       if (tmpl) {
         steps = JSON.parse(tmpl.steps);
         await prisma.workflowTemplate.update({
@@ -55,19 +52,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Creer le workflow
     const workflow = await prisma.workflow.create({
       data: {
-        name,
-        description: description || '',
+        name, description: description || '',
         steps: JSON.stringify(steps),
         trigger: trigger || 'manual',
         userId: auth.userId,
       },
     });
 
-    log.info('workflow_created', { workflowId: workflow.id });
+    // Initialiser versioning (branche main + v1)
+    await workflowVersioning.createWithInitialVersion(
+      workflow.id, auth.userId, steps, 'Version initiale'
+    );
 
-    return NextResponse.json({ success: true, workflow });
+    log.info('workflow_created_with_versioning', { workflowId: workflow.id });
+
+    const fullWorkflow = await prisma.workflow.findUnique({
+      where: { id: workflow.id },
+      include: {
+        branches: { orderBy: { createdAt: 'asc' } },
+        versions: { orderBy: { version: 'desc' }, take: 1 },
+      },
+    });
+
+    return NextResponse.json({ success: true, workflow: fullWorkflow });
   } catch (err) {
     log.error('workflow_create_error', { error: String(err) });
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -76,23 +86,16 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
-  if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
   try {
     const body = await request.json();
     const { id, name, description, steps, trigger, status } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: 'id requis' }, { status: 400 });
-    }
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
 
-    const workflow = await prisma.workflow.findFirst({
-      where: { id, userId: auth.userId },
-    });
-
-    if (!workflow) {
-      return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
-    }
+    const workflow = await prisma.workflow.findFirst({ where: { id, userId: auth.userId } });
+    if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
 
     const updated = await prisma.workflow.update({
       where: { id },
@@ -105,7 +108,6 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    // Si test demandé, exécuter le canvas
     if (body.test && steps) {
       const result = await workflowEngine.execute(steps as WorkflowCanvas);
       return NextResponse.json({ success: true, workflow: updated, test: result });
@@ -119,26 +121,17 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
-  if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
 
-    if (!id) {
-      return NextResponse.json({ error: 'id requis' }, { status: 400 });
-    }
-
-    const workflow = await prisma.workflow.findFirst({
-      where: { id, userId: auth.userId },
-    });
-
-    if (!workflow) {
-      return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
-    }
+    const workflow = await prisma.workflow.findFirst({ where: { id, userId: auth.userId } });
+    if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
 
     await prisma.workflow.delete({ where: { id } });
-
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
