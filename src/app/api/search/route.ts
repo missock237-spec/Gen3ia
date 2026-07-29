@@ -1,33 +1,29 @@
+// API Search - Recherche globale
 import { NextRequest, NextResponse } from 'next/server';
-import { searchWeb, searchImages, searchNews, SearchType } from '@/lib/search/web-search';
-import { searchWithAISummary } from '@/lib/search/search-ai';
-import { createLogger } from '@/lib/logger';
-const log = createLogger('api-search');
+import { applySecurity } from '@/lib/security';
+import { searchEngine } from '@/lib/search-engine';
+
 export async function GET(request: NextRequest) {
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
   try {
-    const { searchParams } = new URL(request.url);
-    const q = searchParams.get('q');
-    const type = (searchParams.get('type') as SearchType) || SearchType.WEB;
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
-    const summarize = searchParams.get('summarize') === 'true';
-    if (!q) return NextResponse.json({ success: false, error: 'Parametre q requis' }, { status: 400 });
-    log.info('Search API request', { query: q.slice(0, 50), type, limit, summarize });
-    if (summarize) {
-      const result = await searchWithAISummary(q, limit);
-      return NextResponse.json({ success: true, data: result });
+    const url = new URL(request.url);
+    const q = url.searchParams.get('q') || '';
+    const scope = url.searchParams.get('scope') || 'search';
+
+    if (scope === 'counts') {
+      const counts = await searchEngine.getSearchCounts(auth.userId);
+      return NextResponse.json({ success: true, counts });
     }
-    if (type === SearchType.IMAGES) {
-      const result = await searchImages(q, { limit });
-      return NextResponse.json({ success: true, data: result });
+
+    if (!q || q.length < 2) {
+      return NextResponse.json({ success: true, results: [] });
     }
-    if (type === SearchType.NEWS) {
-      const result = await searchNews(q, { limit });
-      return NextResponse.json({ success: true, data: result });
-    }
-    const result = await searchWeb(q, { type, limit });
-    return NextResponse.json({ success: true, data: result });
-  } catch (error) {
-    log.error('Search API error', { error: String(error) });
-    return NextResponse.json({ success: false, error: 'Search failed' }, { status: 500 });
-  }
+
+    const typesParam = url.searchParams.get('types');
+    const types = typesParam ? typesParam.split(',') : undefined;
+
+    const results = await searchEngine.search(q, auth.userId, { types });
+    return NextResponse.json({ success: true, results, total: results.length, query: q });
+  } catch (err) { return NextResponse.json({ error: String(err) }, { status: 500 }); }
 }
