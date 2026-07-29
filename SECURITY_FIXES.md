@@ -1,35 +1,13 @@
-# Corrections securite applicables
+# SECURITY_FIXES.md — Archivé
 
-## 1. Fichier .github/workflows/main.yml
-Remplacer la section env par:
+Les correctifs de sécurité listés ci-dessous ont été appliqués dans les versions 0.9.0 et 0.10.0 :
 
-```yaml
-      env:
-        DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-        NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-        NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-        HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
-        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
+✅ Secrets GitHub → Workflows mis à jour avec pnpm
+✅ Workflows CI/CD → pnpm, Render, SebPay
+✅ 2FA TOTP → Routes API setup/verify/disable
+✅ npm audit → Non-blocking dans CI
+✅ Husky pre-commit → Secret detection
+✅ TruffleHog + Snyk → Security workflow
+✅ CodeQL + Trivy → Analyse statique
 
-## 2. Secrets GitHub a ajouter (Settings > Secrets > Actions)
-- HUGGINGFACE_TOKEN
-- GROQ_API_KEY
-- OPENROUTER_API_KEY
-- SERPAPI_API_KEY
-- NEXTAUTH_SECRET
-- ANTHROPIC_API_KEY
-- ELEVENLABS_API_KEY
-
-## 3. package.json overrides
-Les overrides de securite sont deja en place:
-- jsonwebtoken: 9.0.2 (avec jose: 5.9.6 override)
-- cookie: 0.7.2
-- axios: 1.7.9
-- cross-spawn: 7.0.6
-- braces: 3.0.3
-- ws: 8.17.1
+Voir [CHANGELOG.md](./CHANGELOG.md) et [SECURITY.md](./SECURITY.md).
