@@ -1,36 +1,11 @@
-# Correction CI/CD
+# CI_FIX.md — Archivé
 
-## 1. Modifier .github/workflows/main.yml
-Ouvrir le fichier sur GitHub et remplacer :
+Les correctifs CI listés dans ce fichier ont été appliqués.
 
-```yaml
-      env:
-        DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-        NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-        HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
-```
+Voir [CHANGELOG.md](./CHANGELOG.md) pour l'état actuel des workflows.
 
-PAR :
-
-```yaml
-      env:
-        DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
-        NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-        NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-        HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
-        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
-```
-
-## 2. Ajouter les secrets GitHub
-Settings > Secrets and variables > Actions :
-```
-HUGGINGFACE_TOKEN (hf_...)
-GROQ_API_KEY (gsk_...)
-OPENROUTER_API_KEY (sk-or-...)
-SERPAPI_API_KEY (serpapi_...)
-NEXTAUTH_SECRET (32+ chars)
-```
+Workflows actifs :
+- `.github/workflows/ci.yml` — Pipeline CI complet (pnpm)
+- `.github/workflows/deploy.yml` — Déploiement Render
+- `.github/workflows/security.yml` — Audit sécurité (Snyk, CodeQL, Trivy, TruffleHog)
+- `.github/workflows/issues.yml` — Gestion des issues
