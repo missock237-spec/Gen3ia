@@ -1,11 +1,11 @@
 # ============================================================
-# Gen3ia — Monitoring Stack
-# Prometheus + Grafana + Node Exporter + cAdvisor
+# Gen3ia — Monitoring Stack (Prometheus + Grafana + Loki + Promtail)
 # ============================================================
 # Usage:
 #   docker compose -f docker-compose.monitoring.yml up -d
 #   Grafana: http://localhost:3001 (admin/admin)
 #   Prometheus: http://localhost:9090
+#   Loki: http://localhost:3100
 # ============================================================
 
 version: "3.9"
@@ -72,7 +72,43 @@ services:
     networks:
       - gen3ia-monitoring
 
-  # === Grafana (visualisation) ===
+  # === Loki (agrégation de logs) ===
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: gen3ia-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command:
+      - '-config.file=/etc/loki/loki-config.yml'
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD", "wget", "-q", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - gen3ia-monitoring
+
+  # === Promtail (collecte des logs Docker vers Loki) ===
+  promtail:
+    image: grafana/promtail:3.4.2
+    container_name: gen3ia-promtail
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/loki/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command:
+      - '-config.file=/etc/promtail/promtail-config.yml'
+    depends_on:
+      - loki
+    networks:
+      - gen3ia-monitoring
+
+  # === Grafana (visualisation métriques + logs) ===
   grafana:
     image: grafana/grafana:11.5.2
     container_name: gen3ia-grafana
@@ -93,6 +129,7 @@ services:
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
+      - loki
     healthcheck:
       test: ["CMD", "wget", "-q", "http://localhost:3000/api/health"]
       interval: 30s
@@ -105,6 +142,8 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
+    driver: local
+  loki_data:
     driver: local
 
 networks:
