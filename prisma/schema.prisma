@@ -29,30 +29,31 @@ model User {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  agents           Agent[]
-  sessions         Session[]
-  apiKeys          ApiKey[]
-  conversations    Conversation[]
-  tasks            Task[]
-  workflows        Workflow[]
-  guardrails       Guardrail[]
-  whatsAppConfig   WhatsAppConfig?
-  voiceProfile     VoiceProfile?
-  subscription     Subscription?
-  invoices         Invoice[]
-  credit           Credit?
-  creditTransactions CreditTransaction[]
-  agentExecutions  AgentExecution[]
-  activityLogs     ActivityLog[]
-  emailVerifications EmailVerification[]
+  agents              Agent[]
+  sessions            Session[]
+  apiKeys             ApiKey[]
+  conversations       Conversation[]
+  tasks               Task[]
+  workflows           Workflow[]
+  guardrails          Guardrail[]
+  whatsAppConfig      WhatsAppConfig?
+  voiceProfile        VoiceProfile?
+  subscription        Subscription?
+  invoices            Invoice[]
+  credit              Credit?
+  creditTransactions  CreditTransaction[]
+  agentExecutions     AgentExecution[]
+  activityLogs        ActivityLog[]
+  emailVerifications  EmailVerification[]
   marketplaceListings MarketplaceListing[]
   marketplacePurchases MarketplacePurchase[]
-  accessKeys       AccessKey[]
-  agentPermissions AgentPermission[]
-  voiceCalls       VoiceCall[]
-  agentActionLogs  AgentActionLog[]
-  approvedActions  ApprovedAction[]
-  pendingActions   PendingAction[]
+  accessKeys          AccessKey[]
+  agentPermissions    AgentPermission[]
+  voiceCalls          VoiceCall[]
+  agentActionLogs     AgentActionLog[]
+  approvedActions     ApprovedAction[]
+  pendingActions      PendingAction[]
+  mCPConnectors       MCPConnector[]
 }
 
 // ============================================================
@@ -141,19 +142,19 @@ model AgentPermission {
 }
 
 model AgentExecution {
-  id           String    @id @default(cuid())
-  agentId      String
-  userId       String
-  task         String?   @db.Text
-  status       String    @default("pending")
-  provider     String?
-  result       String?   @db.Text
-  error        String?   @db.Text
-  totalTokens  Int       @default(0)
-  estimatedCost Float    @default(0)
-  sessionId    String?
-  completedAt  DateTime?
-  createdAt    DateTime  @default(now())
+  id            String    @id @default(cuid())
+  agentId       String
+  userId        String
+  task          String?   @db.Text
+  status        String    @default("pending")
+  provider      String?
+  result        String?   @db.Text
+  error         String?   @db.Text
+  totalTokens   Int       @default(0)
+  estimatedCost Float     @default(0)
+  sessionId     String?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
 
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -259,16 +260,16 @@ model Guardrail {
 // WHATSAPP
 // ============================================================
 model WhatsAppConfig {
-  userId       String   @id
-  phoneNumber  String?
-  apiToken     String?  @db.Text
+  userId        String   @id
+  phoneNumber   String?
+  apiToken      String?  @db.Text
   phoneNumberId String?
-  whatsappId   String?
-  isActive     Boolean  @default(false)
-  autoMessage  Boolean  @default(false)
-  autoCall     Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  whatsappId    String?
+  isActive      Boolean  @default(false)
+  autoMessage   Boolean  @default(false)
+  autoCall      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -286,15 +287,15 @@ model VoiceProfile {
 }
 
 model VoiceCall {
-  id         String   @id @default(cuid())
-  userId     String
-  fromNumber String?
-  toNumber   String
-  provider   String   @default("twilio")
-  status     String   @default("pending")
-  metadata   String?  @db.Text
-  duration   Int      @default(0)
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  fromNumber  String?
+  toNumber    String
+  provider    String   @default("twilio")
+  status      String   @default("pending")
+  metadata    String?  @db.Text
+  duration    Int      @default(0)
+  createdAt   DateTime @default(now())
   completedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -329,6 +330,29 @@ model AccessKey {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model MCPConnector {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  description   String   @default("")
+  serverUrl     String
+  transportType String   @default("sse")
+  status        String   @default("disconnected")
+  authType      String   @default("none")
+  authConfig    String   @default("{}") @db.Text
+  tools         String   @default("[]") @db.Text
+  resources     String   @default("[]") @db.Text
+  prompts       String   @default("[]") @db.Text
+  capabilities  String   @default("{}") @db.Text
+  serverInfo    String   @default("{}") @db.Text
+  isActive      Boolean  @default(true)
+  lastUsedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 // ============================================================
 // BILLING & CREDITS
 // ============================================================
@@ -349,8 +373,12 @@ model CreditTransaction {
   id          String   @id @default(cuid())
   type        String   @default("credit")
   amount      Int
+  balance     Int      @default(0)
   description String   @default("")
   reference   String?
+  resourceType String  @default("general")
+  resourceId  String?
+  metadata    String?  @db.Text
   userId      String
   createdAt   DateTime @default(now())
 
@@ -358,14 +386,15 @@ model CreditTransaction {
 }
 
 model Subscription {
-  id               String    @id @default(cuid())
-  plan             String    @default("free")
-  status           String    @default("active")
-  currentPeriodEnd DateTime?
-  cancelAtPeriodEnd Boolean  @default(false)
-  userId           String    @unique
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  plan                String    @default("free")
+  status              String    @default("active")
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  cancelAtPeriodEnd   Boolean   @default(false)
+  userId              String    @unique
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -376,6 +405,8 @@ model Invoice {
   currency  String   @default("XAF")
   status    String   @default("pending")
   pdfUrl    String?
+  paymentMethod String?
+  reference String?
   userId    String
   createdAt DateTime @default(now())
 
