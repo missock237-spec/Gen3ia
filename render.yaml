@@ -1,11 +1,8 @@
 # ============================================================
 # Render Blueprint — Gen3ia AI Agent OS
-# Auto-déploiement sur push vers main
 # Paiement: SebPay (Mobile Money Afrique)
 # ============================================================
-
 services:
-  # === Web Service Principal (Next.js) ===
   - type: web
     name: gen3ia-app
     runtime: image
@@ -40,8 +37,6 @@ services:
         sync: false
       - key: HUGGINGFACE_API_KEY
         sync: false
-      - key: NEXT_PUBLIC_HUGGINGFACE_API_KEY
-        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -50,7 +45,6 @@ services:
         sync: false
       - key: GITHUB_CLIENT_SECRET
         sync: false
-      # SebPay (Paiement Mobile Money Afrique) — remplace Stripe
       - key: SEBPAY_API_KEY
         sync: false
       - key: SEBPAY_API_SECRET
@@ -81,8 +75,6 @@ services:
       - name: gen3ia-workspace
         mountPath: /tmp/gen3ia-workspace
         sizeGB: 10
-
-  # === Cron Job (rafraîchissement des tokens toutes les 4h) ===
   - type: cron
     name: gen3ia-refresh-tokens
     runtime: image
