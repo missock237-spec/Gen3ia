@@ -1,65 +1,54 @@
 // ============================================================
-// GEN3IA PRISMA SCHEMA
-// Optimisé avec indexes composites pour performances
+// GEN3IA PRISMA SCHEMA v0.10.0
 // ============================================================
 
-generator client {
-  provider = "prisma-client-js"
-}
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// ============================================================
-// USER (avec support 2FA)
-// ============================================================
 model User {
-  id                 String   @id @default(cuid())
-  email              String   @unique
-  name               String?
-  password           String?
-  avatar             String?
-  plan               String   @default("free")
-  role               String   @default("user")
-  credits            Int      @default(0)
-  isActive           Boolean  @default(true)
-  isEmailVerified    Boolean  @default(false)
-  totpSecret         String?                               // Secret TOTP Google Authenticator
-  backupCodes        String?  @db.Text                      // Hashs SHA-256 des codes de récupération
-  isTwoFactorEnabled Boolean  @default(false)                // 2FA activée
-  twoFactorVerifiedAt DateTime?                              // Dernière vérification 2FA réussie
-  lastActiveAt       DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  agents              Agent[]
-  sessions            Session[]
-  apiKeys             ApiKey[]
-  conversations       Conversation[]
-  tasks               Task[]
-  workflows           Workflow[]
-  guardrails          Guardrail[]
-  whatsAppConfig      WhatsAppConfig?
-  voiceProfile        VoiceProfile?
-  subscription        Subscription?
-  invoices            Invoice[]
-  credit              Credit?
-  creditTransactions  CreditTransaction[]
-  agentExecutions     AgentExecution[]
-  activityLogs        ActivityLog[]
-  emailVerifications  EmailVerification[]
+  id String @id @default(cuid())
+  email String @unique
+  name String?
+  password String?
+  avatar String?
+  plan String @default("free")
+  role String @default("user")
+  credits Int @default(0)
+  isActive Boolean @default(true)
+  isEmailVerified Boolean @default(false)
+  totpSecret String?
+  backupCodes String? @db.Text
+  isTwoFactorEnabled Boolean @default(false)
+  twoFactorVerifiedAt DateTime?
+  lastActiveAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  agents Agent[]
+  agentSuites AgentSuite[]
+  sessions Session[]
+  apiKeys ApiKey[]
+  conversations Conversation[]
+  tasks Task[]
+  workflows Workflow[]
+  guardrails Guardrail[]
+  whatsAppConfig WhatsAppConfig?
+  voiceProfile VoiceProfile?
+  subscription Subscription?
+  invoices Invoice[]
+  credit Credit?
+  creditTransactions CreditTransaction[]
+  agentExecutions AgentExecution[]
+  activityLogs ActivityLog[]
+  emailVerifications EmailVerification[]
   marketplaceListings MarketplaceListing[]
   marketplacePurchases MarketplacePurchase[]
-  accessKeys          AccessKey[]
-  agentPermissions    AgentPermission[]
-  voiceCalls          VoiceCall[]
-  agentActionLogs     AgentActionLog[]
-  approvedActions     ApprovedAction[]
-  pendingActions      PendingAction[]
-  mCPConnectors       MCPConnector[]
-
+  accessKeys AccessKey[]
+  agentPermissions AgentPermission[]
+  voiceCalls VoiceCall[]
+  agentActionLogs AgentActionLog[]
+  approvedActions ApprovedAction[]
+  pendingActions PendingAction[]
+  mCPConnectors MCPConnector[]
   @@index([email, isActive])
   @@index([plan])
   @@index([role])
@@ -68,126 +57,165 @@ model User {
   @@index([createdAt])
 }
 
-// ============================================================
-// AUTH / SESSION
-// ============================================================
 model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
+  id String @id @default(cuid())
+  userId String
+  type String
+  provider String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
+  refresh_token String? @db.Text
+  access_token String? @db.Text
+  expires_at Int?
+  token_type String?
+  scope String?
+  id_token String? @db.Text
+  session_state String?
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([provider, providerAccountId])
   @@index([userId])
   @@index([expires_at])
 }
-
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  id String @id @default(cuid())
+  sessionToken String @unique
+  userId String
+  expires DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
   @@index([expires])
 }
 
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
-  @@index([expires])
-}
-
-model EmailVerification {
-  id        String   @id @default(cuid())
-  email     String
-  code      String
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([email, code])
-  @@index([expiresAt])
-  @@index([userId])
-}
-
-// ============================================================
-// AGENTS
-// ============================================================
 model Agent {
-  id          String   @id @default(cuid())
-  name        String
-  type        String   @default("assistant")
-  description String   @default("")
-  config      String   @default("{}") @db.Text
-  avatar      String?
-  status      String   @default("active")
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks         Task[]
-  permissions   AgentPermission[]
+  id String @id @default(cuid())
+  name String
+  type String @default("assistant")
+  role String @default("assistant")
+  description String @default("")
+  systemPrompt String? @db.Text
+  model String @default("gpt-4o-mini")
+  temperature Float @default(0.7)
+  maxTokens Int @default(4096)
+  config String @default("{}") @db.Text
+  avatar String?
+  status String @default("active")
+  userId String
+  suiteId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  suite AgentSuite? @relation(fields: [suiteId], references: [id])
+  tasks Task[]
+  permissions AgentPermission[]
   conversations Conversation[]
-  executions    AgentExecution[]
-  actionLogs    AgentActionLog[]
-
+  executions AgentExecution[]
+  actionLogs AgentActionLog[]
+  suiteMembers AgentSuiteAgent[]
   @@index([userId, status])
   @@index([userId, type])
-  @@index([userId, createdAt])
+  @@index([userId, role])
+  @@index([suiteId])
   @@index([status])
 }
 
-model AgentPermission {
-  id               String  @id @default(cuid())
-  permission       String
-  granted          Boolean @default(false)
-  requiresApproval Boolean @default(true)
-  agentId          String
-  userId           String
+model AgentSuite {
+  id String @id @default(cuid())
+  name String
+  description String @default("")
+  goal String? @db.Text
+  userId String
+  status String @default("idle")
+  strategy String @default("sequential")
+  maxRounds Int @default(5)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agents AgentSuiteAgent[]
+  executions AgentSuiteExecution[]
+  memberAgent Agent? @relation(fields: [id], references: [suiteId])
+  agent Agent? @relation("SuiteCoordinator")
+  @@index([userId, status])
+  @@index([status])
+}
 
+model AgentSuiteAgent {
+  id String @id @default(cuid())
+  suiteId String
+  agentId String
+  order Int @default(0)
+  role String @default("member")
+  suite AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([suiteId, agentId])
+  @@index([suiteId])
+  @@index([agentId])
+}
 
+model AgentSuiteExecution {
+  id String @id @default(cuid())
+  suiteId String
+  userId String
+  goal String @db.Text
+  context String? @db.Text
+  status String @default("pending")
+  result String? @db.Text
+  strategy String @default("sequential")
+  rounds Int @default(0)
+  totalCost Float @default(0)
+  totalTokens Int @default(0)
+  startedAt DateTime @default(now())
+  completedAt DateTime?
+  suite AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  messages AgentSuiteMessage[]
+  @@index([suiteId])
+  @@index([userId, status])
+  @@index([startedAt])
+}
+
+model AgentSuiteMessage {
+  id String @id @default(cuid())
+  executionId String
+  agentId String?
+  agentName String? @default("")
+  role String @default("agent")
+  content String @db.Text
+  type String @default("message")
+  round Int @default(0)
+  createdAt DateTime @default(now())
+  execution AgentSuiteExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  @@index([executionId, round])
+  @@index([executionId, agentId])
+}
+
+model AgentPermission {
+  id String @id @default(cuid())
+  permission String
+  granted Boolean @default(false)
+  requiresApproval Boolean @default(true)
+  agentId String
+  userId String
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([agentId, permission])
   @@index([userId])
   @@index([agentId, granted])
 }
 
 model AgentExecution {
-  id            String    @id @default(cuid())
-  agentId       String
-  userId        String
-  task          String?   @db.Text
-  status        String    @default("pending")
-  provider      String?
-  result        String?   @db.Text
-  error         String?   @db.Text
-  totalTokens   Int       @default(0)
-  estimatedCost Float     @default(0)
-  sessionId     String?
-  completedAt   DateTime?
-  createdAt     DateTime  @default(now())
-
+  id String @id @default(cuid())
+  agentId String
+  userId String
+  task String? @db.Text
+  status String @default("pending")
+  provider String?
+  result String? @db.Text
+  error String? @db.Text
+  totalTokens Int @default(0)
+  estimatedCost Float @default(0)
+  sessionId String?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId, createdAt])
   @@index([userId, status])
   @@index([agentId, status])
@@ -195,279 +223,111 @@ model AgentExecution {
   @@index([createdAt])
   @@index([provider])
 }
-
 model AgentActionLog {
-  id         String   @id @default(cuid())
-  agentId    String
-  action     String
-  details    String?  @db.Text
-  status     String   @default("pending")
-  result     String?  @db.Text
-  userId     String
-  createdAt  DateTime @default(now())
+  id String @id @default(cuid())
+  agentId String
+  action String
+  details String? @db.Text
+  status String @default("pending")
+  result String? @db.Text
+  userId String
+  createdAt DateTime @default(now())
   resolvedAt DateTime?
-
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId, createdAt])
   @@index([agentId, status])
   @@index([status, createdAt])
 }
 
-// ============================================================
-// CONVERSATIONS & MESSAGES
-// ============================================================
 model Conversation {
-  id        String   @id @default(cuid())
-  title     String
-  type      String   @default("chat")
-  userId    String
-  agentId   String?
+  id String @id @default(cuid())
+  title String
+  type String @default("chat")
+  userId String
+  agentId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent    Agent?    @relation(fields: [agentId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent Agent? @relation(fields: [agentId], references: [id])
   messages Message[]
-
   @@index([userId, updatedAt])
   @@index([userId, agentId])
   @@index([userId, type])
   @@index([agentId])
 }
-
 model Message {
-  id             String   @id @default(cuid())
-  role           String
-  content        String   @db.Text
+  id String @id @default(cuid())
+  role String
+  content String @db.Text
   conversationId String
-  provider       String   @default("internal")
-  createdAt      DateTime @default(now())
-
+  provider String @default("internal")
+  createdAt DateTime @default(now())
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
   @@index([conversationId, createdAt])
   @@index([conversationId, role])
 }
 
-// ============================================================
-// TASKS
-// ============================================================
 model Task {
-  id          String   @id @default(cuid())
-  title       String
-  description String   @default("")
-  priority    String   @default("medium")
-  status      String   @default("pending")
-  agentId     String?
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id String @id @default(cuid())
+  title String
+  description String @default("")
+  priority String @default("medium")
+  status String @default("pending")
+  agentId String?
+  userId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   agent Agent? @relation(fields: [agentId], references: [id])
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId, status])
   @@index([userId, priority])
   @@index([agentId, status])
   @@index([status, createdAt])
   @@index([priority, status])
 }
-
-// ============================================================
-// WORKFLOWS
-// ============================================================
 model Workflow {
-  id          String   @id @default(cuid())
-  name        String
-  description String   @default("")
-  steps       String   @default("[]") @db.Text
-  trigger     String   @default("manual")
-  status      String   @default("draft")
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id String @id @default(cuid())
+  name String
+  description String @default("")
+  steps String @default("[]") @db.Text
+  trigger String @default("manual")
+  status String @default("draft")
+  userId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId, status])
   @@index([userId, trigger])
   @@index([trigger, status])
   @@index([status])
 }
 
-// ============================================================
-// GUARDRAILS
-// ============================================================
-model Guardrail {
-  id          String   @id @default(cuid())
-  name        String
-  type        String   @default("content_filter")
-  description String   @default("")
-  rules       String   @default("{}") @db.Text
-  severity    String   @default("warning")
-  isActive    Boolean  @default(true)
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, isActive])
-  @@index([type, isActive])
-  @@index([severity])
-}
-
-// ============================================================
-// WHATSAPP
-// ============================================================
-model WhatsAppConfig {
-  userId        String   @id
-  phoneNumber   String?
-  apiToken      String?  @db.Text
-  phoneNumberId String?
-  whatsappId    String?
-  isActive      Boolean  @default(false)
-  autoMessage   Boolean  @default(false)
-  autoCall      Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([isActive])
-  @@index([phoneNumber])
-}
-
-model VoiceProfile {
-  userId     String   @id
-  voiceModel String   @default("alloy")
-  speed      Float    @default(1.0)
-  pitch      Float    @default(1.0)
-  language   String   @default("fr-FR")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VoiceCall {
-  id          String   @id @default(cuid())
-  userId      String
-  fromNumber  String?
-  toNumber    String
-  provider    String   @default("twilio")
-  status      String   @default("pending")
-  metadata    String?  @db.Text
-  duration    Int      @default(0)
-  createdAt   DateTime @default(now())
-  completedAt DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([userId, status])
-  @@index([provider, status])
-  @@index([completedAt])
-}
-
-// ============================================================
-// API KEYS & ACCESS
-// ============================================================
-model ApiKey {
-  id        String    @id @default(cuid())
-  name      String
-  key       String    @unique
-  scopes    String    @default("[]")
-  lastUsed  DateTime?
-  userId    String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([lastUsed])
-}
-
-model AccessKey {
-  id        String   @id @default(cuid())
-  keyValue  String   @unique
-  name      String?
-  isActive  Boolean  @default(true)
-  scopes    String   @default("[]")
-  lastUsed  DateTime?
-  userId    String
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([isActive])
-  @@index([lastUsed])
-}
-
-model MCPConnector {
-  id            String   @id @default(cuid())
-  userId        String
-  name          String
-  description   String   @default("")
-  serverUrl     String
-  transportType String   @default("sse")
-  status        String   @default("disconnected")
-  authType      String   @default("none")
-  authConfig    String   @default("{}") @db.Text
-  tools         String   @default("[]") @db.Text
-  resources     String   @default("[]") @db.Text
-  prompts       String   @default("[]") @db.Text
-  capabilities  String   @default("{}") @db.Text
-  serverInfo    String   @default("{}") @db.Text
-  isActive      Boolean  @default(true)
-  lastUsedAt    DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, isActive])
-  @@index([userId, status])
-  @@index([status])
-}
-
-// ============================================================
-// BILLING & CREDITS
-// ============================================================
 model Credit {
-  id        String    @id @default(cuid())
-  balance   Int       @default(0)
-  used      Int       @default(0)
-  total     Int       @default(0)
+  id String @id @default(cuid())
+  balance Int @default(0)
+  used Int @default(0)
+  total Int @default(0)
   expiresAt DateTime?
-  userId    String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
+  userId String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([expiresAt])
 }
-
 model CreditTransaction {
-  id          String   @id @default(cuid())
-  type        String   @default("credit")
-  amount      Int
-  balance     Int      @default(0)
-  description String   @default("")
-  reference   String?
-  resourceType String  @default("general")
-  resourceId  String?
-  metadata    String?  @db.Text
-  userId      String
-  createdAt   DateTime @default(now())
-
+  id String @id @default(cuid())
+  type String @default("credit")
+  amount Int
+  balance Int @default(0)
+  description String @default("")
+  reference String?
+  resourceType String @default("general")
+  resourceId String?
+  metadata String? @db.Text
+  userId String
+  createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId, createdAt])
   @@index([userId, type])
   @@index([userId, resourceType])
@@ -476,69 +336,60 @@ model CreditTransaction {
   @@index([resourceType, createdAt])
 }
 
-model Subscription {
-  id                  String    @id @default(cuid())
-  plan                String    @default("free")
-  status              String    @default("active")
-  currentPeriodStart  DateTime?
-  currentPeriodEnd    DateTime?
-  cancelAtPeriodEnd   Boolean   @default(false)
-  userId              String    @unique
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([status])
-  @@index([plan, status])
-  @@index([currentPeriodEnd])
-}
-
 model Invoice {
-  id        String   @id @default(cuid())
-  amount    Float
-  currency  String   @default("XAF")
-  status    String   @default("pending")
-  pdfUrl    String?
+  id String @id @default(cuid())
+  amount Float
+  currency String @default("XAF")
+  status String @default("pending")
+  pdfUrl String?
   paymentMethod String?
   reference String?
-  userId    String
+  userId String
   createdAt DateTime @default(now())
-
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId, createdAt])
   @@index([userId, status])
   @@index([status, createdAt])
   @@index([reference])
 }
 
-// ============================================================
-// MARKETPLACE
-// ============================================================
+model Subscription {
+  id String @id @default(cuid())
+  plan String @default("free")
+  status String @default("active")
+  currentPeriodStart DateTime?
+  currentPeriodEnd DateTime?
+  cancelAtPeriodEnd Boolean @default(false)
+  userId String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([status])
+  @@index([plan, status])
+  @@index([currentPeriodEnd])
+}
+
 model MarketplaceListing {
-  id           String   @id @default(cuid())
-  type         String   @default("agent")
-  name         String
-  slug         String   @unique
-  description  String   @default("")
-  category     String   @default("general")
-  tags         String   @default("[]")
-  config       String   @default("{}") @db.Text
-  price        Int      @default(0)
-  status       String   @default("draft")
-  rating       Float    @default(0)
-  downloads    Int      @default(0)
-  installCount Int      @default(0)
-  isActive     Boolean  @default(true)
-  userId       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id String @id @default(cuid())
+  type String @default("agent")
+  name String
+  slug String @unique
+  description String @default("")
+  category String @default("general")
+  tags String @default("[]")
+  config String @default("{}") @db.Text
+  price Int @default(0)
+  status String @default("draft")
+  rating Float @default(0)
+  downloads Int @default(0)
+  installCount Int @default(0)
+  isActive Boolean @default(true)
+  userId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   purchases MarketplacePurchase[]
-  reviews   MarketplaceReview[]
-
+  reviews MarketplaceReview[]
   @@index([slug, isActive])
   @@index([category, isActive])
   @@index([type, status])
@@ -547,127 +398,17 @@ model MarketplaceListing {
   @@index([userId])
 }
 
-model MarketplacePurchase {
-  id        String   @id @default(cuid())
-  userId    String
-  listingId String
-  price     Int      @default(0)
-  currency  String   @default("credits")
-  status    String   @default("completed")
-  createdAt DateTime @default(now())
-
-  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, listingId])
-  @@index([listingId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model MarketplaceReview {
-  id        String   @id @default(cuid())
-  rating    Int
-  content   String?
-  listingId String
-  userId    String
-  createdAt DateTime @default(now())
-
-  listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([listingId])
-  @@index([userId, listingId])
-}
-
-// ============================================================
-// LOGGING & ACTIVITY
-// ============================================================
 model ActivityLog {
-  id        String   @id @default(cuid())
-  action    String
-  details   String?  @db.Text
-  category  String   @default("general")
-  userId    String
+  id String @id @default(cuid())
+  action String
+  details String? @db.Text
+  category String @default("general")
+  userId String
   createdAt DateTime @default(now())
-
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId, createdAt])
   @@index([userId, category])
   @@index([action, createdAt])
   @@index([category, createdAt])
   @@index([createdAt])
-}
-
-model ApprovedAction {
-  id          String   @id @default(cuid())
-  actionId    String   @unique
-  action      String
-  description String?
-  approvedBy  String?
-  userId      String
-  approvedAt  DateTime @default(now())
-  expiresAt   DateTime?
-  createdAt   DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([expiresAt])
-}
-
-model PendingAction {
-  id          String   @id @default(cuid())
-  actionId    String   @unique
-  action      String
-  description String?
-  status      String   @default("pending")
-  userId      String
-  createdAt   DateTime @default(now())
-  expiresAt   DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, status])
-  @@index([status, createdAt])
-  @@index([expiresAt])
-}
-
-// ============================================================
-// SOCIAL & N8N
-// ============================================================
-model SocialAccount {
-  id              String   @id @default(cuid())
-  platform        String
-  accountId       String
-  accountName     String?
-  accessToken     String?  @db.Text
-  refreshToken    String?  @db.Text
-  expiresAt       DateTime?
-  userId          String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([platform, accountId])
-  @@index([userId])
-  @@index([expiresAt])
-}
-
-model N8nConfig {
-  id             String   @id @default(cuid())
-  host           String?
-  protocol       String   @default("http")
-  encryptionKey  String?  @db.Text
-  webhookUrl     String?
-  isActive       Boolean  @default(false)
-  userId         String   @unique
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([isActive])
 }
