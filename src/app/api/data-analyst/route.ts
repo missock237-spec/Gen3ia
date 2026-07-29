@@ -1,4 +1,4 @@
-// API Data Analyst
+// API Data Analyst - Requetes NL + Dashboards + Import
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
@@ -28,6 +28,11 @@ export async function POST(request: NextRequest) {
         const dashboard = await dataAnalyst.createDashboard({ name: body.name, description: body.description, userId: auth.userId, widgets: body.widgets, filters: body.filters });
         return NextResponse.json({ success: true, dashboard }, { status: 201 });
       }
+      case 'import': {
+        if (!body.name || !body.data || !Array.isArray(body.data)) return NextResponse.json({ error: 'name et data (array) requis' }, { status: 400 });
+        const dataset = await dataAnalyst.importCSV(auth.userId, body.name, body.data, body.description);
+        return NextResponse.json({ success: true, dataset }, { status: 201 });
+      }
       default: return NextResponse.json({ error: 'Action inconnue' }, { status: 400 });
     }
   } catch (err) { return NextResponse.json({ error: String(err) }, { status: 500 }); }
@@ -42,7 +47,7 @@ export async function GET(request: NextRequest) {
     switch (scope) {
       case 'dashboards': { const dashboards = await dataAnalyst.getDashboards(auth.userId); return NextResponse.json({ success: true, dashboards }); }
       case 'datasets': { const datasets = await dataAnalyst.getDatasets(auth.userId); return NextResponse.json({ success: true, datasets }); }
-      case 'history': { const history = await prisma.queryLog.findMany({ where: { userId: auth.userId }, orderBy: { createdAt: 'desc' }, take: 20 }); return NextResponse.json({ success: true, history }); }
+      case 'history': { const history = await prisma.queryLog.findMany({ where: { userId: auth.userId }, orderBy: { createdAt: 'desc' }, take: 50 }); return NextResponse.json({ success: true, history }); }
       default: return NextResponse.json({ error: 'Scope inconnu' }, { status: 400 });
     }
   } catch (err) { return NextResponse.json({ error: String(err) }, { status: 500 }); }
