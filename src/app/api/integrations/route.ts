@@ -1,112 +1,135 @@
+// ============================================================
+// POST/GET /api/integrations — Hub de connecteurs natifs
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { getIntegrationManager, N8nClient } from '@/lib/integrations/n8n-client';
-import { getAuthenticatedUser } from '@/lib/session';
+import { prisma } from '@/lib/prisma';
+import { applySecurity } from '@/lib/security';
+import { integrationHub, IntegrationConnection } from '@/lib/integration-hub';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('api-integrations');
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user) {
-    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-  }
-
-  const searchParams = request.nextUrl.searchParams;
-  const action = searchParams.get('action') || 'list';
-  const service = searchParams.get('service');
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   try {
-    const manager = getIntegrationManager();
+    const { searchParams } = new URL(request.url);
+    const provider = searchParams.get('provider');
+    const category = searchParams.get('category');
+    const actions = searchParams.get('actions') === 'true';
+    const stats = searchParams.get('stats') === 'true';
 
-    switch (action) {
-      case 'list': {
-        const integrations = await manager.getUserIntegrations(user.userId);
-        const available = manager.getAvailableIntegrations();
-        return NextResponse.json({
-          connected: integrations,
-          available,
-        });
-      }
+    // Récupérer les connexions actives de l'utilisateur depuis SocialAccount
+    const connections = await prisma.socialAccount.findMany({
+      where: { userId: auth.userId, expiresAt: { gt: new Date() } },
+      select: { id: true, platform: true, accountName: true, expiresAt: true, createdAt: true, updatedAt: true },
+    });
 
-      case 'health': {
-        const health = await manager.healthCheck();
-        return NextResponse.json(health);
-      }
+    const userConnections: IntegrationConnection[] = connections.map(c => ({
+      id: c.id,
+      provider: c.platform as any,
+      userId: auth.userId,
+      accessToken: '',
+      scopes: [],
+      isActive: true,
+      accountName: c.accountName || undefined,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    }));
 
-      case 'logs': {
-        if (!service) {
-          return NextResponse.json({ error: 'Service requis' }, { status: 400 });
-        }
-        const logs = await manager.getExecutionLogs(user.userId, service);
-        return NextResponse.json({ logs });
-      }
-
-      default:
-        return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
+    // Stats
+    if (stats) {
+      return NextResponse.json({ success: true, stats: integrationHub.getStats(userConnections) });
     }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erreur interne';
-    return NextResponse.json({ error: message }, { status: 500 });
+
+    // Actions d'un provider spécifique
+    if (provider) {
+      if (actions) {
+        const providerActions = integrationHub.getActions(provider as any);
+        return NextResponse.json({ success: true, provider, actions: providerActions });
+      }
+      return NextResponse.json({ error: 'Spécifiez ?actions=true' }, { status: 400 });
+    }
+
+    // Liste filtrée ou complète
+    let integrations = integrationHub.getIntegrations(userConnections);
+
+    if (category) {
+      integrations = integrations.filter(i => i.category === category);
+    }
+
+    // Grouper par catégorie
+    const grouped = integrationHub.getByCategory();
+    for (const [cat, items] of Object.entries(grouped)) {
+      grouped[cat] = items.map(item => ({
+        ...item,
+        isConnected: userConnections.some(c => c.provider === item.id),
+      }));
+    }
+
+    return NextResponse.json({
+      success: true,
+      integrations,
+      grouped,
+      categories: Object.keys(grouped),
+      connected: userConnections.map(c => c.provider),
+    });
+  } catch (err) {
+    log.error('integrations_get_error', { error: String(err) });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user) {
-    return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-  }
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   try {
     const body = await request.json();
-    const { action, service, credentials, credentialName } = body;
+    const { provider, action, params, connectorId } = body;
 
-    if (!action || !service) {
-      return NextResponse.json({ error: 'Action et service requis' }, { status: 400 });
+    if (!provider) {
+      return NextResponse.json({ error: 'provider requis' }, { status: 400 });
     }
 
-    const manager = getIntegrationManager();
+    // Récupérer la connexion pour ce provider
+    const socialAccount = await prisma.socialAccount.findFirst({
+      where: { userId: auth.userId, platform: provider, expiresAt: { gt: new Date() } },
+    });
 
-    switch (action) {
-      case 'connect': {
-        if (!credentials) {
-          return NextResponse.json({ error: 'Credentials requis' }, { status: 400 });
-        }
-        const result = await manager.connectService(
-          user.userId,
-          service,
-          credentials,
-          credentialName
-        );
-        return NextResponse.json(result);
-      }
-
-      case 'disconnect': {
-        await manager.disconnectService(user.userId, service);
-        return NextResponse.json({ success: true });
-      }
-
-      case 'test': {
-        const result = await manager.testConnection(user.userId, service);
-        return NextResponse.json(result);
-      }
-
-      case 'create-workflow': {
-        const n8n = new N8nClient();
-        const { name, template, activate } = body;
-        if (!name || !template) {
-          return NextResponse.json({ error: 'Nom et template requis' }, { status: 400 });
-        }
-        const workflow = await manager.createUserWorkflow(
-          user.userId,
-          name,
-          template,
-          activate
-        );
-        return NextResponse.json(workflow);
-      }
-
-      default:
-        return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
+    if (!socialAccount && provider !== 'webhook') {
+      return NextResponse.json({ error: `Connexion ${provider} non trouvée` }, { status: 404 });
     }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erreur interne';
-    return NextResponse.json({ error: message }, { status: 500 });
+
+    const connection: IntegrationConnection = {
+      id: socialAccount?.id || 'webhook',
+      provider: provider as any,
+      userId: auth.userId,
+      accessToken: socialAccount?.accessToken || '',
+      refreshToken: socialAccount?.refreshToken || undefined,
+      expiresAt: socialAccount?.expiresAt || undefined,
+      scopes: [],
+      accountName: socialAccount?.accountName || undefined,
+      isActive: true,
+      createdAt: socialAccount?.createdAt || new Date(),
+      updatedAt: socialAccount?.updatedAt || new Date(),
+    };
+
+    // Exécuter l'action
+    const result = await integrationHub.executeAction(connection, action || `${provider}_default`, params || {});
+
+    log.info('integration_action_executed', { provider, action, userId: auth.userId.slice(0, 8) });
+
+    return NextResponse.json({
+      success: true,
+      provider,
+      action: action || 'default',
+      result,
+    });
+  } catch (err) {
+    log.error('integration_action_error', { error: String(err) });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
