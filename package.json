@@ -1,6 +1,6 @@
 {
   "name": "gen3ia-monorepo",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "Gen3ia AI Agent OS - Monorepo workspace",
   "scripts": {
@@ -8,16 +8,49 @@
     "build": "pnpm --filter @gen3ia/web build",
     "start": "pnpm --filter @gen3ia/web start",
     "lint": "pnpm -r lint",
+    "lint:fix": "prettier --write \"src/**/*.{ts,tsx}\" && eslint --fix src/",
     "test": "pnpm -r test",
-    "test:coverage": "pnpm -r test:coverage",
+    "test:unit": "vitest run src/__tests__/unit/",
+    "test:integration": "vitest run src/__tests__/ --exclude='src/__tests__/unit/' --exclude='src/__tests__/e2e/'",
+    "test:e2e": "playwright test --config=src/__tests__/e2e/playwright.config.ts",
+    "test:coverage": "vitest run --coverage",
+    "test:security": "vitest run src/__tests__/security/",
+    "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean",
     "db:generate": "pnpm --filter @gen3ia/web db:generate",
     "db:push": "pnpm --filter @gen3ia/web db:push",
     "db:studio": "pnpm --filter @gen3ia/web db:studio",
-    "typecheck": "pnpm -r typecheck"
+    "prepare": "husky",
+    "docs:api": "tsx scripts/generate-openapi.ts",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css,md}\"",
+    "security:audit": "npm audit --audit-level=high",
+    "security:all": "npm audit && npm run test:security"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write",
+      "vitest run --related --passWithNoTests"
+    ],
+    "*.{json,css,md}": ["prettier --write"],
+    "*.{yml,yaml}": ["prettier --write"]
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^15.4.0",
+    "prettier": "^3.5.0",
+    "prettier-plugin-tailwindcss": "^0.6.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@vitest/coverage-v8": "^3.0.0"
   }
 }
