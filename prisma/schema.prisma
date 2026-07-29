@@ -1,5 +1,6 @@
 // ============================================================
 // GEN3IA PRISMA SCHEMA
+// Optimisé avec indexes composites pour performances
 // ============================================================
 
 generator client {
@@ -54,6 +55,12 @@ model User {
   approvedActions     ApprovedAction[]
   pendingActions      PendingAction[]
   mCPConnectors       MCPConnector[]
+
+  @@index([email, isActive])
+  @@index([plan])
+  @@index([role])
+  @@index([lastActiveAt])
+  @@index([createdAt])
 }
 
 // ============================================================
@@ -76,6 +83,8 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@index([expires_at])
 }
 
 model Session {
@@ -84,6 +93,9 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
 }
 
 model VerificationToken {
@@ -92,6 +104,7 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+  @@index([expires])
 }
 
 model EmailVerification {
@@ -102,6 +115,10 @@ model EmailVerification {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, code])
+  @@index([expiresAt])
+  @@index([userId])
 }
 
 // ============================================================
@@ -125,6 +142,11 @@ model Agent {
   conversations Conversation[]
   executions    AgentExecution[]
   actionLogs    AgentActionLog[]
+
+  @@index([userId, status])
+  @@index([userId, type])
+  @@index([userId, createdAt])
+  @@index([status])
 }
 
 model AgentPermission {
@@ -139,6 +161,8 @@ model AgentPermission {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([agentId, permission])
+  @@index([userId])
+  @@index([agentId, granted])
 }
 
 model AgentExecution {
@@ -158,6 +182,13 @@ model AgentExecution {
 
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([agentId, status])
+  @@index([agentId, completedAt])
+  @@index([createdAt])
+  @@index([provider])
 }
 
 model AgentActionLog {
@@ -173,6 +204,10 @@ model AgentActionLog {
 
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([agentId, status])
+  @@index([status, createdAt])
 }
 
 // ============================================================
@@ -190,6 +225,11 @@ model Conversation {
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   agent    Agent?    @relation(fields: [agentId], references: [id])
   messages Message[]
+
+  @@index([userId, updatedAt])
+  @@index([userId, agentId])
+  @@index([userId, type])
+  @@index([agentId])
 }
 
 model Message {
@@ -201,6 +241,9 @@ model Message {
   createdAt      DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId, role])
 }
 
 // ============================================================
@@ -219,6 +262,12 @@ model Task {
 
   agent Agent? @relation(fields: [agentId], references: [id])
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, priority])
+  @@index([agentId, status])
+  @@index([status, createdAt])
+  @@index([priority, status])
 }
 
 // ============================================================
@@ -236,6 +285,11 @@ model Workflow {
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, trigger])
+  @@index([trigger, status])
+  @@index([status])
 }
 
 // ============================================================
@@ -254,6 +308,10 @@ model Guardrail {
   updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([type, isActive])
+  @@index([severity])
 }
 
 // ============================================================
@@ -272,6 +330,9 @@ model WhatsAppConfig {
   updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isActive])
+  @@index([phoneNumber])
 }
 
 model VoiceProfile {
@@ -299,6 +360,11 @@ model VoiceCall {
   completedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([provider, status])
+  @@index([completedAt])
 }
 
 // ============================================================
@@ -315,6 +381,9 @@ model ApiKey {
   updatedAt DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([lastUsed])
 }
 
 model AccessKey {
@@ -328,6 +397,10 @@ model AccessKey {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive])
+  @@index([lastUsed])
 }
 
 model MCPConnector {
@@ -351,6 +424,10 @@ model MCPConnector {
   updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([userId, status])
+  @@index([status])
 }
 
 // ============================================================
@@ -367,6 +444,8 @@ model Credit {
   updatedAt DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 model CreditTransaction {
@@ -383,6 +462,13 @@ model CreditTransaction {
   createdAt   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, type])
+  @@index([userId, resourceType])
+  @@index([reference])
+  @@index([type, createdAt])
+  @@index([resourceType, createdAt])
 }
 
 model Subscription {
@@ -397,6 +483,10 @@ model Subscription {
   updatedAt           DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([plan, status])
+  @@index([currentPeriodEnd])
 }
 
 model Invoice {
@@ -411,6 +501,11 @@ model Invoice {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@index([reference])
 }
 
 // ============================================================
@@ -438,6 +533,13 @@ model MarketplaceListing {
   user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   purchases MarketplacePurchase[]
   reviews   MarketplaceReview[]
+
+  @@index([slug, isActive])
+  @@index([category, isActive])
+  @@index([type, status])
+  @@index([isActive, rating])
+  @@index([isActive, downloads])
+  @@index([userId])
 }
 
 model MarketplacePurchase {
@@ -453,6 +555,9 @@ model MarketplacePurchase {
   listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@unique([userId, listingId])
+  @@index([listingId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model MarketplaceReview {
@@ -465,6 +570,9 @@ model MarketplaceReview {
 
   listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
   user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([userId, listingId])
 }
 
 // ============================================================
@@ -479,6 +587,12 @@ model ActivityLog {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, category])
+  @@index([action, createdAt])
+  @@index([category, createdAt])
+  @@index([createdAt])
 }
 
 model ApprovedAction {
@@ -493,6 +607,9 @@ model ApprovedAction {
   createdAt   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model PendingAction {
@@ -506,6 +623,10 @@ model PendingAction {
   expiresAt   DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@index([expiresAt])
 }
 
 // ============================================================
@@ -526,6 +647,8 @@ model SocialAccount {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([platform, accountId])
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model N8nConfig {
@@ -540,4 +663,6 @@ model N8nConfig {
   updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isActive])
 }
