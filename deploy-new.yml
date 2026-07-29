@@ -1,0 +1,28 @@
+# ============================================================
+# deploy-new.yml (DEPRECATED — voir deploy.yml et render.yaml)
+# Le déploiement est maintenant géré par Render Blueprint
+# render.yaml + Dockerfile définissent l'infrastructure
+# ============================================================
+
+name: Gen3ia Deploy (DEPRECATED)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-deployment:
+    name: Deployment Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Render Blueprint
+        run: |
+          echo "Le deploiement est géré par Render Blueprint"
+          echo "Fichier: render.yaml"
+          echo "Auto-deploy: true (chaque push sur main déclenche un déploiement)"
+          echo "Service: gen3ia-app"
+          echo "URL: https://gen3ia-app.onrender.com"
