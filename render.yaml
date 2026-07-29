@@ -1,7 +1,7 @@
 # ============================================================
 # Render Blueprint — Gen3ia AI Agent OS
 # Auto-déploiement sur push vers main
-# Docs: https://render.com/docs/blueprint-spec
+# Paiement: SebPay (Mobile Money Afrique)
 # ============================================================
 
 services:
@@ -50,9 +50,28 @@ services:
         sync: false
       - key: GITHUB_CLIENT_SECRET
         sync: false
-      - key: STRIPE_SECRET_KEY
+      # SebPay (Paiement Mobile Money Afrique) — remplace Stripe
+      - key: SEBPAY_API_KEY
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET
+      - key: SEBPAY_API_SECRET
+        sync: false
+      - key: SEBPAY_BASE_URL
+        sync: false
+      - key: SEBPAY_WEBHOOK_SECRET
+        sync: false
+      - key: SEBPAY_STARTER_PLAN_ID
+        sync: false
+      - key: SEBPAY_PRO_PLAN_ID
+        sync: false
+      - key: SEBPAY_ENTERPRISE_PLAN_ID
+        sync: false
+      - key: SEBPAY_CREDITS_100_PLAN_ID
+        sync: false
+      - key: SEBPAY_CREDITS_500_PLAN_ID
+        sync: false
+      - key: SEBPAY_CREDITS_2000_PLAN_ID
+        sync: false
+      - key: SEBPAY_CREDITS_5000_PLAN_ID
         sync: false
       - key: SENTRY_DSN
         sync: false
