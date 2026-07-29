@@ -13,18 +13,18 @@ on:
 
 jobs:
   deploy-vercel:
-    name: Deploy to Vercel
+    name: Deploy to render
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v7
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v42
+      - name: Deploy to render
+        uses: amondnet/render-action@v42
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
+          render-token: ${{ secrets.RENDER_TOKEN }}
+          render-org-id: ${{ secrets.RENDER_ORG_ID }}
+          render-project-id: ${{ secrets.RENDER_PROJECT_ID }}
+          render-args: '--prod'
 
   build-docker:
     name: Build Docker Image
@@ -38,6 +38,6 @@ jobs:
         with:
           context: .
           push: false
-          tags: genova-ai:latest
+          tags: gen3ia:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
