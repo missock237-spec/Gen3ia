@@ -1,6 +1,6 @@
-# 🤖 Gen3ia — AI Automation Ecosystem
+# Gen3ia - AI Automation Ecosystem
 
-**L'OS de l'automatisation intelligente** — Accessible · Communautaire · Flexible
+**L'OS de l'automatisation intelligente** - Accessible . Communautaire . Flexible
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js)](https://nextjs.org/)
@@ -10,38 +10,68 @@
 
 ---
 
-## 🌍 La vision
+## La vision
 
-Gen3ia transforme la puissance de l'IA en un **ecosysteme complet d'automatisation** accessible a tous.
+Gen3ia transforme la puissance de l'IA en un ecosysteme complet d'automatisation accessible a tous.
 
 ```
 No-Code & Templates    Communaute & Createurs    Flexibilite Maximale
      |                        |                         |
      v                        v                         v
 +-----------------------------------------------------------+
-|          GEN3IA — AI AUTOMATION ECOSYSTEM                 |
+|          GEN3IA - AI AUTOMATION ECOSYSTEM                 |
 |  Agents IA . Workflows . Voice . Terminal . Marketplace   |
-|  SebPay . 28 Integrations . 14 tarifs PAYG . 2FA         |
+|  SebPay . 28 Integrations . 2FA . Versioning Git-like     |
 +-----------------------------------------------------------+
 ```
 
 ---
 
-## 1. Accessible a tous (No-Code + Templates)
-
-### Workflow Canvas — Glisser-Deposer
+## 1. Workflow Canvas - Glisser-Deposer avec Versioning
 
 Creez des automatisations sans ecrire de code : 20 types de blocs (agents, conditions, boucles, HTTP, email, IA...), branching visuel (Si/Alors, Switch, Sentiment), connexions par glisser, templates pre-construits.
 
+### Versioning Git-like
+
+Chaque workflow beneficie d'un systeme de versioning complet inspire de Git :
+
+| Fonctionnalite | Description |
+|----------------|-------------|
+| **Versions** | Chaque sauvegarde cree une version avec message. Historique complet. |
+| **Branches** | Creez des branches pour travailler en parallele (`main`, `feature-*`, `experimental`) |
+| **Merge** | Fusionnez une branche source dans la branche active |
+| **Restauration** | Restaurez n'importe quelle version anterieure |
+| **Switch** | Basculez entre branches instantanement |
+| **Collaborateurs** | Invitez des membres de l'equipe avec 3 roles : viewer, editor, admin |
+
 ```
-Support client automatise :
-  Email entrant -> Analyse sentiment -> Positif -> Accuse reception
-                                       -> Negatif -> Escalade prioritaire
+Branch main  : v1 -> v2 -> v3 (active)
+                    \
+Branch feature-test : v1 -> v2 -> (merge dans main -> v4)
 ```
 
-### Agents IA intelligents
+### API Endpoints Versioning
 
-- **Multi-agents** : Coordinateur, Analyste, Redacteur, Relecteur — 4 strategies
+```http
+GET    /api/workflows/[id]/version          # Historique des versions
+POST   /api/workflows/[id]/version?action=save     # Sauvegarder
+POST   /api/workflows/[id]/version?action=restore  # Restaurer
+GET    /api/workflows/[id]/branch           # Lister les branches
+POST   /api/workflows/[id]/branch?action=create    # Creer une branche
+POST   /api/workflows/[id]/branch?action=switch    # Changer de branche
+POST   /api/workflows/[id]/branch?action=merge     # Fusionner
+DELETE /api/workflows/[id]/branch?branchId=xxx     # Supprimer
+GET    /api/workflows/[id]/collaborators    # Lister collaborateurs
+POST   /api/workflows/[id]/collaborators?action=add       # Ajouter
+POST   /api/workflows/[id]/collaborators?action=update    # Modifier role
+DELETE /api/workflows/[id]/collaborators?collaboratorId=x # Supprimer
+```
+
+---
+
+## 2. Agents IA intelligents
+
+- **Multi-agents** : Coordinateur, Analyste, Redacteur, Relecteur - 4 strategies
 - **Memoire long terme** : L'agent se souvient et apprend
 - **Auto-amelioration** : Ajuste prompts, temperature, modele
 - **Assistants vocaux** : Votre voix, votre personnalite, votre marque
@@ -57,9 +87,7 @@ Mode assiste avec explications, risques et alternatives avant execution.
 
 ---
 
-## 2. Communaute & Createurs (Marketplace)
-
-### Publiez et monetez
+## 3. Communaute & Createurs (Marketplace)
 
 | Fonctionnalite | Detail |
 |----------------|--------|
@@ -67,7 +95,7 @@ Mode assiste avec explications, risques et alternatives avant execution.
 | Prix libre | Commission plateforme 15% |
 | Reversements auto | Mobile Money via SebPay |
 | Dashboard createur | Gains, listings, retraits |
-| Retrait minimum | 2 000 FCFA — Orange Money, MTN MoMo |
+| Retrait minimum | 2 000 FCFA - Orange Money, MTN MoMo |
 
 ### 28 connecteurs natifs
 
@@ -84,7 +112,7 @@ X (Twitter) . LinkedIn
 
 ---
 
-## 3. Flexibilite maximale
+## 4. Flexibilite maximale
 
 ### 2 modeles de paiement
 
@@ -126,6 +154,7 @@ make dev:seed
 14 ressources PAYG        5 sources de veille
 16 regles de securite     7 workflows CI/CD
 30+ fichiers de test      30+ endpoints API documentes
+Systeme de versioning     Gestion des collaborateurs
 ```
 
 ---
