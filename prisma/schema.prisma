@@ -13,22 +13,26 @@ datasource db {
 }
 
 // ============================================================
-// USER
+// USER (avec support 2FA)
 // ============================================================
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  name            String?
-  password        String?
-  avatar          String?
-  plan            String   @default("free")
-  role            String   @default("user")
-  credits         Int      @default(0)
-  isActive        Boolean  @default(true)
-  isEmailVerified Boolean  @default(false)
-  lastActiveAt    DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  name               String?
+  password           String?
+  avatar             String?
+  plan               String   @default("free")
+  role               String   @default("user")
+  credits            Int      @default(0)
+  isActive           Boolean  @default(true)
+  isEmailVerified    Boolean  @default(false)
+  totpSecret         String?                               // Secret TOTP Google Authenticator
+  backupCodes        String?  @db.Text                      // Hashs SHA-256 des codes de récupération
+  isTwoFactorEnabled Boolean  @default(false)                // 2FA activée
+  twoFactorVerifiedAt DateTime?                              // Dernière vérification 2FA réussie
+  lastActiveAt       DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   agents              Agent[]
   sessions            Session[]
@@ -59,6 +63,7 @@ model User {
   @@index([email, isActive])
   @@index([plan])
   @@index([role])
+  @@index([isTwoFactorEnabled])
   @@index([lastActiveAt])
   @@index([createdAt])
 }
