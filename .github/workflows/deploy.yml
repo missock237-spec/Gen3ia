@@ -1,31 +1,16 @@
-name: Deploy
-
+name: Deploy to Render
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Deployment environment'
-        type: environment
-        required: true
-        default: 'production'
-
 jobs:
-  deploy-vercel:
-    name: Deploy to render
+  deploy:
+    name: Trigger Render Deploy
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v7
-      - name: Deploy to render
-        uses: amondnet/render-action@v42
-        with:
-          render-token: ${{ secrets.RENDER_TOKEN }}
-          render-org-id: ${{ secrets.RENDER_ORG_ID }}
-          render-project-id: ${{ secrets.RENDER_PROJECT_ID }}
-          render-args: '--prod'
-
+      - name: Call Render Deploy Hook
+        run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        
   build-docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
