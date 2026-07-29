@@ -20,48 +20,79 @@ model User {
   accessKeys AccessKey[] agentPermissions AgentPermission[] voiceCalls VoiceCall[]
   agentActionLogs AgentActionLog[] approvedActions ApprovedAction[] pendingActions PendingAction[]
   mCPConnectors MCPConnector[]
+  collaboratorOn WorkflowCollaborator[]
   @@index([email, isActive]) @@index([plan]) @@index([role]) @@index([isCreator]) @@index([lastActiveAt])
 }
 
-model CreatorPayout {
-  id String @id @default(cuid()) userId String amount Int currency String @default("XAF")
-  status String @default("pending") method String @default("sebpay") phone String? operator String?
-  periodStart DateTime periodEnd DateTime transactionId String?
-  createdAt DateTime @default(now()) processedAt DateTime?
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, status]) @@index([status, createdAt])
-}
-
-model MarketplaceListing {
-  id String @id @default(cuid()) type String @default("agent") name String slug String @unique
-  description String @default("") category String @default("general") tags String @default("[]")
-  config String @default("{}") @db.Text
-  price Int @default(0) commissionRate Float @default(0.15)
-  status String @default("draft") rating Float @default(0)
-  downloads Int @default(0) installCount Int @default(0) revenue Int @default(0)
-  isActive Boolean @default(true) isPublic Boolean @default(false)
-  isTemplate Boolean @default(false) featured Boolean @default(false)
-  userId String createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purchases MarketplacePurchase[] reviews MarketplaceReview[]
-  @@index([slug, isActive]) @@index([category, isActive]) @@index([isActive, rating])
-  @@index([isActive, downloads]) @@index([type, status]) @@index([userId])
-  @@index([isPublic]) @@index([featured])
-}
-
-model WorkflowTemplate {
-  id String @id @default(cuid()) name String description String @default("") category String @default("general")
-  icon String @default("zap") steps String @default("[]") @db.Text
-  isBuiltIn Boolean @default(true) usageCount Int @default(0)
-  isPublic Boolean @default(false) tags String @default("[]") userId String?
+model Workflow {
+  id String @id @default(cuid()) name String description String @default("")
+  steps String @default("[]") @db.Text trigger String @default("manual")
+  status String @default("draft") userId String
+  activeBranchId String? currentVersionId String?
   createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
-  user User? @relation(fields: [userId], references: [id])
-  @@index([category]) @@index([isBuiltIn]) @@index([usageCount]) @@index([isPublic])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branches WorkflowBranch[] versions WorkflowVersion[]
+  collaborators WorkflowCollaborator[]
+  @@index([userId, status]) @@index([userId, trigger]) @@index([trigger, status]) @@index([status])
 }
 
-model Agent { id String @id @default(cuid()) name String type String @default("assistant") role String @default("assistant") description String @default("") systemPrompt String? @db.Text model String @default("gpt-4o-mini") temperature Float @default(0.7) maxTokens Int @default(4096) config String @default("{}") @db.Text avatar String? status String @default("active") userId String suiteId String? successes Int @default(0) failures Int @default(0) avgTokensUse Int @default(0) avgExecutionTime Float @default(0) lastImprovedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt user User @relation(fields: [userId], references: [id], onDelete: Cascade) suite AgentSuite? @relation(fields: [suiteId], references: [id]) tasks Task[] permissions AgentPermission[] conversations Conversation[] executions AgentExecution[] actionLogs AgentActionLog[] suiteMembers AgentSuiteAgent[] memories AgentMemory[] improvements ImprovementLog[] @@index([userId, status]) @@index([userId, type]) @@index([userId, role]) @@index([suiteId]) @@index([status]) }
-model MarketplacePurchase { id String @id @default(cuid()) userId String listingId String price Int @default(0) currency String @default("credits") status String @default("completed") createdAt DateTime @default(now()) user User @relation(fields: [userId], references: [id], onDelete: Cascade) listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade) @@unique([userId, listingId]) @@index([listingId]) @@index([status]) @@index([createdAt]) }
-model MarketplaceReview { id String @id @default(cuid()) rating Int content String? listingId String userId String createdAt DateTime @default(now()) listing MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade) user User @relation(fields: [userId], references: [id], onDelete: Cascade) @@index([listingId]) @@index([userId, listingId]) }
-model Conversation { id String @id @default(cuid()) title String type String @default("chat") userId String agentId String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt user User @relation(fields: [userId], references: [id], onDelete: Cascade) agent Agent? @relation(fields: [agentId], references: [id]) messages Message[] @@index([userId, updatedAt]) @@index([userId, agentId]) @@index([userId, type]) @@index([agentId]) }
-model Message { id String @id @default(cuid()) role String content String @db.Text conversationId String provider String @default("internal") createdAt DateTime @default(now()) conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade) @@index([conversationId, createdAt]) @@index([conversationId, role]) }
-model ActivityLog { id String @id @default(cuid()) action String details String? @db.Text category String @default("general") userId String createdAt DateTime @default(now()) user User @relation(fields: [userId], references: [id], onDelete: Cascade) @@index([userId, createdAt]) @@index([userId, category]) @@index([action, createdAt]) @@index([category, createdAt]) @@index([createdAt]) }
+model WorkflowVersion {
+  id String @id @default(cuid())
+  workflowId String
+  branchId String
+  version Int
+  steps String @db.Text
+  name String @default("")
+  message String @default("") @db.Text
+  userId String
+  parentVersionId String?
+  createdAt DateTime @default(now())
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  branch WorkflowBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  parent WorkflowVersion? @relation("VersionParent", fields: [parentVersionId], references: [id])
+  children WorkflowVersion[] @relation("VersionParent")
+  @@unique([workflowId, branchId, version])
+  @@index([workflowId, branchId])
+  @@index([workflowId, version])
+  @@index([createdAt])
+}
+
+model WorkflowBranch {
+  id String @id @default(cuid())
+  workflowId String
+  name String @default("main")
+  description String @default("")
+  sourceBranchId String?
+  isDefault Boolean @default(false)
+  isLocked Boolean @default(false)
+  userId String
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceBranch WorkflowBranch? @relation("BranchFork", fields: [sourceBranchId], references: [id])
+  forks WorkflowBranch[] @relation("BranchFork")
+  versions WorkflowVersion[]
+  @@unique([workflowId, name])
+  @@index([workflowId])
+  @@index([isDefault])
+}
+
+model WorkflowCollaborator {
+  id String @id @default(cuid())
+  workflowId String
+  userId String
+  role String @default("editor") // viewer | editor | admin
+  lastAccessAt DateTime? @default(now())
+  addedAt DateTime @default(now())
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([workflowId, userId])
+  @@index([userId])
+}
+
+model WorkflowTemplate { id String @id @default(cuid()) name String description String @default("") category String @default("general") icon String @default("zap") steps String @default("[]") @db.Text isBuiltIn Boolean @default(true) usageCount Int @default(0) isPublic Boolean @default(false) tags String @default("[]") userId String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt user User? @relation(fields: [userId], references: [id]) @@index([category]) @@index([isBuiltIn]) @@index([usageCount]) @@index([isPublic]) }
+model Agent { id String @id @default(cuid()) name String type String @default("assistant") role String @default("assistant") @@index([userId, status]) @@index([userId, type]) }
+model AgentMemory { id String @id @default(cuid()) agentId String userId String category String @default("episodic") content String @db.Text @@index([agentId, userId, category]) }
+model CreatorPayout { id String @id @default(cuid()) userId String amount Int status String @default("pending") @@index([userId, status]) }
+model Conversation { id String @id @default(cuid()) title String type String @default("chat") userId String agentId String? @@index([userId, updatedAt]) }
+model Message { id String @id @default(cuid()) role String content String @db.Text conversationId String @@index([conversationId, createdAt]) }
+model ActivityLog { id String @id @default(cuid()) action String details String? @db.Text category String @default("general") userId String @@index([userId, createdAt]) }
