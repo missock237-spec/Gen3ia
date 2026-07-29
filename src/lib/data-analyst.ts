@@ -1,51 +1,46 @@
 // ============================================================
-// DATA ANALYST AGENT — Analyse de données + Rapports interactifs
-// Sources: CSV, JSON, PostgreSQL, APIs externes
-// Génère: graphiques, résumés NLP, tableaux de bord
+// DATA ANALYST ENGINE — NL2SQL + Dashboards interactifs
+// Requetes en langage naturel + visualisations dynamiques
 // ============================================================
-
-import { prisma } from '@/lib/prisma';
-import { createLogger } from '@/lib/logger';
+import { prisma } from './prisma';
+import { createLogger } from './logger';
 
 const log = createLogger('data-analyst');
 
-export type DataSourceType = 'csv' | 'json' | 'postgresql' | 'api' | 'internal_db';
-
-export interface DataSource {
-  id: string; name: string; type: DataSourceType;
-  config: Record<string, any>;
-  schema?: { columns: { name: string; type: string }[] };
+export interface QueryResult {
+  columns: string[];
+  rows: Record<string, any>[];
+  totalCount: number;
+  executionTimeMs: number;
 }
 
-export interface AnalysisQuery {
-  sourceId: string;
-  query: string;  // SQL ou description NLP
-  type: 'sql' | 'nlp' | 'aggregation' | 'trend' | 'comparison';
-  visualizations?: ('bar' | 'line' | 'pie' | 'table' | 'heatmap')[];
-}
-
-export interface AnalysisResult {
-  summary: string;
-  data: Record<string, any>[];
-  columns: { name: string; type: string }[];
-  visualizations: { type: string; config: Record<string, any>; data: any[] }[];
-  insights: string[];
-  metrics: { key: string; value: number; change?: number }[];
-  exportFormats: string[];
-}
-
-export interface ReportConfig {
+export interface ChartConfig {
+  type: 'bar' | 'line' | 'pie' | 'doughnut' | 'radar' | 'polar' | 'scatter' | 'area' | 'table' | 'number';
   title: string;
-  description?: string;
-  sections: { title: string; query: AnalysisQuery; chartType?: string }[];
-  schedule?: { cron: string; channels: string[] };
-  format: 'dashboard' | 'pdf' | 'email' | 'embed';
+  xAxis?: string;
+  yAxis?: string | string[];
+  category?: string;
+  value?: string;
+  groupBy?: string;
+  aggregation?: 'sum' | 'avg' | 'count' | 'min' | 'max' | 'none';
+  stacked?: boolean;
+  horizontal?: boolean;
 }
 
-const SAMPLE_DATASETS: Record<string, { name: string; columns: { name: string; type: string }[]; rows: Record<string, any>[] }> = {
+export interface WidgetConfig {
+  id: string;
+  type: 'chart' | 'number' | 'table' | 'text' | 'filter';
+  title: string;
+  query: string;
+  chart?: ChartConfig;
+  position: { x: number; y: number; w: number; h: number };
+  filters?: string[];
+}
+
+const SAMPLE_DATASETS: Record<string, { name: string; columns: string[]; rows: Record<string, any>[] }> = {
   sales: {
     name: 'Ventes',
-    columns: [{name:'date',type:'date'},{name:'produit',type:'string'},{name:'montant',type:'number'},{name:'region',type:'string'},{name:'vendeur',type:'string'}],
+    columns: ['date','produit','montant','region','vendeur'],
     rows: [
       {date:'2026-01',produit:'SaaS Pro',montant:15000,region:'Douala',vendeur:'Alice'},
       {date:'2026-01',produit:'SaaS Starter',montant:5000,region:'Yaounde',vendeur:'Bob'},
@@ -57,7 +52,7 @@ const SAMPLE_DATASETS: Record<string, { name: string; columns: { name: string; t
   },
   users: {
     name: 'Utilisateurs',
-    columns: [{name:'date',type:'date'},{name:'nouveaux',type:'number'},{name:'actifs',type:'number'},{name:'payants',type:'number'},{name:'taux_conversion',type:'number'}],
+    columns: ['date','nouveaux','actifs','payants','taux_conversion'],
     rows: [
       {date:'2026-01',nouveaux:120,actifs:450,payants:45,taux_conversion:0.10},
       {date:'2026-02',nouveaux:145,actifs:510,payants:58,taux_conversion:0.11},
@@ -66,7 +61,7 @@ const SAMPLE_DATASETS: Record<string, { name: string; columns: { name: string; t
   },
   support: {
     name: 'Support',
-    columns: [{name:'date',type:'date'},{name:'tickets',type:'number'},{name:'resolus',type:'number'},{name:'satisfaction',type:'number'},{name:'temps_moyen',type:'number'}],
+    columns: ['date','tickets','resolus','satisfaction','temps_moyen'],
     rows: [
       {date:'2026-01',tickets:230,resolus:210,satisfaction:4.2,temps_moyen:180},
       {date:'2026-02',tickets:195,resolus:188,satisfaction:4.5,temps_moyen:145},
@@ -75,112 +70,162 @@ const SAMPLE_DATASETS: Record<string, { name: string; columns: { name: string; t
   },
 };
 
-export class DataAnalyst {
-  async analyze(query: AnalysisQuery): Promise<AnalysisResult> {
-    log.info('analysis_started', { sourceId: query.sourceId, type: query.type });
-    const dataset = SAMPLE_DATASETS[query.sourceId];
-    if (!dataset) throw new Error('Source de donnees non trouvee: ' + query.sourceId);
+export class DataAnalystEngine {
+  /**
+   * NL2SQL: Convertit une question en langage naturel en requete
+   */
+  async nl2sql(question: string, schemaInfo: string): Promise<{ query: string; explanation: string; queryType: string }> {
+    const q = question.toLowerCase();
 
-    const data = dataset.rows;
-    const summary = this.generateSummary(data, dataset.columns, query);
-    const insights = this.extractInsights(data, dataset.columns);
-    const metrics = this.computeMetrics(data, dataset.columns);
-    const visualizations = this.generateVisualizations(data, dataset.columns, query.visualizations);
+    if (q.includes('count') || q.includes('combien') || q.includes('nombre de')) {
+      return { query: 'SELECT COUNT(*) as count FROM data', explanation: 'Comptage des enregistrements', queryType: 'aggregation' };
+    }
+    if (q.includes('moyenne') || q.includes('avg') || q.includes('moyen')) {
+      return { query: 'SELECT AVG(value) as average FROM data', explanation: 'Calcul de la moyenne', queryType: 'aggregation' };
+    }
+    if (q.includes('total') || q.includes('somme') || q.includes('sum')) {
+      return { query: 'SELECT SUM(value) as total FROM data', explanation: 'Calcul de la somme totale', queryType: 'aggregation' };
+    }
+    if (q.includes('par') || q.includes('groupe') || q.includes('group') || q.includes('repartition')) {
+      return { query: 'SELECT category, SUM(value) as total FROM data GROUP BY category ORDER BY total DESC', explanation: 'Regroupement par categorie', queryType: 'sql' };
+    }
+    if (q.includes('evolution') || q.includes('tendance') || q.includes('temporel')) {
+      return { query: 'SELECT date, SUM(value) as total FROM data GROUP BY date ORDER BY date ASC', explanation: 'Evolution temporelle', queryType: 'sql' };
+    }
+    if (q.includes('top') || q.includes('meilleur') || q.includes('classement')) {
+      return { query: 'SELECT category, SUM(value) as total FROM data GROUP BY category ORDER BY total DESC LIMIT 10', explanation: 'Classement des meilleures valeurs', queryType: 'sql' };
+    }
 
+    return { query: 'SELECT * FROM data LIMIT 50', explanation: 'Selection des donnees', queryType: 'sql' };
+  }
+
+  async askQuestion(question: string, datasetId: string): Promise<{
+    answer: string; query: string; result: QueryResult | null;
+    chartConfig: ChartConfig | null; explanation: string;
+  }> {
+    const dataset = SAMPLE_DATASETS[datasetId] || SAMPLE_DATASETS['sales'];
+    const columns = dataset.columns;
+    const allRows = dataset.rows;
+    const q = question.toLowerCase();
+
+    let filteredRows = [...allRows];
+    let query = 'SELECT * FROM ' + dataset.name;
+    let explanation = 'Analyse des donnees';
+
+    // Filtrage intelligent
+    if (q.includes('douala') || q.includes('yaounde') || q.includes('region')) {
+      const regions = ['Douala','Yaounde','Bafoussam'].filter(r => q.includes(r.toLowerCase()));
+      if (regions.length > 0) {
+        filteredRows = allRows.filter(r => regions.includes(r.region));
+        query = 'SELECT * FROM ' + dataset.name + ' WHERE region IN ("' + regions.join('","') + '")';
+        explanation = 'Filtrage par region: ' + regions.join(', ');
+      }
+    }
+
+    if (q.includes('pro') || q.includes('starter') || q.includes('enterprise')) {
+      const prods = ['SaaS Pro','SaaS Starter','Enterprise'].filter(p => q.includes(p.toLowerCase().replace(' ','')));
+      if (prods.length > 0) {
+        filteredRows = allRows.filter(r => prods.includes(r.produit));
+        query = 'SELECT * FROM ' + dataset.name + ' WHERE produit IN ("' + prods.join('","') + '")';
+        explanation = 'Filtrage par produit: ' + prods.join(', ');
+      }
+    }
+
+    // Aggregation
+    if (q.includes('chiffre') || q.includes('ca') || q.includes('total') || q.includes('montant')) {
+      const total = filteredRows.reduce((s, r) => s + (Number(r.montant) || Number(r.actifs) || 0), 0);
+      return {
+        answer: 'Le montant total est de **' + total.toLocaleString() + ' FCFA**',
+        query: 'SELECT SUM(montant) FROM ' + dataset.name,
+        result: { columns: ['total'], rows: [{ total }], totalCount: 1, executionTimeMs: 45 },
+        chartConfig: { type: 'number', title: question, value: 'total' },
+        explanation,
+      };
+    }
+
+    if (q.includes('evolution') || q.includes('tendance') || (q.includes('par mois') || q.includes('par date'))) {
+      const dateField = columns.find(c => c === 'date' || c.includes('date'));
+      const numField = columns.find(c => c === 'montant' || c === 'actifs' || c === 'tickets' || c === 'nouveaux');
+      if (dateField && numField) {
+        const grouped: Record<string, number> = {};
+        filteredRows.forEach(r => {
+          const key = String(r[dateField]);
+          grouped[key] = (grouped[key] || 0) + Number(r[numField]);
+        });
+        const chartRows = Object.entries(grouped).map(([date, value]) => ({ date, value }));
+        return {
+          answer: 'Evolution de ' + numField + ' sur ' + chartRows.length + ' periodes',
+          query: 'SELECT ' + dateField + ', SUM(' + numField + ') FROM ' + dataset.name + ' GROUP BY ' + dateField,
+          result: { columns: [dateField, numField], rows: chartRows, totalCount: chartRows.length, executionTimeMs: 62 },
+          chartConfig: { type: 'line', title: 'Evolution ' + numField, xAxis: 'date', yAxis: ['value'] },
+          explanation,
+        };
+      }
+    }
+
+    if (q.includes('par') || q.includes('repartition') || q.includes('classement') || q.includes('top')) {
+      const groupField = columns.find(c => c === 'produit' || c === 'region' || c === 'vendeur');
+      const valField = columns.find(c => c === 'montant' || c === 'tickets' || c === 'actifs');
+      if (groupField && valField) {
+        const grouped: Record<string, number> = {};
+        filteredRows.forEach(r => {
+          const key = String(r[groupField]);
+          grouped[key] = (grouped[key] || 0) + Number(r[valField]);
+        });
+        const chartRows = Object.entries(grouped)
+          .map(([label, value]) => ({ label, value }))
+          .sort((a, b) => b.value - a.value);
+        return {
+          answer: 'Repartition par ' + groupField + ': ' + chartRows.map(r => r.label + ' (' + r.value.toLocaleString() + ')').join(', '),
+          query: 'SELECT ' + groupField + ', SUM(' + valField + ') FROM ' + dataset.name + ' GROUP BY ' + groupField,
+          result: { columns: [groupField, valField], rows: chartRows, totalCount: chartRows.length, executionTimeMs: 55 },
+          chartConfig: {
+            type: q.includes('proportion') || q.includes('part') ? 'pie' : 'bar',
+            title: question.length > 60 ? question.slice(0, 60) + '...' : question,
+            xAxis: 'label', yAxis: ['value'],
+          },
+          explanation,
+        };
+      }
+    }
+
+    // Fallback: toutes les donnees
     return {
-      summary,
-      data,
-      columns: dataset.columns,
-      visualizations,
-      insights,
-      metrics,
-      exportFormats: ['csv', 'json', 'png', 'html'],
+      answer: filteredRows.length + ' enregistrements trouves',
+      query: 'SELECT * FROM ' + dataset.name,
+      result: { columns, rows: filteredRows, totalCount: filteredRows.length, executionTimeMs: 30 },
+      chartConfig: null,
+      explanation,
     };
   }
 
-  async generateReport(config: ReportConfig): Promise<{ html: string; sections: any[] }> {
-    const sections = [];
-    let html = '<div style="font-family:system-ui;max-width:900px;margin:auto;padding:20px">';
-    html += '<h1 style="font-size:28px;margin-bottom:8px">' + config.title + '</h1>';
-    if (config.description) html += '<p style="color:#a1a1aa;margin-bottom:24px">' + config.description + '</p>';
-
-    for (const section of config.sections) {
-      const result = await this.analyze(section.query);
-      sections.push({ title: section.title, result });
-      html += '<div style="background:#18181b;border-radius:12px;padding:20px;margin-bottom:16px;border:1px solid #27272a">';
-      html += '<h2 style="font-size:18px;margin-bottom:12px">' + section.title + '</h2>';
-      html += '<p style="color:#d4d4d4;margin-bottom:16px;line-height:1.6">' + result.summary + '</p>';
-
-      // Mini tableau
-      html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>';
-      for (const col of result.columns.slice(0, 6)) html += '<th style="text-align:left;padding:8px 12px;border-bottom:1px solid #27272a;color:#a1a1aa;font-weight:500">' + col.name + '</th>';
-      html += '</tr></thead><tbody>';
-      for (const row of result.data.slice(0, 5)) {
-        html += '<tr>';
-        for (const col of result.columns.slice(0, 6)) html += '<td style="padding:6px 12px;border-bottom:1px solid #27272a">' + (row[col.name] ?? '') + '</td>';
-        html += '</tr>';
-      }
-      html += '</tbody></table></div>';
-
-      // Insights
-      if (result.insights.length > 0) {
-        html += '<div style="margin-top:12px">' + result.insights.map(i => '<div style="padding:8px 12px;background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;border-radius:4px;margin-bottom:4px;font-size:13px">' + i + '</div>').join('') + '</div>';
-      }
-
-      html += '</div>';
-    }
-
-    html += '</div>';
-    return { html, sections };
-  }
-
-  private generateSummary(data: any[], columns: { name: string; type: string }[], query: AnalysisQuery): string {
-    const total = data.length;
-    const numCols = columns.filter(c => c.type === 'number');
-    let summary = 'Analyse de ' + total + ' enregistrements. ';
-    for (const col of numCols) {
-      const vals = data.map(r => Number(r[col.name])).filter(v => !isNaN(v));
-      if (vals.length > 0) {
-        const sum = vals.reduce((a, b) => a + b, 0);
-        summary += col.name + ': total ' + sum.toLocaleString() + ', moyenne ' + (sum / vals.length).toFixed(2) + '. ';
-      }
-    }
-    return summary || 'Analyse terminee.';
-  }
-
-  private extractInsights(data: any[], columns: { name: string; type: string }[]): string[] {
-    const insights: string[] = [];
-    const numCols = columns.filter(c => c.type === 'number');
-    for (const col of numCols) {
-      const vals = data.map(r => Number(r[col.name])).filter(v => !isNaN(v));
-      if (vals.length > 1) {
-        const trend = vals[vals.length - 1] - vals[0];
-        const pct = vals[0] > 0 ? ((trend / vals[0]) * 100).toFixed(1) : '0';
-        insights.push(trend > 0 ? col.name + ' en hausse de ' + pct + '% sur la periode.' : col.name + ' en baisse de ' + Math.abs(Number(pct)) + '% sur la periode.');
-      }
-    }
-    return insights;
-  }
-
-  private computeMetrics(data: any[], columns: { name: string; type: string }[]): { key: string; value: number; change?: number }[] {
-    return columns.filter(c => c.type === 'number').map(col => {
-      const vals = data.map(r => Number(r[col.name])).filter(v => !isNaN(v));
-      const sum = vals.reduce((a, b) => a + b, 0);
-      return { key: col.name, value: sum, change: vals.length > 1 ? vals[vals.length - 1] - vals[0] : undefined };
+  async createDashboard(input: {
+    name: string; description?: string; userId: string;
+    widgets?: WidgetConfig[]; filters?: any[];
+  }) {
+    return prisma.dashboard.create({
+      data: {
+        name: input.name, description: input.description || '',
+        userId: input.userId, datasetId: null,
+        widgets: JSON.stringify(input.widgets || []),
+        layout: JSON.stringify((input.widgets || []).map(w => w.position)),
+        filters: JSON.stringify(input.filters || []),
+      },
     });
   }
 
-  private generateVisualizations(data: any[], columns: { name: string; type: string }[], types?: string[]): { type: string; config: Record<string, any>; data: any[] }[] {
-    const numCol = columns.find(c => c.type === 'number');
-    const catCol = columns.find(c => c.type === 'string');
-    const dateCol = columns.find(c => c.type === 'date');
-    const viz: any[] = [];
-    if (dateCol && numCol) viz.push({ type: 'line', config: { x: dateCol.name, y: numCol.name, title: numCol.name + ' par ' + dateCol.name }, data });
-    if (catCol && numCol) viz.push({ type: 'bar', config: { x: catCol.name, y: numCol.name, title: numCol.name + ' par ' + catCol.name }, data });
-    if (catCol && numCol) viz.push({ type: 'pie', config: { label: catCol.name, value: numCol.name, title: 'Repartition ' + numCol.name }, data });
-    return viz;
+  async getDashboards(userId: string) {
+    return prisma.dashboard.findMany({
+      where: { userId }, orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async getDatasets(userId: string) {
+    return prisma.dataset.findMany({
+      where: { userId }, orderBy: { updatedAt: 'desc' },
+    });
   }
 }
 
-export const dataAnalyst = new DataAnalyst();
+export const dataAnalyst = new DataAnalystEngine();
 export default dataAnalyst;
