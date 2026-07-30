@@ -2,10 +2,20 @@
   "name": "gen3ia",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "npx next build",
-  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install && npx prisma generate",
   "outputDirectory": ".next",
   "regions": ["fra1"],
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "github": {
+    "silent": false,
+    "autoJobCancelation": true
+  },
+  "crons": [
+    {
+      "path": "/api/cron/refresh-tokens",
+      "schedule": "0 */4 * * *"
+    }
+  ]
 }
