@@ -1,27 +1,25 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["**/.env.*local"],
+  "globalDependencies": ["**/.env.*local", "tsconfig.json"],
   "pipeline": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": [".next/**", "dist/**", "!.next/cache/**"]
     },
     "dev": {
       "cache": false,
       "persistent": true
     },
-    "test": {
-      "dependsOn": ["build"],
-      "outputs": []
-    },
-    "test:coverage": {
-      "dependsOn": ["build"],
-      "outputs": ["coverage/**"]
+    "start": {
+      "dependsOn": ["build"]
     },
     "lint": {
-      "outputs": []
+      "dependsOn": ["^build"]
     },
     "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
       "dependsOn": ["^build"],
       "outputs": []
     },
@@ -33,10 +31,6 @@
     },
     "db:push": {
       "cache": false
-    },
-    "db:studio": {
-      "cache": false,
-      "persistent": true
     }
   }
 }
