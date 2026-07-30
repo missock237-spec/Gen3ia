@@ -1,9 +1,6 @@
 {
   "name": "gen3ia",
   "version": 2,
-  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @gen3ia/web build",
-  "outputDirectory": ".next",
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "framework": "nextjs",
   "regions": ["fra1"],
   "cleanUrls": true,
@@ -28,19 +25,6 @@
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
       ]
-    }
-  ],
-  "redirects": [
-    {
-      "source": "/docs",
-      "destination": "/api/docs",
-      "permanent": true
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron/health",
-      "schedule": "*/5 * * * *"
     }
   ],
   "github": {
