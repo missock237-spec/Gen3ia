@@ -2,9 +2,9 @@
   "name": "gen3ia",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "npx next build",
-  "installCommand": "npm install",
-  "outputDirectory": ".next",
+  "buildCommand": "cd apps/web && npm install && npx next build",
+  "installCommand": "cd apps/web && npm install",
+  "outputDirectory": "apps/web/.next",
   "regions": ["fra1"],
   "cleanUrls": true,
   "trailingSlash": false
