@@ -15,41 +15,24 @@ interface UserProfile {
 }
 
 class UserService {
-  /**
-   * Recuperer le profil complet d'un utilisateur
-   */
   async getProfile(userId: string): Promise<UserProfile> {
     const user = await userRepository.findById(userId, {
-      id: true,
-      name: true,
-      email: true,
-      credits: true,
-      plan: true,
-      createdAt: true,
+      id: true, name: true, email: true,
+      credits: true, plan: true, createdAt: true,
     });
-
     if (!user) throw new NotFoundError('User', userId);
     return user as unknown as UserProfile;
   }
 
-  /**
-   * Mettre a jour le profil utilisateur
-   */
   async updateProfile(userId: string, data: { name?: string; email?: string }) {
     if (data.email && !this.isValidEmail(data.email)) {
-      throw new ValidationError('EMAIL_INVALID', 'Format d\'email invalide');
+      throw new ValidationError('EMAIL_INVALID', "Format d'email invalide");
     }
-
     return userRepository.update(userId, data);
   }
 
-  /**
-   * Calculer les statistiques d'un utilisateur
-   */
   async getUserStats(userId: string) {
     const user = await userRepository.findByIdOrThrow(userId);
-
-    // Les statistiques seront calculees par les services respectifs
     return {
       credits: (user as any).credits ?? 0,
       plan: (user as any).plan ?? 'free',
@@ -57,25 +40,15 @@ class UserService {
     };
   }
 
-  /**
-   * Verifier le niveau d'acces d'un utilisateur
-   */
   async checkAccess(userId: string, requiredPlan?: string): Promise<boolean> {
     const user = await userRepository.findById(userId, { plan: true });
     if (!user) return false;
-
     if (!requiredPlan) return true;
-
     const planHierarchy: Record<string, number> = {
-      free: 0,
-      starter: 1,
-      pro: 2,
-      enterprise: 3,
+      free: 0, starter: 1, pro: 2, enterprise: 3,
     };
-
     const userPlanLevel = planHierarchy[(user as any).plan ?? 'free'] ?? 0;
     const requiredLevel = planHierarchy[requiredPlan] ?? 0;
-
     return userPlanLevel >= requiredLevel;
   }
 
