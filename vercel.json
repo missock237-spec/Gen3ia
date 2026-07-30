@@ -2,31 +2,13 @@
   "name": "gen3ia",
   "version": 2,
   "framework": "nextjs",
+  "rootDirectory": "apps/web",
+  "buildCommand": "cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile && cd apps/web && pnpm build",
+  "installCommand": "cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile",
+  "outputDirectory": ".next",
   "regions": ["fra1"],
   "cleanUrls": true,
   "trailingSlash": false,
-  "headers": [
-    {
-      "source": "/(.*)\\.(jpg|jpeg|png|gif|webp|avif|ico|svg)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
-      "source": "/(.*)\\.(css|js)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
-      ]
-    }
-  ],
   "github": {
     "silent": true,
     "autoJobCancelation": true
