@@ -26,6 +26,8 @@ model User {
   webhookConfigs WebhookConfig[] plugins Plugin[]
   adCampaigns AdCampaign[] adImpressions AdImpression[] adPreference AdUserPreference?
   affiliateCodes AffiliateCode[] affiliateReferrals AffiliateReferral[] @relation("AffiliateReferrer")
+  skills Skill[] loops AILoop[] customizations Customization[]
+  agentSkills AgentSkill[] agentLoops AgentLoop[] userCustomizations UserCustomization[]
   @@index([email, isActive]) @@index([plan]) @@index([role]) @@index([isCreator]) @@index([lastActiveAt])
 }
 
@@ -47,7 +49,6 @@ model Invoice {
 }
 
 // ============= PUBLICITE =============
-
 model AdCampaign {
   id String @id @default(cuid()) name String description String @default("") @db.Text
   advertiserName String advertiserUrl String imageUrl String videoUrl String?
@@ -66,7 +67,6 @@ model AdCampaign {
   impressions AdImpression[]
   @@index([status, isActive]) @@index([placement]) @@index([targetPlan])
 }
-
 model AdImpression {
   id String @id @default(cuid()) campaignId String userId String
   sessionId String conversationId String? adType String @default("unrewarded")
@@ -78,7 +78,6 @@ model AdImpression {
   @@index([campaignId, createdAt]) @@index([userId, createdAt])
   @@index([userId, campaignId, createdAt])
 }
-
 model AdUserPreference {
   id String @id @default(cuid()) userId String @unique
   adsEnabled Boolean @default(true) rewardedAdsEnabled Boolean @default(false)
@@ -89,7 +88,6 @@ model AdUserPreference {
 }
 
 // ============= AFFILIATION =============
-
 model AffiliateCode {
   id String @id @default(cuid()) code String @unique userId String
   totalReferrals Int @default(0) totalRewards Float @default(0)
@@ -98,21 +96,91 @@ model AffiliateCode {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   referrals AffiliateReferral[]
 }
-
 model AffiliateReferral {
   id String @id @default(cuid()) referralCode String referrerUserId String
   referredUserId String? referredEmail String
-  status String @default("pending") // pending | subscribed | rewarded | expired
+  status String @default("pending")
   rewardCredits Float @default(0) isRewarded Boolean @default(false)
   subscribedAt DateTime? rewardedAt DateTime? createdAt DateTime @default(now())
   code AffiliateCode @relation(fields: [referralCode], references: [code])
   referrer User @relation("AffiliateReferrer", fields: [referrerUserId], references: [id])
-  @@index([referrerUserId, status]) @@index([referralCode])
-  @@index([referredEmail])
+  @@index([referrerUserId, status]) @@index([referralCode]) @@index([referredEmail])
 }
 
-// ============= EXISTING MODELS (non modifies) =============
+// ============= COMPETENCES =============
+model Skill {
+  id String @id @default(cuid()) name String slug String @unique description String @default("") @db.Text
+  category String @default("custom") level String @default("intermediate")
+  icon String @default("🧩") version String @default("1.0.0")
+  authorId String authorName String?
+  price Float @default(0) isFree Boolean @default(true) isOfficial Boolean @default(false)
+  tags String @default("[]") @db.Text config String @default("{}") @db.Text
+  compatibleModels String @default("[]") @db.Text compatibleAgentTypes String @default("[]") @db.Text
+  installCount Int @default(0) rating Float @default(0) reviewCount Int @default(0)
+  status String @default("draft")
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  author User @relation(fields: [authorId], references: [id])
+  installations AgentSkill[]
+  @@index([status, category]) @@index([slug])
+}
 
+model AgentSkill {
+  id String @id @default(cuid()) agentId String skillId String userId String
+  config String @default("{}") @db.Text enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  skill Skill @relation(fields: [skillId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  @@index([agentId, skillId]) @@index([userId])
+}
+
+// ============= BOUCLES IA =============
+model AILoop {
+  id String @id @default(cuid()) name String slug String @unique description String @default("") @db.Text
+  icon String @default("🔄") version String @default("1.0.0")
+  authorId String authorName String?
+  price Float @default(0) isFree Boolean @default(true) isOfficial Boolean @default(false)
+  tags String @default("[]") @db.Text config String @default("{}") @db.Text
+  installCount Int @default(0) rating Float @default(0) reviewCount Int @default(0)
+  status String @default("draft")
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  installations AgentLoop[]
+  @@index([status]) @@index([slug])
+}
+
+model AgentLoop {
+  id String @id @default(cuid()) agentId String loopId String userId String
+  config String @default("{}") @db.Text enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  loop AILoop @relation(fields: [loopId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  @@index([agentId, loopId]) @@index([userId])
+}
+
+// ============= PERSONNALISATIONS =============
+model Customization {
+  id String @id @default(cuid()) name String slug String @unique description String @default("") @db.Text
+  type String @default("theme") icon String @default("🎨") version String @default("1.0.0")
+  authorId String authorName String?
+  price Float @default(0) isFree Boolean @default(true) isOfficial Boolean @default(false)
+  tags String @default("[]") @db.Text config String @default("{}") @db.Text
+  preview String? @db.Text
+  installCount Int @default(0) rating Float @default(0) reviewCount Int @default(0)
+  status String @default("draft")
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  installations UserCustomization[]
+  @@index([status, type]) @@index([slug])
+}
+
+model UserCustomization {
+  id String @id @default(cuid()) userId String customizationId String
+  targetId String? config String @default("{}") @db.Text enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  customization Customization @relation(fields: [customizationId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  @@index([userId]) @@index([customizationId])
+}
+
+// ============= MODELES EXISTANTS =============
 model Notification { id String @id @default(cuid()) userId String type String title String message String @default("") @db.Text link String? icon String @default("bell") severity String @default("info") read Boolean @default(false) readAt DateTime? metadata String @default("{}") @db.Text createdAt DateTime @default(now()) user User @relation(fields: [userId], references: [id], onDelete: Cascade) @@index([userId, read, createdAt]) }
 model WebhookConfig { id String @id @default(cuid()) userId String name String url String @db.Text method String @default("POST") headers String @default("{}") @db.Text secret String? @db.Text retryCount Int @default(3) timeout Int @default(10000) template String @default("{}") @db.Text enabled Boolean @default(true) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt user User @relation(fields: [userId], references: [id], onDelete: Cascade) logs WebhookLog[] }
 model WebhookLog { id String @id @default(cuid()) configId String? status String statusCode Int @default(0) durationMs Int @default(0) responseBody String? @db.Text error String? @db.Text attempts Int @default(1) metadata String @default("{}") @db.Text createdAt DateTime @default(now()) config WebhookConfig? @relation(fields: [configId], references: [id], onDelete: SetNull) @@index([configId, createdAt]) }
