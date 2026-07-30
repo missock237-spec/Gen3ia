@@ -40,8 +40,16 @@ FROM node:20-alpine AS runner
 LABEL stage=runner
 WORKDIR /app
 
-# Outils systeme pour PostgreSQL et reseau
-RUN apk add --no-cache openssl postgresql-client netcat-openbsd
+# Paquets systeme Alpine
+# openssl : Prisma a besoin de librairies OpenSSL
+# postgresql-client : psql pour debug, pg_isready pour healthcheck
+# netcat-openbsd : nc -z pour attendre PostgreSQL (main repo Alpine)
+# busybox-extras : fallback nc si netcat-openbsd indisponible
+RUN apk add --no-cache \
+    openssl \
+    postgresql-client \
+    netcat-openbsd \
+    busybox-extras
 
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
