@@ -1,22 +1,52 @@
 # =============================================
-# Genova Genova — GPU Server Docker Compose
+# Gen3ia — GPU Server Docker Compose
 # =============================================
 # Architecture: Tier 3 — GPU Server
-# This file should run on a SEPARATE server with GPU access.
-# Heavy AI models (ComfyUI, SpeechBrain, Video) run here.
+# Noyau de calcul Rust/WebGPU + services IA lourds
 #
-# Genova Backend communicates with these services via API:
+# Gen3ia Backend communique avec ces services via API:
 #
-#   Genova Backend  →  API IA (Ruflo)  →  GPU Server
+#   Gen3ia Backend  →  API IA (Compute Engine)  →  GPU Server
 #        ↓                                    ↓
-#   BullMQ Queue                     ComfyUI / SpeechBrain / Video
+#   BullMQ Queue                     WebGPU / ComfyUI / ASR / Video
 #
 # Start: docker compose -f docker-compose.gpu.yml up -d
 # =============================================
 
-version: "3.9"
-
 services:
+  # =============================================
+  # Compute Engine — Noyau de calcul Rust/WebGPU
+  # =============================================
+  compute-engine:
+    build:
+      context: ./crates/compute-engine
+      dockerfile: Dockerfile
+    container_name: gen3ia-compute
+    restart: unless-stopped
+    ports:
+      - "8190:8190"
+    volumes:
+      - compute_models:/app/models
+      - compute_cache:/app/cache
+    environment:
+      PORT: 8190
+      RUST_LOG: info
+      WG_PRIORITY: high
+      MEMORY_LIMIT_GB: 8
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility, compute]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8190/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   # =============================================
   # ComfyUI — Image Generation (GPU Required)
   # =============================================
@@ -24,7 +54,7 @@ services:
     build:
       context: ./services/comfyui
       dockerfile: Dockerfile
-    container_name: genova-comfyui
+    container_name: gen3ia-comfyui
     restart: unless-stopped
     ports:
       - "8188:8188"
@@ -48,13 +78,13 @@ services:
       start_period: 60s
 
   # =============================================
-  # SpeechBrain — ASR Server (GPU Required)
+  # SpeechBrain — ASR/LLM Server (GPU Required)
   # =============================================
   speechbrain:
     build:
       context: ./services/speechbrain
       dockerfile: Dockerfile
-    container_name: genova-speechbrain
+    container_name: gen3ia-speechbrain
     restart: unless-stopped
     ports:
       - "8187:8187"
@@ -78,13 +108,13 @@ services:
       start_period: 120s
 
   # =============================================
-  # Video API Server — CogVideo/VideoCrafter (GPU Required)
+  # Video API — CogVideo/VideoCrafter (GPU Required)
   # =============================================
   video-api:
     build:
       context: ./services/video
       dockerfile: Dockerfile
-    container_name: genova-video-api
+    container_name: gen3ia-video-api
     restart: unless-stopped
     ports:
       - "8189:8189"
@@ -111,6 +141,10 @@ services:
 # Volumes
 # =============================================
 volumes:
+  compute_models:
+    driver: local
+  compute_cache:
+    driver: local
   comfyui_models:
     driver: local
   comfyui_output:
