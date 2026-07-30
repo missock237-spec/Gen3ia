@@ -1,6 +1,6 @@
 # ============================================================
 # Gen3ia — Dockerfile Worker BullMQ (Build autonome)
-# Corrige : plus de dependance sur ghcr.io/gen3ia/app:staging
+# Compilation TypeScript -> JavaScript, puis execution node
 # ============================================================
 
 # ---- Stage 1 : Dependencies ----
@@ -26,7 +26,11 @@ COPY . .
 # Generer Prisma client
 RUN npx prisma generate
 
-# Environment de production
+# Compiler le worker TypeScript -> JavaScript
+# tsc compile, tsc-alias resout les alias @/* en chemins relatifs
+RUN npm run build:worker
+
+# Environment de build
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -45,18 +49,16 @@ RUN addgroup --system --gid 1001 nodejs \
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copier les dependances
+# Copier les dependances (necessaires pour Prisma + tsx dans l'entrypoint)
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 # Copier Prisma (schema + client genere)
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 
-# Copier le code source du worker + librairies necessaires
-COPY --from=builder --chown=nextjs:nodejs /app/src/workers ./src/workers
-COPY --from=builder --chown=nextjs:nodejs /app/src/lib ./src/lib
+# Copier le worker compile (JS) + librairies compilees
+COPY --from=builder --chown=nextjs:nodejs /app/dist/worker ./dist/worker
 
-# Copier la configuration TS pour le path alias @/*
-COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./
+# Copier la configuration
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
 
 # Entrypoint
@@ -69,5 +71,5 @@ EXPOSE 3000
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 
-# Utiliser tsx pour executer le TypeScript directement
-CMD ["npx", "tsx", "src/workers/auto-worker.ts"]
+# Execution du worker compile en JavaScript
+CMD ["node", "dist/worker/workers/auto-worker.js"]
