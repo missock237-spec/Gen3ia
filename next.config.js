@@ -1,4 +1,6 @@
 // next.config.js — CommonJS pour compatibilite Vercel
+const path = require('path');
+
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
@@ -11,5 +13,10 @@ const nextConfig = {
       { protocol: 'https', hostname: 'avatars.githubusercontent.com' },
     ],
   },
+  webpack: (config) => {
+    config.resolve.alias['@'] = path.join(__dirname, 'src');
+    return config;
+  },
 };
+
 module.exports = nextConfig;
