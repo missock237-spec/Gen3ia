@@ -1,6 +1,7 @@
 # ============================================================
-# Gen3ia - Dockerfile de production (Next.js 14 + React 18)
-# Compatible Vercel et builds Docker
+# Gen3ia - Dockerfile de production (Monorepo)
+# Build context: racine du monorepo
+# Alternative: apps/web/Dockerfile pour build optimise
 # ============================================================
 
 # ---- Stage 1 : Dependencies ----
@@ -11,7 +12,11 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
 
+# Copier les fichiers package du monorepo (workspaces)
 COPY package.json package-lock.json* ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/ ./packages/
+
 RUN npm ci
 
 # ---- Stage 2 : Build ----
@@ -20,11 +25,21 @@ LABEL stage=builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/package-lock.json* ./
+
+# Copier le code source (racine = app principale)
+COPY src/ ./src/
+COPY public/ ./public/
+COPY apps/web/ ./apps/web/
+COPY packages/ ./packages/
+COPY next.config.js tsconfig.json tsconfig.worker.json ./
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Generer Prisma + Build Next.js
+RUN npx prisma generate
 RUN npm run build
 RUN npm prune --production
 
