@@ -12,37 +12,42 @@ class CreditService {
     return ((user as any).credits ?? 0) >= amount;
   }
 
-  async deductCredits(userId: string, amount: number, reason: string) {
+  async deductCredits(userId: string, amount: number, description: string) {
     const user = await userRepository.findByIdOrThrow(userId);
     const currentCredits = (user as any).credits ?? 0;
     if (currentCredits < amount) {
       throw new BusinessError('INSUFFICIENT_CREDITS', 'Credits insuffisants');
     }
-    const updatedUser = await userRepository.update(userId, {
-      credits: { decrement: amount },
-    });
+    const updatedUser = await userRepository.deductCredits(userId, amount);
     await creditTransactionRepository.create({
-      userId, amount: -amount, type: 'usage', reason,
-      balanceAfter: (updatedUser as any).credits,
+      userId,
+      amount: -amount,
+      type: 'usage',
+      description,
     });
     return updatedUser;
   }
 
-  async addCredits(userId: string, amount: number, reason: string) {
-    if (amount <= 0) throw new BusinessError('INVALID_AMOUNT', 'Le montant doit etre positif');
-    const updatedUser = await userRepository.update(userId, {
-      credits: { increment: amount },
-    });
+  async addCredits(userId: string, amount: number, description: string) {
+    if (amount <= 0) {
+      throw new BusinessError('INVALID_AMOUNT', 'Le montant doit etre positif');
+    }
+    const updatedUser = await userRepository.addCredits(userId, amount);
     await creditTransactionRepository.create({
-      userId, amount, type: 'purchase', reason,
-      balanceAfter: (updatedUser as any).credits,
+      userId,
+      amount,
+      type: 'purchase',
+      description,
     });
     return updatedUser;
   }
 
   async getTransactionHistory(userId: string, limit = 50, offset = 0) {
     const transactions = await creditTransactionRepository.findMany({
-      where: { userId }, orderBy: { createdAt: 'desc' }, take: limit, skip: offset,
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
     });
     const total = await creditTransactionRepository.count({ userId });
     return { transactions, total, limit, offset };
