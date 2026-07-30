@@ -23,6 +23,10 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "build:worker": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/worker/**"]
+    },
     "clean": {
       "cache": false
     },
