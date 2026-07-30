@@ -1,12 +1,12 @@
 # ============================================================
 # Render Blueprint — Gen3ia AI Agent OS
-# Deploiement automatique via GitHub Actions + API Render
-# Secrets: geres dans GitHub Actions, synchronises via render-sync.yml
+# Backend: API, Workers, PostgreSQL, Redis
+# Frontend: Vercel (gen3ia.vercel.app)
 # Paiement: SebPay (Mobile Money Afrique)
 # ============================================================
 services:
   - type: web
-    name: gen3ia-app
+    name: gen3ia-api
     runtime: image
     plan: starter
     autoDeploy: true
@@ -18,19 +18,27 @@ services:
       # === Production ===
       - key: NODE_ENV
         value: production
+      - key: RENDER_DEPLOY
+        value: "true"
+      - key: PORT
+        value: "3000"
       - key: NEXT_PUBLIC_APP_URL
         fromService:
           type: web
-          name: gen3ia-app
+          name: gen3ia-api
           property: host
       - key: NEXTAUTH_URL
         fromService:
           type: web
-          name: gen3ia-app
+          name: gen3ia-api
           property: host
+      - key: VERCEL_FRONTEND_URL
+        value: https://gen3ia.vercel.app
 
-      # === Secrets (definis dans Render Dashboard > Environment) ===
+      # === Secrets (Configurer dans Render Dashboard > Environment) ===
       - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
         sync: false
       - key: AUTH_SECRET
         sync: false
@@ -42,13 +50,7 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
       - key: HUGGINGFACE_TOKEN
-        sync: false
-      - key: SERPAPI_API_KEY
-        sync: false
-      - key: ELEVENLABS_API_KEY
         sync: false
 
       # === OAuth ===
@@ -66,39 +68,15 @@ services:
         sync: false
       - key: SEBPAY_API_SECRET
         sync: false
-      - key: SEBPAY_BASE_URL
-        sync: false
       - key: SEBPAY_WEBHOOK_SECRET
-        sync: false
-      - key: SEBPAY_STARTER_PLAN_ID
-        sync: false
-      - key: SEBPAY_PRO_PLAN_ID
-        sync: false
-      - key: SEBPAY_ENTERPRISE_PLAN_ID
-        sync: false
-      - key: SEBPAY_CREDITS_100_PLAN_ID
-        sync: false
-      - key: SEBPAY_CREDITS_500_PLAN_ID
-        sync: false
-      - key: SEBPAY_CREDITS_2000_PLAN_ID
-        sync: false
-      - key: SEBPAY_CREDITS_5000_PLAN_ID
-        sync: false
-
-      # === Monitoring ===
-      - key: SENTRY_DSN
-        sync: false
-
-      # === Redis / Queue ===
-      - key: REDIS_URL
         sync: false
 
       - key: SEED_DATABASE
         value: "false"
 
     disks:
-      - name: gen3ia-workspace
-        mountPath: /tmp/gen3ia-workspace
+      - name: gen3ia-data
+        mountPath: /tmp/gen3ia-data
         sizeGB: 10
 
   - type: cron
@@ -119,5 +97,5 @@ services:
       - key: NEXT_PUBLIC_APP_URL
         fromService:
           type: web
-          name: gen3ia-app
+          name: gen3ia-api
           property: host
