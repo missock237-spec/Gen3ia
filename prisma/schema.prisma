@@ -13,7 +13,7 @@ model User {
   workflowTemplates WorkflowTemplate[] guardrails Guardrail[]
   subscription Subscription? invoices Invoice[] credit Credit?
   creditTransactions CreditTransaction[] agentExecutions AgentExecution[] activityLogs ActivityLog[]
-  emailVerifications EmailVerification[]
+  emailVerifications EmailVerification[] notifications Notification[]
   marketplaceListings MarketplaceListing[] marketplacePurchases MarketplacePurchase[] marketplaceReviews MarketplaceReview[]
   creatorPayouts CreatorPayout[]
   accessKeys AccessKey[] agentPermissions AgentPermission[] voiceCalls VoiceCall[]
@@ -23,9 +23,96 @@ model User {
   agentTools AgentTool[] agentInvocations AgentInvocation[]
   dashboards Dashboard[] datasets Dataset[] queryLogs QueryLog[]
   alertRules AlertRule[] alertEvents AlertEvent[]
-  webhookConfigs WebhookConfig[] plugins Plugin[] notifications Notification[]
+  webhookConfigs WebhookConfig[] plugins Plugin[]
+  adCampaigns AdCampaign[] adImpressions AdImpression[] adPreference AdUserPreference?
+  affiliateCodes AffiliateCode[] affiliateReferrals AffiliateReferral[] @relation("AffiliateReferrer")
   @@index([email, isActive]) @@index([plan]) @@index([role]) @@index([isCreator]) @@index([lastActiveAt])
 }
+
+model Subscription {
+  id String @id @default(cuid()) userId String @unique plan String status String @default("active")
+  startDate DateTime @default(now()) endDate DateTime? renewalDate DateTime?
+  provider String? providerSubscriptionId String? autoRenew Boolean @default(true)
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id String @id @default(cuid()) userId String amount Float currency String @default("XAF")
+  status String @default("pending") description String? @db.Text
+  providerInvoiceId String? paymentMethod String? paidAt DateTime?
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, status])
+}
+
+// ============= PUBLICITE =============
+
+model AdCampaign {
+  id String @id @default(cuid()) name String description String @default("") @db.Text
+  advertiserName String advertiserUrl String imageUrl String videoUrl String?
+  textContent String @db.Text ctaText String @default("En savoir plus") ctaUrl String
+  targetAudience String @default("all") targetPlan String @default("all")
+  placement String @default("bottom_bar") format String @default("banner")
+  maxImpressions Int @default(0) maxClicks Int @default(0)
+  rewardPerView Float @default(0) rewardPerClick Float @default(0)
+  costPerView Float @default(0.01) costPerClick Float @default(0.05)
+  budgetTotal Float @default(0) budgetSpent Float @default(0)
+  status String @default("pending") isActive Boolean @default(true)
+  startAt DateTime? endAt DateTime? frequencyCap Int?
+  targetKeywords String? @db.Text
+  abTestGroup String? abTestVariant String?
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  impressions AdImpression[]
+  @@index([status, isActive]) @@index([placement]) @@index([targetPlan])
+}
+
+model AdImpression {
+  id String @id @default(cuid()) campaignId String userId String
+  sessionId String conversationId String? adType String @default("unrewarded")
+  viewDurationMs Int @default(0) wasClicked Boolean @default(false)
+  clickedAt DateTime? rewardCredited Boolean @default(false) rewardAmount Float @default(0)
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  campaign AdCampaign @relation(fields: [campaignId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  @@index([campaignId, createdAt]) @@index([userId, createdAt])
+  @@index([userId, campaignId, createdAt])
+}
+
+model AdUserPreference {
+  id String @id @default(cuid()) userId String @unique
+  adsEnabled Boolean @default(true) rewardedAdsEnabled Boolean @default(false)
+  totalCreditsEarned Float @default(0) totalAdsViewed Int @default(0) totalAdsClicked Int @default(0)
+  lastAdViewedAt DateTime? optedOutCategories String @default("[]") @db.Text
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============= AFFILIATION =============
+
+model AffiliateCode {
+  id String @id @default(cuid()) code String @unique userId String
+  totalReferrals Int @default(0) totalRewards Float @default(0)
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals AffiliateReferral[]
+}
+
+model AffiliateReferral {
+  id String @id @default(cuid()) referralCode String referrerUserId String
+  referredUserId String? referredEmail String
+  status String @default("pending") // pending | subscribed | rewarded | expired
+  rewardCredits Float @default(0) isRewarded Boolean @default(false)
+  subscribedAt DateTime? rewardedAt DateTime? createdAt DateTime @default(now())
+  code AffiliateCode @relation(fields: [referralCode], references: [code])
+  referrer User @relation("AffiliateReferrer", fields: [referrerUserId], references: [id])
+  @@index([referrerUserId, status]) @@index([referralCode])
+  @@index([referredEmail])
+}
+
+// ============= EXISTING MODELS (non modifies) =============
+
 model Notification { id String @id @default(cuid()) userId String type String title String message String @default("") @db.Text link String? icon String @default("bell") severity String @default("info") read Boolean @default(false) readAt DateTime? metadata String @default("{}") @db.Text createdAt DateTime @default(now()) user User @relation(fields: [userId], references: [id], onDelete: Cascade) @@index([userId, read, createdAt]) }
 model WebhookConfig { id String @id @default(cuid()) userId String name String url String @db.Text method String @default("POST") headers String @default("{}") @db.Text secret String? @db.Text retryCount Int @default(3) timeout Int @default(10000) template String @default("{}") @db.Text enabled Boolean @default(true) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt user User @relation(fields: [userId], references: [id], onDelete: Cascade) logs WebhookLog[] }
 model WebhookLog { id String @id @default(cuid()) configId String? status String statusCode Int @default(0) durationMs Int @default(0) responseBody String? @db.Text error String? @db.Text attempts Int @default(1) metadata String @default("{}") @db.Text createdAt DateTime @default(now()) config WebhookConfig? @relation(fields: [configId], references: [id], onDelete: SetNull) @@index([configId, createdAt]) }
