@@ -1,14 +1,73 @@
-# Worker BullMQ dédié
-FROM node:20-alpine
-RUN apk add --no-cache openssl postgresql-client
-RUN addgroup -S nodejs && adduser -S -G nodejs nextjs
+# ============================================================
+# Gen3ia — Dockerfile Worker BullMQ (Build autonome)
+# Corrige : plus de dependance sur ghcr.io/gen3ia/app:staging
+# ============================================================
+
+# ---- Stage 1 : Dependencies ----
+FROM node:20-alpine AS deps
+LABEL stage=deps
 WORKDIR /app
+
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nextjs
+
+COPY package.json package-lockock.json* ./
+RUN npm ci
+
+
+# ---- Stage 2 : Builder ----
+FROM node:20-alpine AS builder
+LABEL stage=builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Generer Prisma client
+RUN npx prisma generate
+
+# Environment de production
 ENV NODE_ENV=production
-COPY --from=ghcr.io/gen3ia/app:staging /app/node_modules ./node_modules
-COPY prisma ./prisma
-COPY src/workers ./src/workers
-COPY docker-entrypoint.sh ./
+ENV NEXT_TELEMETRY_DISABLED=1
+
+
+# ---- Stage 3 : Runner ----
+FROM node:20-alpine AS runner
+LABEL stage=runner
+WORKDIR /app
+
+# Outils systeme pour PostgreSQL et reseau
+RUN apk add --no-cache openssl postgresql-client netcat-openbsd
+
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nextjs
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Copier les dependances
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+
+# Copier Prisma (schema + client genere)
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+
+# Copier le code source du worker + librairies necessaires
+COPY --from=builder --chown=nextjs:nodejs /app/src/workers ./src/workers
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib ./src/lib
+
+# Copier la configuration TS pour le path alias @/*
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
+
+# Entrypoint
+COPY --from=builder --chown=nextjs:nodejs /app/docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
+
 USER nextjs
+
+EXPOSE 3000
+
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", "src/workers/auto-worker.ts"]
+
+# Utiliser tsx pour executer le TypeScript directement
+CMD ["npx", "tsx", "src/workers/auto-worker.ts"]
