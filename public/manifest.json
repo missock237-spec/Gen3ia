@@ -1,36 +1,35 @@
 {
-  "name": "Genova AI - Agent Operating System",
-  "short_name": "Genova AI",
-  "description": "Plateforme SaaS de création et gestion d'agents IA",
+  "name": "Gen3ia",
+  "short_name": "Gen3ia",
+  "description": "Systeme d'exploitation pour agents IA",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#09090b",
+  "background_color": "#0f172a",
   "theme_color": "#7c3aed",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-192.png",
+      "src": "/favicon-gen3ia.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/favicon-gen3ia.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ],
-  "categories": ["productivity", "artificial-intelligence", "business"],
-  "lang": "fr-FR",
-  "dir": "ltr",
+  "categories": ["productivity", "developer-tools"],
   "scope": "/",
-  "prefer_related_applications": false,
-  "related_applications": []
+  "lang": "fr-FR",
+  "screenshots": [
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Tableau de bord Gen3ia"
+    }
+  ],
+  "prefer_related_applications": false
 }

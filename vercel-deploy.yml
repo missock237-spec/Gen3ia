@@ -1,0 +1,10 @@
+name: Deploy to Vercel
+on: [push]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install && bun run build
+      - run: npm install -g vercel && vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --yes

@@ -1,0 +1,80 @@
+# ============================================================
+# Gen3ia — Architecture des services
+# Ce fichier sert de documentation pour l'architecture
+# Deploiement principal : Vercel (Web) + Docker (Worker)
+# ============================================================
+
+# ============================================================
+# SERVICE 1 : Base de donnees PostgreSQL
+# Fournisseur : Neon / Supabase / Render PostgreSQL
+# ============================================================
+# DATABASE_URL=postgresql://user:password@host:5432/gen3ia
+#
+# Configuree dans Vercel Dashboard > Settings > Environment Variables
+# Les migrations Prisma sont executees au build via postinstall
+
+# ============================================================
+# SERVICE 2 : Redis (BullMQ + Cache)
+# Fournisseur : Upstash / Redis Cloud / Render Redis
+# ============================================================
+# REDIS_URL=redis://host:6379
+#
+# Necessaire pour le Worker BullMQ et le rate limiting
+# Configuree dans Vercel Dashboard > Settings > Environment Variables
+
+# ============================================================
+# SERVICE 3 : Application Web (Next.js)
+# Plateforme : Vercel
+# ============================================================
+# Fichier de configuration : vercel.json
+# Build command : npm run build
+# Install command : npm install && npx prisma generate
+# Output directory : .next
+#
+# Variables d'environnement requises dans Vercel Dashboard :
+#   DATABASE_URL, REDIS_URL, AUTH_SECRET, NEXTAUTH_SECRET
+#   NEXTAUTH_URL, NEXT_PUBLIC_APP_URL, OPENAI_API_KEY
+#   ANTHROPIC_API_KEY, HUGGINGFACE_TOKEN, SENTRY_DSN
+#   STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+#   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+
+# ============================================================
+# SERVICE 4 : Worker BullMQ (Taches asynchrones)
+# Plateforme : Docker (GitHub Container Registry)
+# ============================================================
+# Dockerfile : Dockerfile.worker
+# Image ghcr : ghcr.io/missock237-spec/Gen3ia/worker:latest
+#
+# Execution : node dist/worker/workers/auto-worker.js
+#   - Execute les agents automatiques (BullMQ)
+#   - Debite les credits utilisateurs
+#   - Envoie les notifications
+#
+# Variables d'environnement requises :
+#   DATABASE_URL, REDIS_URL, AUTH_SECRET
+
+# ============================================================
+# SERVICE 5 : Qdrant (Base vectorielle - optionnel)
+# Plateforme : Docker / Qdrant Cloud
+# ============================================================
+# QDRANT_URL=http://host:6333
+#
+# Stocke les embeddings pour la memoire a long terme des agents
+# Configuree dans Vercel Dashboard si utilisee
+
+# ============================================================
+# FLUX DE DEPLOIEMENT
+# ============================================================
+# 1. Push sur main -> GitHub Actions -> CI (lint, test, build)
+# 2. Vercel deploy automatique (via Vercel GitHub Integration)
+# 3. Docker images build & push vers GHCR (via .github/workflows/ci.yml)
+# 4. Worker deploye manuellement ou via CD sur VPS/Docker
+
+# ============================================================
+# ORCHESTRATION LOCALE (Docker Compose)
+# ============================================================
+# Pour un environnement de developpement complet :
+#   docker compose up -d
+# Cela lance : postgres, redis, app (Next.js), worker, qdrant
+# Voir docker-compose.yml pour les details

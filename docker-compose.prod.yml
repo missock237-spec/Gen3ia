@@ -1,0 +1,152 @@
+# GENOVA — Docker Compose Production
+# Stack complete : Next.js + PostgreSQL + Redis + n8n
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BUN_VERSION=1.2
+    container_name: genova-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://genova:${DB_PASSWORD:-genova_pass}@postgres:5432/genova
+      REDIS_URL: redis://redis:6379
+      N8N_BASE_URL: http://n8n:5678
+      AUTH_SECRET: ${AUTH_SECRET}
+      NEXTAUTH_URL: ${APP_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${AUTH_SECRET}
+      
+      # Providers IA
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      LLM_API_KEY: ${OPENAI_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      
+      # Hugging Face (embedding + images + audio)
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_API_KEY}
+      NEXT_PUBLIC_HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
+      
+      # Auth OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      
+      # WhatsApp
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-genova_whatsapp_verify}
+      
+      # Monitoring
+      SENTRY_DSN: ${SENTRY_DSN}
+      VAULT_MASTER_KEY: ${VAULT_MASTER_KEY}
+      MCP_ENCRYPTION_KEY: ${AUTH_SECRET}
+      
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      HEAP_THRESHOLD_MB: '500'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: genova-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: genova
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-genova_pass}
+      POSTGRES_DB: genova
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genova"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: genova-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: genova-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: genova_n8n
+      DB_POSTGRESDB_USER: genova
+      DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD:-genova_pass}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_METRICS: false
+      N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN: true
+    volumes:
+      - n8ndata:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backup:
+    image: postgres:16-alpine
+    container_name: genova-backup
+    restart: unless-stopped
+    volumes:
+      - ./backups:/backups
+    entrypoint: |
+      sh -c '
+        while true; do
+          echo "[$$(date)] Running daily backup..."
+          PGPASSWORD=${DB_PASSWORD:-genova_pass} pg_dump -h postgres -U genova -d genova -F c -f /backups/genova_$$(date +%Y%m%d_%H%M%S).dump
+          echo "[$$(date)] Cleaning backups older than 30 days..."
+          find /backups -name "*.dump" -mtime +30 -delete
+          sleep 86400
+        done
+      '
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  n8ndata:

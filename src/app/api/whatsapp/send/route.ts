@@ -1,55 +1,29 @@
-// ============================================================
-// POST /api/whatsapp/send — Envoyer un message WhatsApp
-// ============================================================
-// Supporte : texte, image, vidéo, audio, document, template
-// ============================================================
-import { NextRequest, NextResponse } from "next/server";
-import { whatsappService } from "@/lib/whatsapp";
-import { logger } from "@/lib/logger";
+import { NextRequest, NextResponse } from 'next/server';
+import { whatsappClient } from '@/lib/whatsapp';
+import { createLogger } from '@/lib/logger';
+const log = createLogger('api-whatsapp-send');
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { to, type, text, mediaUrl, caption, filename, templateName, templateParams } = body;
-
-    if (!to) {
-      return NextResponse.json({ error: "Le champ 'to' est requis" }, { status: 400 });
-    }
-
+    const { to, type, text, templateName, buttons } = await request.json();
+    if (!to) return NextResponse.json({ error: 'Numéro requis' }, { status: 400 });
+    if (!whatsappClient.isConfigured()) return NextResponse.json({ error: 'WhatsApp non configuré' }, { status: 503 });
+    
     let result;
-
     switch (type) {
-      case "text":
-        if (!text) return NextResponse.json({ error: "Le champ 'text' est requis" }, { status: 400 });
-        result = await whatsappService.sendText(to, text);
+      case 'template':
+        result = await whatsappClient.sendTemplate(to, templateName || 'hello_world');
         break;
-
-      case "image":
-      case "video":
-      case "audio":
-      case "document":
-        if (!mediaUrl) return NextResponse.json({ error: "Le champ 'mediaUrl' est requis" }, { status: 400 });
-        result = await whatsappService.sendMedia({ to, type, mediaUrl, caption, filename });
+      case 'interactive':
+        result = await whatsappClient.sendButtons(to, text || 'Choisissez', buttons || []);
         break;
-
-      case "template":
-        if (!templateName) return NextResponse.json({ error: "Le champ 'templateName' est requis" }, { status: 400 });
-        result = await whatsappService.sendTemplate({ to, templateName, language: body.language, parameters: templateParams });
-        break;
-
       default:
-        return NextResponse.json({
-          error: "Type invalide. Types supportés: text, image, video, audio, document, template",
-        }, { status: 400 });
+        result = await whatsappClient.sendText(to, text || 'Bonjour de Gen3ia!');
     }
-
-    if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 502 });
-    }
-
-    return NextResponse.json({ success: true, messageId: result.messageId });
+    
+    return NextResponse.json(result);
   } catch (error) {
-    logger.error("whatsapp_send_error", { error: String(error) });
-    return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
+    log.error('whatsapp_send_error', { error: String(error) });
+    return NextResponse.json({ success: false, error: 'Erreur interne' }, { status: 500 });
   }
 }

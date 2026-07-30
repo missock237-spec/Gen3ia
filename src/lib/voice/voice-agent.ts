@@ -1,379 +1,567 @@
-/**
- * Voice Agent — Real-time conversational AI with voice
- *
- * Combines STT + AI Router + TTS for full voice conversations.
- * Features:
- *   - Interruption handling (barge-in)
- *   - Voice activity detection (VAD)
- *   - Multi-turn conversation with context
- *   - Session persistence & voice memory integration
- */
+// ============================================================
+// Voice Agent — Agent IA vocal capable de passer et répondre
+// aux appels téléphoniques comme un humain
+// ============================================================
+// Utilise Twilio/Vonage pour la téléphonie, Deepgram/Whisper
+// pour la transcription, ElevenLabs/OpenAI TTS pour la voix,
+// et GPT/Claude pour la compréhension et réponse.
+// ============================================================
 
-import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
-import { SpeechToTextEngine, type STTResult } from '@/lib/voice/stt';
-import { TextToSpeechEngine, type TTSOptions } from '@/lib/voice/tts';
-import { createAIRouter } from '@/lib/ai-router';
-import { VoiceMemorySystem } from '@/lib/voice/voice-memory';
 
-const log = createLogger('voice-agent');
-
-// ---------------------------------------------------------------------------
+// ============================================================
 // Types
-// ---------------------------------------------------------------------------
+// ============================================================
+
+export type VoiceProvider = 'twilio' | 'vonage' | 'plivo';
+export type SttProvider = 'deepgram' | 'whisper' | 'google' | 'assemblyai';
+export type TtsProvider = 'elevenlabs' | 'openai' | 'cartesia' | 'microsoft';
+export type LlmProvider = 'openai' | 'anthropic' | 'groq' | 'openrouter';
+export type CallStatus = 'queued' | 'ringing' | 'in-progress' | 'completed' | 'failed' | 'busy' | 'no-answer' | 'canceled';
+export type CallDirection = 'inbound' | 'outbound';
 
 export interface VoiceAgentConfig {
-  agentId: string;
-  voiceProfileId?: string;
+  id: string;
+  name: string;
+  voiceProvider: VoiceProvider;
+  sttProvider: SttProvider;
+  ttsProvider: TtsProvider;
+  llmProvider: LlmProvider;
+  llmModel: string;
+  voiceId: string;
   language: string;
-  enableInterruption: boolean;
-  vadSensitivity: 'low' | 'medium' | 'high';
-  responseDelayMs: number;
+  systemPrompt: string;
+  maxDurationMinutes: number;
+  endCallDetection: boolean;
+  interruptible: boolean;
+  enableRecording: boolean;
+  greetingMessage: string;
+  postCallAnalysis: boolean;
+  transferOnEscalation: string | null;
+  knowledgeBase: string[];
 }
 
-export interface VoiceAgentSession {
-  id: string;
+export interface CallState {
+  callSid: string;
+  direction: CallDirection;
+  fromNumber: string;
+  toNumber: string;
+  status: CallStatus;
   agentId: string;
   userId: string;
-  status: 'listening' | 'thinking' | 'speaking' | 'idle';
+  transcript: TranscriptEntry[];
   startedAt: string;
-  transcript: Array<{
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp: string;
-  }>;
+  durationSeconds: number;
+  context: Record<string, unknown>;
 }
 
-interface VoiceProfileData {
-  voiceModel: string;
-  speed: number;
-  pitch: number;
-  provider: string;
-  language: string;
+export interface TranscriptEntry {
+  role: 'agent' | 'user' | 'system';
+  text: string;
+  timestamp: number;
+  confidence: number;
+  durationMs: number;
 }
 
-// ---------------------------------------------------------------------------
-// Voice Activity Detection (simple energy-based)
-// ---------------------------------------------------------------------------
+export interface CallAction {
+  type: 'speak' | 'listen' | 'hangup' | 'transfer' | 'gather' | 'pause' | 'send_dtmf';
+  payload?: string;
+  parameters?: Record<string, unknown>;
+}
 
-function detectVoiceActivity(
-  audioChunk: Buffer,
-  sensitivity: 'low' | 'medium' | 'high',
-): boolean {
-  if (audioChunk.length < 2) return false;
+export interface VoiceAgentAnalysis {
+  sentiment: 'positive' | 'negative' | 'neutral';
+  intent: string;
+  entities: Record<string, string>;
+  summary: string;
+  actionItems: string[];
+  escalationNeeded: boolean;
+  score: number;
+}
 
-  // Calculate RMS energy of 16-bit PCM audio
-  let sumSquares = 0;
-  const samples = Math.floor(audioChunk.length / 2);
-  for (let i = 0; i < samples; i++) {
-    const sample = audioChunk.readInt16LE(i * 2);
-    sumSquares += sample * sample;
+// ============================================================
+// Voice Agent Engine
+// ============================================================
+
+export class VoiceAgentEngine {
+  private configs: Map<string, VoiceAgentConfig> = new Map();
+  private activeCalls: Map<string, CallState> = new Map();
+
+  constructor() {
+    this.loadConfigs();
   }
 
-  const rms = Math.sqrt(sumSquares / samples);
-
-  // Thresholds based on sensitivity
-  const thresholds = {
-    low: 200,     // Needs loud speech
-    medium: 100,  // Normal speech
-    high: 40,     // Soft speech detected
-  };
-
-  return rms > thresholds[sensitivity];
-}
-
-// ---------------------------------------------------------------------------
-// In-memory session store
-// ---------------------------------------------------------------------------
-
-const activeSessions = new Map<string, VoiceAgentSession>();
-const sessionConfigs = new Map<string, VoiceAgentConfig>();
-
-// ---------------------------------------------------------------------------
-// VoiceAgent class
-// ---------------------------------------------------------------------------
-
-export class VoiceAgent {
-  private stt: SpeechToTextEngine;
-  private tts: TextToSpeechEngine;
-  private memory: VoiceMemorySystem;
-
-  constructor(userId: string) {
-    this.stt = new SpeechToTextEngine(userId);
-    this.tts = new TextToSpeechEngine(userId);
-    this.memory = new VoiceMemorySystem(userId);
+  private async loadConfigs(): Promise<void> {
+    try {
+      const agents = await db.agent.findMany({
+        where: { type: 'voice' },
+        select: { id: true, config: true },
+      });
+      for (const agent of agents) {
+        try {
+          const config = JSON.parse(agent.config) as VoiceAgentConfig;
+          config.id = agent.id;
+          this.configs.set(agent.id, config);
+        } catch {}
+      }
+    } catch {}
   }
 
-  /**
-   * Start a new voice agent session
-   */
-  async startSession(
-    config: VoiceAgentConfig,
+  async createVoiceAgent(
     userId: string,
-  ): Promise<VoiceAgentSession> {
-    const sessionId = `va_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    name: string,
+    config: Partial<VoiceAgentConfig>
+  ): Promise<{ id: string; config: VoiceAgentConfig }> {
+    const defaultConfig: VoiceAgentConfig = {
+      id: '',
+      name,
+      voiceProvider: 'twilio',
+      sttProvider: 'deepgram',
+      ttsProvider: 'elevenlabs',
+      llmProvider: 'openai',
+      llmModel: 'gpt-4o',
+      voiceId: '21m00Tcm4TlvDq8ikWAM',
+      language: 'fr-FR',
+      systemPrompt: 'Tu es un assistant vocal professionnel et naturel. Réponds de manière concise et chaleureuse. Parle comme un humain.',
+      maxDurationMinutes: 15,
+      endCallDetection: true,
+      interruptible: true,
+      enableRecording: false,
+      greetingMessage: 'Bonjour, ici Genova AI. Comment puis-je vous aider aujourd\'hui ?',
+      postCallAnalysis: true,
+      transferOnEscalation: null,
+      knowledgeBase: [],
+      ...config,
+    };
 
-    const session: VoiceAgentSession = {
-      id: sessionId,
-      agentId: config.agentId,
+    const agent = await db.agent.create({
+      data: {
+        name,
+        type: 'voice',
+        description: `Agent vocal : ${name}`,
+        status: 'active',
+        config: JSON.stringify(defaultConfig),
+        userId,
+      },
+    });
+
+    defaultConfig.id = agent.id;
+    this.configs.set(agent.id, defaultConfig);
+
+    return { id: agent.id, config: defaultConfig };
+  }
+
+  async makeCall(
+    userId: string,
+    agentId: string,
+    toNumber: string,
+    fromNumber: string,
+    context?: Record<string, unknown>
+  ): Promise<{ callSid: string; status: string }> {
+    const config = this.configs.get(agentId);
+    if (!config) throw new Error(`Agent vocal ${agentId} introuvable`);
+
+    const voiceConfig = await db.userResource.findFirst({
+      where: { userId, type: 'twilio' },
+    });
+
+    if (!voiceConfig?.apiKey) {
+      throw new Error('Configuration téléphonique manquante. Connectez Twilio/Vonage.');
+    }
+
+    // Créer l'appel via Twilio
+    const accountSid = voiceConfig.apiKey;
+    const authToken = voiceConfig.config || process.env.TWILIO_AUTH_TOKEN || '';
+    const twilioNumber = voiceConfig.endpoint || fromNumber;
+
+    const response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          To: toNumber,
+          From: twilioNumber,
+          Url: `${process.env.GENOVA_API_URL || 'https://missock237-spec.github.io/Genova'}/api/voice/twiml?agent_id=${agentId}&user_id=${userId}`,
+          StatusCallback: `${process.env.GENOVA_API_URL || 'https://missock237-spec.github.io/Genova'}/api/voice/status`,
+          StatusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'].join(' '),
+          Timeout: '30',
+          Record: config.enableRecording ? 'true' : 'false',
+          MachineDetection: 'DetectMessageEnd',
+        }).toString(),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Échec de l'appel: ${error}`);
+    }
+
+    const data = await response.json();
+    const callSid = data.sid;
+
+    // Enregistrer l'appel en BDD
+    await db.voiceCall.create({
+      data: {
+        userId,
+        agentId,
+        provider: 'twilio',
+        callSid,
+        fromNumber: twilioNumber,
+        toNumber,
+        status: 'queued',
+        direction: 'outbound',
+      },
+    });
+
+    // Initialiser l'état de l'appel
+    this.activeCalls.set(callSid, {
+      callSid,
+      direction: 'outbound',
+      fromNumber: twilioNumber,
+      toNumber,
+      status: 'queued',
+      agentId,
       userId,
-      status: 'idle',
-      startedAt: new Date().toISOString(),
       transcript: [],
-    };
+      startedAt: new Date().toISOString(),
+      durationSeconds: 0,
+      context: context || {},
+    });
 
-    activeSessions.set(sessionId, session);
-    sessionConfigs.set(sessionId, config);
+    return { callSid, status: 'queued' };
+  }
 
-    // Persist session to database
-    try {
-      await db.voiceSession.create({
-        data: {
-          id: sessionId,
-          userId,
-          agentId: config.agentId,
-          type: 'bidirectional',
-          status: 'active',
+  async handleIncomingCall(
+    userId: string,
+    agentId: string,
+    fromNumber: string,
+    toNumber: string,
+    callSid: string
+  ): Promise<CallAction[]> {
+    const config = this.configs.get(agentId);
+    if (!config) {
+      return [{
+        type: 'speak',
+        payload: 'Désolé, l\'assistant n\'est pas disponible pour le moment.',
+      }, { type: 'hangup' }];
+    }
+
+    await db.voiceCall.create({
+      data: {
+        userId,
+        agentId,
+        provider: 'twilio',
+        callSid,
+        fromNumber,
+        toNumber,
+        status: 'ringing',
+        direction: 'inbound',
+      },
+    });
+
+    this.activeCalls.set(callSid, {
+      callSid,
+      direction: 'inbound',
+      fromNumber,
+      toNumber,
+      status: 'ringing',
+      agentId,
+      userId,
+      transcript: [],
+      startedAt: new Date().toISOString(),
+      durationSeconds: 0,
+      context: {},
+    });
+
+    return [
+      {
+        type: 'speak',
+        payload: config.greetingMessage,
+      },
+      {
+        type: 'listen',
+        parameters: {
           language: config.language,
-          sttProvider: 'auto',
-          ttsProvider: 'auto',
-          metadata: JSON.stringify({
-            vadSensitivity: config.vadSensitivity,
-            enableInterruption: config.enableInterruption,
-            responseDelayMs: config.responseDelayMs,
-          }),
+          endOnSilence: 1000,
+          timeout: 10,
         },
-      });
-    } catch (error) {
-      log.warn('Failed to persist voice session', { error: String(error) });
-    }
-
-    log.info('Voice agent session started', { sessionId, agentId: config.agentId });
-
-    return session;
+      },
+    ];
   }
 
-  /**
-   * Process incoming audio: STT → AI → TTS → response audio
-   */
-  async processAudio(
-    sessionId: string,
-    audioChunk: Buffer,
-  ): Promise<Buffer | null> {
-    const session = activeSessions.get(sessionId);
-    const config = sessionConfigs.get(sessionId);
-
-    if (!session || !config) {
-      log.warn('Process audio called for unknown session', { sessionId });
-      return null;
+  async processSpeech(
+    callSid: string,
+    transcript: string,
+    confidence: number
+  ): Promise<CallAction[]> {
+    const callState = this.activeCalls.get(callSid);
+    if (!callState) {
+      return [{ type: 'hangup' }];
     }
 
-    // Voice activity detection
-    if (!detectVoiceActivity(audioChunk, config.vadSensitivity)) {
-      return null; // Silence detected, skip
+    const config = this.configs.get(callState.agentId);
+    if (!config) {
+      return [{ type: 'speak', payload: 'Je ne peux pas continuer.' }, { type: 'hangup' }];
     }
 
-    // Check for interruption (barge-in during speaking)
-    if (session.status === 'speaking' && config.enableInterruption) {
-      log.info('Barge-in detected, interrupting current speech', { sessionId });
-      session.status = 'listening';
-    }
-
-    // Step 1: STT — transcribe the audio
-    session.status = 'listening';
-
-    let sttResult: STTResult;
-    try {
-      sttResult = await this.stt.transcribe(audioChunk, {
-        language: config.language,
-      });
-    } catch (error) {
-      log.error('STT failed during voice agent processing', { error: String(error) });
-      session.status = 'idle';
-      return null;
-    }
-
-    const userText = sttResult.text.trim();
-    if (!userText) {
-      session.status = 'idle';
-      return null;
-    }
-
-    // Add user message to transcript
-    session.transcript.push({
+    // Ajouter la transcription
+    const entry: TranscriptEntry = {
       role: 'user',
-      content: userText,
-      timestamp: new Date().toISOString(),
+      text: transcript,
+      timestamp: Date.now(),
+      confidence,
+      durationMs: 0,
+    };
+    callState.transcript.push(entry);
+
+    // Construire le contexte pour le LLM
+    const conversationHistory = callState.transcript
+      .map(t => `${t.role === 'agent' ? 'Assistant' : 'Utilisateur'}: ${t.text}`)
+      .join('\n');
+
+    const systemContext = `${config.systemPrompt}
+
+Contexte de l'appel :
+${JSON.stringify(callState.context)}
+
+Historique :
+${conversationHistory}`;
+
+    // Appeler le LLM pour générer la réponse
+    const llmResponse = await this.callLlm(config, systemContext, transcript);
+
+    // Ajouter la réponse au transcript
+    callState.transcript.push({
+      role: 'agent',
+      text: llmResponse,
+      timestamp: Date.now(),
+      confidence: 1.0,
+      durationMs: 0,
     });
 
-    // Step 2: AI — generate response
-    session.status = 'thinking';
+    const actions: CallAction[] = [
+      {
+        type: 'speak',
+        payload: llmResponse,
+      },
+    ];
 
-    let aiResponse: string;
-    try {
-      const router = createAIRouter(session.userId);
+    // Détection de fin d'appel
+    if (config.endCallDetection) {
+      const endPhrases = ['au revoir', 'bonne journée', 'merci au revoir', 'ciao', 'bye', 'à bientôt', 'je vous remercie', 'je raccroche', 'terminé', 'c\'est tout'];
+      const saidBye = endPhrases.some(phrase =>
+        transcript.toLowerCase().includes(phrase) || llmResponse.toLowerCase().includes(phrase)
+      );
 
-      // Build conversation history for context
-      const messages = [
-        {
-          role: 'system' as const,
-          content: this.buildSystemPrompt(config),
-        },
-        // Include recent transcript for context (last 10 turns)
-        ...session.transcript.slice(-10).map((msg) => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-        })),
-      ];
-
-      const response = await router.chat(messages, { model: 'fast' });
-      aiResponse = response.content;
-    } catch (error) {
-      log.error('AI generation failed during voice agent processing', { error: String(error) });
-      session.status = 'idle';
-      return null;
-    }
-
-    // Add assistant message to transcript
-    session.transcript.push({
-      role: 'assistant',
-      content: aiResponse,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Step 3: TTS — synthesize the response
-    session.status = 'speaking';
-
-    // Apply optional delay before speaking
-    if (config.responseDelayMs > 0) {
-      await new Promise((r) => setTimeout(r, config.responseDelayMs));
-    }
-
-    try {
-      const voiceOptions = await this.getVoiceOptions(config);
-      const ttsResult = await this.tts.synthesize(aiResponse, voiceOptions);
-
-      session.status = 'idle';
-      return ttsResult.audioBuffer;
-    } catch (error) {
-      log.error('TTS failed during voice agent processing', { error: String(error) });
-      session.status = 'idle';
-      return null;
-    }
-  }
-
-  /**
-   * End session and save voice memory
-   */
-  async endSession(sessionId: string): Promise<void> {
-    const session = activeSessions.get(sessionId);
-
-    if (!session) {
-      log.warn('End session called for unknown session', { sessionId });
-      return;
-    }
-
-    // Save full transcript as voice memory
-    if (session.transcript.length > 0) {
-      try {
-        const transcriptText = session.transcript
-          .map((m) => `${m.role}: ${m.content}`)
-          .join('\n');
-
-        await this.memory.storeMemory(
-          session.userId,
-          transcriptText,
-          undefined,
-          {
-            sessionId,
-            agentId: session.agentId,
-            type: 'conversation',
-            turnCount: session.transcript.length,
-          },
-        );
-      } catch (error) {
-        log.warn('Failed to save voice memory on session end', { error: String(error) });
+      if (saidBye) {
+        actions.push({ type: 'hangup' });
+        await this.endCall(callSid);
+        return actions;
       }
     }
 
-    // Update database session
-    try {
-      await db.voiceSession.update({
-        where: { id: sessionId },
-        data: {
-          status: 'ended',
-          transcription: session.transcript.map((m) => `${m.role}: ${m.content}`).join('\n'),
-          endedAt: new Date(),
-          metadata: JSON.stringify({
-            turnCount: session.transcript.length,
-          }),
-        },
-      });
-    } catch (error) {
-      log.warn('Failed to update voice session on end', { error: String(error) });
-    }
-
-    // Remove from active sessions
-    activeSessions.delete(sessionId);
-    sessionConfigs.delete(sessionId);
-
-    log.info('Voice agent session ended', {
-      sessionId,
-      turnCount: session.transcript.length,
+    // Continuer à écouter
+    actions.push({
+      type: 'listen',
+      parameters: {
+        language: config.language,
+        endOnSilence: 800,
+        timeout: 15,
+      },
     });
+
+    return actions;
   }
 
-  /**
-   * Get current session state
-   */
-  getSession(sessionId: string): VoiceAgentSession | null {
-    return activeSessions.get(sessionId) ?? null;
-  }
+  private async callLlm(
+    config: VoiceAgentConfig,
+    systemPrompt: string,
+    userMessage: string
+  ): Promise<string> {
+    const apiKey = this.getApiKey(config.llmProvider);
+    if (!apiKey) return 'Je ne peux pas répondre pour le moment. Veuillez réessayer.';
 
-  // -----------------------------------------------------------------------
-  // Private helpers
-  // -----------------------------------------------------------------------
-
-  private buildSystemPrompt(config: VoiceAgentConfig): string {
-    return `You are a voice AI assistant. You communicate through voice, so keep your responses:
-- Concise and natural (avoid long paragraphs)
-- Conversational (use contractions, natural speech patterns)
-- Direct (answer the question directly)
-
-Language: ${config.language}
-Agent ID: ${config.agentId}
-
-Respond as if you are speaking to someone in real-time. Avoid markdown formatting, bullet points, or numbered lists — speak naturally.`;
-  }
-
-  private async getVoiceOptions(config: VoiceAgentConfig): Promise<TTSOptions> {
-    const defaults: TTSOptions = {
-      voice: 'alloy',
-      speed: 1.0,
-      responseFormat: 'mp3',
-      language: config.language,
+    const endpoints: Record<string, string> = {
+      openai: 'https://api.openai.com/v1/chat/completions',
+      anthropic: 'https://api.anthropic.com/v1/messages',
+      groq: 'https://api.groq.com/openai/v1/chat/completions',
+      openrouter: 'https://openrouter.ai/api/v1/chat/completions',
     };
 
-    // Load user's voice profile if specified
-    if (config.voiceProfileId) {
-      try {
-        const profile = await db.voiceProfile.findUnique({
-          where: { id: config.voiceProfileId },
-        });
+    const endpoint = endpoints[config.llmProvider];
+    if (!endpoint) return 'Erreur de configuration du modèle.';
 
-        if (profile) {
-          return {
-            voice: profile.voiceModel,
-            speed: profile.speed,
-            responseFormat: 'mp3',
-            language: profile.language,
-          };
-        }
-      } catch {
-        // Fall through to defaults
+    try {
+      const body: Record<string, unknown> = {
+        model: config.llmModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: 250,
+        temperature: 0.7,
+      };
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (config.llmProvider === 'anthropic') {
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+        body.system = systemPrompt;
+        body.messages = [{ role: 'user', content: userMessage }];
+        delete body.messages;
+      } else {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) return 'Je n\'ai pas compris. Pouvez-vous répéter ?';
+
+      const data = await response.json();
+
+      if (config.llmProvider === 'anthropic') {
+        return data.content?.[0]?.text || '...';
+      }
+
+      return data.choices?.[0]?.message?.content || '...';
+    } catch {
+      return 'Je n\'ai pas compris. Pouvez-vous répéter ?';
+    }
+  }
+
+  private getApiKey(provider: string): string | undefined {
+    const keys: Record<string, string | undefined> = {
+      openai: process.env.OPENAI_API_KEY,
+      anthropic: process.env.ANTHROPIC_API_KEY,
+      groq: process.env.GROQ_API_KEY,
+      openrouter: process.env.OPENROUTER_API_KEY,
+    };
+    return keys[provider];
+  }
+
+  async updateCallStatus(callSid: string, status: CallStatus): Promise<void> {
+    const callState = this.activeCalls.get(callSid);
+    if (callState) {
+      callState.status = status;
+      if (status === 'completed' || status === 'failed') {
+        callState.durationSeconds = Math.floor(
+          (Date.now() - new Date(callState.startedAt).getTime()) / 1000
+        );
       }
     }
 
-    return defaults;
+    await db.voiceCall.updateMany({
+      where: { callSid },
+      data: { status },
+    });
   }
+
+  async endCall(callSid: string): Promise<void> {
+    const callState = this.activeCalls.get(callSid);
+    if (callState) {
+      callState.status = 'completed';
+      callState.durationSeconds = Math.floor(
+        (Date.now() - new Date(callState.startedAt).getTime()) / 1000
+      );
+
+      // Analyse post-appel
+      if (this.configs.get(callState.agentId)?.postCallAnalysis) {
+        await this.analyzeCall(callState);
+      }
+
+      // Mettre à jour le transcript en BDD
+      await db.voiceCall.updateMany({
+        where: { callSid },
+        data: {
+          status: 'completed',
+          transcript: JSON.stringify(callState.transcript),
+          durationSeconds: callState.durationSeconds,
+        },
+      });
+
+      this.activeCalls.delete(callSid);
+    }
+  }
+
+  private async analyzeCall(callState: CallState): Promise<VoiceAgentAnalysis> {
+    const transcript = callState.transcript.map(t => t.text).join(' ');
+    const analysis: VoiceAgentAnalysis = {
+      sentiment: 'neutral',
+      intent: 'unknown',
+      entities: {},
+      summary: '',
+      actionItems: [],
+      escalationNeeded: false,
+      score: 0.5,
+    };
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `Analyse cette conversation téléphonique. Retourne UNIQUEMENT du JSON valide avec :
+              - sentiment: positive|negative|neutral
+              - intent: l'intention principale
+              - entities: les entités extraites (nom, téléphone, email, etc.)
+              - summary: résumé en 1 phrase
+              - actionItems: liste des actions à prendre
+              - escalationNeeded: true/false
+              - score: 0.0 à 1.0`,
+            },
+            { role: 'user', content: transcript },
+          ],
+          max_tokens: 500,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const result = JSON.parse(data.choices[0].message.content);
+        Object.assign(analysis, result);
+      }
+    } catch {}
+
+    return analysis;
+  }
+
+  getActiveCall(callSid: string): CallState | undefined {
+    return this.activeCalls.get(callSid);
+  }
+
+  getActiveCallsByUser(userId: string): CallState[] {
+    return Array.from(this.activeCalls.values()).filter(c => c.userId === userId);
+  }
+}
+
+// ============================================================
+// Singleton
+// ============================================================
+
+let instance: VoiceAgentEngine | null = null;
+
+export function getVoiceAgentEngine(): VoiceAgentEngine {
+  if (!instance) {
+    instance = new VoiceAgentEngine();
+  }
+  return instance;
 }

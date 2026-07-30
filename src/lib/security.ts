@@ -1,79 +1,114 @@
 // ============================================================
-// SECURITY — Middleware de sécurité pour les routes API
+// Gen3ia — Security Middleware pour les routes API
+// Authentification JWT (access 15min) + API keys + RBAC
 // ============================================================
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyAccessToken } from '@/lib/auth/jwt';
+import { db } from '@/lib/db';
 
 export interface SecurityContext {
   userId: string;
   role: string;
+  email?: string;
 }
 
 interface SecurityOptions {
   requireAuth?: boolean;
-  rateLimit?: { limit: number; windowMs: number };
   roles?: string[];
 }
 
+/**
+ * Middleware de sécurité pour les routes API.
+ * Supporte:
+ * - Bearer token JWT (access token 15min)
+ * - X-API-Key (API keys persistantes)
+ * - Rôles (RBAC)
+ */
 export async function applySecurity(
   request: NextRequest,
   options: SecurityOptions = {}
 ): Promise<{ auth?: SecurityContext; error?: NextResponse }> {
-  const apiKey = request.headers.get("x-api-key");
-  const authHeader = request.headers.get("authorization");
+  const secret = process.env.AUTH_SECRET;
 
-  // Vérification par API Key
+  if (!secret || secret.length < 32) {
+    console.error('[SECURITY] AUTH_SECRET manquant ou trop court');
+    if (options.requireAuth) {
+      return { error: NextResponse.json({ error: 'Erreur de configuration serveur' }, { status: 500 }) };
+    }
+    return { auth: { userId: 'anonymous', role: 'guest' } };
+  }
+
+  // 1. Essayer API Key d'abord
+  const apiKey = request.headers.get('x-api-key');
   if (apiKey) {
     const auth = await authenticateApiKey(apiKey);
-    if (auth) {
-      return validateRole(auth, options);
-    }
+    if (auth) return validateRole(auth, options);
   }
 
-  // Vérification par Bearer token
-  if (authHeader?.startsWith("Bearer ")) {
+  // 2. Essayer Bearer token JWT
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
-    const auth = await authenticateToken(token);
-    if (auth) {
+    const payload = await verifyAccessToken(token);
+    if (payload) {
+      const auth: SecurityContext = {
+        userId: payload.sub,
+        role: payload.role,
+        email: payload.email,
+      };
       return validateRole(auth, options);
     }
   }
 
+  // 3. Si auth requise, retourner 401
   if (options.requireAuth) {
-    return { error: NextResponse.json({ error: "Authentification requise" }, { status: 401 }) };
+    return { error: NextResponse.json({ error: 'Authentification requise' }, { status: 401 }) };
   }
 
-  return { auth: { userId: "anonymous", role: "guest" } };
+  return { auth: { userId: 'anonymous', role: 'guest' } };
 }
 
-export function secureResponse(response: NextResponse, request: NextRequest): NextResponse {
-  const correlationId = request.headers.get("x-correlation-id") ?? crypto.randomUUID();
-  response.headers.set("X-Correlation-ID", correlationId);
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
+/**
+ * Ajoute des en-têtes de sécurité à la réponse
+ */
+export function secureResponse(response: NextResponse, _request: NextRequest): NextResponse {
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
   return response;
 }
 
+/**
+ * Authentifie via API Key
+ */
 async function authenticateApiKey(apiKey: string): Promise<SecurityContext | null> {
-  if (apiKey.length < 16) return null;
-  // TODO: vérifier dans la base de données AccessKey
-  return { userId: "api-user", role: "api" };
+  try {
+    const key = await db.accessKey.findFirst({
+      where: { keyValue: apiKey, isActive: true },
+      include: { user: { select: { id: true, role: true } } },
+    });
+    if (!key || !key.user) return null;
+
+    // Mettre à jour lastUsed
+    await db.accessKey.update({
+      where: { id: key.id },
+      data: { lastUsed: new Date() },
+    }).catch(() => {});
+
+    return { userId: key.user.id, role: key.user.role };
+  } catch {
+    return null;
+  }
 }
 
-async function authenticateToken(token: string): Promise<SecurityContext | null> {
-  if (token.length < 20) return null;
-  // TODO: vérifier le JWT / session
-  return { userId: "session-user", role: "user" };
-}
-
-function validateRole(
-  auth: SecurityContext,
-  options: SecurityOptions
-): { auth: SecurityContext; error?: NextResponse } {
+/**
+ * Vérifie les permissions RBAC
+ */
+function validateRole(auth: SecurityContext, options: SecurityOptions): { auth: SecurityContext; error?: NextResponse } {
   if (options.roles && !options.roles.includes(auth.role)) {
     return {
       auth,
-      error: NextResponse.json({ error: "Permissions insuffisantes" }, { status: 403 }),
+      error: NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 }),
     };
   }
   return { auth };

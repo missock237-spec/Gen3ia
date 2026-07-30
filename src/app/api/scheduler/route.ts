@@ -1,21 +1,21 @@
-import { NextRequest, NextResponse } from "next/server";
-import { agentScheduler } from "@/lib/scheduler";
-export async function POST(request) {
-  try { const body = await request.json(); return NextResponse.json(await agentScheduler.schedule(body), { status: 201 }); }
-  catch (e) { return NextResponse.json({ error: e.message || "Erreur" }, { status: 500 }); }
-}
-export async function GET(request) {
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+export async function GET(r: NextRequest) {
   try {
-    const userId = new URL(request.url).searchParams.get("userId");
-    if (!userId) return NextResponse.json({ error: "userId requis" }, { status: 400 });
-    return NextResponse.json({ tasks: await agentScheduler.listByUser(userId) });
-  } catch (e) { return NextResponse.json({ error: e.message || "Erreur" }, { status: 500 }); }
+    const a = r.headers.get('authorization');
+    if (!a?.startsWith('Bearer ')) return NextResponse.json({ error: 'Auth' }, { status: 401 });
+    const { verify } = await import('jsonwebtoken');
+    const d = verify(a.slice(7), process.env.AUTH_SECRET || 's') as any;
+    const t = await db.scheduledTask.findMany({ where: { userId: d.userId }, orderBy: { createdAt: 'desc' }, take: 50 });
+    return NextResponse.json(t);
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }
-export async function DELETE(request) {
+export async function POST(r: NextRequest) {
   try {
-    const taskId = new URL(request.url).searchParams.get("taskId");
-    if (!taskId) return NextResponse.json({ error: "taskId requis" }, { status: 400 });
-    await agentScheduler.unschedule(taskId);
-    return NextResponse.json({ success: true });
-  } catch (e) { return NextResponse.json({ error: e.message || "Erreur" }, { status: 500 }); }
+    const b = await r.json();
+    const { name, schedule, payload, userId } = b;
+    if (!name || !schedule || !userId) return NextResponse.json({ error: 'name, schedule et userId requis' }, { status: 400 });
+    const t = await db.scheduledTask.create({ data: { name, schedule, payload: payload || '{}', userId } });
+    return NextResponse.json(t, { status: 201 });
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }

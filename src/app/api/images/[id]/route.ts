@@ -1,80 +1,69 @@
+// ============================================================
+// GET /api/images/[id] — Statut d'une generation d'image
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { getImageGeneration, deleteImageGeneration } from '@/lib/image-generator';
+import { createLogger } from '@/lib/logger';
+import { db } from '@/lib/db';
+import { applySecurity } from '@/lib/security';
 
-export async function OPTIONS(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
+const log = createLogger('image-status');
 
-// ============================================================
-// GET /api/images/[id] — Get a specific generated image
-// ============================================================
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-    const { id } = await params;
-    const image = await getImageGeneration(id, auth.userId);
-
-    if (!image) {
-      return secureResponse(
-        NextResponse.json({ error: 'Image not found' }, { status: 404 }),
-        request
-      );
-    }
-
-    return secureResponse(
-      NextResponse.json(image),
-      request
-    );
-  } catch {
-    return secureResponse(
-      NextResponse.json({ error: 'Failed to fetch image' }, { status: 500 }),
-      request
-    );
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
+  if (secError || !auth) {
+    return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
   }
-}
 
-// ============================================================
-// DELETE /api/images/[id] — Delete a generated image
-// ============================================================
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
   try {
-    const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+    const generation = await db.imageGeneration.findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        status: true,
+        prompt: true,
+        model: true,
+        imageUrl: true,
+        width: true,
+        height: true,
+        costUsd: true,
+        metadata: true,
+        completedAt: true,
+        createdAt: true,
+        userId: true,
+      },
+    });
 
-    const { id } = await params;
-    const deleted = await deleteImageGeneration(id, auth.userId);
-
-    if (!deleted) {
-      return secureResponse(
-        NextResponse.json({ error: 'Image not found' }, { status: 404 }),
-        request
-      );
+    if (!generation) {
+      return NextResponse.json({ error: 'Generation introuvable' }, { status: 404 });
     }
 
-    return secureResponse(
-      NextResponse.json({ success: true, message: 'Image deleted' }),
-      request
-    );
-  } catch {
-    return secureResponse(
-      NextResponse.json({ error: 'Failed to delete image' }, { status: 500 }),
-      request
-    );
+    if (generation.userId !== auth.userId) {
+      return NextResponse.json({ error: 'Acces refuse' }, { status: 403 });
+    }
+
+    const metadata = typeof generation.metadata === 'string'
+      ? JSON.parse(generation.metadata)
+      : generation.metadata || {};
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: generation.id,
+        status: generation.status,
+        prompt: generation.prompt,
+        model: generation.model,
+        imageUrl: generation.imageUrl,
+        width: generation.width,
+        height: generation.height,
+        cost: generation.costUsd,
+        error: metadata.error || null,
+        completedAt: generation.completedAt,
+        createdAt: generation.createdAt,
+      },
+    });
+  } catch (error) {
+    log.error('image_status_error', { error: String(error) });
+    return NextResponse.json({ error: 'Erreur interne' }, { status: 500 });
   }
 }

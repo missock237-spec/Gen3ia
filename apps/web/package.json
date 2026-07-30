@@ -1,0 +1,20 @@
+{
+  "name": "@gen3ia/web",
+  "version": "0.10.0",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-accordion": "^1.2.11",
+    "@radix-ui/react-alert-dialog": "^1.1.14",
+    "@radix-ui/react-checkbox": "^1.3.2",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-progress": "^1.1.7",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10"
+  }
+}

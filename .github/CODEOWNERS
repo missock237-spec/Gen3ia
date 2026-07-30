@@ -1,45 +1,23 @@
-# ============================================================
-# CODEOWNERS — Propriétaires de code par dossier
-# ============================================================
-# Les personnes/équipes listées sont automatiquement
-# assignées aux PR qui modifient ces fichiers.
-# ============================================================
+# Propriétaires de code Genova
 
-# Propriétaires par défaut (tous les fichiers)
+# Propriétaire principal
 * @missock237-spec
 
-# Cœur du projet - Agent ReAct
-/src/lib/checkpoint.ts   @missock237-spec
-/src/lib/supervisor.ts   @missock237-spec
-/src/lib/logger.ts       @missock237-spec
-/src/lib/errors.ts       @missock237-spec
+# Modules critiques — revue obligatoire
+/src/lib/ai-router.ts @missock237-spec
+/src/lib/compute/ @missock237-spec
+/src/lib/generation/ @missock237-spec
+/prisma/schema.prisma @missock237-spec
+/src/middleware.ts @missock237-spec
 
-# Routes API
-/src/app/api/            @missock237-spec
+# Sécurité — approbation requise
+/.github/workflows/security.yml @missock237-spec
+/src/lib/secret-vault.ts @missock237-spec
+/src/lib/ssrf-protect.ts @missock237-spec
+/src/lib/sanitize.ts @missock237-spec
 
-# Base de données
-/prisma/schema.prisma    @missock237-spec
-/prisma/seed.ts          @missock237-spec
-
-# Configuration
-/package.json            @missock237-spec
-/tsconfig.json           @missock237-spec
-/next.config.ts          @missock237-spec
-
-# Docker
-/Dockerfile              @missock237-spec
-/docker-compose*.yml     @missock237-spec
-
-# Documentation
-/README.md               @missock237-spec
-/docs/                   @missock237-spec
-
-# CI/CD
-/.github/workflows/      @missock237-spec
-
-# Paiements
-/src/lib/sebpay.ts       @missock237-spec
-/src/lib/stripe.ts       @missock237-spec
-
-# Sécurité
-/SECURITY.md             @missock237-spec
+# Déploiement — équipe DevOps
+/Dockerfile @missock237-spec
+/docker-compose*.yml @missock237-spec
+/.github/workflows/deploy.yml @missock237-spec
+/.github/workflows/release.yml @missock237-spec

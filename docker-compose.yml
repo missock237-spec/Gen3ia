@@ -1,40 +1,142 @@
 # ============================================================
-# GENOVA — Docker Compose (développement local)
+# Gen3ia — Docker Compose (dev + production)
+# Orchestre : PostgreSQL, Redis, Next.js, Worker BullMQ
 # ============================================================
+
+version: "3.9"
+
+name: gen3ia
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: genova-db
+    container_name: gen3ia-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: genova
-      POSTGRES_PASSWORD: genova_pass
-      POSTGRES_DB: genova
+      POSTGRES_USER: gen3ia
+      POSTGRES_PASSWORD: gen3ia_dev
+      POSTGRES_DB: gen3ia_dev
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U genova"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U gen3ia -d gen3ia_dev"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    networks:
+      - gen3ia-net
 
   redis:
     image: redis:7-alpine
-    container_name: genova-redis
+    container_name: gen3ia-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - redisdata:/data
+      - redis_data:/data
+    command: redis-server --appendonly yes --save 60 1 --loglevel warning
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - gen3ia-net
+
+  app:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runner
+    container_name: gen3ia-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://gen3ia:gen3ia_dev@postgres:5432/gen3ia_dev
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-${AUTH_SECRET}}
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: 1
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      LOKI_URL: ${LOKI_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - gen3ia-net
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      target: runner
+    container_name: gen3ia-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://gen3ia:gen3ia_dev@postgres:5432/gen3ia_dev
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      NEXT_TELEMETRY_DISABLED: 1
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gen3ia-net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: gen3ia-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - gen3ia-net
+    profiles:
+      - full
+
+networks:
+  gen3ia-net:
+    name: gen3ia-network
+    driver: bridge
 
 volumes:
-  pgdata:
-  redisdata:
+  postgres_data:
+    name: gen3ia-postgres-data
+  redis_data:
+    name: gen3ia-redis-data
+  qdrant_data:
+    name: gen3ia-qdrant-data

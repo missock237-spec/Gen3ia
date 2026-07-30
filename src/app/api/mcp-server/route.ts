@@ -1,0 +1,147 @@
+/**
+ * MCP Server Route — Genova MCP Protocol Endpoint
+ * Accepts JSON-RPC 2.0 requests. Compatible with Cursor IDE, Claude Desktop, Windsurf.
+ * Endpoints: initialize, tools/list, tools/call, resources/list, resources/read, prompts/list, prompts/get
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@/lib/logger';
+import { applySecurity } from '@/lib/security';
+import { db } from '@/lib/db';
+
+const log = createLogger('mcp-server');
+
+const MCP_SERVER_INFO = { name: 'Genova AI OS', version: '1.0.0' };
+const MCP_CAPABILITIES = { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true } };
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-03-26', '2024-11-05'];
+
+async function handleMCPRequest(method: string, params: Record<string, unknown> | undefined, userId: string) {
+  switch (method) {
+    case 'initialize': {
+      const p = params as { protocolVersion?: string; clientInfo?: Record<string, string> } | undefined;
+      const v = p?.protocolVersion || '2024-11-05';
+      const negotiated = SUPPORTED_PROTOCOL_VERSIONS.includes(v) ? v : SUPPORTED_PROTOCOL_VERSIONS[0];
+      log.info('MCP init', { client: p?.clientInfo?.name || 'unknown', version: negotiated });
+      return { result: { protocolVersion: negotiated, capabilities: MCP_CAPABILITIES, serverInfo: MCP_SERVER_INFO } };
+    }
+
+    case 'tools/list': {
+      const connectors = await db.mCPConnector.findMany({ where: { userId, isActive: true, status: { not: 'error' } }, select: { name: true, tools: true } });
+      const tools: any[] = [
+        { name: 'genova_list_agents', description: 'Liste tous les agents Genova', inputSchema: { type: 'object', properties: { status: { type: 'string' } } } },
+        { name: 'genova_execute_agent', description: 'Exxe9cute un agent', inputSchema: { type: 'object', properties: { agent_id: { type: 'string' }, message: { type: 'string' } }, required: ['agent_id', 'message'] } },
+        { name: 'genova_get_credits', description: 'Solde de crxe9dits', inputSchema: { type: 'object', properties: {} } },
+        { name: 'genova_search_memory', description: 'Recherche mxe9moire', inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] } },
+        { name: 'genova_create_agent', description: 'Crxe9e un agent', inputSchema: { type: 'object', properties: { name: { type: 'string' }, instructions: { type: 'string' } }, required: ['name', 'instructions'] } },
+      ];
+      for (const c of connectors) {
+        if (c.tools) try {
+          const ct = typeof c.tools === 'string' ? JSON.parse(c.tools) : c.tools;
+          if (Array.isArray(ct)) for (const t of ct) tools.push({ name: `${c.name}_${t.name}`, description: `[${c.name}] ${t.description || t.name}`, inputSchema: t.inputSchema || { type: 'object', properties: {} } });
+        } catch {}
+      }
+      return { result: { tools } };
+    }
+
+    case 'tools/call': {
+      const p = params as { name?: string; arguments?: Record<string, unknown> } | undefined;
+      const name = p?.name;
+      const args = p?.arguments || {};
+      if (!name) return { error: { code: -32602, message: 'Tool name required' } };
+      switch (name) {
+        case 'genova_list_agents': {
+          const agents = await db.agent.findMany({ where: { userId }, select: { id: true, name: true, description: true, status: true, createdAt: true }, take: 50 });
+          return { result: { content: [{ type: 'text', text: JSON.stringify(agents) }] } };
+        }
+        case 'genova_get_credits': {
+          const credits = await db.credit.findFirst({ where: { userId }, select: { balance: true, used: true } });
+          return { result: { content: [{ type: 'text', text: JSON.stringify(credits || { balance: 0, used: 0 }) }] } };
+        }
+        case 'genova_search_memory': {
+          const q = args.query as string;
+          const limit = Math.min(Number(args.limit) || 10, 50);
+          const memories = await db.memory.findMany({ where: { userId, content: { contains: q, mode: 'insensitive' } }, select: { id: true, content: true, createdAt: true }, take: limit, orderBy: { createdAt: 'desc' } });
+          return { result: { content: [{ type: 'text', text: JSON.stringify(memories) }] } };
+        }
+        case 'genova_execute_agent': {
+          const agentId = args.agent_id as string;
+          const message = args.message as string;
+          if (!agentId || !message) return { error: { code: -32602, message: 'agent_id and message required' } };
+          const agent = await db.agent.findUnique({ where: { id: agentId }, select: { id: true, userId: true, name: true } });
+          if (!agent || agent.userId !== userId) return { error: { code: -32602, message: 'Agent not found' } };
+          return { result: { content: [{ type: 'text', text: JSON.stringify({ status: 'queued', agent: agent.name, message: message.substring(0, 200) }) }] } };
+        }
+        default: return { result: { content: [{ type: 'text', text: JSON.stringify({ message: `Tool ${name} dispatched` }) }] } };
+      }
+    }
+
+    case 'resources/list':
+      return { result: { resources: [
+        { uri: 'genova://agents', name: 'Agents', mimeType: 'application/json' },
+        { uri: 'genova://conversations', name: 'Conversations', mimeType: 'application/json' },
+        { uri: 'genova://usage', name: 'Usage', mimeType: 'application/json' },
+        { uri: 'genova://credits', name: 'Crxe9dits', mimeType: 'application/json' },
+      ] } };
+
+    case 'resources/read': {
+      const uri = (params as { uri?: string })?.uri;
+      if (!uri) return { error: { code: -32602, message: 'URI required' } };
+      const m = uri.match(/^genova:\/\/agent\/(.+)$/);
+      if (uri === 'genova://agents') {
+        const agents = await db.agent.findMany({ where: { userId }, select: { id: true, name: true, description: true, status: true } });
+        return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(agents) }] } };
+      }
+      if (uri === 'genova://usage') {
+        const usage = await db.usageLog.groupBy({ by: ['userId'], where: { userId, createdAt: { gte: new Date(Date.now() - 30 * 86400000) } }, _sum: { cost: true, tokens: true }, _count: { id: true } });
+        return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(usage) }] } };
+      }
+      if (uri === 'genova://credits') {
+        const c = await db.credit.findFirst({ where: { userId }, select: { balance: true, used: true } });
+        return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(c || { balance: 0, used: 0 }) }] } };
+      }
+      if (m) {
+        const agent = await db.agent.findUnique({ where: { id: m[1] }, select: { id: true, name: true, description: true, model: true, status: true, userId: true } });
+        if (!agent || agent.userId !== userId) return { error: { code: -32602, message: 'Agent not found' } };
+        return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(agent) }] } };
+      }
+      return { error: { code: -32602, message: `Resource not found: ${uri}` } };
+    }
+
+    case 'prompts/list':
+      return { result: { prompts: [
+        { name: 'analyze_agent_performance', description: 'Analyse performance', arguments: [{ name: 'agent_id', required: true }] },
+        { name: 'debug_agent_conversation', description: 'Dxe9bogue conversation', arguments: [{ name: 'conversation_id', required: true }] },
+      ] } };
+
+    case 'prompts/get': {
+      const p = params as { name?: string; arguments?: Record<string, string> } | undefined;
+      if (!p?.name) return { error: { code: -32602, message: 'Prompt name required' } };
+      if (p.name === 'analyze_agent_performance')
+        return { result: { messages: [{ role: 'system', content: { type: 'text', text: 'Analyse de performance.' } }, { role: 'user', content: { type: 'text', text: `Agent ${p.arguments?.agent_id || '?'}` } }] } };
+      if (p.name === 'debug_agent_conversation')
+        return { result: { messages: [{ role: 'system', content: { type: 'text', text: 'Dxe9bogage conversation.' } }, { role: 'user', content: { type: 'text', text: `ID: ${p.arguments?.conversation_id || '?'}` } }] } };
+      return { error: { code: -32602, message: `Prompt not found: ${p.name}` } };
+    }
+
+    default:
+      return { error: { code: -32601, message: `Method not found: ${method}` } };
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
+  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+  try {
+    const body = await request.json();
+    if (body.jsonrpc !== '2.0') return NextResponse.json({ jsonrpc: '2.0', id: body.id || null, error: { code: -32600, message: 'Invalid JSON-RPC 2.0' } }, { status: 400 });
+    if (body.method.startsWith('notifications/')) return new NextResponse(null, { status: 202 });
+    const { result, error } = await handleMCPRequest(body.method, body.params, auth.userId);
+    return NextResponse.json({ jsonrpc: '2.0', id: body.id, ...(error ? { error } : { result }) });
+  } catch (e) {
+    return NextResponse.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, { status: 400 });
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ server: MCP_SERVER_INFO, protocol: 'model-context-protocol', endpoints: ['POST /api/mcp-server'], note: 'Send JSON-RPC 2.0 POST requests to this endpoint' });
+}

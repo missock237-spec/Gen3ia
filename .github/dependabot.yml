@@ -1,69 +1,60 @@
-# ============================================================
-# DEPENDABOT — Mises à jour automatiques des dépendances
-# ============================================================
-# Vérifie quotidiennement les dépendances et crée des PR
-# pour les mises à jour de sécurité et de version.
-# ============================================================
-
 version: 2
 updates:
-  # Dépendances npm (Bun)
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "daily"
-      time: "08:00"
-      timezone: "Africa/Douala"
+      interval: 'weekly'
+      day: 'monday'
+      time: '08:00'
+      timezone: 'Africa/Douala'
     open-pull-requests-limit: 10
+    versioning-strategy: increase
     labels:
-      - "dependencies"
-      - "automerge"
-    # Ne pas faire de PR pour les mises à jour mineures de devDependencies
-    ignore:
-      - dependency-name: "@types/*"
-        update-types: ["version-update:semver-patch"]
+      - 'dependencies'
+      - 'automerge'
     reviewers:
-      - "missock237-spec"
-    # Groupes de dépendances pour réduire le nombre de PR
-    groups:
-      react:
-        patterns:
-          - "react"
-          - "react-dom"
-          - "@types/react"
-          - "@types/react-dom"
-          - "next"
-          - "eslint-config-next"
-      radix-ui:
-        patterns:
-          - "@radix-ui/*"
-      dnd-kit:
-        patterns:
-          - "@dnd-kit/*"
-    # Les PR de sécurité sont prioritaires
-    pull-request-branch-name:
-      separator: "-"
+      - 'missock237-spec'
+    allow:
+      - dependency-type: 'direct'
+    ignore:
+      - dependency-name: 'next'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react-dom'
+        update-types: ['version-update:semver-major']
     commit-message:
-      prefix: "chore(deps)"
-      prefix-development: "chore(deps-dev)"
-      include: "scope"
+      prefix: 'fix'
+      prefix-development: 'chore'
+      include: 'scope'
 
-  # Dépendances Docker
-  - package-ecosystem: "docker"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: 'weekly'
+      day: 'monday'
     labels:
-      - "docker"
-      - "dependencies"
+      - 'dependencies'
+      - 'github-actions'
+    commit-message:
+      prefix: 'ci'
 
-  # GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'docker'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: 'monthly'
     labels:
-      - "github-actions"
-      - "dependencies"
+      - 'dependencies'
+      - 'docker'
+    commit-message:
+      prefix: 'docker'
+
+  - package-ecosystem: 'cargo'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    labels:
+      - 'dependencies'
+      - 'rust'
+    commit-message:
+      prefix: 'rust'

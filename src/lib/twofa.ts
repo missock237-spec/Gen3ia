@@ -1,7 +1,12 @@
+// ============================================================
+// TWO-FACTOR AUTHENTICATION (2FA) — TOTP + Backup Codes
+// Compatible Google Authenticator, Authy, Microsoft Authenticator
+// ============================================================
+
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const ISSUER = 'Genova AI';
+const ISSUER = 'Gen3ia AI';
 const BACKUP_CODES_COUNT = 10;
 const BACKUP_CODE_LENGTH = 10;
 const TOTP_INTERVAL = 30;
@@ -16,13 +21,13 @@ export function generateTOTPSecret(): string {
   for (let i = 0; i < bytes.length; i++) {
     secret += BASE32[bytes[i] % 32];
   }
-  // Ajouter du padding pour que la longueur soit multiple de 8
+  // Padding pour multiple de 8
   while (secret.length % 8 !== 0) secret += '=';
   return secret;
 }
 
 /**
- * Générer l'URL pour le QR code (Google Authenticator compatible)
+ * Générer l'URL pour le QR code (compatible Google Authenticator / Authy)
  */
 export function generateTOTPUrl(secret: string, email: string): string {
   const encodedIssuer = encodeURIComponent(ISSUER);
@@ -31,28 +36,26 @@ export function generateTOTPUrl(secret: string, email: string): string {
 }
 
 /**
- * Générer un code TOTP à partir du secret (HMAC-SHA1)
+ * Générer un code TOTP à partir du secret (RFC 6238 / HMAC-SHA1)
  */
 export function generateTOTPCode(secret: string, time: number = Date.now()): string {
   const counter = Math.floor(time / 1000 / TOTP_INTERVAL);
   const counterBuffer = Buffer.alloc(8);
-  for (let i = 7; i >= 0; i--) {
-    counterBuffer[i] = counter & 0xff;
-    counterBuffer.writeUInt32BE ? null : null;
-  }
   counterBuffer.writeBigInt64BE(BigInt(counter), 0);
 
   // Décoder le secret base32
   const key = base32Decode(secret);
 
-  // HMAC-SHA1
+  // HMAC-SHA1 avec padding (RFC 4226 section 5.2)
   const hmac = createHash('sha1');
   const blockSize = 64;
   let k = key;
   if (k.length > blockSize) {
     k = createHash('sha1').update(k).digest();
   }
-  while (k.length < blockSize) k = Buffer.concat([k, Buffer.alloc(1)]);
+  while (k.length < blockSize) {
+    k = Buffer.concat([k, Buffer.alloc(1)]);
+  }
 
   const oKeyPad = Buffer.alloc(blockSize);
   const iKeyPad = Buffer.alloc(blockSize);
@@ -64,7 +67,7 @@ export function generateTOTPCode(secret: string, time: number = Date.now()): str
   const inner = createHash('sha1').update(Buffer.concat([iKeyPad, counterBuffer])).digest();
   const hash = createHash('sha1').update(Buffer.concat([oKeyPad, inner])).digest();
 
-  // Dynamic truncation
+  // Dynamic truncation (RFC 4226 section 5.3)
   const offset = hash[hash.length - 1] & 0xf;
   const binary =
     ((hash[offset] & 0x7f) << 24) |
@@ -77,24 +80,29 @@ export function generateTOTPCode(secret: string, time: number = Date.now()): str
 }
 
 /**
- * Vérifier un code TOTP (avec fenêtre de +/- 1 intervalle)
+ * Vérifier un code TOTP (fenêtre de +/- 1 intervalle = 90s)
+ * Utilise timingSafeEqual contre les attaques timing
  */
 export function verifyTOTPCode(secret: string, code: string): boolean {
   if (!/^\d{6}$/.test(code)) return false;
 
   const now = Date.now();
-  // Vérifier l'intervalle actuel, -30s, +30s
+  // Vérifier l'intervalle actuel, -30s, +30s (tolérance 90s)
   for (let i = -1; i <= 1; i++) {
     const expectedCode = generateTOTPCode(secret, now + i * TOTP_INTERVAL * 1000);
-    if (timingSafeEqual(Buffer.from(expectedCode), Buffer.from(code))) {
-      return true;
+    try {
+      if (timingSafeEqual(Buffer.from(expectedCode), Buffer.from(code))) {
+        return true;
+      }
+    } catch {
+      continue;
     }
   }
   return false;
 }
 
 /**
- * Générer des codes de récupération
+ * Générer des codes de récupération (10 codes)
  */
 export function generateBackupCodes(): string[] {
   const codes: string[] = [];
@@ -110,28 +118,40 @@ export function generateBackupCodes(): string[] {
 }
 
 /**
- * Hacher un code de récupération pour stockage sécurisé
+ * Hacher un code de récupération pour stockage sécurisé (SHA-256)
  */
 export function hashBackupCode(code: string): string {
   return createHash('sha256').update(code).digest('hex');
 }
 
 /**
- * Vérifier un code de récupération
+ * Vérifier un code de récupération contre la liste des hashs stockés
  */
 export function verifyBackupCode(code: string, hashedCodes: string[]): boolean {
-  const hashed = hashBackupCode(code);
+  // Nettoyer le code (supprimer tirets, espaces)
+  const cleaned = code.replace(/[-\s]/g, '').toUpperCase();
+  const hashed = hashBackupCode(cleaned);
   return hashedCodes.some(h => {
     try {
-      return timingSafeEqual(Buffer.from(h), Buffer.from(hashed));
+      return timingSafeEqual(Buffer.from(h, 'hex'), Buffer.from(hashed, 'hex'));
     } catch {
       return false;
     }
   });
 }
 
+/**
+ * Vérifier si la 2FA est requise pour un utilisateur
+ */
+export function is2FARequired(user: { totpSecret: string | null; role: string }): boolean {
+  if (user.totpSecret) return true;
+  // Forcer la 2FA pour les admins
+  if (user.role === 'admin') return true;
+  return false;
+}
+
 // ============================================================
-// Base32 Decode helper
+// Base32 Decode helper (RFC 4648)
 // ============================================================
 
 function base32Decode(encoded: string): Buffer {

@@ -1,185 +1,75 @@
-// ============================================================
-// WORKFLOW ENGINE — Conditions, boucles, replay
-// ============================================================
-// Moteur de workflows avance avec :
-// - Conditions (if/else sur resultats d'etapes)
-// - Boucles (for, while, forEach)
-// - Mode Replay (rejouer depuis un checkpoint)
-// - Parallelisation
-// ============================================================
-
+// Workflow Engine avec ResourceGuard
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { checkpointManager } from "@/lib/checkpoint";
-
-export type StepType = "agent" | "condition" | "loop" | "parallel" | "wait" | "webhook" | "code";
-
-export interface WorkflowStep {
-  id: string;
-  type: StepType;
-  name: string;
-  config: Record<string, unknown>;
-  next?: string;
-  onSuccess?: string;
-  onFailure?: string;
-}
-
-export interface WorkflowContext {
-  executionId: string;
-  variables: Record<string, unknown>;
-  stepResults: Record<string, unknown>;
-  errors: Array<{ stepId: string; error: string }>;
-  startTime: number;
-}
-
+import { ResourceGuard, limitString } from "@/lib/resource-guard";
+const guard = new ResourceGuard({ timeoutMs:120000, maxIterations:100, maxStringLength:50000 });
+export type StepType = "agent"|"condition"|"loop"|"parallel"|"wait"|"webhook"|"code";
+export interface WorkflowStep { id:string; type:StepType; name:string; config:Record<string,unknown>; next?:string; onSuccess?:string; onFailure?:string; }
+export interface WorkflowContext { executionId:string; variables:Record<string,unknown>; stepResults:Record<string,unknown>; errors:Array<{stepId:string;error:string}>; startTime:number; }
 class WorkflowEngine {
-  async execute(workflowId: string, userId: string, input?: Record<string, unknown>): Promise<WorkflowContext> {
-    const workflow = await prisma.workflow.findUnique({ where: { id: workflowId } });
-    if (!workflow) throw new Error("Workflow introuvable");
-
-    const steps = (typeof workflow.steps === "string" ? JSON.parse(workflow.steps) : workflow.steps) as WorkflowStep[];
-    const context: WorkflowContext = {
-      executionId: `wf_${workflowId}_${Date.now()}`,
-      variables: { ...input, workflowName: workflow.name },
-      stepResults: {},
-      errors: [],
-      startTime: Date.now(),
-    };
-
-    logger.info("workflow_execution_started", { workflowId, stepsCount: steps.length });
-
-    let stepIndex = 0;
-    let maxIterations = 100;
-
-    while (stepIndex < steps.length && maxIterations > 0) {
-      maxIterations--;
-      const step = steps[stepIndex]!;
-
-      try {
-        switch (step.type) {
-          case "agent":
-            context.stepResults[step.id] = await this.executeAgentStep(step, context);
-            break;
-          case "condition":
-            stepIndex = this.evaluateCondition(step, context);
-            continue;
-          case "loop":
-            stepIndex = await this.executeLoop(step, context, steps);
-            continue;
-          case "parallel":
-            context.stepResults[step.id] = await this.executeParallel(step, context, steps);
-            break;
-          case "wait":
-            await this.executeWait(step);
-            break;
-          case "code":
-            context.stepResults[step.id] = this.executeCode(step, context);
-            break;
-          case "webhook":
-            context.stepResults[step.id] = { triggered: true, url: step.config.url };
-            break;
+  async execute(workflowId:string, userId:string, input?:Record<string,unknown>): Promise<WorkflowContext> {
+    return guard.withTimeout(async () => {
+      const wf = await prisma.workflow.findUnique({ where:{id:workflowId} });
+      if (!wf) throw new Error("Introuvable");
+      const steps = (typeof wf.steps==="string"?JSON.parse(wf.steps):wf.steps) as WorkflowStep[];
+      const limitedSteps = guard.limitArray(steps, 50);
+      const ctx: WorkflowContext = { executionId:`wf_${workflowId}_${Date.now()}`, variables:{...input,workflowName:wf.name}, stepResults:{}, errors:[], startTime:Date.now() };
+      let idx = 0, it = 0;
+      while (idx < limitedSteps.length && it < 100) {
+        it++;
+        if (Date.now()-ctx.startTime > 120000) throw new Error("Timeout 2min");
+        const step = limitedSteps[idx]!;
+        try {
+          switch (step.type) {
+            case "agent": ctx.stepResults[step.id] = await this.executeAgentStep(step, ctx); break;
+            case "condition": idx = this.evaluateCondition(step, ctx); continue;
+            case "loop": idx = await this.executeLoop(step, ctx, limitedSteps); continue;
+            case "parallel": ctx.stepResults[step.id] = await this.executeParallel(step, ctx, limitedSteps); break;
+            case "wait": await this.executeWait(step); break;
+            case "code": ctx.stepResults[step.id] = this.executeCode(step, ctx); break;
+            case "webhook": ctx.stepResults[step.id] = { triggered:true, url:step.config.url }; break;
+          }
+          if (step.config.outputVariable) ctx.variables[step.config.outputVariable as string] = ctx.stepResults[step.id];
+          idx++;
+        } catch(e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          ctx.errors.push({ stepId:step.id, error:msg });
+          if (step.onFailure) { idx = limitedSteps.findIndex(s=>s.id===step.onFailure); if (idx<0) idx=limitedSteps.length; } else idx++;
         }
-
-        // Mettre a jour les variables avec les resultats
-        if (step.config.outputVariable) {
-          context.variables[step.config.outputVariable as string] = context.stepResults[step.id];
-        }
-
-        stepIndex++;
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        context.errors.push({ stepId: step.id, error: errorMsg });
-        logger.error("workflow_step_failed", { stepId: step.id, error: errorMsg });
-
-        if (step.onFailure) {
-          stepIndex = steps.findIndex((s) => s.id === step.onFailure);
-          if (stepIndex < 0) stepIndex = steps.length;
-        } else {
-          stepIndex++;
-        }
+        await checkpointManager.save({ agentId:workflowId, sessionId:ctx.executionId, step:idx, context:{ variables:ctx.variables, stepResults:ctx.stepResults }, memory:[{ role:"user", content:`Step ${idx}`, timestamp:new Date().toISOString() }], actions:[], totalCost:0, totalTokens:0 });
       }
-
-      // Sauvegarder checkpoint
-      await checkpointManager.save({
-        agentId: workflowId,
-        sessionId: context.executionId,
-        step: stepIndex,
-        context: { variables: context.variables, stepResults: context.stepResults },
-        memory: [{ role: "user", content: `Workflow step ${stepIndex}`, timestamp: new Date().toISOString() }, { role: "assistant", content: JSON.stringify(context.stepResults[step.id]), timestamp: new Date().toISOString() }],
-        actions: [{ action: `workflow_step_${step.type}`, input: step.config, output: context.stepResults[step.id], timestamp: new Date().toISOString(), cost: 0 }],
-        totalCost: 0,
-        totalTokens: 0,
-      });
-    }
-
-    logger.info("workflow_execution_completed", {
-      executionId: context.executionId,
-      stepsCompleted: Object.keys(context.stepResults).length,
-      errors: context.errors.length,
-      durationMs: Date.now() - context.startTime,
-    });
-
-    return context;
+      return ctx;
+    }, 120000);
   }
-
-  private async executeAgentStep(step: WorkflowStep, context: WorkflowContext): Promise<unknown> {
-    const agentId = step.config.agentId as string;
-    const input = this.interpolate(step.config.input as string, context.variables);
-    return { agentId, input, status: "completed", output: `[Simulation] Execution de ${agentId}: ${input.slice(0, 50)}` };
+  private async executeAgentStep(step:WorkflowStep, ctx:WorkflowContext) {
+    return { agentId:step.config.agentId, input:this.interpolate(step.config.input as string||"", ctx.variables), status:"completed", output:"[Simulation]" };
   }
-
-  private evaluateCondition(step: WorkflowStep, context: WorkflowContext): number {
-    const { variable, operator, value, ifTrue, ifFalse } = step.config as Record<string, string>;
-    const actualValue = context.variables[variable];
-    let result = false;
-
-    switch (operator) {
-      case "eq": result = actualValue === value; break;
-      case "neq": result = actualValue !== value; break;
-      case "gt": result = Number(actualValue) > Number(value); break;
-      case "lt": result = Number(actualValue) < Number(value); break;
-      case "contains": result = String(actualValue).includes(value); break;
-      case "exists": result = actualValue !== undefined && actualValue !== null; break;
-    }
-
-    return result ? Number(ifTrue) : Number(ifFalse);
+  private evaluateCondition(step:WorkflowStep, ctx:WorkflowContext): number {
+    const { variable,operator,value,ifTrue,ifFalse } = step.config as Record<string,string>;
+    const v = ctx.variables[variable];
+    let r = false;
+    switch(operator) { case "eq": r=v===value; break; case "neq": r=v!==value; break; case "gt": r=Number(v)>Number(value); break; case "lt": r=Number(v)<Number(value); break; case "contains": r=String(v).includes(value); break; case "exists": r=v!==undefined&&v!==null; break; }
+    return r ? Number(ifTrue) : Number(ifFalse);
   }
-
-  private async executeLoop(step: WorkflowStep, context: WorkflowContext, steps: WorkflowStep[]): Promise<number> {
-    const { variable, collection, maxIterations, bodySteps } = step.config as Record<string, unknown>;
-    const items = context.variables[collection as string] as unknown[] ?? [];
-    const max = Math.min(items.length, (maxIterations as number) ?? 10);
-
-    for (let i = 0; i < max; i++) {
-      context.variables[`${variable}_current`] = items[i];
-      context.variables[`${variable}_index`] = i;
-    }
-
-    return steps.findIndex((s) => s.id === step.next ?? step.id) + 1;
+  private async executeLoop(step:WorkflowStep, ctx:WorkflowContext, steps:WorkflowStep[]): Promise<number> {
+    const { variable,collection,maxIterations } = step.config as Record<string,unknown>;
+    const items = ctx.variables[collection as string] as unknown[] ?? [];
+    const max = Math.min(items.length, (maxIterations as number)??10, 25);
+    for (let i=0;i<max;i++) { ctx.variables[`${variable}_current`]=items[i]; ctx.variables[`${variable}_index`]=i; }
+    return steps.findIndex(s=>s.id===(step.next??step.id))+1;
   }
-
-  private async executeParallel(step: WorkflowStep, context: WorkflowContext, steps: WorkflowStep[]): Promise<unknown[]> {
-    const subSteps = (step.config.steps as string[])?.map((id) => steps.find((s) => s.id === id)).filter(Boolean) ?? [];
-    const results = await Promise.allSettled(subSteps.map(async (s) => {
-      if (s.type === "agent") return this.executeAgentStep(s, context);
-      return null;
-    }));
-    return results.map((r) => (r.status === "fulfilled" ? r.value : r.reason));
+  private async executeParallel(step:WorkflowStep, ctx:WorkflowContext, steps:WorkflowStep[]) {
+    const ss = ((step.config.steps as string[])?.map(id=>steps.find(s=>s.id===id)).filter(Boolean)??[]).slice(0,10);
+    return Promise.allSettled(ss.map(async s=>{ if(s!.type==="agent") return this.executeAgentStep(s!,ctx); return null; }));
   }
-
-  private async executeWait(step: WorkflowStep): Promise<void> {
-    const duration = (step.config.durationMs as number) ?? 1000;
-    await new Promise((r) => setTimeout(r, duration));
+  private async executeWait(step:WorkflowStep) { await new Promise(r=>setTimeout(r, Math.min((step.config.durationMs as number)??1000, 10000))); }
+  private executeCode(step:WorkflowStep, ctx:WorkflowContext) {
+    try { return new Function("context", limitString(step.config.code as string||"",5000))(ctx); }
+    catch(e) { return { error:`Erreur: ${e instanceof Error?e.message:String(e)}` }; }
   }
-
-  private executeCode(step: WorkflowStep, context: WorkflowContext): unknown {
-    const fn = new Function("context", step.config.code as string);
-    return fn(context);
-  }
-
-  private interpolate(template: string, variables: Record<string, unknown>): string {
-    return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => String(variables[key] ?? ""));
+  private interpolate(template:string, vars:Record<string,unknown>): string {
+    return limitString(template,10000).replace(/\{\{\s*(\w+)\s*\}\}/g, (_,k)=>limitString(String(vars[k]??''),1000));
   }
 }
-
 export const workflowEngine = new WorkflowEngine();

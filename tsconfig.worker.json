@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist/worker",
+    "rootDir": "src",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "baseUrl": "."
+  },
+  "include": ["src/workers/auto-worker.ts"],
+  "exclude": ["node_modules", ".next", "**/*.test.ts", "**/*.spec.ts"]
+}

@@ -1,58 +1,86 @@
 import { create } from 'zustand';
 
-interface User {
+export interface User {
   id: string;
   email: string;
   name: string;
-  isEmailVerified: boolean;
   plan: string;
+  role: string;
 }
 
-interface AuthState {
-  user: User | null;
+export interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
-  hydrate: () => void;
+  user: User | null;
+  hydrate: () => Promise<void>;
   validateSession: () => Promise<boolean>;
   logout: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
+  isAuthenticated: true,
+  isLoading: false,
   user: null,
-  isAuthenticated: false,
-  isLoading: true,
-  hydrate: () => {
+  hydrate: async () => {
     try {
-      const stored = localStorage.getItem('genova_user');
-      if (stored) {
-        const user = JSON.parse(stored);
-        set({ user, isAuthenticated: true, isLoading: false });
-      } else {
-        set({ isLoading: false });
+      const res = await fetch('/api/auth/session');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.user) {
+          set({
+            isAuthenticated: true,
+            user: {
+              id: data.user.id,
+              email: data.user.email,
+              name: data.user.name,
+              plan: data.user.plan || 'free',
+              role: data.user.role || 'user',
+            },
+          });
+        }
       }
-    } catch {
-      set({ isLoading: false });
-    }
+    } catch {}
+    set({ isLoading: false });
   },
   validateSession: async () => {
-    return true;
+    try {
+      const res = await fetch('/api/auth/session');
+      return res.ok;
+    } catch { return false; }
   },
-  logout: () => {
-    localStorage.removeItem('genova_user');
-    set({ user: null, isAuthenticated: false, isLoading: false });
-  },
+  logout: () => set({ isAuthenticated: false, user: null }),
 }));
 
-type ViewType = 'dashboard' | 'agents' | 'automation' | 'guardrails' | 'coordination' | 'settings' | 'analytics' | 'billing';
+export type ViewType =
+  | 'dashboard'
+  | 'agents'
+  | 'automation'
+  | 'guardrails'
+  | 'coordination'
+  | 'settings'
+  | 'approvals'
+  | 'analytics'
+  | 'billing'
+  | 'developers';
 
 interface AppState {
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
+  approvalCount: number;
   fetchApprovalCount: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set) => ({
   currentView: 'dashboard',
   setCurrentView: (view) => set({ currentView: view }),
-  fetchApprovalCount: async () => {},
+  approvalCount: 0,
+  fetchApprovalCount: async () => {
+    try {
+      const res = await fetch('/api/approvals?status=pending');
+      if (res.ok) {
+        const data = await res.json();
+        set({ approvalCount: data?.count || 0 });
+      }
+    } catch {}
+  },
 }));

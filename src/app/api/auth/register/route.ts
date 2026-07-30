@@ -1,46 +1,72 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { hashPassword, createSession } from "@/lib/auth/auth";
-import { SESSION_COOKIE } from "@/lib/auth/auth";
-import { registerSchema, validate } from "@/lib/validators";
-import { validatePasswordStrength, checkIpRateLimit } from "@/lib/auth/security";
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import * as argon2 from 'argon2';
+import { sign } from 'jsonwebtoken';
+import { sendWelcomeEmail, sendVerificationCode } from '@/lib/email/auth-emails';
+import crypto from 'crypto';
+
+const JWT_SECRET = process.env.AUTH_SECRET;
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const ip = request.headers.get("x-forwarded-for") || "unknown";
+    const { email, name, password } = await request.json();
 
-    const ipCheck = checkIpRateLimit(ip);
-    if (!ipCheck.allowed) {
-      return NextResponse.json({ error: "Trop de requetes. Reessayez dans une minute." }, { status: 429 });
+    if (!email || !name || !password) {
+      return NextResponse.json({ error: 'Email, nom et mot de passe requis' }, { status: 400 });
+    }
+    if (password.length < 8) {
+      return NextResponse.json({ error: 'Minimum 8 caractères' }, { status: 400 });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Format d'email invalide" }, { status: 400 });
+    }
+    if (!JWT_SECRET || JWT_SECRET.length < 32) {
+      console.error('[AUTH] AUTH_SECRET manquant ou trop court');
+      return NextResponse.json({ error: 'Erreur de configuration serveur' }, { status: 500 });
     }
 
-    const validation = validate(registerSchema, body);
-    if (!validation.success) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+    const existing = await db.user.findUnique({ where: { email } });
+    if (existing) {
+      return NextResponse.json({ error: 'Email déjà utilisé' }, { status: 409 });
     }
 
-    const { name, email, password } = validation.data;
+    const hashedPassword = await argon2.hash(password, { type: argon2.argon2id });
+    const user = await db.user.create({
+      data: {
+        email,
+        name,
+        password: hashedPassword,
+        plan: 'free',
+        role: 'user',
+        isActive: true,
+        credits: 10,
+      },
+    });
 
-    const strengthCheck = validatePasswordStrength(password);
-    if (!strengthCheck.valid) {
-      return NextResponse.json({ error: "Mot de passe trop faible", details: strengthCheck.errors }, { status: 400 });
-    }
+    const token = sign(
+      { userId: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
-    const exists = await prisma.user.findUnique({ where: { email } });
-    if (exists) {
-      await new Promise(r => setTimeout(r, 1000));
-      return NextResponse.json({ error: "Email deja utilise" }, { status: 409 });
-    }
+    await db.activityLog.create({
+      data: { action: 'Inscription', details: JSON.stringify({ email }), category: 'auth', userId: user.id },
+    });
 
-    const hashed = await hashPassword(password);
-    const user = await prisma.user.create({ data: { name, email, passwordHash: hashed } });
+    const code = crypto.randomInt(100000, 1000000).toString();
+    await db.emailVerification.create({
+      data: { email, code, userId: user.id, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+    });
 
-    const token = await createSession(user.id);
-    const response = NextResponse.json({ user: { id: user.id, email: user.email, name: user.name, role: "user", plan: "free" }, token }, { status: 201 });
-    response.cookies.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 7 * 24 * 60 * 60, path: "/" });
-    return response;
-  } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+    Promise.all([
+      sendWelcomeEmail(email, name),
+      sendVerificationCode(email, name, code),
+    ]).catch(err => console.error('[Email] Erreur envoi:', err));
+
+    const { password: _, ...userWithoutPassword } = user;
+    return NextResponse.json({ token, user: userWithoutPassword }, { status: 201 });
+  } catch (error) {
+    console.error('[AUTH] Register error:', error);
+    return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 });
   }
 }
