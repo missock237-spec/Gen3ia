@@ -1,0 +1,1 @@
+{"name":"@gen3ia/agent-safety","version":"0.1.0","private":true,"description":"Agent safety module in Rust","main":"index.js","types":"index.d.ts","scripts":{"build":"napi build --release","build:debug":"napi build","test":"cargo test","clean":"rm -rf target *.node"},"napi":{"name":"agent-safety","triples":{}},"devDependencies":{"@napi-rs/cli":"^2.18.0"}}
