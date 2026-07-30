@@ -1,12 +1,16 @@
 # ============================================================
-# Docker Compose — Gen3ia AI Agent OS
-# Services: app, postgres, redis, qdrant
+# Gen3ia — Docker Compose (dev + production)
+# Orchestre : PostgreSQL, Redis, Next.js, Worker BullMQ
 # ============================================================
 
 version: "3.9"
 
+name: gen3ia
+
 services:
-  # === PostgreSQL ===
+  # ==========================================================
+  # PostgreSQL 16 — Base de donnees principale
+  # ==========================================================
   postgres:
     image: postgres:16-alpine
     container_name: gen3ia-postgres
@@ -15,17 +19,22 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: gen3ia
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gen3ia_secret}
-      POSTGRES_DB: gen3ia
+      POSTGRES_PASSWORD: gen3ia_dev
+      POSTGRES_DB: gen3ia_dev
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gen3ia"]
+      test: ["CMD-SHELL", "pg_isready -U gen3ia -d gen3ia_dev"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    networks:
+      - gen3ia-net
 
-  # === Redis (BullMQ + Cache) ===
+  # ==========================================================
+  # Redis 7 — File d'attente BullMQ + Cache
+  # ==========================================================
   redis:
     image: redis:7-alpine
     container_name: gen3ia-redis
@@ -34,35 +43,19 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    command: redis-server --appendonly yes --save 60 1 --loglevel warning
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # === Qdrant (Vector Database pour la mémoire sémantique) ===
-  qdrant:
-    image: qdrant/qdrant:v1.13.5
-    container_name: gen3ia-qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-      - ./monitoring/qdrant/config.yaml:/qdrant/config/production.yaml:ro
-    environment:
-      QDRANT__SERVICE__GRPC_PORT: 6334
-      QDRANT__SERVICE__HTTP_PORT: 6333
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
+      start_period: 10s
     networks:
-      - gen3ia-network
+      - gen3ia-net
 
-  # === Gen3ia App ===
+  # ==========================================================
+  # Next.js App — Serveur principal
+  # ==========================================================
   app:
     build:
       context: .
@@ -74,59 +67,92 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://gen3ia:${POSTGRES_PASSWORD:-gen3ia_secret}@postgres:5432/gen3ia
+      DATABASE_URL: postgresql://gen3ia:gen3ia_dev@postgres:5432/gen3ia_dev
       REDIS_URL: redis://redis:6379
-      QDRANT_URL: http://qdrant:6333
-      VECTOR_STORE_TYPE: ${VECTOR_STORE_TYPE:-qdrant}
-      AUTH_SECRET: ${AUTH_SECRET:-changer-en-production-32-caractères-minimum!!}
-      NEXTAUTH_SECRET: ${AUTH_SECRET:-changer-en-production-32-caractères-minimum!!}
-      NEXTAUTH_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-${AUTH_SECRET}}
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: 1
+      # Optionnel (defaut = valeurs de dev)
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
-      SEED_DATABASE: ${SEED_DATABASE:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      LOKI_URL: ${LOKI_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      qdrant:
-        condition: service_started
-    volumes:
-      - gen3ia_workspace:/tmp/gen3ia-workspace
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.gen3ia.rule=Host(`${DOMAIN:-localhost}`)"
-      - "traefik.http.services.gen3ia.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
-      - gen3ia-network
+      - gen3ia-net
 
-  # === Traefik (Reverse Proxy optionnel) ===
-  traefik:
-    image: traefik:v3
-    container_name: gen3ia-traefik
+  # ==========================================================
+  # Worker BullMQ — Executions automatiques
+  # ==========================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      target: runner
+    container_name: gen3ia-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://gen3ia:gen3ia_dev@postgres:5432/gen3ia_dev
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      NEXT_TELEMETRY_DISABLED: 1
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gen3ia-net
+
+  # ==========================================================
+  # (Optionnel) Qdrant — Base vectorielle pour la memoire IA
+  # ==========================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: gen3ia-qdrant
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "6333:6333"
+      - "6334:6334"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.yml:/traefik.yml:ro
-    profiles:
-      - proxy
+      - qdrant_data:/qdrant/storage
     networks:
-      - gen3ia-network
+      - gen3ia-net
+    profiles:
+      - full
+
+networks:
+  gen3ia-net:
+    name: gen3ia-network
+    driver: bridge
 
 volumes:
   postgres_data:
-    driver: local
+    name: gen3ia-postgres-data
   redis_data:
-    driver: local
+    name: gen3ia-redis-data
   qdrant_data:
-    driver: local
-  gen3ia_workspace:
-    driver: local
-
-networks:
-  gen3ia-network:
-    driver: bridge
+    name: gen3ia-qdrant-data
