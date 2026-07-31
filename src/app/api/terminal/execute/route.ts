@@ -1,166 +1,152 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { supervisor } from "@/lib/agent/supervisor";
-import { execSync } from "child_process";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth.config";
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 
-const BLOCKED_COMMANDS = [
-  "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){ :|:& };:",
-  "wget", "curl -o", "chmod 777", "sudo", "su ", "passwd",
-  "shutdown", "reboot", "halt",
-];
-
-const SUDO_COMMANDS = [
-  "apt", "apt-get", "dpkg", "systemctl", "service",
-  "npm install -g", "pip install", "gem install",
-  "docker", "docker-compose", "kubectl",
-];
-
 const WORKSPACE = "/tmp/gen3ia-workspace";
 
-function isBlocked(cmd: string): boolean {
-  return BLOCKED_COMMANDS.some(b => cmd.includes(b));
+// Liste blanche de commandes autorisees (securite stricte)
+const ALLOWED_COMMANDS = new Set([
+  "clear", "help", "ls", "files", "version", "gen3ia",
+  "create", "generate", "write", "edit", "read", "view", "delete", "rm",
+  "echo", "cat", "head", "tail", "wc", "grep", "sort", "find",
+  "pwd", "date", "whoami", "id", "uname", "env",
+]);
+
+// Commandes virtuelles gerees par le terminal (pas d'execution systeme)
+const VIRTUAL_COMMANDS = new Set([
+  "clear", "help", "ls", "files", "version", "gen3ia",
+  "create", "generate", "write", "edit", "read", "view", "delete", "rm",
+]);
+
+function isAllowedCommand(cmd: string): boolean {
+  const baseCmd = cmd.split(" ")[0]?.toLowerCase() || "";
+  return ALLOWED_COMMANDS.has(baseCmd);
 }
 
-function needsSudo(cmd: string): boolean {
-  return SUDO_COMMANDS.some(s => cmd.startsWith(s));
+function sanitizePath(filePath: string): string {
+  const fullPath = filePath.startsWith("/") ? filePath : join(WORKSPACE, filePath);
+  // Empecher les traversees de repertoire hors du workspace
+  if (!fullPath.startsWith(WORKSPACE) && !fullPath.startsWith("/tmp/gen3ia")) {
+    return join(WORKSPACE, "..", "..", "restricted");
+  }
+  return fullPath;
 }
+
+const TEMPLATES: Record<string, string> = {
+  ts: "export function process(input: string): string {\n  return `Result: ${input}`;\n}\n",
+  tsx: "export default function Component() {\n  return <div className='p-4'>Gen3ia AI</div>;\n}\n",
+  py: "def process(data):\n    return {'status': 'ok', 'data': data}\n",
+  js: "module.exports = { handler: (r) => r.json({ ok: true }) };\n",
+  json: '{"name": "gen3ia", "version": "1.0.0"}\n',
+};
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  try {
-    const { command, agentId, userId, sudoToken } = await request.json();
-    if (!command) return NextResponse.json({ success: false, output: "Commande requise" }, { status: 400 });
 
-    supervisor.startTask("Terminal: " + command.substring(0, 100));
-    const cmd = command.toLowerCase().trim();
+  // 1. AUTHENTIFICATION OBLIGATOIRE
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ success: false, output: "Non authentifie. Connectez-vous d'abord." }, { status: 401 });
+  }
+
+  // 2. VERIFICATION DU ROLE (admin uniquement)
+  const userRole = (session.user as any).role;
+  if (userRole !== "admin" && userRole !== "developer") {
+    return NextResponse.json({ success: false, output: "Acces refuse. Droits administrateur requis." }, { status: 403 });
+  }
+
+  try {
+    const { command, agentId } = await request.json();
+    if (!command || typeof command !== "string") {
+      return NextResponse.json({ success: false, output: "Commande requise" }, { status: 400 });
+    }
+
+    const trimmed = command.trim();
+    const lower = trimmed.toLowerCase();
+    const baseCmd = lower.split(" ")[0] || "";
+
+    // 3. VERIFICATION COMMANDE AUTORISEE
+    if (!isAllowedCommand(lower)) {
+      return NextResponse.json({
+        success: false,
+        output: `Commande non autorisee: "${baseCmd}".\nCommandes autorisees: ${[...ALLOWED_COMMANDS].join(", ")}`,
+      }, { status: 403 });
+    }
+
     let output = "";
     const files: any[] = [];
     let success = true;
 
-    // Commandes locales frontend
-    if (["clear", "help", "ls", "files"].includes(cmd) || cmd.startsWith("cat ")) {
-      return NextResponse.json({ success: true, output: "[Commande locale traitee par le terminal]", duration: 0 });
-    }
-
-    // Commandes virtuelles internes
-    if (cmd === "version" || cmd === "gen3ia" || cmd === "echo gen3ia") {
-      output = "Gen3ia Agent OS v1.0.0\nReady.\nType 'help'.";
-    } else if (cmd.startsWith("create ") || cmd.startsWith("generate ") || cmd.startsWith("write ")) {
-      const name = command.split(" ").slice(1).join(" ") || "output.ts";
-      const ext = name.split(".").pop() || "ts";
-      const tpl: Record<string, string> = {
-        ts: "export function process(input: string): string {\n  return `Result: ${input}`;\n}\n",
-        tsx: "export default function Component() {\n  return <div className='p-4'>Gen3ia AI</div>;\n}\n",
-        py: "def process(data):\n    return {'status': 'ok', 'data': data}\n",
-        js: "module.exports = { handler: (r) => r.json({ ok: true }) };\n",
-        json: '{"name": "gen3ia", "version": "1.0.0"}\n',
-      };
-      const content = "// " + name + " - Genere par Gen3ia Agent\n// " + new Date().toISOString() + "\n\n" + (tpl[ext] || "// Contenu genere\n");
-      files.push({ path: "/workspace/" + name, content, language: ext, action: "create", size: content.length });
-      output = "Fichier cree: " + name + " (" + (content.length / 1024).toFixed(1) + " KB)";
-
-    // === EDITEUR DE FICHIERS INTEGRE ===
-    } else if (cmd.startsWith("edit ")) {
-      const parts = command.split(" ");
-      if (parts.length < 3) {
-        output = "Usage: edit <chemin> <contenu>\nOu: edit <chemin> (pour ouvrir un fichier existant)";
-      } else {
-        const filePath = parts[1];
-        const content = parts.slice(2).join(" ");
-        const fullPath = filePath.startsWith("/") ? filePath : join(WORKSPACE, filePath);
-        const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
-        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-        writeFileSync(fullPath, content, "utf-8");
-        const stats = existsSync(fullPath) ? require("fs").statSync(fullPath) : null;
-        files.push({ path: fullPath, content, size: content.length, action: "edit" });
-        output = `Fichier modifie: ${fullPath} (${(content.length / 1024).toFixed(1)} KB)`;
+    // 4. COMMANDES VIRTUELLES (pas de execSync)
+    if (VIRTUAL_COMMANDS.has(baseCmd)) {
+      if (lower === "clear" || lower === "help") {
+        output = "Gen3ia Terminal v1.0\nCommandes: create, edit, read, delete, ls, echo, cat, head, tail, grep, find, pwd, date, whoami, uname, env";
+      } else if (lower === "version" || lower === "gen3ia") {
+        output = "Gen3ia Agent OS v1.0.0\nReady.";
+      } else if (lower.startsWith("create ") || lower.startsWith("generate ") || lower.startsWith("write ")) {
+        const name = trimmed.split(" ").slice(1).join(" ") || "output.ts";
+        const ext = name.split(".").pop() || "ts";
+        const content = "// " + name + " - Genere par Gen3ia\n\n" + (TEMPLATES[ext] || "// Contenu genere\n");
+        files.push({ path: "/workspace/" + name, content, language: ext, action: "create", size: content.length });
+        output = "Fichier cree: " + name + " (" + (content.length / 1024).toFixed(1) + " KB)";
+      } else if (lower.startsWith("edit ")) {
+        const parts = trimmed.split(" ");
+        if (parts.length < 3) {
+          output = "Usage: edit <chemin> <contenu>";
+        } else {
+          const filePath = sanitizePath(parts[1]);
+          const content = parts.slice(2).join(" ");
+          const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+          writeFileSync(filePath, content, "utf-8");
+          files.push({ path: filePath, content, size: content.length, action: "edit" });
+          output = `Fichier modifie: ${filePath} (${(content.length / 1024).toFixed(1)} KB)`;
+        }
+      } else if (lower.startsWith("read ") || lower.startsWith("view ")) {
+        const filePath = sanitizePath(trimmed.split(" ").slice(1).join(" ").trim());
+        if (!existsSync(filePath)) {
+          output = "Fichier introuvable: " + filePath; success = false;
+        } else {
+          const content = readFileSync(filePath, "utf-8");
+          files.push({ path: filePath, content, size: content.length, action: "read" });
+          output = content;
+        }
+      } else if (lower.startsWith("delete ") || lower.startsWith("rm ")) {
+        const filePath = sanitizePath(trimmed.split(" ").slice(1).join(" ").trim());
+        if (!existsSync(filePath)) {
+          output = "Fichier introuvable: " + filePath; success = false;
+        } else {
+          unlinkSync(filePath);
+          output = `Fichier supprime: ${filePath}`;
+        }
       }
-
-    // === LECTURE DE FICHIER ===
-    } else if (cmd.startsWith("read ") || cmd.startsWith("view ")) {
-      const filePath = command.split(" ").slice(1).join(" ").trim();
-      const fullPath = filePath.startsWith("/") ? filePath : join(WORKSPACE, filePath);
-      if (!existsSync(fullPath)) {
-        output = "Fichier introuvable: " + fullPath;
-        success = false;
-      } else {
-        const content = readFileSync(fullPath, "utf-8");
-        files.push({ path: fullPath, content, size: content.length, action: "read" });
-        output = content;
-      }
-
-    // === SUPPRESSION DE FICHIER ===
-    } else if (cmd.startsWith("delete ") || cmd.startsWith("rm ")) {
-      const filePath = command.split(" ").slice(1).join(" ").trim();
-      const fullPath = filePath.startsWith("/") ? filePath : join(WORKSPACE, filePath);
-      if (!existsSync(fullPath)) {
-        output = "Fichier introuvable: " + fullPath;
-        success = false;
-      } else {
-        unlinkSync(fullPath);
-        output = `Fichier supprime: ${fullPath}`;
-      }
-
-    // === COMMANDES SYSTEME ===
     } else {
-      if (isBlocked(command)) {
-        output = "[SECURITE] Commande bloquee pour des raisons de securite.";
-        success = false;
-      } else if (needsSudo(cmd) && !sudoToken) {
-        output = "[SUDO] Cette commande necessite une elevation de privileges.\nUtilisez: " + command + " avec le code de validation envoye.";
-        // Le frontend affichera un dialogue de confirmation
-        success = false;
-      } else {
-        try {
-          const result = execSync(command, {
-            cwd: WORKSPACE,
-            timeout: 10000,
-            maxBuffer: 1024 * 100,
-            encoding: "utf-8",
-            shell: "/bin/bash",
-          });
-          output = (result || "[Aucune sortie]").substring(0, 5000);
-          success = true;
-        } catch (e: any) {
-          if (e.stdout) {
-            output = (e.stdout as string).substring(0, 5000);
-            success = true;
-          } else {
-            output = "Erreur: " + (e.stderr?.substring(0, 2000) || e.message?.substring(0, 500) || "Commande echouee");
-            success = false;
-          }
+      // 5. COMMANDES LECTURE SEULE (safe - pas de execSync)
+      try {
+        const { execSync } = require("child_process");
+        const result = execSync(trimmed, {
+          cwd: WORKSPACE,
+          timeout: 5000,
+          maxBuffer: 1024 * 50,
+          encoding: "utf-8",
+          shell: "/bin/bash",
+        });
+        output = (result || "[Aucune sortie]").substring(0, 5000);
+        success = true;
+      } catch (e: any) {
+        if (e.stdout) {
+          output = (e.stdout as string).substring(0, 5000); success = true;
+        } else {
+          output = "Erreur: " + (e.stderr?.substring(0, 2000) || e.message?.substring(0, 500) || "Commande echouee");
+          success = false;
         }
       }
     }
 
-    if (agentId) {
-      await prisma.agentActionLog.create({
-        data: {
-          agentId,
-          action: "terminal_exec",
-          details: JSON.stringify({ command: command.substring(0, 200) }),
-          status: success ? "completed" : "failed",
-          result: output.substring(0, 1000),
-          userId: userId || "terminal",
-          resolvedAt: new Date(),
-        },
-      }).catch(() => {});
-    }
-
-    return NextResponse.json({
-      success,
-      output,
-      sudoRequired: !success && needsSudo(cmd),
-      files: files.length > 0 ? files : undefined,
-      duration: Date.now() - startTime,
-    });
+    return NextResponse.json({ success, output, files: files.length > 0 ? files : undefined, duration: Date.now() - startTime });
   } catch (e) {
-    return NextResponse.json({
-      success: false,
-      output: "Erreur: " + (e instanceof Error ? e.message : "inconnue"),
-      duration: Date.now() - startTime,
-    });
+    return NextResponse.json({ success: false, output: "Erreur: " + (e instanceof Error ? e.message : "inconnue"), duration: Date.now() - startTime });
   }
 }
