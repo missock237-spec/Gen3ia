@@ -1,93 +1,74 @@
 name: CI
-
 on:
-  push:
-    branches: [ main, master, develop ]
-  pull_request:
-    branches: [ main, master ]
-
-permissions:
-  contents: read
-
+  push: { branches: [ main, develop ] }
+  pull_request: { branches: [ main ] }
+permissions: { contents: read }
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   lint:
-    name: Lint & Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install
-      - run: bun x prisma generate || true
-      - run: bun run lint 2>&1 | head -50 || echo "Lint issues found (non-blocking)"
-      - run: bun x prettier --check "src/**/*.{ts,tsx}" 2>&1 | head -20 || echo "Format check skipped"
-
-  type-check:
-    name: TypeScript Check
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate
+        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
+      - run: npm run lint
+  typecheck:
     runs-on: ubuntu-latest
-    needs: lint
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install
-      - run: bun x prisma generate
-      - run: bun x tsc --noEmit 2>&1 | head -50 || echo "Type errors found (non-blocking)"
-
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate
+        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
+      - run: npx tsc --noEmit
   test:
-    name: Tests
     runs-on: ubuntu-latest
-    needs: type-check
     services:
       postgres:
         image: postgres:16-alpine
-        env:
-          POSTGRES_USER: gen3ia
-          POSTGRES_PASSWORD: gen3ia
-          POSTGRES_DB: gen3ia_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        env: { POSTGRES_USER: gen3ia, POSTGRES_PASSWORD: gen3ia, POSTGRES_DB: gen3ia_test }
+        ports: [ 5432:5432 ]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install
-      - run: bun x prisma generate
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate && npx prisma db push
+        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
+      - run: npx vitest run
         env:
-          DATABASE_URL: postgresql://genova:genova@localhost:5432/genova_test
-      - run: bun x prisma db push
-        env:
-          DATABASE_URL: postgresql://genova:genova@localhost:5432/genova_test
-      - run: bun run test 2>&1 | tail -30
-        env:
-          DATABASE_URL: postgresql://genova:genova@localhost:5432/genova_test
-          AUTH_SECRET: test-secret-key-32-characters-minimum!!
-
+          DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test
+          AUTH_SECRET: test-secret-32-characters-minimum!!
+          NEXTAUTH_SECRET: test-secret-32-characters-minimum!!
   build:
-    name: Build
     runs-on: ubuntu-latest
-    needs: test
+    needs: [lint, typecheck]
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install
-      - run: bun x prisma generate
-      - run: bun run build
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate
+        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
+      - run: npm run build
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test
+          NEXTAUTH_SECRET: build-secret-32-characters-minimum!!
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+  build-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate
+        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
+      - run: npm run build:worker
