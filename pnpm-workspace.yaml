@@ -1,6 +1,1 @@
-# Gen3ia Monorepo Root
-
-packages:
-  - "apps/*"
-  - "packages/*"
-  - "crates/*"
+# DEPRECATED - Le projet utilise npm workspaces
