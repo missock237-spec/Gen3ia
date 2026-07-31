@@ -4,17 +4,19 @@
  * Accepts an open-source project's files and runs the complete pipeline:
  * Analyze → Generate → Register → Verify → Activate
  *
- * This is the main endpoint for auto-integrating a new open-source project.
+ * SECURITE: withAuth() + quota (opération LLM lourde)
+ * Note: userId provient du token authentifié, jamais du body (prévient l'IDOR)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { processProject, type CodeFile } from '@/lib/ai-integration-server';
+import { withAuth } from '@/lib/with-auth';
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
   try {
     const body = await request.json();
 
-    const { projectName, repository, readmeContent, files, autoActivate, userId } = body as {
+    const { projectName, repository, readmeContent, files, autoActivate } = body as {
       projectName?: string;
       repository?: string;
       readmeContent?: string;
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
         language?: CodeFile['language'];
       }>;
       autoActivate?: boolean;
-      userId?: string;
+      userId?: string; // IGNORÉ — vient du token, pas du body
     };
 
     if (!projectName) {
@@ -63,13 +65,14 @@ export async function POST(request: NextRequest) {
       language: f.language || 'unknown',
     }));
 
+    // userId authentifié (token) — NE PAS utiliser body.userId
     const result = await processProject({
       files: codeFiles,
       projectName,
       repository,
       readmeContent,
       autoActivate: autoActivate ?? false,
-      userId,
+      userId: auth.userId,
     });
 
     const statusCode = result.success ? 200 : 422;
@@ -124,4 +127,9 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 5, windowMs: 60000 }, // 5 pipelines/min max (très coûteux)
+  quota: true, // Le pipeline complet consomme beaucoup de tokens LLM
+});
