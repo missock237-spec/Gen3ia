@@ -1,14 +1,1 @@
-name: Refresh OAuth Tokens
-on:
-  schedule:
-    - cron: 0 */4 * * *
-  workflow_dispatch:
-permissions:
-  contents: read
-jobs:
-  refresh:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Call refresh tokens endpoint
-        run: |
-          curl -s -X GET "https://missock237-spec.github.io/Gen3ia/api/cron/refresh-tokens" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" || echo "Endpoint not available"
+x
