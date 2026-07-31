@@ -9,7 +9,6 @@ const PROTECTED_ROUTES = [
   { prefix: '/api/terminal/execute', role: 'admin' as const },
   { prefix: '/api/services/', role: 'admin' as const },
   { prefix: '/api/agents/', role: 'user' as const },
-  { prefix: '/api/whatsapp/', role: 'user' as const },
   { prefix: '/api/credits/', role: 'user' as const },
   { prefix: '/api/marketplace/', role: 'user' as const },
   { prefix: '/api/workflows/', role: 'user' as const },
@@ -32,29 +31,20 @@ function getRequiredRole(pathname: string): string | null {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  // Rate limiting via Redis + fallback memoire
-  if (!checkRateLimit(request)) {
-    return new NextResponse('Too Many Requests', { status: 429 });
-  }
-
+  if (!checkRateLimit(request)) return new NextResponse('Too Many Requests', { status: 429 });
   const response = NextResponse.next();
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-
   if (pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname === '/icon.svg') return response;
   if (!pathname.startsWith('/api/')) return response;
   if (isPublicRoute(pathname)) return response;
-
   const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
   if (!token) return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
-
   const requiredRole = getRequiredRole(pathname);
   if (requiredRole === 'admin' && token.role !== 'admin') {
     return NextResponse.json({ error: 'Acces reserve aux administrateurs' }, { status: 403 });
   }
-
   return response;
 }
 
