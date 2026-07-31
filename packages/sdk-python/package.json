@@ -1,0 +1,6 @@
+{
+  "name": "@gen3ia/sdk-python",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gen3ia Python SDK — Ce package.json est requis par npm workspaces"
+}
