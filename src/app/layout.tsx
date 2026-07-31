@@ -1,17 +1,17 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { siteConfig } from '@/lib/seo/config';
 import { ErrorBoundary, ErrorProvider } from '@/components/error-boundary';
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+const geistSans = Inter({ variable: '--font-geist-sans', subsets: ['latin'] });
+const geistMono = JetBrains_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 const siteUrl = siteConfig.url;
 const siteName = siteConfig.name;
-const title = "gen3ia - Systeme d'exploitation pour agents IA";
+const title = "gen3ia - Système d'exploitation pour agents IA";
 const description = siteConfig.description;
 
 export const viewport: Viewport = {
