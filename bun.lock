@@ -1,2 +1,2 @@
-# DEPRECATED - Le projet utilise npm, pas Bun.
-# Executez 'npm install' pour generer le vrai package-lock.json
+# DEPRECATED - Ce fichier n'est plus utilisé. Le projet utilise npm.
+# Supprimez ce fichier localement et exécutez 'npm install'.
