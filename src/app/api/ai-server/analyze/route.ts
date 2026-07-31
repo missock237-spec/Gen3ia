@@ -4,12 +4,15 @@
  * Accepts project files and runs the AI-powered code analysis pipeline.
  * Returns structured analysis with detected APIs, models, integration points,
  * and configuration requirements.
+ *
+ * SECURITE: withAuth() + quota (analyse de code = opération LLM coûteuse)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeCode, type CodeFile } from '@/lib/ai-integration-server/code-analyzer';
+import { withAuth } from '@/lib/with-auth';
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
   try {
     const body = await request.json();
 
@@ -78,4 +81,9 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 5, windowMs: 60000 }, // 5 analyses/min max (coûteux)
+  quota: true, // L'analyse de code consomme des tokens LLM
+});
