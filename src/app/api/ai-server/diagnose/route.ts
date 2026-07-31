@@ -1,12 +1,16 @@
 /**
- * GET /api/ai-server/diagnose — Run full SaaS diagnostics
- * POST /api/ai-server/diagnose — Run diagnostics with options
+ * GET/POST /api/ai-server/diagnose — Run full SaaS diagnostics
+ *
+ * SECURITE: Diagnostiques internes = réservés aux ADMIN uniquement.
+ * Exposent des infos sensibles (config, health, internals).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { runDiagnostics } from '@/lib/ai-integration-server/saas-doctor';
+import { withAuth } from '@/lib/with-auth';
 
-export async function GET() {
+// GET — Diagnostics complets (admin only)
+export const GET = withAuth(async () => {
   try {
     const report = await runDiagnostics();
 
@@ -20,9 +24,14 @@ export async function GET() {
       { status: 500 },
     );
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['admin'],
+  rateLimit: { limit: 10, windowMs: 60000 },
+});
 
-export async function POST(request: NextRequest) {
+// POST — Diagnostics avec options (admin only)
+export const POST = withAuth(async (request: NextRequest) => {
   try {
     const body = await request.json().catch(() => ({}));
     const { category } = body as { category?: string };
@@ -57,4 +66,8 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['admin'],
+  rateLimit: { limit: 10, windowMs: 60000 },
+});
