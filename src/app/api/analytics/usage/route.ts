@@ -1,12 +1,23 @@
+// GET /api/analytics/usage — Historique d'usage quotidien
+// SECURITE: withAuth() + OWNERSHIP (accès aux données de l'utilisateur authentifié)
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-export async function GET(r: NextRequest) {
+import { withAuth } from '@/lib/with-auth';
+
+export const GET = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
   try {
-    const a = r.headers.get('authorization');
-    if (!a?.startsWith('Bearer ')) return NextResponse.json({ error: 'Auth' }, { status: 401 });
-    const { verify } = await import('jsonwebtoken');
-    const d = verify(a.slice(7), process.env.AUTH_SECRET || 's') as any;
-    const usage = await db.usageDaily.findMany({ where: { userId: d.userId }, orderBy: { date: 'desc' }, take: 30 });
+    // Utiliser auth.userId du token — jamais d'un paramètre client
+    const usage = await db.usageDaily.findMany({
+      where: { userId: auth.userId },
+      orderBy: { date: 'desc' },
+      take: 30,
+    });
     return NextResponse.json(usage);
-  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
-}
+  } catch {
+    return NextResponse.json({ error: 'Erreur' }, { status: 500 });
+  }
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 50, windowMs: 60000 },
+});
