@@ -1,130 +1,101 @@
 // ============================================================
-// RATE LIMITER — Distribué (Upstash) + Fallback mémoire
-// ============================================================
-// Stratégies granulaires par endpoint avec scoring.
-// Les endpoints sensibles (auth) sont 10x plus restrictifs
-// que les lectures simples.
+// Rate Limiter — Distribue via Redis (Upstash) ou fallback memoire
+// Compatible Vercel Edge, Serverless, et Docker multi-instances
 // ============================================================
 
-import { logger } from "./logger";
+import { Redis } from 'ioredis';
 
-export type EndpointCategory =
-  | "auth"          // Login, register, forgot-password
-  | "agent_execute"  // Exécution d'agent (coûteux)
-  | "agent_crud"    // CRUD agents
-  | "workflow"      // Workflows
-  | "payment"       // Paiements SebPay
-  | "webhook"       // Webhooks entrants
-  | "read"          // Lectures simples
-  | "admin"         // Routes admin
-  | "default";
+const WINDOW_MS = 60000; // 1 minute
+const MAX_REQUESTS = 100; // 100 req/min
 
-interface RateLimitConfig {
-  windowMs: number;
-  maxRequests: number;
-  burstMax?: number;      // Burst court terme
-  burstWindowMs?: number;  // Fenêtre burst
-  cost?: number;          // Coût en "points" de la requête
+// Fallback memoire (utilise quand Redis n'est pas disponible)
+const memoryStore = new Map<string, { count: number; resetAt: number }>();
+let lastCleanup = Date.now();
+const CLEANUP_INT = 300000; // 5 min
+
+function getRedisClient(): Redis | null {
+  const url = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL || '';
+  if (!url) return null;
+  try {
+    return new Redis(url, { maxRetriesPerRequest: 1, retryStrategy: () => null, lazyConnect: true });
+  } catch { return null; }
 }
 
-const RATE_LIMIT_CONFIGS: Record<EndpointCategory, RateLimitConfig> = {
-  auth:           { windowMs: 60_000,  maxRequests: 10,   burstMax: 3,    burstWindowMs: 10_000, cost: 5 },
-  agent_execute:  { windowMs: 60_000,  maxRequests: 20,   burstMax: 5,    burstWindowMs: 10_000, cost: 3 },
-  agent_crud:     { windowMs: 60_000,  maxRequests: 60,   burstMax: 10,   burstWindowMs: 10_000, cost: 1 },
-  workflow:       { windowMs: 60_000,  maxRequests: 30,   burstMax: 5,    burstWindowMs: 10_000, cost: 2 },
-  payment:        { windowMs: 60_000,  maxRequests: 10,   burstMax: 2,    burstWindowMs: 30_000, cost: 5 },
-  webhook:        { windowMs: 60_000,  maxRequests: 200,  burstMax: 50,   burstWindowMs: 5_000,  cost: 1 },
-  read:           { windowMs: 60_000,  maxRequests: 200,  burstMax: 30,   burstWindowMs: 5_000,  cost: 1 },
-  admin:          { windowMs: 60_000,  maxRequests: 100,  burstMax: 20,   burstWindowMs: 10_000, cost: 1 },
-  default:        { windowMs: 60_000,  maxRequests: 60,   burstMax: 10,   burstWindowMs: 10_000, cost: 1 },
-};
-
-export function getCategory(pathname: string): EndpointCategory {
-  if (pathname.startsWith("/api/auth/"))     return "auth";
-  if (pathname.startsWith("/api/agents/run")) return "agent_execute";
-  if (pathname.startsWith("/api/agents"))    return "agent_crud";
-  if (pathname.startsWith("/api/workflows")) return "workflow";
-  if (pathname.startsWith("/api/payments"))  return "payment";
-  if (pathname.startsWith("/api/webhooks"))  return "webhook";
-  if (pathname.startsWith("/api/admin"))     return "admin";
-  if (pathname.startsWith("/api/health") || pathname.startsWith("/api/metrics") || pathname.startsWith("/api/plans")) return "read";
-  return "default";
+function getClientIp(request: Request): string {
+  // Ne pas faire confiance a x-forwarded-for seul
+  const cf = request.headers.get('cf-connecting-ip'); // Cloudflare
+  if (cf) return cf;
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) return realIp;
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0]?.trim() || 'unknown';
+  return 'unknown';
 }
 
-interface RateLimitResult {
-  allowed: boolean;
-  remaining: number;
-  resetIn: number;
-  category: EndpointCategory;
-  limit: number;
+function getRateLimitKey(request: Request, userId?: string): string {
+  const ip = getClientIp(request);
+  const now = Math.floor(Date.now() / WINDOW_MS);
+  // Utiliser userId si disponible (plus fiable que IP)
+  const identity = userId || ip;
+  return `ratelimit:${identity}:${now}`;
 }
 
-class RateLimiter {
-  private fallbackStore = new Map<string, { timestamps: number[]; score: number }>();
+async function checkRedis(redis: Redis, key: string): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
+  const now = Date.now();
+  const resetAt = Math.ceil((Math.floor(now / WINDOW_MS) + 1) * WINDOW_MS / 1000);
+  try {
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expireat(key, resetAt);
+    const remaining = Math.max(0, MAX_REQUESTS - count);
+    return { allowed: count <= MAX_REQUESTS, remaining, resetIn: resetAt - Math.floor(now / 1000) };
+  } catch {
+    return { allowed: true, remaining: MAX_REQUESTS, resetIn: 60 };
+  }
+}
 
-  async check(identifier: string, pathname: string): Promise<RateLimitResult> {
-    const category = getCategory(pathname);
-    const config = RATE_LIMIT_CONFIGS[category];
+function checkMemory(key: string): { allowed: boolean; remaining: number; resetIn: number } {
+  const now = Date.now();
+  const ws = Math.floor(now / WINDOW_MS) * WINDOW_MS;
+  const entry = memoryStore.get(key);
+  if (entry) {
+    entry.count++;
+    const remaining = Math.max(0, MAX_REQUESTS - entry.count);
+    return { allowed: entry.count <= MAX_REQUESTS, remaining, resetIn: Math.max(1, Math.ceil((ws + WINDOW_MS - now) / 1000)) };
+  }
+  memoryStore.set(key, { count: 1, resetAt: ws + WINDOW_MS });
+  if (now - lastCleanup > CLEANUP_INT) {
+    lastCleanup = now;
+    const cut = now - WINDOW_MS * 2;
+    for (const [k, v] of memoryStore) { if (v.resetAt < cut) memoryStore.delete(k); }
+  }
+  return { allowed: true, remaining: MAX_REQUESTS - 1, resetIn: 60 };
+}
 
-    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-      try {
-        return await this.checkWithUpstash(identifier, category, config);
-      } catch (error) {
-        logger.warn("rate_limiter_upstash_fallback", { error: String(error), category });
-      }
+export async function rateLimit(
+  request: Request,
+  userId?: string
+): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
+  const key = getRateLimitKey(request, userId);
+
+  // Essayer Redis d'abord (distribue, fiable)
+  const redis = getRedisClient();
+  if (redis) {
+    try {
+      const result = await checkRedis(redis, key);
+      redis.disconnect();
+      return result;
+    } catch {
+      redis.disconnect();
     }
-
-    return this.checkWithMemory(identifier, category, config);
   }
 
-  private async checkWithUpstash(identifier: string, category: EndpointCategory, config: RateLimitConfig): Promise<RateLimitResult> {
-    const key = `ratelimit:${category}:${identifier}`;
-    const now = Date.now();
-    const windowStart = now - config.windowMs;
-
-    const url = `${process.env.UPSTASH_REDIS_REST_URL}/zremrangebyscore/${key}/${windowStart}/${now}/zcard/${key}/expire/${key}/${Math.ceil(config.windowMs / 1000)}`;
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}` },
-    });
-
-    if (!response.ok) throw new Error(`Upstash error: ${response.status}`);
-    const data = await response.json();
-    const count = Array.isArray(data) ? (data[1] as number) ?? 0 : 0;
-
-    if ((count + (config.cost ?? 1)) >= config.maxRequests) {
-      return { allowed: false, remaining: 0, resetIn: Math.ceil(config.windowMs / 1000), category, limit: config.maxRequests };
-    }
-
-    await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/zadd/${key}/${now}/${now}`, {
-      headers: { Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}` },
-    });
-
-    return { allowed: true, remaining: config.maxRequests - count - (config.cost ?? 1), resetIn: Math.ceil(config.windowMs / 1000), category, limit: config.maxRequests };
-  }
-
-  private checkWithMemory(identifier: string, category: EndpointCategory, config: RateLimitConfig): RateLimitResult {
-    const key = `${category}:${identifier}`;
-    const now = Date.now();
-
-    let entry = this.fallbackStore.get(key) ?? { timestamps: [], score: 0 };
-    entry.timestamps = entry.timestamps.filter((t) => now - t < config.windowMs);
-
-    const cost = config.cost ?? 1;
-    if (entry.timestamps.length + cost > config.maxRequests) {
-      const oldest = entry.timestamps[0]!;
-      const resetIn = Math.ceil((oldest + config.windowMs - now) / 1000);
-      return { allowed: false, remaining: 0, resetIn: Math.max(1, resetIn), category, limit: config.maxRequests };
-    }
-
-    for (let i = 0; i < cost; i++) entry.timestamps.push(now);
-    this.fallbackStore.set(key, entry);
-    return { allowed: true, remaining: config.maxRequests - entry.timestamps.length, resetIn: Math.ceil(config.windowMs / 1000), category, limit: config.maxRequests };
-  }
-
-  getConfig(category: EndpointCategory): RateLimitConfig {
-    return RATE_LIMIT_CONFIGS[category] ?? RATE_LIMIT_CONFIGS.default;
-  }
+  // Fallback memoire (dev, Docker mono-instance)
+  return checkMemory(key);
 }
 
-export const rateLimiter = new RateLimiter();
-export default rateLimiter;
+// Version simplifiee pour le middleware (synchrone)
+export function checkRateLimit(request: Request): boolean {
+  const key = getRateLimitKey(request);
+  const { allowed } = checkMemory(key);
+  return allowed;
+}
