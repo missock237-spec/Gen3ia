@@ -1,2 +1,4 @@
-# On va reconstruire le JSON proprement
-jq '.devDependencies += {"vitest": "^3.1.3", "@playwright/test": "^1.52.0"}' package.json | jq 'del(.scripts["@playwright/test"])' > package.json.tmp && mv package.json.tmp package.json
+{
+  "note": "Ce fichier a ete renomme vers fix_package.sh. Il s'agit d'un script shell, pas d'un fichier JSON.",
+  "deprecated": true
+}
