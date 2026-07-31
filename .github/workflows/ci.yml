@@ -48,9 +48,9 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: genova
-          POSTGRES_PASSWORD: genova
-          POSTGRES_DB: genova_test
+          POSTGRES_USER: gen3ia
+          POSTGRES_PASSWORD: gen3ia
+          POSTGRES_DB: gen3ia_test
         ports:
           - 5432:5432
         options: >-
