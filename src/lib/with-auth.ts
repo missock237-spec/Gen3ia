@@ -1,5 +1,5 @@
 // ============================================================
-// Gen3ia — withAuth() : wrapper unique de sécurité pour les 245 routes API
+// Gen3ia — withAuth() : wrapper unique de sécurité pour les routes API
 //
 // 2ème couche de défense (le middleware est la 1ère).
 // - Authentification : JWT / API Key / Bearer
@@ -18,7 +18,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, type SecurityContext } from '@/lib/security';
 import { rateLimit } from '@/lib/rate-limiter';
-import { checkQuota } from '@/lib/usage-limits';
+import { checkTokenLimit, getPlanLimits } from '@/lib/usage-limits';
+import { db } from '@/lib/db';
 
 // Types exportés pour les handlers
 export interface AuthContext extends SecurityContext {
@@ -33,7 +34,7 @@ export interface WithAuthOptions {
     windowMs: number;
   };
   /**
-   * Activer la vérification de quota (crédits LLM).
+   * Activer la vérification de quota (tokens LLM / crédits).
    * À utiliser sur les routes qui consomment des ressources LLM (chat, generate, etc.)
    */
   quota?: boolean;
@@ -44,14 +45,14 @@ export interface WithAuthOptions {
   scopes?: string[];
 }
 
-type HandlerWithAuth = (request: NextRequest, ctx: { params?: Promise<any> }) => Promise<NextResponse | Response>;
+type HandlerWithAuth<Ctx> = (request: NextRequest, ctx: Ctx, auth: SecurityContext) => Promise<NextResponse | Response>;
 
 /**
  * Wrapper de sécurité réutilisable pour toutes les routes API.
  * Combine auth + RBAC + rate limit + quota.
  */
 export function withAuth<Ctx extends { params?: Promise<any> }>(
-  handler: (request: NextRequest, context: Ctx, auth: SecurityContext) => Promise<NextResponse | Response>,
+  handler: HandlerWithAuth<Ctx>,
   options: WithAuthOptions = {}
 ) {
   const {
@@ -79,21 +80,28 @@ export function withAuth<Ctx extends { params?: Promise<any> }>(
 
     // 3. Quota LLM / crédits (sur les routes coûteuses)
     if (quota && auth?.userId) {
-      const user = await getUserPlanAndCredits(auth.userId);
-      if (user && user.credits <= 0 && user.plan === 'free') {
+      const user = await db.user.findUnique({
+        where: { id: auth.userId },
+        select: { plan: true, credits: true },
+      });
+      if (!user) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 });
+
+      // Crédits restants (plan payant)
+      if (user.credits <= 0 && user.plan !== 'free') {
         return NextResponse.json(
-          { error: 'Quota de crédits épuisé. Passez à un plan supérieur.' },
+          { error: 'Quota de crédits épuisé. Rechargez vos crédits.' },
           { status: 402 }
         );
       }
-      if (user) {
-        const quotaCheck = await checkQuota(auth.userId, user.plan);
-        if (!quotaCheck.allowed) {
-          return NextResponse.json(
-            { error: `Quota LLM journalier atteint (${quotaCheck.current}/${quotaCheck.limit})` },
-            { status: 429 }
-          );
-        }
+
+      // Token limit journalier (tous les plans)
+      const tokenLimit = await checkTokenLimit(auth.userId, user.plan);
+      if (!tokenLimit.allowed) {
+        const planLimits = getPlanLimits(user.plan);
+        return NextResponse.json(
+          { error: `Quota LLM journalier atteint (${tokenLimit.current}/${tokenLimit.limit}). Dépasse le seuil de ${planLimits.maxTokensPerDay} tokens.` },
+          { status: 429 }
+        );
       }
     }
 
@@ -102,25 +110,19 @@ export function withAuth<Ctx extends { params?: Promise<any> }>(
   };
 }
 
-// Helpers internes
-async function getUserPlanAndCredits(userId: string) {
-  try {
-    const { db } = await import('@/lib/db');
-    return db.user.findUnique({
-      where: { id: userId },
-      select: { plan: true, credits: true },
-    });
-  } catch {
-    return null;
-  }
-}
-
-// Re-export de SecurityContext pour compatibilité
+// Alias de compatibilité pour les imports existants
 export type { SecurityContext };
 
-// Alias pour réduire le boilerplate sur les routes simples
-export const requireAuth = (handler: HandlerWithAuth, opts: Omit<WithAuthOptions, 'requireAuth'> = {}) =>
-  withAuth(handler as any, { ...opts, requireAuth: true });
+// Utiliser db directement, pas de re-import dynamique
+export { db } from '@/lib/db';
 
-export const optionalAuth = (handler: HandlerWithAuth, opts: Omit<WithAuthOptions, 'requireAuth'> = {}) =>
-  withAuth(handler as any, { ...opts, requireAuth: false });
+// Alias pour réduire le boilerplate sur les routes simples
+export const requireAuth = <Ctx extends { params?: Promise<any> }>(
+  handler: HandlerWithAuth<Ctx>,
+  opts: Omit<WithAuthOptions, 'requireAuth'> = {}
+) => withAuth(handler, { ...opts, requireAuth: true });
+
+export const optionalAuth = <Ctx extends { params?: Promise<any> }>(
+  handler: HandlerWithAuth<Ctx>,
+  opts: Omit<WithAuthOptions, 'requireAuth'> = {}
+) => withAuth(handler, { ...opts, requireAuth: false });
