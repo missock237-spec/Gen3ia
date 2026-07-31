@@ -10,12 +10,19 @@ dist/
 build/
 *.tsbuildinfo
 
-# Env
+# Env — SECURITY CRITICAL: jamais versionner des secrets
 .env
 .env.local
+.env.development
 .env.development.local
+.env.test
 .env.test.local
+.env.production
 .env.production.local
+.env.staging
+.env.staging.local
+.env.*.local
+!.env.example
 
 # IDE
 .vscode/
