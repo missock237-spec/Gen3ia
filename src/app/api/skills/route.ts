@@ -6,20 +6,26 @@ import { getSkillEngine, SkillCategory } from '@/lib/agent-engine/skill-engine';
 
 const skillEngine = getSkillEngine();
 
+type SkillScope = 'marketplace' | 'installed' | 'my-customizations';
+
+function parseScope(raw: string | null): SkillScope {
+  return (raw as SkillScope) || 'marketplace';
+}
+
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
   try {
     const url = new URL(request.url);
-    const scope = url.searchParams.get('scope') || 'marketplace';
+    const scope = parseScope(url.searchParams.get('scope'));
 
     switch (scope) {
       case 'marketplace': {
         const type = url.searchParams.get('type') || 'skills';
         const category = url.searchParams.get('category');
         const search = url.searchParams.get('search') || '';
-        const where: any = { status: 'published' };
+        const where: Record<string, unknown> = { status: 'published' };
         if (category) where.category = category;
         if (search) where.name = { contains: search, mode: 'insensitive' };
 
@@ -48,7 +54,7 @@ export async function GET(request: NextRequest) {
       }
 
       case 'my-customizations': {
-        const customizations = await skillEngine.getUserCustomizations(auth.id);
+        const customizations = await skillEngine.getUserCustomizations(auth.userId);
         return NextResponse.json({ success: true, items: customizations });
       }
 
@@ -72,19 +78,19 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case 'install-skill': {
         if (!body.skillId || !body.agentId) return NextResponse.json({ error: 'skillId et agentId requis' }, { status: 400 });
-        const result = await skillEngine.installSkillOnAgent(auth.id, body.skillId, body.agentId);
+        const result = await skillEngine.installSkillOnAgent(auth.userId, body.skillId, body.agentId);
         return NextResponse.json(result);
       }
 
       case 'install-loop': {
         if (!body.loopId || !body.agentId) return NextResponse.json({ error: 'loopId et agentId requis' }, { status: 400 });
-        const result = await skillEngine.installLoopOnAgent(auth.id, body.loopId, body.agentId);
+        const result = await skillEngine.installLoopOnAgent(auth.userId, body.loopId, body.agentId);
         return NextResponse.json(result);
       }
 
       case 'apply-customization': {
         if (!body.customizationId) return NextResponse.json({ error: 'customizationId requis' }, { status: 400 });
-        const result = await skillEngine.applyCustomization(auth.id, body.customizationId, body.targetId);
+        const result = await skillEngine.applyCustomization(auth.userId, body.customizationId, body.targetId);
         return NextResponse.json(result);
       }
 
@@ -99,15 +105,15 @@ export async function POST(request: NextRequest) {
       case 'create': {
         if (!body.type || !body.name) return NextResponse.json({ error: 'type et name requis' }, { status: 400 });
         let item;
-        if (body.type === 'skill') item = await skillEngine.createSkill({ ...body, authorId: auth.id, authorName: auth.name });
-        else if (body.type === 'loop') item = await skillEngine.createLoop({ ...body, authorId: auth.id, authorName: auth.name });
+        if (body.type === 'skill') item = await skillEngine.createSkill({ ...body, authorId: auth.userId });
+        else if (body.type === 'loop') item = await skillEngine.createLoop({ ...body, authorId: auth.userId });
         else return NextResponse.json({ error: 'Type invalide' }, { status: 400 });
         return NextResponse.json({ success: true, item });
       }
 
       case 'publish': {
         if (!body.itemId || !body.type) return NextResponse.json({ error: 'itemId et type requis' }, { status: 400 });
-        await skillEngine.publish(body.type as any, body.itemId);
+        await skillEngine.publish(body.type as SkillCategory, body.itemId);
         return NextResponse.json({ success: true, message: 'Publie' });
       }
 
