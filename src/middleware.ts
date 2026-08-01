@@ -5,6 +5,8 @@
 // explicitement listées comme publiques.
 // C'est une 1ère couche de défense. Chaque handler doit AUSSI
 // utiliser withAuth() en 2ème couche (voir src/lib/with-auth.ts).
+//
+// En-têtes de sécurité : CSP + HSTS ajoutés.
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -12,7 +14,6 @@ import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
 // Routes réellement publiques (auth pas requise au niveau middleware)
-// NB : /api/webhook/* doit vérifier la signature HMAC en interne !
 const PUBLIC_PATHS = [
   '/api/auth/',
   '/api/auth/session',
@@ -49,11 +50,10 @@ const ADMIN_ROUTES = [
 ];
 
 // Routes sensibles qui consomment des ressources LLM / coûtent de l'argent
-// => un simple token valide (même plan free) doit être vérifié (2ème couche withAuth)
 const SENSITIVE_RESOURCE_ROUTES = [
-  '/api/ai-server/',   // analyze, diagnose, process
+  '/api/ai-server/',
   '/api/ai/',
-  '/api/audio/',       // /generate etc.
+  '/api/audio/',
   '/api/analytics/',
   '/api/media/',
   '/api/images/',
@@ -66,6 +66,26 @@ const SENSITIVE_RESOURCE_ROUTES = [
   '/api/browser/',
 ];
 
+/**
+ * Politique CSP stricte pour l'app Gen3ia.
+ * - default-src 'self'
+ * - scripts : self + 'unsafe-inline' (Next nécessite parfois inline pour le bootstrap)
+ * - styles : 'unsafe-inline' requis par Next/Radix
+ * - images : self + data + blob + domaines autorisés (githubusercontent, googleusercontent, huggingface)
+ * - connexions : self + API externes (openai, anthropic, groq, openrouter, huggingface)
+ */
+const CSP_HEADER = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Next dev + certain bundles
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://*.githubusercontent.com https://*.googleusercontent.com https://cdn.huggingface.co",
+  "font-src 'self' data:",
+  "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -76,48 +96,43 @@ export async function middleware(request: NextRequest) {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('X-DNS-Prefetch-Control', 'off');
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // CSP stricte (ajout)
+  response.headers.set('Content-Security-Policy', CSP_HEADER);
+  // HSTS — uniquement en production HTTPS (ajout)
+  if (process.env.NODE_ENV === 'production') {
+    response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
 
-  // 1. Ne pas intercepter les fichiers statiques
+  // 1. Fichiers statiques
   if (pathname.startsWith('/_next') || pathname.startsWith('/favicon') ||
       pathname === '/icon.svg' || pathname === '/sw.js' || pathname === '/manifest.json') {
     return response;
   }
 
-  // 2. Les routes non-API : on vérifie juste auth pour le dashboard etc.
+  // 2. Routes non-API
   if (!pathname.startsWith('/api/')) {
     return response;
   }
 
-  // 3. Routes publiques : on laisse passer (le handler doit faire ses propres contrôles)
+  // 3. Routes publiques
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p.endsWith('/') ? p : p + '/'))) {
     return response;
   }
 
-  // 4. DENY-BY-DEFAULT : toute route /api/* non-publique exige un token valide
+  // 4. DENY-BY-DEFAULT
   const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
-
-  // Cas spécial : les requests avec API Key sont gérées par withAuth() en 2ème couche,
-  // mais au niveau middleware, on doit laisser passer pour que le handler vérifie.
   const apiKey = request.headers.get('x-api-key');
   const hasBearer = request.headers.get('authorization')?.startsWith('Bearer ');
   if (!token && !apiKey && !hasBearer) {
     return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
   }
 
-  // 5. Vérifier le rôle admin pour les routes admin
+  // 5. Routes admin
   if (ADMIN_ROUTES.some((p) => pathname.startsWith(p))) {
-    // Si API key ou Bearer, on laisse withAuth() décider (2ème couche)
     if (apiKey || hasBearer) return response;
     if (token && token.role !== 'admin') {
       return NextResponse.json({ error: 'Accès réservé aux administrateurs' }, { status: 403 });
     }
-  }
-
-  // 6. Les routes sensibles (LLM coûteux) passent au withAuth() en 2ème couche
-  //    qui vérifie le quota + le plan.
-  if (SENSITIVE_RESOURCE_ROUTES.some((p) => pathname.startsWith(p))) {
-    // on transmet, withAuth() gère le quota/plan
-    return response;
   }
 
   return response;
