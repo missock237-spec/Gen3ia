@@ -1,0 +1,5 @@
+# Prisma Migration Lock
+# Ce fichier indique au moteur prisma migrate le provider utilisé.
+# C'est LE fichier attendu par Prisma (extension .toml, pas .json).
+
+provider = "postgresql"
