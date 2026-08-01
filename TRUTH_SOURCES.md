@@ -13,11 +13,11 @@ Si un autre fichier contredit ce tableau, il est **obsolète** — remplacez-le.
 | Source de vérité | Statut |
 |---|---|
 | `package.json` (`packageManager: npm@10.8.0`) | ✅ **FAIT FOI** |
-| `package-lock.json` | ✅ Généré par npm, source des dépendances exactes |
+| `package-lock.json` | ⚠️ **À RÉGÉNÉRER** localement via `npm install` (actuellement vide → `npm ci` échoue) |
 | ~~`bun.lock`~~ | ❌ Obsolète — supprimer |
 | ~~`pnpm-workspace.yaml`~~ | ❌ Obsolète — on utilise les workspaces npm de `package.json` |
 
-**Commande d'installation :** `npm install`
+**Installation :** `npm install` (régénère le lockfile). Puis `git add package-lock.json && git commit`.
 
 ---
 
@@ -26,10 +26,10 @@ Si un autre fichier contredit ce tableau, il est **obsolète** — remplacez-le.
 | Source de vérité | Statut |
 |---|---|
 | `.github/workflows/` | ✅ **FAIT FOI** — seul dossier reconnu par GitHub |
-| ~~`github/workflows/`~~ | ❌ Ignoré par GitHub (mauvais nom) — supprimer |
-| ~~`ci.yml`, `deploy.yml`, `release.yml`** (racine)`~~ | ❌ Orphelins — supprimer |
+| ~~`github/workflows/`~~ | ❌ Ignoré par GitHub — supprimer |
+| ~~`ci.yml`, `deploy.yml`, etc. (racine)`~~ | ❌ Orphelins — supprimer |
 
-**Règle :** Tout workflow GitHub vit dans `.github/workflows/`.
+Le job **`prisma-diff`** (dans `docs/prisma-ci-job.md`) doit être collé dans `.github/workflows/ci.yml`.
 
 ---
 
@@ -38,7 +38,7 @@ Si un autre fichier contredit ce tableau, il est **obsolète** — remplacez-le.
 | Source de vérité | Statut |
 |---|---|
 | `next.config.js` | ✅ **FAIT FOI** — CommonJS, compatible Vercel/Docker |
-| ~~`next.config.ts`~~ | ❌ Obsolète (marqué REMOVED) — supprimer |
+| ~~`next.config.ts`~~ | ❌ Obsolète — supprimer |
 
 ---
 
@@ -47,22 +47,35 @@ Si un autre fichier contredit ce tableau, il est **obsolète** — remplacez-le.
 | Source de vérité | Statut |
 |---|---|
 | `eslint.config.mjs` | ✅ **FAIT FOI** — flat config ESLint 9 |
-| ~~`.eslintrc.json`~~ | ❌ Obsolète (ancien format) — supprimer |
+| ~~`.eslintrc.json`~~ | ❌ Obsolète — supprimer |
 
 ---
 
-## 5. Schéma de base de données
+## 5. Tailwind CSS (v4)
 
 | Source de vérité | Statut |
 |---|---|
-| `prisma/schema.prisma` | ✅ **FAIT FOI** |
+| `src/app/globals.css` (`@import "tailwindcss"` + `@theme`) | ✅ **FAIT FOI** — CSS-first |
+| `postcss.config.mjs` | ✅ **FAIT FOI** (`@tailwindcss/postcss`) |
+| ~~`tailwind.config.ts`~~ | ❌ Obsolète/REMOVED — supprimer |
+
+---
+
+## 6. Schéma et migrations de base de données
+
+| Source de vérité | Statut |
+|---|---|
+| `prisma/schema.prisma` | ✅ **FAIT FOI** (définit le schéma) |
+| `prisma/migrations/*/migration.sql` (dossiers) | ✅ **FAIT FOI** — migrations appliquées via `prisma migrate` |
+| `prisma/migrations/migration_lock.toml` | ✅ **REQUIS** (Prisma exige `.toml`) |
+| ~~`*.sql` à plat (`00001_*.sql`…)~~ | ❌ Ignorés par Prisma — supprimer |
+| ~~`migration_lock.json`~~ | ❌ Mauvaise extension — supprimer |
+| ~~`migration_manager.ts`, `migration_meta.json`~~ | ❌ Gestionnaire maison — utiliser `prisma migrate` |
 | ~~`schema_backup.prisma`~~ | ❌ Obsolète — supprimer |
 
 ---
 
-## 6. Fichiers à supprimer (morts)
-
-Ces fichiers sont obsolètes et à supprimer via `git rm` :
+## 7. Fichiers à supprimer (morts)
 
 - `package.json.backup`
 - `next-server.pid`
@@ -70,38 +83,49 @@ Ces fichiers sont obsolètes et à supprimer via `git rm` :
 - `test-force-push.txt`, `test-tool.txt`, `test-write.txt`
 - dossier vide `Gen3ia/`
 - `fix_package.json` (utiliser `fix_package.sh`)
+- `tailwind.config.ts`, `next.config.ts`, `.eslintrc.json`
+- `migration_lock.json`, `migration_meta.json`, `migration_manager.ts`, `schema_backup.prisma`
 
-## 7. Docs / rapports
+## 8. Docs / rapports
 
 | Source de vérité | Statut |
 |---|---|
 | `README.md` | ✅ FAIT FOI pour l'usage |
-| `docs/` | ✅ FAIT FOI pour la documentation technique |
-| `CHANGELOG.md` | ✅ FAIT FOI pour l'historique |
-| ~~`CI_FIX.md`, `FIX_REPORT.md`, `WORKFLOWS_FIX.md`, `SECURITY_FIXES.md`~~ | ❌ Rapports ponctuels — à archiver dans `docs/` ou supprimer |
+| `docs/` | ✅ FAIT FOI pour la doc technique |
+| `docs/DEVELOPMENT.md` | ✅ FAIT FOI pour le développement |
+| `docs/prisma-ci-job.md` | ✅ Job CI prisma-diff à coller dans ci.yml |
+| ~~`CI_FIX.md`, `FIX_REPORT.md`, `WORKFLOWS_FIX.md`, `SECURITY_FIXES.md`~~ | ❌ Rapports ponctuels — archiver dans `docs/` |
 
 ---
 
-## ✅ Commande de nettoyage finale
+## ✅ Commande de nettoyage finale (à exécuter localement)
 
 ```bash
-# Depuis la racine du dépôt
-rm bun.lock pnpm-workspace.yaml
-rm next.config.ts .eslintrc.json
+# Fichiers obsolètes / morts
+rm bun.lock pnpm-workspace.yaml next.config.ts .eslintrc.json tailwind.config.ts
 rm package.json.backup schema_backup.prisma next-server.pid
 rm test-api.mjs test-autonomous.ts test-connectivity.ts test-whatsapp.ts
 rm test-force-push.txt test-tool.txt test-write.txt
 rm ci.yml ci-workflow.yml deploy.yml deploy-new.yml deploy-workflow.yml release.yml issues.yml refresh-tokens.yml refresh-tokens-workflow.yml vercel-deploy.yml
 rm fix_package.json
 rmdir Gen3ia 2>/dev/null || true
-rm -rf github/workflows
-mv CI_FIX.md FIX_REPORT.md WORKFLOWS_FIX.md SECURITY_FIXES.md docs/ 2>/dev/null || true
+rm -rf github workflows
 
+# Migrations Prisma (convention abandonnée / maison)
+rm prisma/migrations/0000*.sql
+rm prisma/migrations/migration_lock.json prisma/migrations/migration_meta.json
+rm prisma/migration_manager.ts
+
+# Commit + push
 git add -A
-git commit -m "chore: cleanup — supprimer les fichiers obsolètes et établir une seule source de vérité"
+git commit -m "chore: cleanup — suppression des fichiers obsolètes (source de vérité consolidée)"
+git push
+
+# Régénérer le lockfile (CRITIQUE pour npm ci)
+npm install
+git add package-lock.json
+git commit -m "chore: régénérer package-lock.json (npm ci fonctionne)"
 git push
 ```
 
----
-
-_Fichier de référence pour tout nouveau contributeur — mettez-le à jour si la structure change._
+_Fichier de référence pour tout contributeur — mettez à jour si la structure change._
