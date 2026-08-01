@@ -8,8 +8,6 @@
 //   - 'disabled': désactivé par feature flag
 //
 // Ce registre alimente GET /api/health/features (public).
-// N'ajoutez des features 'mock' que derrière un flag explicite 
-// et actif uniquement si NODE_ENV !== 'production'.
 // ============================================================
 
 export type FeatureStatus = 'prod' | 'beta' | 'mock' | 'disabled';
@@ -30,6 +28,11 @@ export const FEATURES: Feature[] = [
   { id: 'ai-chat', name: 'Assistant IA', description: 'Chat global avec l\'assistant (router multi-modèle)', status: 'prod' },
   { id: 'ai-server', name: 'Serveur IA', description: 'Analyse, process, diagnose via LLM', status: 'prod' },
   { id: 'ai-orchestrate', name: 'Orchestrateur', description: 'Planification multi-agents', status: 'beta' },
+
+  // ============ SANDBOX / EXÉCUTION ============
+  { id: 'sandbox-js', name: 'Sandbox JavaScript', description: 'Exécution JS isolée (new Function / VM2)', status: 'prod' },
+  { id: 'sandbox-python', name: 'Sandbox Python', description: 'Exécution Python via subprocess/Docker (détecté automatiquement)', status: 'beta' },
+  { id: 'sandbox-simulated', name: 'Sandbox simulé', description: 'Exécution SIMULÉE (fallback sans runtime) — Ne pas utiliser en prod', status: 'mock', flag: 'GEN3IA_ENABLE_SIMULATED_SANDBOX' },
 
   // ============ MÉDIA ============
   { id: 'images-generate', name: 'Génération d\'images', description: 'Images via HuggingFace', status: 'prod' },
