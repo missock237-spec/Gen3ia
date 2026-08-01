@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { checkAgentLimit } from '@/lib/usage-limits';
 import { sanitizeHtml, sanitizeJson, stripNullBytes, escapeForDb } from '@/lib/input-sanitizer';
+import { rateLimit } from '@/lib/rate-limiter';
 
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
@@ -15,6 +16,10 @@ export async function GET(request: NextRequest) {
     requireAuth: true,
   });
   if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+
+  // Rate limit distribué (Redis)
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
 
   try {
     const agents = await db.agent.findMany({
@@ -48,6 +53,10 @@ export async function POST(request: NextRequest) {
     requireAuth: true,
   });
   if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+
+  // Rate limit plus strict pour la création (abuse possible)
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
 
   try {
     const body = await request.json();
