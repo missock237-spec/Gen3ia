@@ -9,10 +9,22 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "build:worker": "tsc --project tsconfig.worker.json && tsc-alias --project tsconfig.worker.json",
     "postinstall": "node -e \"try { require('child_process').execSync('npx prisma generate', { stdio: 'inherit' }) } catch(e) { console.log('Prisma generate skipped (not critical)') }\"",
     "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
     "clean": "rm -rf .next coverage node_modules dist"
   },
   "overrides": {
@@ -101,6 +113,9 @@
     "eslint-config-next": "14.2.29",
     "@tailwindcss/postcss": "^4",
     "vitest": "^3.1.3",
-    "tsc-alias": "^1.8.10"
+    "tsc-alias": "^1.8.10",
+    "prettier": "^3",
+    "@playwright/test": "^1",
+    "@vitest/coverage-v8": "^3"
   }
 }
