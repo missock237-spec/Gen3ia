@@ -11,11 +11,18 @@ const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
-      "@typescript-eslint/no-explicit-any": "warn",
+      // STRICTE — tout `any` explicite est une erreur.
+      // Les 383 `any` existants doivent être résorbés (voir docs/QUALITY_PLAN.md).
+      "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "react-hooks/exhaustive-deps": "warn",
-      "@typescript-eslint/ban-ts-comment": ["warn", { "ts-ignore": "allow-with-description" }],
-      "no-console": ["warn", { allow: ["warn", "error", "info"] }],
+      // STRICTE — ts-ignore interdit ; utiliser ts-expect-error avec justification.
+      "@typescript-eslint/ban-ts-comment": [
+        "error",
+        { "ts-ignore": "allow-with-description", minimumDescriptionLength: 10 }
+      ],
+      // STRICTE — pas de console.* brut ; tout passer par @gen3ia/core (logger) pour Loki.
+      "no-console": ["error", { allow: ["warn", "error"] }],
       "prefer-const": "error",
       "no-var": "error",
     },
