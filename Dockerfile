@@ -3,7 +3,7 @@
 # Build context: racine du monorepo
 # ============================================================
 
-FROM node:20-alpine AS deps
+FROM node:25-alpine AS deps
 LABEL stage=deps
 WORKDIR /app
 
@@ -15,7 +15,7 @@ COPY packages/ ./packages/
 
 RUN npm install
 
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 LABEL stage=builder
 WORKDIR /app
 
@@ -35,7 +35,7 @@ RUN npx prisma generate
 RUN npm run build
 RUN npm prune --production
 
-FROM node:20-alpine AS runner
+FROM node:25-alpine AS runner
 LABEL stage=runner
 WORKDIR /app
 
