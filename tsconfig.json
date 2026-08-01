@@ -24,7 +24,6 @@
     "skills",
     "examples",
     "upload",
-    "services",
     "**/*.test.ts",
     "**/*.spec.ts"
   ]
