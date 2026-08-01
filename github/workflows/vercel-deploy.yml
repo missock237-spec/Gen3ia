@@ -1,1 +1,4 @@
-REMOVED - deplacer vers .github/workflows/vercel-deploy.yml
+# OBSOLÈTE — Ce dossier github/ (sans point) est IGNORÉ par GitHub.
+# Le déploiement Vercel se configure dans vercel.json + .github/workflows/
+# Suppression : git rm -r github/
+name: OBSOLETE
