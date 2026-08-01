@@ -3,11 +3,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hfGeneration } from '@/lib/media';
 import { createLogger } from '@/lib/logger';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
 const log = createLogger('api-media');
 
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
     const { prompt, type = 'image', model, negativePrompt, width, height } = body;
