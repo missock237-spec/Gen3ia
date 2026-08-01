@@ -10,5 +10,6 @@
     "curly": ["error", "all"],
     "no-throw-literal": "error",
     "prefer-template": "warn"
-  }
+  },
+  "_comment": "OBSOLÈTE — ESLint 9 utilise eslint.config.mjs (flat config). Ce fichier .eslintrc est déprécié et sera supprimé. Suppression: git rm .eslintrc.json"
 }
