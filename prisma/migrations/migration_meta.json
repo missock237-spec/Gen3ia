@@ -1,1 +1,3 @@
-{"lastApplied":"00007_add_oauth_states_and_code_projects","migrations":[{"name":"001_init","appliedAt":"2026-07-20T00:00:00.000Z"},{"name":"add_checkpoint_supervisor","appliedAt":"2026-07-22T00:00:00.000Z"},{"name":"002_complete_schema","appliedAt":"2026-07-24T14:00:00.000Z"},{"name":"00007_add_oauth_states_and_code_projects","appliedAt":"2026-07-27T10:00:00.000Z"}]}
+// OBSOLÈTE — Ce fichier maison de suivi des migrations est remplacé par
+// la table _prisma_migrations du moteur prisma migrate.
+// Suppression : git rm prisma/migrations/migration_meta.json
