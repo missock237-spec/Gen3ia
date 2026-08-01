@@ -2,22 +2,18 @@
   "name": "@gen3ia/web",
   "version": "0.10.0",
   "private": true,
+  "description": "Tests e2e (Playwright) — l'app Next.js vit à la racine src/ tant que la migration monorepo n'est pas complète.",
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start",
+    "dev": "npm run test:e2e --workspace @gen3ia/web",
+    "test": "playwright test",
+    "test:e2e": "playwright test",
     "lint": "eslint . --ext .ts,.tsx",
-    "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf .next coverage"
+    "build": "playwright test",
+    "clean": "rm -rf test-results playwright-report"
   },
   "dependencies": {
-    "@radix-ui/react-accordion": "^1.1.2",
-    "@radix-ui/react-alert-dialog": "^1.0.5",
-    "@radix-ui/react-checkbox": "^1.0.4",
-    "@radix-ui/react-label": "^2.0.2",
-    "@radix-ui/react-progress": "^1.0.3",
-    "tailwindcss-animate": "^1.0.7"
+    "@playwright/test": "^1"
   },
   "devDependencies": {
     "@types/uuid": "^10"
