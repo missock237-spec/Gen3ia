@@ -6,8 +6,9 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "turbo run dev",
-    "build": "turbo run build",
+    "build": "next build && turbo run build",
     "build:root": "next build",
+    "build:packages": "turbo run build",
     "start": "next start",
     "test": "turbo run test",
     "test:unit": "vitest run",
