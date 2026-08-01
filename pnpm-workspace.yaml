@@ -1,2 +1,3 @@
-# DEPRECATED - Le projet utilise npm workspaces, pas pnpm.
-# Supprimer ce fichier.
+# OBSOLÈTE — Le projet utilise npm workspaces (voir package.json).
+# Ce fichier pnpm-workspace.yaml est déprécié et ne doit pas être utilisé.
+# Suppression : git rm pnpm-workspace.yaml
