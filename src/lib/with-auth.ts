@@ -21,9 +21,10 @@ import { rateLimit } from '@/lib/rate-limiter';
 import { checkTokenLimit, getPlanLimits } from '@/lib/usage-limits';
 import { db } from '@/lib/db';
 
-// Types exportés pour les handlers
+/** Type des params Next.js (remplace `Promise<any>`) */
+export type RouteParams = Promise<Record<string, string | string[]>>;
+
 export interface AuthContext extends SecurityContext {
-  // contexte étendu si besoin
 }
 
 export interface WithAuthOptions {
@@ -33,25 +34,17 @@ export interface WithAuthOptions {
     limit: number;
     windowMs: number;
   };
-  /**
-   * Activer la vérification de quota (tokens LLM / crédits).
-   * À utiliser sur les routes qui consomment des ressources LLM (chat, generate, etc.)
-   */
   quota?: boolean;
-  /**
-   * Scope requis (ex: 'read', 'write', 'admin').
-   * Non utilisé pour l'instant, extensible.
-   */
   scopes?: string[];
 }
 
-type HandlerWithAuth<Ctx> = (request: NextRequest, ctx: Ctx, auth: SecurityContext) => Promise<NextResponse | Response>;
+type HandlerWithAuth<Ctx extends { params?: RouteParams }> = (request: NextRequest, ctx: Ctx, auth: SecurityContext) => Promise<NextResponse | Response>;
 
 /**
  * Wrapper de sécurité réutilisable pour toutes les routes API.
  * Combine auth + RBAC + rate limit + quota.
  */
-export function withAuth<Ctx extends { params?: Promise<any> }>(
+export function withAuth<Ctx extends { params?: RouteParams }>(
   handler: HandlerWithAuth<Ctx>,
   options: WithAuthOptions = {}
 ) {
@@ -86,7 +79,6 @@ export function withAuth<Ctx extends { params?: Promise<any> }>(
       });
       if (!user) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 });
 
-      // Crédits restants (plan payant)
       if (user.credits <= 0 && user.plan !== 'free') {
         return NextResponse.json(
           { error: 'Quota de crédits épuisé. Rechargez vos crédits.' },
@@ -94,7 +86,6 @@ export function withAuth<Ctx extends { params?: Promise<any> }>(
         );
       }
 
-      // Token limit journalier (tous les plans)
       const tokenLimit = await checkTokenLimit(auth.userId, user.plan);
       if (!tokenLimit.allowed) {
         const planLimits = getPlanLimits(user.plan);
@@ -106,23 +97,21 @@ export function withAuth<Ctx extends { params?: Promise<any> }>(
     }
 
     // 4. Exécuter le handler avec le contexte d'auth
-    return handler(request, context, auth!);
+    if (!auth) return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
+    return handler(request, context, auth);
   };
 }
 
-// Alias de compatibilité pour les imports existants
 export type { SecurityContext };
-
-// Utiliser db directement, pas de re-import dynamique
 export { db } from '@/lib/db';
 
 // Alias pour réduire le boilerplate sur les routes simples
-export const requireAuth = <Ctx extends { params?: Promise<any> }>(
+export const requireAuth = <Ctx extends { params?: RouteParams }>(
   handler: HandlerWithAuth<Ctx>,
   opts: Omit<WithAuthOptions, 'requireAuth'> = {}
 ) => withAuth(handler, { ...opts, requireAuth: true });
 
-export const optionalAuth = <Ctx extends { params?: Promise<any> }>(
+export const optionalAuth = <Ctx extends { params?: RouteParams }>(
   handler: HandlerWithAuth<Ctx>,
   opts: Omit<WithAuthOptions, 'requireAuth'> = {}
 ) => withAuth(handler, { ...opts, requireAuth: false });
