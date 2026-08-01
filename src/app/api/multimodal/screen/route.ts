@@ -6,12 +6,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createScreenShareHandler } from '@/lib/multimodal/screen-share';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
 // Cache handlers per user for frame comparison
 const handlers = new Map<string, ReturnType<typeof createScreenShareHandler>>();
 
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
     const { imageData, width, height, windowTitle, sessionId } = body;
@@ -44,5 +44,5 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promis
   requireAuth: true,
   roles: ['user'],
   rateLimit: { limit: 30, windowMs: 60000 },
-  quota: true, // Le traitement de frames écran consomme des tokens de vision LLM
+  quota: true, // Le traitement de frames ecran consomme des tokens de vision LLM
 });
