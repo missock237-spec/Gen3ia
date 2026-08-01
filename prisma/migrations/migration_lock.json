@@ -1,8 +1,3 @@
-{
-  "kind": "postgresql",
-  "provider": "postgresql",
-  "environment": {
-    "client": "prisma-client-js",
-    "datasourceProvider": "postgresql"
-  }
-}
+// OBSOLÈTE — Prisma attend `migration_lock.toml`, pas `.json`.
+// Le fichier de référence est désormais prisma/migrations/migration_lock.toml
+// Suppression : git rm prisma/migrations/migration_lock.json
