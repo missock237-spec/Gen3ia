@@ -5,16 +5,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
-import { secureResponse } from '@/lib/security';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 import { createAIRouter } from '@/lib/ai-router';
 import { db } from '@/lib/db';
 
 const log = createLogger('ai-server');
 
 // GET /api/ai-server?action=health|status
-// Lecture seule : auth obligatoire, pas de quota
-const getHandler = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+const getHandler = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   const action = request.nextUrl.searchParams.get('action') || 'health';
 
   switch (action) {
@@ -48,17 +46,15 @@ const getHandler = withAuth(async (request: NextRequest, ctx: { params?: Promise
   rateLimit: { limit: 100, windowMs: 60000 },
 });
 
-// POST /api/ai-server
-// Action LLM (analyze/process/diagnose) : coûteuse en tokens → QUOTA obligatoire
-const postHandler = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+// POST /api/ai-server — Action LLM (analyze/process/diagnose) : couteuse en tokens → QUOTA obligatoire
+const postHandler = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   const action = request.nextUrl.searchParams.get('action');
   let resolvedAction: string;
   let input: unknown;
   let model: string | undefined;
 
-  // Support les deux formats : body.action OU ?action=query
   const body = await request.json().catch(() => ({}));
-  resolvedAction = action || body.action;
+  resolvedAction = action || (body as { action?: string }).action as string;
   input = body.input;
   model = body.model;
 
@@ -99,7 +95,7 @@ const postHandler = withAuth(async (request: NextRequest, ctx: { params?: Promis
   requireAuth: true,
   roles: ['user'],
   rateLimit: { limit: 20, windowMs: 60000 },
-  quota: true, // Consomme des tokens LLM → vérifie le quota
+  quota: true,
 });
 
 export { getHandler as GET, postHandler as POST };
