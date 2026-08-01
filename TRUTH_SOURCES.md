@@ -13,11 +13,11 @@ Si un autre fichier contredit ce tableau, il est **obsolète** — remplacez-le.
 | Source de vérité | Statut |
 |---|---|
 | `package.json` (`packageManager: npm@10.8.0`) | ✅ **FAIT FOI** |
-| `package-lock.json` | ⚠️ **À RÉGÉNÉRER** localement via `npm install` (actuellement vide → `npm ci` échoue) |
+| `package-lock.json` | ⚠️ **À RÉGÉNÉRER** localement via `npm install` (actuellement vide `packages:{}` → `npm ci` échoue). C'est la seule étape restante pour rendre la CI verte. |
 | ~~`bun.lock`~~ | ❌ Obsolète — supprimer |
 | ~~`pnpm-workspace.yaml`~~ | ❌ Obsolète — on utilise les workspaces npm de `package.json` |
 
-**Installation :** `npm install` (régénère le lockfile). Puis `git add package-lock.json && git commit`.
+**Installation :** `npm install` (régénère le lockfile). Puis `git add package-lock.json && git commit && git push`.
 
 ---
 
@@ -30,6 +30,9 @@ Si un autre fichier contredit ce tableau, il est **obsolète** — remplacez-le.
 | ~~`ci.yml`, `deploy.yml`, etc. (racine)`~~ | ❌ Orphelins — supprimer |
 
 Le job **`prisma-diff`** (dans `docs/prisma-ci-job.md`) doit être collé dans `.github/workflows/ci.yml`.
+
+> ℹ️ Le token GitHub agent ne peut pas écrire dans `.github/workflows/` (action bloquée).
+> Toute évolution de workflow est à faire manuellement/localement.
 
 ---
 
@@ -75,7 +78,20 @@ Le job **`prisma-diff`** (dans `docs/prisma-ci-job.md`) doit être collé dans `
 
 ---
 
-## 7. Fichiers à supprimer (morts)
+## 7. Sécurité / wrapper d'auth des routes API
+
+| Source de vérité | Statut |
+|---|---|
+| `src/lib/with-auth.ts` | ✅ **FAIT FOI** — wrapper de sécurité unique (`withAuth`, `requireAuth`, `optionalAuth`) |
+| `RouteParams` (dans `with-auth.ts`) | ✅ Générique `Promise<T>` + normalisation Next 14/15 des `params` (objets & promesses) — fiabilise la compilation des routes migrées |
+| `src/lib/security.ts` (`applySecurity`) | ✅ Auth JWT / API Key / RBAC |
+| ~~wrappers manuels par route~~ | ❌ Remplacés par `withAuth` |
+
+Pas de `any` dans `with-auth.ts`: `no-explicit-any`/`no-console` sont en `error`.
+
+---
+
+## 8. Fichiers à supprimer (morts)
 
 - `package.json.backup`
 - `next-server.pid`
@@ -86,7 +102,7 @@ Le job **`prisma-diff`** (dans `docs/prisma-ci-job.md`) doit être collé dans `
 - `tailwind.config.ts`, `next.config.ts`, `.eslintrc.json`
 - `migration_lock.json`, `migration_meta.json`, `migration_manager.ts`, `schema_backup.prisma`
 
-## 8. Docs / rapports
+## 9. Docs / rapports
 
 | Source de vérité | Statut |
 |---|---|
@@ -121,7 +137,7 @@ git add -A
 git commit -m "chore: cleanup — suppression des fichiers obsolètes (source de vérité consolidée)"
 git push
 
-# Régénérer le lockfile (CRITIQUE pour npm ci)
+# Régénérer le lockfile (CRITIQUE pour npm ci — seule étape restante pour CI verte)
 npm install
 git add package-lock.json
 git commit -m "chore: régénérer package-lock.json (npm ci fonctionne)"
