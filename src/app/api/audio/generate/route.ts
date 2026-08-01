@@ -4,19 +4,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { audioGenerator } from "@/lib/audio-generator";
 import { logger } from "@/lib/logger";
-import { withAuth } from "@/lib/with-auth";
+import { withAuth, type RouteParams } from "@/lib/with-auth";
 
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
-    // SECURITY: userId vient du token authentifié, JAMAIS du body client (prévient l'IDOR)
+    // SECURITY: userId vient du token authentifié, JAMAIS du body client (previent l'IDOR)
     const { text, model, speed } = body;
 
     if (!text) {
       return NextResponse.json({ error: "Champ requis: text" }, { status: 400 });
     }
 
-    // Utiliser auth.userId (du token sécurisé) — ne jamais faire confiance au body
+    // Utiliser auth.userId (du token securise) — ne jamais faire confiance au body
     const result = await audioGenerator.generate({ userId: auth.userId, text, model, speed });
 
     if (!result.success) {
@@ -39,6 +39,6 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promis
 }, {
   requireAuth: true,
   roles: ['user'],
-  rateLimit: { limit: 10, windowMs: 60000 }, // 10 générations audio/min max
-  quota: true, // L'audio consomme des crédits → vérifier le quota
+  rateLimit: { limit: 10, windowMs: 60000 }, // 10 generations audio/min max
+  quota: true, // L'audio consomme des credits → verifier le quota
 });
