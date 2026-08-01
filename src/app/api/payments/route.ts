@@ -1,16 +1,22 @@
 // Payments API — Paiements via SubPay (MTN MoMo, Orange Money, Wave, etc.)
+// SECURITE: applySecurity + ownership + rate limit Redis (paiements = opérations sensibles)
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { subpay } from '@/lib/payment/subpay';
+import { rateLimit } from '@/lib/rate-limiter';
 
 const log = createLogger('payments');
 
 export async function POST(request: NextRequest) {
   const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
   if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+
+  // Rate limit strict : max 5 tentatives de paiement/min (anti-spam/anti-fraude)
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de tentatives de paiement' }, { status: 429 });
 
   try {
     const body = await request.json();
@@ -73,6 +79,9 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
   if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
 
   try {
     const invoices = await db.invoice.findMany({
