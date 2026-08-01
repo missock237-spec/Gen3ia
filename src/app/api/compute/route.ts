@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { computeEngine } from '@/lib/compute';
 import { createLogger } from '@/lib/logger';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
 const log = createLogger('api-compute');
 
 // POST /api/compute — Exécute des calculs CPU/GPU (COÛTEUX)
 // SECURITE: withAuth() + quota (le compute peut être abusé pour DoS)
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
     const { task, data, options = {} } = body;
