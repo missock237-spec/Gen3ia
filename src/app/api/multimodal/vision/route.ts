@@ -1,25 +1,14 @@
 /**
  * API Route: /api/multimodal/vision
  * POST: Analyze an image using the vision engine
+ * SECURITE: withAuth() + quota (vision = LLM coûteux en tokens)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
 import { createVisionEngine } from '@/lib/multimodal/vision-engine';
+import { withAuth } from '@/lib/with-auth';
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
-
-export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, {
-    requireAuth: true,
-    rateLimit: { limit: 20, windowMs: 60000 },
-  });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
   try {
     const contentType = request.headers.get('content-type') || '';
     let imageData: Buffer | string;
@@ -30,8 +19,7 @@ export async function POST(request: NextRequest) {
       const imageFile = formData.get('image') as File | null;
 
       if (!imageFile) {
-        const res = NextResponse.json({ error: 'No image file provided' }, { status: 400 });
-        return secureResponse(res, request);
+        return NextResponse.json({ error: 'No image file provided' }, { status: 400 });
       }
 
       const arrayBuffer = await imageFile.arrayBuffer();
@@ -48,8 +36,7 @@ export async function POST(request: NextRequest) {
       const { image, ...opts } = body;
 
       if (!image) {
-        const res = NextResponse.json({ error: 'Image data is required (base64 or file upload)' }, { status: 400 });
-        return secureResponse(res, request);
+        return NextResponse.json({ error: 'Image data is required (base64 or file upload)' }, { status: 400 });
       }
 
       imageData = image;
@@ -59,11 +46,14 @@ export async function POST(request: NextRequest) {
     const engine = createVisionEngine(auth.userId);
     const result = await engine.analyzeImage(imageData, options);
 
-    const res = NextResponse.json({ result });
-    return secureResponse(res, request);
+    return NextResponse.json({ result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Vision analysis failed';
-    const res = NextResponse.json({ error: message }, { status: 500 });
-    return secureResponse(res, request);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 10, windowMs: 60000 }, // 10 analyses visuelles/min max (coûteux)
+  quota: true, // L'analyse d'image consomme beaucoup de tokens LLM
+});
