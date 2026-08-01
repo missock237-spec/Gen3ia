@@ -2,20 +2,20 @@
 // Gen3ia — Middleware de sécurité (deny-by-default)
 //
 // Règle : TOUTE route /api/* est protegee SAUF celles
-// explicitement listees comme publiques (route par route, pas par prefixe).
+// explicitement listees comme publiques (route par route).
 //
-// SECURITE : ce middleware NE S'APPUIE QUE sur le token NextAuth (getToken)
-// comme source de verite. Les headers x-api-key / authorization ne sont PAS
-// suffisants pour passer (ils doivent etre valides par la couche 2 withAuth).
-// Pas de court-circuit du controle de role admin.
+// SECURITE :
+// - Layer 1 (ce middleware) : exige UNE forme d'auth (token NextAuth OU
+//   presence x-api-key/bearer qui seront VALIDES en couche 2 withAuth).
+// - Les routes ADMIN exigent TOUJOURS le role 'admin' du token NextAuth
+//   (jamais court-circuite par une api key non validee).
 // ============================================================
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
-// Routes publiques LISTEES ROUTE PAR ROUTE (pas de prefixe large qui rendrait
-// /api/auth/2fa/setup, /api/auth/password/modify, etc. accessibles).
+// Routes publiques LISTEES ROUTE PAR ROUTE.
 const PUBLIC_PATHS = [
   '/api/auth/session',
   '/api/auth/csrf',
@@ -37,7 +37,7 @@ const PUBLIC_PATHS = [
   '/api/docs/openapi.json',
 ];
 
-// Routes necessitant un role ADMIN (1ere couche).
+// Routes ADMIN : exigent TOUJOURS le role 'admin' du token NextAuth.
 const ADMIN_ROUTES = [
   '/api/admin/',
   '/api/terminal/execute',
@@ -48,8 +48,7 @@ const ADMIN_ROUTES = [
   '/api/system/',
 ];
 
-// Routes sensibles qui consomment des ressources LLM / coutent de l'argent
-// => exigent un token valide ET seront verifiees par withAuth (couche 2).
+// Routes sensibles (LLM couteux) : verifiees par withAuth (couche 2).
 const SENSITIVE_RESOURCE_ROUTES = [
   '/api/ai-server/',
   '/api/ai/',
@@ -66,11 +65,6 @@ const SENSITIVE_RESOURCE_ROUTES = [
   '/api/browser/',
 ];
 
-/**
- * Politique CSP. Note : 'unsafe-inline' est requis pour certains bundles Next 14,
- * mais 'unsafe-eval' est retire en production (voir commentaire ci-dessous).
- * Pour une securite maximal, migrer vers les nonces Next.
- */
 const CSP_HEADER = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
@@ -83,16 +77,13 @@ const CSP_HEADER = [
   "form-action 'self'",
 ].join('; ');
 
-// Verifie si le pathname correspond exactement ou est un prefixe de route (sous-chemin)
 function matchesRoute(pathname: string, route: string): boolean {
-  // Exact match ou prefixe avec '/' (sous-chemin), mais pas 'profile' qui matche 'profilex'
   return pathname === route || pathname.startsWith(route.endsWith('/') ? route : route + '/');
 }
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // En-tetes de securite
   const response = NextResponse.next();
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
@@ -110,33 +101,35 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // 2. Routes non-API : pas de controle d'auth au niveau middleware
+  // 2. Routes non-API
   if (!pathname.startsWith('/api/')) {
     return response;
   }
 
-  // 3. Routes publiques (liste stricte, route par route)
+  // 3. Routes publiques (liste stricte)
   if (PUBLIC_PATHS.some((p) => matchesRoute(pathname, p))) {
     return response;
   }
 
-  // 4. DENY-BY-DEFAULT — SEUL le token NextAuth fait foi (source de verite unique).
+  // 4. DENY-BY-DEFAULT : une auth est requise.
   const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+  const apiKey = request.headers.get('x-api-key');
+  const hasBearer = request.headers.get('authorization')?.startsWith('Bearer ');
 
-  // Un token NextAuth valide est REQUIS pour passer la couche 1.
-  // Les API keys / Bearer ne suffisent PAS ici : elles SONT VERIFIEES dans la couche 2 (withAuth).
-  if (!token) {
+  if (!token && !apiKey && !hasBearer) {
     return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
   }
 
-  // 5. Routes admin — CONTROLE DE ROLE OBLIGATOIRE, jamais court-circuite.
+  // 5. Routes ADMIN : le role vient UNIQUEMENT du token NextAuth.
+  //    Une api key ou bearer LUI SEUL ne permet JAMAIS d'acceder aux routes admin.
   if (ADMIN_ROUTES.some((p) => pathname.startsWith(p))) {
-    // Le role vient UNIQUEMENT du token NextAuth. Refuser si role != admin.
-    if (token.role !== 'admin') {
+    // Il faut un token NextAuth avec role admin.
+    if (!token || token.role !== 'admin') {
       return NextResponse.json({ error: 'Acces reserve aux administrateurs' }, { status: 403 });
     }
   }
 
+  // 6. Sinon : on laisse passer pour la couche 2 (withAuth ne validera les api keys/bearer).
   return response;
 }
 
