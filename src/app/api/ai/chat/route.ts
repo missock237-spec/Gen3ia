@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAIRouter } from '@/lib/ai-router';
 import { createLogger } from '@/lib/logger';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
 const log = createLogger('ai-chat');
 
@@ -14,7 +14,7 @@ const MAX_HISTORY_LENGTH = 50;
 const MAX_MESSAGE_LENGTH = 5000;
 const MAX_TOTAL_HISTORY_SIZE = 20000;
 
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
     const { message, history } = body;
