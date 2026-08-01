@@ -11,7 +11,17 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       reportsDirectory: './coverage',
       exclude: ['node_modules/', 'src/__tests__/', 'src/i18n/', '**/*.config.*', '**/*.d.ts'],
-      thresholds: { statements: 35, branches: 25, functions: 30, lines: 35 },
+      // Seuils de couverture — cliquet à la hausse : augmenter à chaque sprint.
+      // Cibles prioritaires : débit de crédits, quotas LLM, auth/2FA, webhooks, state-graph.
+      thresholds: {
+        statements: 40,
+        branches: 30,
+        functions: 35,
+        lines: 40,
+      },
+      // Interdire toute regression de couverture per-fichier sur les zones critiques
+      // (crédits, quotas, sécurité). Ajoutez ici les fichiers vitaux.
+      thresholdAutoUpdate: true,
     },
     setupFiles: ['./src/__tests__/setup.ts'],
     testTimeout: 30000,
