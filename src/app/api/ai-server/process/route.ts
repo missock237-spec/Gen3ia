@@ -1,18 +1,14 @@
 /**
  * POST /api/ai-server/process — Full integration pipeline
- *
- * Accepts an open-source project's files and runs the complete pipeline:
- * Analyze → Generate → Register → Verify → Activate
- *
  * SECURITE: withAuth() + quota (opération LLM lourde)
  * Note: userId provient du token authentifié, jamais du body (prévient l'IDOR)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { processProject, type CodeFile } from '@/lib/ai-integration-server';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
 
@@ -43,7 +39,6 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promis
       );
     }
 
-    // Validate total file size
     const totalSize = files.reduce((sum: number, f: { content: string }) => sum + f.content.length, 0);
     if (totalSize > 10 * 1024 * 1024) {
       return NextResponse.json(
@@ -65,7 +60,7 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promis
       language: f.language || 'unknown',
     }));
 
-    // userId authentifié (token) — NE PAS utiliser body.userId
+    // userId authentifie (token) — NE PAS utiliser body.userId
     const result = await processProject({
       files: codeFiles,
       projectName,
@@ -130,6 +125,6 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promis
 }, {
   requireAuth: true,
   roles: ['user'],
-  rateLimit: { limit: 5, windowMs: 60000 }, // 5 pipelines/min max (très coûteux)
-  quota: true, // Le pipeline complet consomme beaucoup de tokens LLM
+  rateLimit: { limit: 5, windowMs: 60000 },
+  quota: true,
 });
