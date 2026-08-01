@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAgentEngine } from '@/lib/agent-engine';
 import { validateBody, ragQuerySchema } from '@/lib/validation';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-// POST /api/rag/query — Recherche vectorielle RAG (coûteuse en embeddings)
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
     const validation = validateBody(ragQuerySchema, body);
@@ -28,5 +27,5 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promis
   requireAuth: true,
   roles: ['user'],
   rateLimit: { limit: 20, windowMs: 60000 },
-  quota: true, // Le RAG consomme des embeddings LLM + requêtes vectorielles coûteuses
+  quota: true,
 });
