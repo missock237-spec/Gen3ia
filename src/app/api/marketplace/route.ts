@@ -1,24 +1,28 @@
 // API Marketplace - Listings enrichis avec badges et trust
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { applySecurity } from '@/lib/security';
+import { createLogger } from '@/lib/logger';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 const log = createLogger('marketplace');
 
 const VALID_TYPES = ['agent', 'tool', 'workflow', 'template', 'prompt', 'integration'];
 
+type MarketplaceSort = 'newest' | 'popular' | 'rating' | 'trust';
+
+// GET /api/marketplace — Listing public (lecture)
 export async function GET(request: NextRequest) {
   try {
     const type = request.nextUrl.searchParams.get('type');
     const search = request.nextUrl.searchParams.get('search');
     const page = Math.max(1, parseInt(request.nextUrl.searchParams.get('page') || '1'));
     const limit = Math.min(50, Math.max(1, parseInt(request.nextUrl.searchParams.get('limit') || '20')));
-    const sort = request.nextUrl.searchParams.get('sort') || 'newest'; // newest | popular | rating | trust
+    const sort = (request.nextUrl.searchParams.get('sort') || 'newest') as MarketplaceSort;
 
     const where: Record<string, unknown> = { status: 'published', isActive: true };
     if (type && VALID_TYPES.includes(type)) where.type = type;
     if (search) where.name = { contains: search, mode: 'insensitive' };
 
-    let orderBy: any = { createdAt: 'desc' };
+    let orderBy: Record<string, 'asc' | 'desc'> = { createdAt: 'desc' };
     if (sort === 'popular') orderBy = { reviewCount: 'desc' };
     else if (sort === 'rating') orderBy = { rating: 'desc' };
     else if (sort === 'trust') orderBy = { trustScore: 'desc' };
@@ -37,7 +41,6 @@ export async function GET(request: NextRequest) {
       db.marketplaceListing.count({ where }),
     ]);
 
-    // Parse badges for each listing
     const enriched = listings.map(l => ({
       ...l,
       badges: JSON.parse(l.badges || '[]'),
@@ -54,9 +57,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+// POST /api/marketplace — Creation de listing (auth requise)
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
     const { name, description, type, price, agentId, config } = body;
@@ -79,7 +81,7 @@ export async function POST(request: NextRequest) {
         type: listingType, price: priceNum,
         userId: auth.userId, agentId: agentId || null,
         config: config ? JSON.stringify(config) : '{}',
-        status: 'published', // Auto-published for now
+        status: 'published',
       },
     });
 
@@ -89,4 +91,8 @@ export async function POST(request: NextRequest) {
     log.error('marketplace_create_error', { error: String(error) });
     return NextResponse.json({ error: 'Erreur de creation' }, { status: 500 });
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 10, windowMs: 60000 },
+});
