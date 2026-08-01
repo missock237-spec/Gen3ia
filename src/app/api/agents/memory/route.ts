@@ -7,10 +7,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
-import { storeMemory, retrieveMemories, learnFromInteraction, getAgentMemoryStats, pruneOldMemories } from '@/lib/agent-memory';
+import {
+  storeMemory, retrieveMemories, learnFromInteraction, getAgentMemoryStats, pruneOldMemories,
+  type MemoryCategory,
+} from '@/lib/agent-memory';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('api-memory');
+
+// Catégories acceptées par l'API (strictement bornées, jamais de chaîne arbitraire)
+const MEMORY_CATEGORIES: readonly MemoryCategory[] = ['preference', 'episodic', 'procedural', 'semantic', 'general'];
+
+function parseMemoryCategory(value: string | null): MemoryCategory | undefined {
+  return MEMORY_CATEGORIES.includes(value as MemoryCategory) ? (value as MemoryCategory) : undefined;
+}
 
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
@@ -20,7 +30,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const agentId = searchParams.get('agentId');
     const query = searchParams.get('query') || '';
-    const category = searchParams.get('category') || undefined;
+    const category = parseMemoryCategory(searchParams.get('category'));
     const limit = parseInt(searchParams.get('limit') || '10');
     const stats = searchParams.get('stats') === 'true';
 
@@ -34,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (query) {
-      const memories = await retrieveMemories(agentId, auth.userId, query, { category: category as any, limit });
+      const memories = await retrieveMemories(agentId, auth.userId, query, { category, limit });
       return NextResponse.json({ success: true, memories, count: memories.length });
     }
 
@@ -65,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     const memory = await storeMemory(agentId, auth.userId, content, {
-      category: category || 'episodic',
+      category: parseMemoryCategory(category) ?? 'episodic',
       source: source || 'interaction',
       relevance: relevance || 0.7,
       tags: tags || [],
