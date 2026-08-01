@@ -6,9 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createVisionEngine } from '@/lib/multimodal/vision-engine';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const contentType = request.headers.get('content-type') || '';
     let imageData: Buffer | string;
@@ -54,6 +54,6 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promis
 }, {
   requireAuth: true,
   roles: ['user'],
-  rateLimit: { limit: 10, windowMs: 60000 }, // 10 analyses visuelles/min max (coûteux)
-  quota: true, // L'analyse d'image consomme beaucoup de tokens LLM
+  rateLimit: { limit: 10, windowMs: 60000 },
+  quota: true,
 });
