@@ -1,5 +1,6 @@
 // ============================================================
 // Workflows API - CRUD + Versioning initial
+// SECURITE: applySecurity + ownership + rate limit Redis distribué
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -7,12 +8,16 @@ import { applySecurity } from '@/lib/security';
 import { workflowEngine, WorkflowCanvas } from '@/lib/workflow-engine';
 import { workflowVersioning } from '@/lib/workflow-versioning';
 import { createLogger } from '@/lib/logger';
+import { rateLimit } from '@/lib/rate-limiter';
 
 const log = createLogger('api-workflows');
 
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
 
   try {
     const workflows = await prisma.workflow.findMany({
@@ -32,6 +37,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
 
   try {
     const body = await request.json();
@@ -88,12 +96,16 @@ export async function PUT(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
+
   try {
     const body = await request.json();
     const { id, name, description, steps, trigger, status } = body;
 
     if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
 
+    // Ownership check : le workflow doit appartenir à l'utilisateur
     const workflow = await prisma.workflow.findFirst({ where: { id, userId: auth.userId } });
     if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
 
@@ -123,11 +135,15 @@ export async function DELETE(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
 
+    // Ownership check
     const workflow = await prisma.workflow.findFirst({ where: { id, userId: auth.userId } });
     if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
 
