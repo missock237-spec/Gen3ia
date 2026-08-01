@@ -7,18 +7,34 @@ async function checkDatabase(): Promise<boolean> {
   try { await db.$queryRaw`SELECT 1`; return true; } catch { return false; }
 }
 
-async function getDetailedReport() {
-  const components: Record<string, any> = {};
+interface HealthComponent {
+  status: string;
+  heapUsed?: string;
+  heapTotal?: string;
+  uptime?: string;
+  node?: string;
+  env?: string;
+  [key: string]: unknown;
+}
+
+async function getDetailedReport(): Promise<Record<string, HealthComponent>> {
+  const components: Record<string, HealthComponent> = {};
   const dbOk = await checkDatabase();
   components.database = { status: dbOk ? 'healthy' : 'unhealthy' };
   const mem = process.memoryUsage();
-  components.memory = { heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`, heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB` };
-  components.uptime = `${Math.floor(process.uptime())}s`;
-  components.node = process.version;
-  components.env = process.env.NODE_ENV;
-  const providers = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'HUGGINGFACE_TOKEN', 'STRIPE_SECRET_KEY', 'REDIS_URL'];
+  components.memory = { status: 'ok', heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`, heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB` };
+  components.uptime = { status: 'ok', uptime: `${Math.floor(process.uptime())}s` };
+  components.node = { status: 'ok', node: process.version };
+  components.env = { status: 'ok', env: process.env.NODE_ENV };
+  const providers: Array<{ key: string; label: string }> = [
+    { key: 'OPENAI_API_KEY', label: 'openai' },
+    { key: 'ANTHROPIC_API_KEY', label: 'anthropic' },
+    { key: 'HUGGINGFACE_TOKEN', label: 'huggingface' },
+    { key: 'STRIPE_SECRET_KEY', label: 'stripe' },
+    { key: 'REDIS_URL', label: 'redis' },
+  ];
   for (const p of providers) {
-    components[p.toLowerCase()] = process.env[p] ? 'configured' : 'not_configured';
+    components[p.label] = { status: process.env[p.key] ? 'configured' : 'not_configured' };
   }
   return components;
 }
