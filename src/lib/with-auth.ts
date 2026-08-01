@@ -8,7 +8,8 @@
 // - Quota LLM : vérifie le plan + le quota utilisateur
 //
 // Usage :
-//   export const POST = withAuth(async (req, { auth, context }) => {
+//   export const POST = withAuth(async (req, ctx, auth) => {
+//     const params = await ctx.params;       // Next 14 (objet) et 15 (Promise)
 //     // ... votre handler
 //   }, { roles: ['user'], rateLimit: { limit: 20, windowMs: 60000 } });
 //
@@ -21,11 +22,31 @@ import { rateLimit } from '@/lib/rate-limiter';
 import { checkTokenLimit, getPlanLimits } from '@/lib/usage-limits';
 import { db } from '@/lib/db';
 
-/** Type des params Next.js (remplace `Promise<any>`) */
-export type RouteParams = Promise<Record<string, string | string[]>>;
+/**
+ * Type des params de route Next.js.
+ *
+ * - Next 14 : le handler reçoit `params` sous forme d'objet résolu `{ id: string }`.
+ * - Next 15 : `params` devient une `Promise`.
+ *
+ * On type `params` comme une promesse résolvable et le wrapper normalise les
+ * deux formes afin que les routes migrées lisent `await ctx.params` sans casser
+ * la compilation sur l'une ou l'autre version. Rendue générique pour rester
+ * assignable à l'interface de route attendue par Next (`Promise<{id: string}>`).
+ */
+export type RouteParams<T extends Record<string, unknown> = Record<string, string | string[]>>
+  = Promise<T>;
 
-export interface AuthContext extends SecurityContext {
+/**
+ * Contexte de route normalisé injecté au handler.
+ * `params` reste OPTIONNEL pour rester rétro-compatible avec les routes
+ * déclarant `ctx: { params?: RouteParams }`. Après normalisation il est
+ * toujours fourni (au pire un objet vide) par le wrapper.
+ */
+export interface RouteContext<P extends Record<string, unknown> = Record<string, string | string[]>> {
+  params?: RouteParams<P>;
 }
+
+export interface AuthContext extends SecurityContext {}
 
 export interface WithAuthOptions {
   requireAuth?: boolean;
@@ -38,14 +59,22 @@ export interface WithAuthOptions {
   scopes?: string[];
 }
 
-type HandlerWithAuth<Ctx extends { params?: RouteParams }> = (request: NextRequest, ctx: Ctx, auth: SecurityContext) => Promise<NextResponse | Response>;
+/** Contexte brut transmis par Next (objet Next 14) ou Promise (Next 15). */
+type NextRawContext = {
+  params?: Record<string, unknown> | Promise<Record<string, unknown>>;
+  query?: Record<string, string | string[]>;
+};
+
+type HandlerWithAuth<P extends Record<string, unknown> = Record<string, string | string[]>> =
+  (request: NextRequest, ctx: RouteContext<P>, auth: SecurityContext)
+    => Promise<NextResponse | Response>;
 
 /**
  * Wrapper de sécurité réutilisable pour toutes les routes API.
  * Combine auth + RBAC + rate limit + quota.
  */
-export function withAuth<Ctx extends { params?: RouteParams }>(
-  handler: HandlerWithAuth<Ctx>,
+export function withAuth<P extends Record<string, unknown> = Record<string, string | string[]>>(
+  handler: HandlerWithAuth<P>,
   options: WithAuthOptions = {}
 ) {
   const {
@@ -55,7 +84,13 @@ export function withAuth<Ctx extends { params?: RouteParams }>(
     quota = false,
   } = options;
 
-  return async function wrappedHandler(request: NextRequest, context: Ctx): Promise<NextResponse | Response> {
+  // Signature souple (type local, non-générique public) acceptant les deux
+  // formats de Next, ce qui évite toute erreur d'assignabilité TS17805/TS2345
+  // sur les exports `GET` / `POST` / `PUT` / `DELETE`.
+  return async function wrappedHandler(
+    request: NextRequest,
+    rawContext?: NextRawContext
+  ): Promise<NextResponse | Response> {
     // 1. Authentification + RBAC
     const { auth, error } = await applySecurity(request, { requireAuth, roles });
     if (error) return error;
@@ -98,7 +133,16 @@ export function withAuth<Ctx extends { params?: RouteParams }>(
 
     // 4. Exécuter le handler avec le contexte d'auth
     if (!auth) return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
-    return handler(request, context, auth);
+
+    // Normalise `params` (objet Next 14 OU Promise Next 15) en une RouteParams.
+    // Toujours fourni (au pire vide) pour préserver le contrat `await ctx.params`.
+    const params: RouteParams<P> = Promise.resolve({
+      ...(rawContext?.params
+        ? (rawContext.params instanceof Promise ? await rawContext.params : rawContext.params)
+        : {}),
+    });
+
+    return handler(request, { params }, auth);
   };
 }
 
@@ -106,12 +150,12 @@ export type { SecurityContext };
 export { db } from '@/lib/db';
 
 // Alias pour réduire le boilerplate sur les routes simples
-export const requireAuth = <Ctx extends { params?: RouteParams }>(
-  handler: HandlerWithAuth<Ctx>,
+export const requireAuth = <P extends Record<string, unknown> = Record<string, string | string[]>>(
+  handler: HandlerWithAuth<P>,
   opts: Omit<WithAuthOptions, 'requireAuth'> = {}
 ) => withAuth(handler, { ...opts, requireAuth: true });
 
-export const optionalAuth = <Ctx extends { params?: RouteParams }>(
-  handler: HandlerWithAuth<Ctx>,
+export const optionalAuth = <P extends Record<string, unknown> = Record<string, string | string[]>>(
+  handler: HandlerWithAuth<P>,
   opts: Omit<WithAuthOptions, 'requireAuth'> = {}
 ) => withAuth(handler, { ...opts, requireAuth: false });
