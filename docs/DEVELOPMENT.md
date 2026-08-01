@@ -10,19 +10,16 @@ Bienvenue ! Ce guide est la **référence unique** pour développer sur Gen3ia.
 ## Installation
 
 ```bash
-# 1. Cloner
-npm i -g git  # déjà présent en général
 git clone https://github.com/missock237-spec/Gen3ia.git
 cd Gen3ia
 
-# 2. Variables d'environnement
-# Copiez .env.example vers .env.local et remplissez vos valeurs
+# Variables d'environnement
 cp .env.example .env.local
 
-# 3. Installer les dépendances (régénère package-lock.json)
+# Installer (régénère package-lock.json)
 npm install
 
-# 4. Générer le client Prisma
+# Générer le client Prisma
 npm run db:generate
 ```
 
@@ -30,49 +27,57 @@ npm run db:generate
 
 | Commande | Rôle |
 |---|---|
-| `npm run dev` | Serveur de dev sur http://localhost:3000 |
-| `npm run build` | Build de production |
-| `npm run start` | Lancer le build de production |
-| `npm run lint` | ESLint (flat config `eslint.config.mjs`) |
-| `npm run typecheck` | TypeScript noEmit |
-| `npm test` | Tests Vitest |
-| `npm run test:coverage` | Tests avec couverture |
+| `npm run dev` | Serveur de dev (`turbo run dev`) |
+| `npm run build` | **`next build && turbo run build`** (app racine + packages) |
+| `npm run build:packages` | Seulement `turbo run build` (packages) |
+| `npm start` | Lancer le build de prod |
+| `npm run lint` | ESLint via turbo |
+| `npm run typecheck` | TypeScript via turbo |
+| `npm test` | Tests Vitest via turbo |
 | `npm run db:push` | Appliquer le schéma Prisma |
 | `npm run db:seed` | Seed la base de données |
-| `npm run db:studio` | Prisma Studio (GUI DB) |
 
 ## Package manager — IMPORTANT
 
 Ce projet utilise **npm** (`packageManager: npm@10.8.0`).
-- **N'utilisez PAS** `bun` ou `pnpm` — ils ne sont pas configurés.
-- Après toute modification de `package.json`, faites `npm install` pour régénérer `package-lock.json`.
-- Le `package-lock.json` doit être commité (source de vérité des versions).
+- **N'utilisez PAS** `bun` ou `pnpm`.
+- Après modification de `package.json`, faites `npm install` pour régénérer `package-lock.json`.
+- Le `package-lock.json` doit être commité (source des versions).
 
-## Structure
+## Structure et monorepo
 
 ```
 Gen3ia/
-├── src/                  # Code Next.js (App Router)
+├── src/                  # App Next.js (racine — migration vers apps/web en cours)
 │   ├── app/              # Pages + routes API
 │   ├── components/       # Composants UI
-│   ├── lib/              # Logique métier, helpers
-│   ├── middleware.ts     # Sécurité (deny-by-default)
-├── apps/web/             # Workspace web (Next.js)
-├── packages/             # Workspaces (agent-engine, core, etc.)
-├── prisma/               # Schéma DB
-├── .github/workflows/    # CI/CD (UNIQUE endroit pour les workflows)
+│   ├── lib/              # Logique métier (à migrer vers packages/core)
+├── apps/web/             # Workspace de tests e2e (Playwright)
+│   └── src/__tests__/
+├── packages/core/        # Logique métier partagée (cible)
+│   └── src/
+│       ├── db.ts
+│       ├── logger.ts
+│       ├── env-validator.ts
+│       ├── repositories/
+│       ├── services/     # agent, credit, user services
+│       └── validation.ts
+├── prisma/               # Schéma DB + migrations
+└── .github/workflows/    # CI/CD (UNIQUE endroit pour les workflows)
 ```
+
+> ⚠️ Le monorepo est en migration. Voir **`docs/MONOREPO_MIGRATION.md`** pour le plan.
+> L'app Next vit encore à la racine `src/`; `apps/web` sert de workspace de tests e2e.
 
 ## Sécurité des routes API
 
-Toute nouvelle route API `/api/*` doit utiliser le wrapper `withAuth()` de `src/lib/with-auth.ts` :
+Toute nouvelle route API `/api/*` doit utiliser `withAuth()` de `src/lib/with-auth.ts` :
 
 ```typescript
 import { withAuth } from '@/lib/with-auth';
 
 export const POST = withAuth(async (req, ctx, auth) => {
   // auth.userId est l'utilisateur authentifié (jamais pris du body client)
-  // Ne jamais faire confiance à un userId venu du body !
   return NextResponse.json({ ok: true });
 }, {
   requireAuth: true,
