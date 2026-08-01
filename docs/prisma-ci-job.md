@@ -1,7 +1,22 @@
 # 🔍 CI — Vérification des migrations Prisma
 
 Le job suivant doit être ajouté en haut de `.github/workflows/ci.yml`
-(⚠️ le plugin GitHub du chat ne peut pas écrire directement dans `.github/`).
+(⚠️ le plugin GitHub du chat ne peut pas écrire directement dans `.github/`,
+la modification du workflow se fait **manuellement en local**).
+
+## ⚠️ Prérequis — régénérer le lockfile
+
+`npm ci` échoue tant que `package-lock.json` est vide (`packages: {}`).
+**Avant toute exécution CI** :
+
+```bash
+npm install --no-audit --no-fund   # régénère package-lock.json
+npx prisma generate
+git add package-lock.json && git commit -m "chore: lock" && git push
+```
+
+Tant que le lock n'est pas commité, utilisez `npm install` dans le workflow
+à la place de `npm ci` (voir `docs/fix-npm-install.md`).
 
 Collez ce bloc dans `jobs:` du fichier `.github/workflows/ci.yml` :
 
@@ -19,7 +34,7 @@ Collez ce bloc dans `jobs:` du fichier `.github/workflows/ci.yml` :
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
-      - run: npm ci
+      - run: npm install --no-audit --no-fund   # régénère le lock/installe
       - run: npx prisma generate
         env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
       - name: Prisma migrate diff (échoue si schéma ≠ migrations)
