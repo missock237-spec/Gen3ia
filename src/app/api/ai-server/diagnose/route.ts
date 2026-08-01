@@ -1,23 +1,17 @@
 /**
  * GET/POST /api/ai-server/diagnose — Run full SaaS diagnostics
- *
  * SECURITE: Diagnostiques internes = réservés aux ADMIN uniquement.
- * Exposent des infos sensibles (config, health, internals).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { runDiagnostics } from '@/lib/ai-integration-server/saas-doctor';
-import { withAuth } from '@/lib/with-auth';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
 // GET — Diagnostics complets (admin only)
-export const GET = withAuth(async () => {
+export const GET = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const report = await runDiagnostics();
-
-    return NextResponse.json({
-      success: true,
-      data: report,
-    });
+    return NextResponse.json({ success: true, data: report });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Diagnostics failed' },
@@ -31,14 +25,13 @@ export const GET = withAuth(async () => {
 });
 
 // POST — Diagnostics avec options (admin only)
-export const POST = withAuth(async (request: NextRequest) => {
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json().catch(() => ({}));
     const { category } = body as { category?: string };
 
     const report = await runDiagnostics();
 
-    // Filter by category if specified
     if (category) {
       const filteredChecks = report.checks.filter(c => c.category === category);
       return NextResponse.json({
@@ -56,10 +49,7 @@ export const POST = withAuth(async (request: NextRequest) => {
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: report,
-    });
+    return NextResponse.json({ success: true, data: report });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Diagnostics failed' },
