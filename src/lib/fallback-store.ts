@@ -230,14 +230,14 @@ class FallbackStore {
 
 /** Levée quand une opération ne peut pas être servie en dégradé. */
 export class DegradationError extends Error {
-  readonly code = 'DEGRADATION' as const;
-  readonly status = 503;
+  readonly code: string = 'DEGRADATION';
+  readonly status: number = 503;
 }
 
 /** Levée quand la queue (Redis back-end) est pleine -> HTTP 429. */
 export class QueueCapacityError extends DegradationError {
-  readonly code = 'QUEUE_FULL' as const;
-  readonly status = 429;
+  override readonly code: string = 'QUEUE_FULL';
+  override readonly status: number = 429;
   readonly active: number;
   readonly limit: number;
 
@@ -251,7 +251,7 @@ export class QueueCapacityError extends DegradationError {
 
 /** Levée quand la queue est indisponible (Redis down) -> HTTP 503. */
 export class QueueUnavailableError extends DegradationError {
-  readonly code = 'QUEUE_UNAVAILABLE' as const;
+  override readonly status: number = 503;
   constructor() {
     super('Service de file d\'attente temporairement indisponible.');
     this.name = 'QueueUnavailableError';
