@@ -231,6 +231,106 @@ class Logger {
     await loki.sendSync(entry);
   }
 
+  /**
+   * Log API request with performance metrics
+   */
+  logRequest(
+    method: string,
+    endpoint: string,
+    status: number,
+    duration: number,
+    userId?: string,
+    error?: Error,
+  ): void {
+    const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
+    this.log(level, `${method} ${endpoint} ${status}`, {
+      method,
+      endpoint,
+      status,
+      duration,
+      userId,
+      ...(error && { error: error.message, stack: error.stack }),
+    });
+  }
+
+  /**
+   * Log security event (for audit trail)
+   */
+  logSecurityEvent(
+    event: string,
+    severity: 'low' | 'medium' | 'high' | 'critical',
+    userId?: string,
+    context?: Record<string, unknown>,
+  ): void {
+    const level = severity === 'critical' ? 'error' : severity === 'high' ? 'warn' : 'info';
+    this.log(level, `[SECURITY] ${event}`, {
+      severity,
+      userId,
+      eventType: 'security',
+      ...context,
+    });
+  }
+
+  /**
+   * Log business event (for audit trail)
+   */
+  logBusinessEvent(
+    action: string,
+    actor: string,
+    resource: string,
+    details?: Record<string, unknown>,
+  ): void {
+    this.log('info', `[AUDIT] ${action}`, {
+      action,
+      actor,
+      resource,
+      eventType: 'audit',
+      ...details,
+    });
+  }
+
+  /**
+   * Log database operation
+   */
+  logDatabaseOp(
+    operation: string,
+    table: string,
+    duration: number,
+    rowsAffected?: number,
+    error?: Error,
+  ): void {
+    const level = error ? 'error' : duration > 1000 ? 'warn' : 'debug';
+    this.log(level, `DB ${operation} on ${table} [${duration}ms]`, {
+      operation,
+      table,
+      duration,
+      rowsAffected,
+      ...(error && { error: error.message }),
+    });
+  }
+
+  /**
+   * Log external API call
+   */
+  logExternalCall(
+    service: string,
+    endpoint: string,
+    method: string,
+    status: number,
+    duration: number,
+    error?: Error,
+  ): void {
+    const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'debug';
+    this.log(level, `External: ${service} ${method} ${endpoint} [${status}]`, {
+      service,
+      endpoint,
+      method,
+      status,
+      duration,
+      ...(error && { error: error.message }),
+    });
+  }
+
   child(service: string): Logger {
     return new Logger(service);
   }
