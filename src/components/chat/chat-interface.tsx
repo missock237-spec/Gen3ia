@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ConversationAd } from '@/components/advertising/conversation-ad';
+import { PostPromptAdBar } from '@/components/advertising/post-prompt-ad-bar';
+import { getAdEngine } from '@/lib/advertising/ad-engine';
 
 // ============================================================
 // Types
@@ -16,6 +18,17 @@ interface Message {
     model?: string;
     tokens?: number;
     durationMs?: number;
+  };
+  promptAd?: {
+    campaignId: string;
+    impressionId: string;
+    advertiserName: string;
+    imageUrl: string;
+    textContent: string;
+    ctaText: string;
+    ctaUrl: string;
+    rewardPerClick: number;
+    rewardPerView: number;
   };
 }
 
@@ -55,11 +68,13 @@ export function ChatInterface({
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastAdMessageIndex, setLastAdMessageIndex] = useState(-1);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const showAds = plan === 'free';
+  const adEngine = getAdEngine();
 
   // Auto-scroll vers le bas
   const scrollToBottom = useCallback(() => {
@@ -85,6 +100,34 @@ export function ChatInterface({
       .filter(word => word.length > 3 && !stopWords.has(word))
       .slice(0, 5);
   }, []);
+
+  // Charger une publicité après une réponse de l'assistant
+  const loadPromptAd = useCallback(async (assistantMessage: Message) => {
+    // Ne charger une pub que si l'utilisateur a un plan qui justifie
+    const shouldShowAd = await adEngine.shouldShowPromptAd(userId, plan);
+    if (!shouldShowAd) return null;
+
+    const keywords = extractKeywords(assistantMessage.content);
+    const adResult = await adEngine.getPromptAd(userId, plan as any, sessionId, {
+      keywords,
+      topic: agent.name,
+    });
+
+    if (adResult?.campaign) {
+      return {
+        campaignId: adResult.campaign.id,
+        impressionId: adResult.impressionId || '',
+        advertiserName: adResult.campaign.advertiserName,
+        imageUrl: adResult.campaign.imageUrl,
+        textContent: adResult.campaign.textContent,
+        ctaText: adResult.campaign.ctaText,
+        ctaUrl: adResult.campaign.ctaUrl,
+        rewardPerClick: adResult.campaign.rewardPerClick,
+        rewardPerView: adResult.campaign.rewardPerView,
+      };
+    }
+    return null;
+  }, [userId, plan, sessionId, agent.name, adEngine, extractKeywords]);
 
   // Envoyer un message
   const sendMessage = useCallback(async () => {
@@ -184,8 +227,31 @@ export function ChatInterface({
       setIsStreaming(false);
       abortRef.current = null;
       inputRef.current?.focus();
+
+      // Charger une pub après la réponse (sauf pour les conversation ads)
+      setMessages(prevMessages => {
+        const lastMsg = prevMessages[prevMessages.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content) {
+          // Charger l'ad de manière asynchrone
+          (async () => {
+            const promptAd = await loadPromptAd(lastMsg);
+            if (promptAd) {
+              setMessages(msgs => {
+                const updated = [...msgs];
+                const msgIndex = updated.findIndex(m => m.id === lastMsg.id);
+                if (msgIndex >= 0) {
+                  updated[msgIndex] = { ...updated[msgIndex], promptAd };
+                }
+                return updated;
+              });
+              setLastAdMessageIndex(prevMessages.length - 1);
+            }
+          })();
+        }
+        return prevMessages;
+      });
     }
-  }, [input, isStreaming, agent.id, conversationId, sessionId]);
+  }, [input, isStreaming, agent.id, conversationId, sessionId, loadPromptAd]);
 
   // Annuler le stream
   const cancelStream = useCallback(() => {
@@ -320,6 +386,42 @@ export function ChatInterface({
                 )}
               </div>
             </div>
+
+            {/* Post-Prompt Ad Bar (après chaque réponse assistant) */}
+            {msg.promptAd && msg.role === 'assistant' && (
+              <div style={{ marginTop: '8px', marginBottom: '12px' }}>
+                <PostPromptAdBar
+                  campaign={{
+                    id: msg.promptAd.campaignId,
+                    name: msg.promptAd.advertiserName,
+                    imageUrl: msg.promptAd.imageUrl,
+                    textContent: msg.promptAd.textContent,
+                    ctaText: msg.promptAd.ctaText,
+                    ctaUrl: msg.promptAd.ctaUrl,
+                    advertiserName: msg.promptAd.advertiserName,
+                    rewardPerClick: msg.promptAd.rewardPerClick,
+                    rewardPerView: msg.promptAd.rewardPerView,
+                  }}
+                  userId={userId}
+                  userPlan={plan as any}
+                  sessionId={sessionId}
+                  impressionId={msg.promptAd.impressionId}
+                  onDismiss={() => {
+                    // Retirer l'ad du message
+                    setMessages(msgs => {
+                      const updated = [...msgs];
+                      const msgIdx = updated.findIndex(m => m.id === msg.id);
+                      if (msgIdx >= 0) {
+                        const newMsg = { ...updated[msgIdx] };
+                        delete newMsg.promptAd;
+                        updated[msgIdx] = newMsg;
+                      }
+                      return updated;
+                    });
+                  }}
+                />
+              </div>
+            )}
 
             {/* Publicite conversationnelle (plan free uniquement, tous les N messages) */}
             {showAds && msg.role === 'assistant' && (index + 1) % adInterval === 0 && (

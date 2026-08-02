@@ -342,6 +342,129 @@ export class AdEngine {
     const user = await db.user.findUnique({ where: { id: userId }, select: { plan: true } });
     return { adsViewed: prefs.totalAdsViewed, adsClicked: prefs.totalAdsClicked, creditsEarned: prefs.totalCreditsEarned, rewardedEnabled: prefs.rewardedAdsEnabled, isEligible: user?.plan === 'free' || prefs.rewardedAdsEnabled, mustShowInConversation: user?.plan === 'free' };
   }
+
+  /**
+   * Get an advertisement to display after a user prompt/message
+   * 
+   * Rules:
+   * - FREE users: Always get an ad (non-dismissable, no reward)
+   * - PREMIUM/STARTER/PRO users: Can get ads (dismissable, with rewards)
+   * 
+   * @param userId User ID
+   * @param userPlan User subscription plan
+   * @param sessionId Session ID for frequency capping
+   * @param context Keywords from the prompt for targeting
+   * @returns Ad campaign or null if no ads available
+   */
+  async getPromptAd(
+    userId: string,
+    userPlan: 'free' | 'starter' | 'pro' | 'enterprise',
+    sessionId: string,
+    context?: { keywords?: string[]; topic?: string }
+  ): Promise<{ campaign: AdCampaign; impressionId?: string } | null> {
+    try {
+      const prefs = await this.getUserAdPreferences(userId);
+      
+      // FREE users always get ads
+      // PREMIUM users get ads only if rewarded ads are enabled
+      if (userPlan !== 'free' && !prefs.rewardedAdsEnabled) {
+        return null;
+      }
+
+      const campaigns = await this.getActiveCampaigns();
+      if (campaigns.length === 0) return null;
+
+      // Filter campaigns by plan
+      let candidates = campaigns.filter(c => {
+        if (c.targetPlan === 'all') return true;
+        if (c.targetPlan === 'free' && userPlan === 'free') return true;
+        if (c.targetPlan === 'premium' && userPlan !== 'free') return true;
+        return false;
+      });
+
+      if (candidates.length === 0) return null;
+
+      // Apply keyword targeting if provided
+      if (context?.keywords && context.keywords.length > 0) {
+        const keywordsLower = context.keywords.map(k => k.toLowerCase());
+        const byKeywords = candidates.filter(c => {
+          if (!c.targetKeywords) return true;
+          const targets = c.targetKeywords.toLowerCase().split(',').map(t => t.trim());
+          return keywordsLower.some(k => targets.some(t => k.includes(t) || t.includes(k)));
+        });
+        if (byKeywords.length > 0) candidates = byKeywords;
+      }
+
+      // Apply frequency cap
+      const userKey = `${userId}:${sessionId}`;
+      const userImpressions = recentImpressions.get(userKey) || [];
+      const recentCount = userImpressions.filter(t => t > Date.now() - 3600000).length;
+      candidates = candidates.filter(c => !c.frequencyCap || recentCount < c.frequencyCap);
+
+      if (candidates.length === 0) return null;
+
+      // Select best campaign
+      const selected = this.selectCampaignForUser(candidates, userId, prefs, context);
+      if (!selected) return null;
+
+      // Create impression record
+      const adType = userPlan === 'free' ? 'unrewarded' : 'rewarded';
+      const impression = await db.adImpression.create({
+        data: {
+          campaignId: selected.id,
+          userId,
+          sessionId,
+          adType,
+          viewDurationMs: 0,
+          wasClicked: false,
+          rewardCredited: false,
+          rewardAmount: adType === 'rewarded' ? selected.rewardPerView : 0,
+        },
+      });
+
+      // Update user preferences
+      await db.adUserPreference.upsert({
+        where: { userId },
+        create: {
+          userId,
+          totalAdsViewed: 1,
+          totalCreditsEarned: 0,
+          lastAdViewedAt: new Date(),
+        },
+        update: {
+          totalAdsViewed: { increment: 1 },
+          lastAdViewedAt: new Date(),
+        },
+      });
+
+      log.info('Prompt ad selected', {
+        userId: userId.slice(0, 8),
+        campaignId: selected.id.slice(0, 8),
+        impressionId: impression.id.slice(0, 8),
+        userPlan,
+      });
+
+      return {
+        campaign: selected,
+        impressionId: impression.id,
+      };
+    } catch (error) {
+      log.error('Failed to get prompt ad', { error, userId: userId.slice(0, 8) });
+      return null;
+    }
+  }
+
+  /**
+   * Check if a user should see ads after prompts
+   */
+  async shouldShowPromptAd(userId: string, userPlan: string): Promise<boolean> {
+    // FREE users always see ads
+    if (userPlan === 'free') return true;
+
+    // PREMIUM users: check if they enabled rewarded ads
+    const prefs = await this.getUserAdPreferences(userId);
+    return prefs.rewardedAdsEnabled;
+  }
 }
 
 let instance: AdEngine | null = null;
