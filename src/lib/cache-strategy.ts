@@ -8,8 +8,8 @@
 //   DB     -> résultat de requêtes lourdes      (TTL 5-15 min)
 //   Memory -> fonctions de calcul               (TTL dur shorter)
 //
-// Invalidation : event-driven (invalidateAll/invalidateByPrefix)
-// + TTL à chaque couche. Boîte à outils de tagging pour purge ciblée.
+// Invalidation : event-driven (invalidateTags / invalidateByPrefix)
+// + TTL à chaque couche. Tagging pour purge ciblée.
 // ============================================================
 
 import { createLogger } from '@/lib/logger';
@@ -68,6 +68,11 @@ class TagIndex {
       if (keys.size === 0) this.tagToKeys.delete(tag);
     }
   }
+
+  /** Nombre de tags indexés. */
+  get size(): number {
+    return this.tagToKeys.size;
+  }
 }
 
 const tagIndex = new TagIndex();
@@ -105,7 +110,6 @@ class CacheStrategy {
 
     // Cache-aside avec protection de reentrance (thundering herd)
     if (this.warming.has(key)) {
-      // Fusion vers le fallback-store mémoire en attendant
       const pending = fallbackStore.getSnapshot<T>(key);
       if (pending !== null) return pending;
     }
@@ -208,7 +212,7 @@ class CacheStrategy {
 
   getCoverage(): { tags: number; queuedWarmups: number; cacheStats: ReturnType<typeof cache.getStats> } {
     return {
-      tags: tagIndex['tagToKeys'].size,
+      tags: tagIndex.size,
       queuedWarmups: this.warmupQueue.length,
       cacheStats: cache.getStats(),
     };
