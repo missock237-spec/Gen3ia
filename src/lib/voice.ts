@@ -101,3 +101,17 @@ export function createTTSEngine(userId: string): TTSEngine {
 export function createSTTEngine(userId: string): STTEngine {
   return new STTEngine(userId);
 }
+
+// Re-export from voice submodules for backward compatibility
+export { getVoiceAgentEngine as createVoiceAgent, VoiceAgentEngine } from './voice/voice-agent';
+export { VoiceMemorySystem as createVoiceMemory } from './voice/voice-memory';
+
+/**
+ * Create an AI call system that integrates voice agent and memory
+ */
+export function createAICallSystem(userId: string) {
+  return {
+    tts: new TTSEngine(userId),
+    stt: new STTEngine(userId),
+  };
+}

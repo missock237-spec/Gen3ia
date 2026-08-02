@@ -3,7 +3,7 @@
 // ============================================================
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { prisma } from "./prisma";
+import { db } from "./db";
 import { logger } from "./logger";
 import { parseSubscriptionReference } from "./safe-regex";
 
@@ -140,7 +140,7 @@ export class SebPayService {
     const plan = SUBSCRIPTION_PLANS.find((p) => p.id === parsed.planId);
     if (!plan) { logger.warn("sebpay_webhook_unknown_plan", { planId: parsed.planId }); return; }
 
-    await prisma.$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       await tx.subscription.upsert({
         where: { userId: parsed.userId! },
         update: { plan: parsed.planId, status: "active", currentPeriodStart: new Date(), currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
@@ -157,3 +157,9 @@ export class SebPayService {
 }
 
 export const sebpay = new SebPayService();
+
+/** Alias: billing routes import PLANS from @/lib/sebpay */
+export const PLANS = SUBSCRIPTION_PLANS;
+
+/** Re-export initiatePayment as a standalone function for convenience */
+export const initiatePayment = sebpay.initiatePayment.bind(sebpay);

@@ -1,6 +1,7 @@
 // API Mode Autonome - Demarrage/Pause/Reprise/Annulation
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/db';
+import { createLogger } from '@/lib/logger';
 import { applySecurity } from '@/lib/security';
 import { agentAutonomous } from '@/lib/agent-autonomous';
 

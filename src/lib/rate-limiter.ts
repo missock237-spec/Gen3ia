@@ -185,3 +185,16 @@ export function checkRateLimit(request: Request, scope: RateLimitScope = 'defaul
   const key = getRateLimitKey(request, resolvedScope, url.pathname);
   return checkMemory(key, policy).allowed;
 }
+
+/**
+ * Rate limiter object with a `check` method for convenience.
+ * Used by routes that import { rateLimiter } from '@/lib/rate-limiter'.
+ */
+export const rateLimiter = {
+  async check(identifier: string, endpoint: string): Promise<{ allowed: boolean; resetIn: number }> {
+    const policy = POLICIES.api;
+    const key = `rl:api:${endpoint}:${identifier}`;
+    const mem = checkMemory(key, policy);
+    return { allowed: mem.allowed, resetIn: mem.resetIn };
+  },
+};

@@ -158,3 +158,13 @@ export const SUBSCRIPTION_PLANS = [
   { id: 'pro', name: 'Pro', price: 15000, priceUSD: 29.99, credits: 5000, maxAgents: 20, features: ['20 agents IA', '5000 crédits/mois', 'Outils avancés', 'Support prioritaire'], popular: true },
   { id: 'enterprise', name: 'Enterprise', price: 50000, priceUSD: 99.99, credits: -1, maxAgents: -1, features: ['Agents illimités', 'Crédits illimités', 'Support dédié', 'SLA garanti'] },
 ];
+
+/**
+ * Crée une session de portail de gestion d'abonnement
+ */
+export async function createPortalSession(input: PortalSessionInput): Promise<{ url: string }> {
+  const { userId, returnUrl } = input;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const portalUrl = `${baseUrl}/billing/portal?userId=${encodeURIComponent(userId)}&returnUrl=${encodeURIComponent(returnUrl || baseUrl)}`;
+  return { url: portalUrl };
+}

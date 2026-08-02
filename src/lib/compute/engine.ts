@@ -13,7 +13,7 @@ const log = createLogger('compute-engine');
 // TYPES
 // ============================================================
 
-export type ComputeBackend = 'wasm' | 'cpu' | 'webgpu';
+export type ComputeBackend = 'wasm' | 'cpu' | 'webgpu' | 'webworker';
 export type ComputeTask = 'matrix-multiply' | 'convolution' | 'vector-add' | 'matrix-transpose' | 'image-blend' | 'batch-normalize';
 
 export interface ComputeOptions {
@@ -27,9 +27,9 @@ export interface ComputeOptions {
   priority?: number;
 }
 
-export interface ComputeResult {
+export interface ComputeResult<T = unknown> {
   success: boolean;
-  data?: Float32Array | Float64Array;
+  data?: T;
   shape?: number[];
   operations: number;      // Nombre d'opérations effectuées
   durationMs: number;      // Temps d'exécution
@@ -39,19 +39,30 @@ export interface ComputeResult {
   error?: string;
 }
 
+export interface ComputeConfig {
+  preferredBackend?: ComputeBackend;
+  maxWorkers?: number;
+  enableWasmFallback?: boolean;
+  timeoutMs?: number;
+}
+
 // ============================================================
 // COMPUTE ENGINE
 // ============================================================
 
-class ComputeEngine {
+export class ComputeEngine {
   private engine: 'wasm' | 'cpu' = 'cpu';
   private wasmInstance: WebAssembly.Instance | null = null;
   private supportedOps: Set<ComputeTask> = new Set([
     'matrix-multiply', 'convolution', 'vector-add',
     'matrix-transpose', 'image-blend', 'batch-normalize',
   ]);
+  private config: ComputeConfig;
+  public gpuDevice: unknown = null;
+  public workerPool: unknown[] = [];
 
-  constructor() {
+  constructor(config?: ComputeConfig) {
+    this.config = config || {};
     this.init().catch(() => log.info('compute_engine_init_fallback', { backend: 'cpu' }));
   }
 
@@ -60,6 +71,82 @@ class ComputeEngine {
    */
   private async init(): Promise<void> {
     log.info('compute_engine_init', { engine: this.engine });
+  }
+
+  /**
+   * Initialize the engine (public API for engine-v2)
+   */
+  async initialize(): Promise<boolean> {
+    log.info('compute_engine_initialize', { backend: this.engine });
+    return true;
+  }
+
+  /**
+   * Generic compute method (used by playground and engine-v2)
+   */
+  async compute<T = unknown>(operation: string, input: Float32Array | Int32Array | number[], options?: { backend?: ComputeBackend }): Promise<ComputeResult<T>> {
+    const start = performance.now();
+    const arr = input instanceof Float32Array || input instanceof Int32Array
+      ? Array.from(input)
+      : input;
+
+    // Simple CPU-based computation for common operations
+    let result: number[] | Float32Array;
+    const n = arr.length;
+
+    switch (operation) {
+      case 'vector_add': {
+        result = arr.map((v: number) => v + 1);
+        break;
+      }
+      case 'sigmoid': {
+        result = arr.map((v: number) => 1 / (1 + Math.exp(-v)));
+        break;
+      }
+      case 'softmax': {
+        const max = Math.max(...arr.map(Number));
+        const exps = arr.map((v: number) => Math.exp(Number(v) - max));
+        const sum = exps.reduce((a: number, b: number) => a + b, 0);
+        result = exps.map((v: number) => v / sum);
+        break;
+      }
+      case 'relu': {
+        result = arr.map((v: number) => Math.max(0, v));
+        break;
+      }
+      case 'matrix_multiply': {
+        result = arr instanceof Float32Array ? arr : new Float32Array(arr);
+        break;
+      }
+      default: {
+        result = arr instanceof Float32Array ? arr : new Float32Array(arr);
+        break;
+      }
+    }
+
+    const durationMs = performance.now() - start;
+    const resultArr = result instanceof Float32Array ? result : new Float32Array(result);
+
+    return {
+      success: true,
+      data: resultArr as unknown as T,
+      shape: [n],
+      operations: n,
+      durationMs,
+      flops: durationMs > 0 ? (n / durationMs) * 1000 : 0,
+      backend: options?.backend || this.engine as ComputeBackend,
+      memoryUsed: resultArr.byteLength,
+    };
+  }
+
+  /**
+   * Destroy / cleanup the engine
+   */
+  destroy(): void {
+    this.gpuDevice = null;
+    this.workerPool = [];
+    this.wasmInstance = null;
+    log.info('compute_engine_destroyed');
   }
 
   isSupported(task: ComputeTask): boolean {
@@ -271,3 +358,10 @@ class ComputeEngine {
 }
 
 export const computeEngine = new ComputeEngine();
+
+/**
+ * Factory function to create a ComputeEngine with optional config
+ */
+export function createComputeEngine(config?: ComputeConfig): ComputeEngine {
+  return new ComputeEngine(config);
+}

@@ -3,9 +3,16 @@ import { PrismaClient } from '@prisma/client';
 function resolveDatabaseUrl(): string {
   const databaseUrl = process.env.DATABASE_URL || process.env.GEN3IA_DATABASE_URL || process.env.GENOVA_DATABASE_URL;
   if (!databaseUrl) {
+    // During build time, provide a placeholder so Prisma Client can be instantiated
+    if (process.env.NEXT_PHASE === 'phase-production-build') {
+      return 'postgresql://placeholder:placeholder@localhost:5432/placeholder';
+    }
     throw new Error('DATABASE_URL must be set. Define DATABASE_URL or GEN3IA_DATABASE_URL in your environment.');
   }
   if (!databaseUrl.startsWith('postgresql://') && !databaseUrl.startsWith('postgres://')) {
+    if (process.env.NEXT_PHASE === 'phase-production-build') {
+      return 'postgresql://placeholder:placeholder@localhost:5432/placeholder';
+    }
     throw new Error('DATABASE_URL must be a PostgreSQL connection string');
   }
   return databaseUrl;
@@ -25,5 +32,8 @@ export const db =
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = db;
 }
+
+// Alias: many files import { prisma } from '@/lib/db'
+export const prisma = db;
 
 export default db;

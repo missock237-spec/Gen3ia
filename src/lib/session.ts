@@ -197,6 +197,33 @@ export async function deleteAllUserSessions(userId: string): Promise<void> {
   await db.session.deleteMany({ where: { userId } }).catch(() => {})
 }
 
+/**
+ * Get the authenticated user from the request
+ * Extracts the session token and validates it, returning the user info
+ */
+export async function getAuthenticatedUser(request: NextRequest): Promise<{
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+} | null> {
+  const token = extractToken(request);
+  if (!token) return null;
+
+  const userId = await validateSession(token);
+  if (!userId) return null;
+
+  try {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, role: true },
+    });
+    return user;
+  } catch {
+    return null;
+  }
+}
+
 // Nettoyage périodique des sessions expirées
 if (typeof globalThis !== 'undefined') {
   const g = globalThis as unknown as { _sessionCleanup?: NodeJS.Timeout }

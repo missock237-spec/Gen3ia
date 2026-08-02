@@ -113,3 +113,39 @@ function validateRole(auth: SecurityContext, options: SecurityOptions): { auth: 
   }
   return { auth };
 }
+
+/**
+ * Verify that a resource belongs to the authenticated user
+ * Used by API routes to prevent unauthorized access to other users' data
+ */
+export async function verifyOwnership(
+  resourceType: string,
+  resourceId: string,
+  userId: string
+): Promise<boolean> {
+  try {
+    const model = db as any;
+    const record = await model[resourceType]?.findUnique({
+      where: { id: resourceId },
+      select: { userId: true },
+    });
+    return record?.userId === userId;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns the allowed CORS origin if the provided origin matches the whitelist.
+ * Used by SSE/streaming endpoints to set Access-Control-Allow-Origin.
+ */
+export function getAllowedOrigins(origin?: string): string | null {
+  const allowedOrigins = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    'http://localhost:3000',
+    'http://localhost:3001',
+  ].filter(Boolean);
+
+  if (!origin) return allowedOrigins[0] || null;
+  return allowedOrigins.includes(origin) ? origin : null;
+}
