@@ -25,16 +25,14 @@ export function safeRegexMatch(
  * Detecte les patterns de backtracking exponentiel.
  */
 export function isRegexVulnerable(pattern: string): boolean {
-  const vulnerablePatterns = [
-    /\\([.+*?]\+\+) /,    // (a+)+ — nested quantifiers
-    /\\([^)]+\\)[+*]\s*\\(/,  // adjacent quantified groups
-    /\[^\]\+ /,              // negative character class with +
-    /\\|[^|]*\\|/,            // alternating patterns with empty alternatives
-    /\\([^)]+\\)\{[0-9]+,\}/, // bounded quantifiers on groups
-    /\\([^)]*\\([^)]*\\(/,   // deeply nested groups
+  // Simplified ReDoS detection — check for common dangerous patterns
+  const checks = [
+    /\([^)]+\)\s*[*+]\s*[*+]/,       // nested quantifiers like (a+)+
+    /\([^)]+\)\s*\{.*,\}/,            // bounded quantifiers on groups
+    /\([^)]*\([^)]*\(/,               // deeply nested groups
   ];
 
-  return vulnerablePatterns.some((vp) => vp.test(pattern));
+  return checks.some((vp) => vp.test(pattern));
 }
 
 /**

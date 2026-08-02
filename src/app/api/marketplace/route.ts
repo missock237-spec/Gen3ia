@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('marketplace');
 
 const VALID_TYPES = ['agent', 'tool', 'workflow', 'template', 'prompt', 'integration'];

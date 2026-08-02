@@ -407,7 +407,7 @@ Les tokens d'accès expirent après 15 minutes. Utilisez \`POST /api/auth/refres
         { name: 'Webhooks', description: 'Webhooks entrants et sortants' },
         { name: 'Terminal', description: 'Terminal intelligent' },
         { name: 'Mémoire', description: 'Mémoire vectorielle et RAG' },
-        { name: 'Marketplace', description: 'Marketplace d'agents' },
+        { name: 'Marketplace', description: 'Marketplace d agents' },
         { name: 'Admin', description: 'Administration du système' },
         { name: 'Monitoring', description: 'Métriques et observabilité' },
       ],

@@ -10,8 +10,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
-export const dynamic = "force-dynamic";
 
+
+
+
+export const dynamic = "force-dynamic";
 interface SupervisionData {
   activeExecutions: number;
   agents: Array<{

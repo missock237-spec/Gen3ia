@@ -7,6 +7,11 @@ import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { applySecurity } from '@/lib/security';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('image-status');
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {

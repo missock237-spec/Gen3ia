@@ -3,11 +3,6 @@ import { MCPConnector } from '@/components/connectors/mcp-connector';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Code, Key, Plug, BookOpen } from 'lucide-react';
 
-export const metadata = {
-  title: 'Développeurs — Gen3ia AI',
-  description: 'Gérez vos clés API et connecteurs MCP',
-};
-
 export default function DevelopersPage() {
   return (
     <div className="container mx-auto py-8 px-4 max-w-5xl">

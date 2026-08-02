@@ -4,6 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCreditEngine } from '@/lib/billing/credit-engine';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const creditEngine = getCreditEngine();
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 const sebpayWebhookSecret = process.env.SEBPAY_WEBHOOK_SECRET || '';

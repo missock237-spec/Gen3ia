@@ -5,6 +5,11 @@ import { createComputeEngine } from '@/lib/compute/engine';
 import { createHuggingFaceClient } from '@/lib/generation/huggingface-client';
 import { getServerSession } from 'next-auth';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api-playground');
 
 enum PlaygroundEndpoint {

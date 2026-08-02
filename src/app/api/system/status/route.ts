@@ -14,8 +14,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { db } from '@/lib/db';
 
+
+
 // ── Types ─────────────────────────────────────────────────────
 
+
+
+export const dynamic = "force-dynamic";
 interface ProviderStatus {
   name: string;
   configured: boolean;

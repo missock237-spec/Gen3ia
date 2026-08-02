@@ -12,6 +12,11 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getServerSession } from 'next-auth';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('authorizations');
 
 const VALID_SERVICES = [

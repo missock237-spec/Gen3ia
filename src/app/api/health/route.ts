@@ -4,12 +4,17 @@ import { Redis } from 'ioredis';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.config';
 
+
+
 // ============================================================
 // Phase 1.3 — Route de santé renforcée
 // Vérifie : DB (query), Redis (ping), Qdrant (si configuré), Sentry (statut env)
 // Répond 200 si tout OK → 503 si une dépendance critique échoue.
 // ============================================================
 
+
+
+export const dynamic = "force-dynamic";
 const REDIS_URL = process.env.REDIS_URL || '';
 const QDRANT_URL = process.env.QDRANT_URL || '';
 

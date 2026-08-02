@@ -7,6 +7,11 @@ import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('ai-orchestrate');
 
 const VALID_TYPES = ['sales','support','marketing','research','rh','accounting','custom','social_media','whatsapp','browser'];

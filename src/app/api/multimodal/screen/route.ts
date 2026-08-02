@@ -8,7 +8,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createScreenShareHandler } from '@/lib/multimodal/screen-share';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
 
+
+
 // Cache handlers per user for frame comparison
+
+
+export const dynamic = "force-dynamic";
 const handlers = new Map<string, ReturnType<typeof createScreenShareHandler>>();
 
 export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+
+
 // SSE (Server-Sent Events) pour le dashboard temps reel
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get('userId');
 

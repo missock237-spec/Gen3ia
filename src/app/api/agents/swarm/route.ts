@@ -4,6 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { swarmOrchestrator } from "@/lib/agent/swarm";
 import { withAuth, type RouteParams } from "@/lib/with-auth";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const { task, agentIds } = await request.json();

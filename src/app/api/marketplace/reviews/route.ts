@@ -7,6 +7,8 @@ import {
   markHelpful,
 } from '@/lib/marketplace/review-system'
 
+export const dynamic = "force-dynamic";
+
 function parsePositiveInt(value: string | null, fallback: number, max: number) {
   const parsed = Number.parseInt(value || '', 10)
   if (!Number.isFinite(parsed) || parsed < 1) return fallback
@@ -26,7 +28,6 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const listingId = searchParams.get('listingId')
-    const action = searchParams.get('action') || 'list'
 
     if (!listingId) {
       return secureResponse(

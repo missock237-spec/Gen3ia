@@ -4,6 +4,11 @@ import { db } from '@/lib/db';
 import { applySecurity } from '@/lib/security';
 import { validateBody, multiAgentExecuteSchema } from '@/lib/validation';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const { auth, error } = await applySecurity(request, { requireAuth: true, rateLimit: { limit: 10, windowMs: 60000 } });

@@ -3,6 +3,11 @@ import { getServerSession } from '@/lib/auth';
 import { getAvailableActions, getSupportedServices } from '@/lib/agent-engine/service-executor';
 import { prisma } from '@/lib/prisma';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession();

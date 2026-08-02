@@ -8,6 +8,11 @@ import { scheduleTask, getUpcomingTasks, type AgentAction } from '@/lib/schedule
 import { createMonitor } from '@/lib/scheduler/web-monitor';
 import { scheduleReport } from '@/lib/scheduler/auto-reporter';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS() {
   const response = new NextResponse(null, { status: 204 });
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');

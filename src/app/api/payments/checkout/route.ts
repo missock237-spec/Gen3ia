@@ -9,6 +9,11 @@ import { verify } from 'jsonwebtoken';
 import { sebpay } from '@/lib/sebpay';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const JWT_SECRET = process.env.AUTH_SECRET;
 const log = createLogger('checkout');
 

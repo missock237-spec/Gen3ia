@@ -3,6 +3,11 @@
 // ============================================================
 import { NextRequest, NextResponse } from "next/server";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const clients = new Map<string, ReadableStreamController<Uint8Array>>();
 
 export async function GET(request: NextRequest) {

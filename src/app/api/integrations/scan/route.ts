@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { scanProject, type ScanOptions } from '@/lib/integration-engine/scanner';
 import { getIntegrationRegistry } from '@/lib/integration-engine/registry';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

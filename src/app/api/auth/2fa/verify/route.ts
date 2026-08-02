@@ -8,6 +8,11 @@ import { db } from '@/lib/db';
 import { verifyTOTPCode, verifyBackupCode } from '@/lib/twofa';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('2fa-verify');
 
 export async function POST(request: NextRequest) {

@@ -3,6 +3,11 @@ import { db } from '@/lib/db';
 import { verify } from 'jsonwebtoken';
 import * as argon2 from 'argon2';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const JWT_SECRET = process.env.AUTH_SECRET;
 
 export async function PUT(request: NextRequest) {

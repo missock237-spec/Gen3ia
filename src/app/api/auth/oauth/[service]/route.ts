@@ -4,6 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from '@/lib/auth';
 import { randomUUID } from 'crypto';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ service: string }> }

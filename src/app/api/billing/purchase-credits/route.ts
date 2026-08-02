@@ -7,6 +7,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { sebpay, SUBSCRIPTION_PLANS } from '@/lib/sebpay';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const CREDIT_PACKS = [
   { id: 'credits_100', credits: 100, price: 2500, currency: 'XAF', label: '100 credits', priceLabel: '2 500 FCFA' },
   { id: 'credits_500', credits: 500, price: 10000, currency: 'XAF', label: '500 credits', priceLabel: '10 000 FCFA' },

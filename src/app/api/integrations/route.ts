@@ -8,6 +8,11 @@ import { applySecurity } from '@/lib/security';
 import { integrationHub, IntegrationConnection } from '@/lib/integration-hub';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api-integrations');
 
 export async function GET(request: NextRequest) {

@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity } from '@/lib/security';
 import { notificationEngine } from '@/lib/notification-engine';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });

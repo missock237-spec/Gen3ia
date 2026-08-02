@@ -5,6 +5,11 @@ import { createLogger } from '@/lib/logger';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getAdEngine } from '@/lib/advertising/ad-engine';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('advertising');
 const engine = getAdEngine();
 

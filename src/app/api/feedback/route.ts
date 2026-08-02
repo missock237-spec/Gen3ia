@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { feedbackLoop } from "@/lib/feedback";
 import { emitFeedbackReceived } from "@/lib/webhooks/emit";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(request) {
   try {
     const body = await request.json();

@@ -3,6 +3,11 @@ import { db } from '@/lib/db';
 import { sendPasswordReset } from '@/lib/email/auth-emails';
 import crypto from 'crypto';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const SUCCESS_RESPONSE = {
   message: 'Si un compte existe pour cet email, vous recevrez un code de verification.',
 };

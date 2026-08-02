@@ -4,6 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { agentAutonomous } from '@/lib/agent-autonomous';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api-agents-autonomous');
 
 export async function POST(request: NextRequest) {

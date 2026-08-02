@@ -3,6 +3,11 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { checkUrlSafety } from '@/lib/url-safety';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

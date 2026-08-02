@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { withAuth } from '@/lib/with-auth';
 
+
+
 // GET /api/credits — Solde et historique de crédits de l'utilisateur authentifié
+
+
+export const dynamic = "force-dynamic";
 export const GET = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
   try {
     const [lastTx, history] = await Promise.all([

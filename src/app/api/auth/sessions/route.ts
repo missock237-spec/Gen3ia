@@ -3,6 +3,11 @@ import { db } from '@/lib/db';
 import { extractToken } from '@/lib/session';
 import { applySecurity, secureResponse } from '@/lib/security';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 function maskUserAgent(ua: string | null): string | null {
   if (!ua) return null;
   // Keep only the first part of the user agent (browser/OS info)

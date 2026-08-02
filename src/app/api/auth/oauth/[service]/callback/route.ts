@@ -3,6 +3,11 @@ import { getOAuthProvider } from '@/lib/oauth/provider-registry';
 import { prisma } from '@/lib/prisma';
 import { encryptField } from '@/lib/security/token-encryption';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 interface TokenResponse {
   access_token: string; refresh_token?: string; expires_in?: number;
   scope?: string; error?: string; error_description?: string;

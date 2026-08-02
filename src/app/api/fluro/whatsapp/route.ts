@@ -19,6 +19,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity } from '@/lib/security';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('fluro-whatsapp');
 
 const BAILEYS_API_URL = process.env.BAILEYS_API_URL || 'http://localhost:8186';

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initiatePayment, PLANS } from "@/lib/sebpay";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

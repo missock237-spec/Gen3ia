@@ -8,9 +8,12 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     },
-    "rootDir": "."
+    "rootDir": ".",
+    "jsx": "preserve"
   },
   "include": [
     "next-env.d.ts",

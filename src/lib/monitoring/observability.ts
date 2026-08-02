@@ -2,8 +2,8 @@
 // OBSERVABILITY ENGINE — Metriques temps reel, alerte engine
 // Dashboard activite, alertes configurables, notifications
 // ============================================================
-import { prisma } from './prisma';
-import { createLogger } from './logger';
+import { prisma } from '@/lib/prisma';
+import { createLogger } from '@/lib/logger';
 
 const log = createLogger('observability');
 

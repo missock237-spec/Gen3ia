@@ -4,6 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { generateReferralCode, calculateRewards, getMilestoneLabel, createAffiliateCode, getAffiliateDashboard, isUserPremium, hasActiveSubscription } from '@/lib/affiliate';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });

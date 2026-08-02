@@ -9,6 +9,11 @@ import { orchestrator } from '@/lib/agent-orchestrator';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api-agents-suite');
 
 export async function POST(request: NextRequest) {

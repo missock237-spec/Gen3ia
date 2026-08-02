@@ -4,6 +4,7 @@
 
 import { ZodError } from "zod";
 import { logger } from "./logger";
+import { NextResponse } from "next/server";
 
 // ============================================================
 // Classe de base
@@ -294,13 +295,13 @@ export const ErrorCodes = {
 
 let requestCounter = 0;
 
-export function handleApiError(error: unknown): { statusCode: number; body: ApiErrorResponse } {
+export function handleApiError(error: unknown): NextResponse<ApiErrorResponse> {
   const requestId = `err_${Date.now()}_${++requestCounter}`;
 
   if (error instanceof ApiError) {
     const level = error.statusCode >= 500 ? 'error' : 'warn';
     logger[level]('api_error', { requestId, code: error.code, message: error.message, status: error.statusCode });
-    return { statusCode: error.statusCode, body: { success: false, error: { code: error.code, message: error.message, details: error.details, requestId } } };
+    return NextResponse.json({ success: false, error: { code: error.code, message: error.message, details: error.details, requestId } }, { status: error.statusCode });
   }
 
   if (error instanceof ZodError) {
@@ -311,12 +312,12 @@ export function handleApiError(error: unknown): { statusCode: number; body: ApiE
       return acc;
     }, {} as Record<string, string[]>);
     logger.warn('validation_error', { requestId, details });
-    return { statusCode: 400, body: { success: false, error: { code: 'VALIDATION_ERROR', message: 'Donnees invalides', details: { fields: details }, requestId } } };
+    return NextResponse.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Donnees invalides', details: { fields: details }, requestId } }, { status: 400 });
   }
 
   if (error instanceof SyntaxError) {
     logger.warn('syntax_error', { requestId, message: error.message });
-    return { statusCode: 400, body: { success: false, error: { code: 'INVALID_JSON', message: 'Format JSON invalide', requestId } } };
+    return NextResponse.json({ success: false, error: { code: 'INVALID_JSON', message: 'Format JSON invalide', requestId } }, { status: 400 });
   }
 
   const message = error instanceof Error ? error.message : 'Erreur interne';
@@ -327,8 +328,8 @@ export function handleApiError(error: unknown): { statusCode: number; body: ApiE
     if (error instanceof Error) Sentry.captureException(error, { tags: { requestId } });
   } catch {}
 
-  return {
-    statusCode: 500,
-    body: { success: false, error: { code: 'INTERNAL_ERROR', message: process.env.NODE_ENV === 'development' ? message : 'Une erreur interne est survenue', requestId } },
-  };
+  return NextResponse.json(
+    { success: false, error: { code: 'INTERNAL_ERROR', message: process.env.NODE_ENV === 'development' ? message : 'Une erreur interne est survenue', requestId } },
+    { status: 500 }
+  );
 }

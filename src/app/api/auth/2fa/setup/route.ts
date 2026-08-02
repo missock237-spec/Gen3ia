@@ -7,6 +7,11 @@ import { db } from '@/lib/db';
 import { generateTOTPSecret, generateTOTPUrl } from '@/lib/twofa';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('2fa-setup');
 
 export async function POST(request: NextRequest) {

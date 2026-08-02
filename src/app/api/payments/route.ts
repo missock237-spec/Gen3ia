@@ -8,6 +8,11 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { subpay } from '@/lib/payment/subpay';
 import { rateLimit } from '@/lib/rate-limiter';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('payments');
 
 export async function POST(request: NextRequest) {

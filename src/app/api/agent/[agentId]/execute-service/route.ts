@@ -3,6 +3,11 @@ import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { executeServiceAction, getAvailableActions } from '@/lib/agent-engine/service-executor';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ agentId: string }> }

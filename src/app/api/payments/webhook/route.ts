@@ -5,6 +5,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { sebpay } from "@/lib/sebpay";
 import { logger } from "@/lib/logger";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json();

@@ -3,6 +3,11 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { checkConcurrentAgents } from '@/lib/usage-limits';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

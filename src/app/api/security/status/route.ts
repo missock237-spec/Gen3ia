@@ -6,6 +6,11 @@ import { getTokenHealth } from '@/lib/oauth/auto-rotate';
 import { getEmailConfig } from '@/lib/email/sender';
 import { prisma } from '@/lib/prisma';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await getServerSession();

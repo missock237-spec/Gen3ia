@@ -5,6 +5,11 @@ import { sign } from 'jsonwebtoken';
 import { sendWelcomeEmail, sendVerificationCode } from '@/lib/email/auth-emails';
 import crypto from 'crypto';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const JWT_SECRET = process.env.AUTH_SECRET;
 
 export async function POST(request: NextRequest) {

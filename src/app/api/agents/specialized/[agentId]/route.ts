@@ -4,6 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { agentSpecialization } from '@/lib/agent-specialization';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest, { params }: { params: { agentId: string } }) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });

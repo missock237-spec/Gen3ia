@@ -11,6 +11,11 @@ import { createAIRouter } from '@/lib/ai-router';
 import { embeddingService } from '@/lib/agent/embedding';
 import { audioGenerator } from '@/lib/audio-generator';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('whatsapp-webhook');
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'genova_whatsapp_verify';

@@ -9,6 +9,11 @@ import { db } from '@/lib/db';
 import { withAuth } from '@/lib/with-auth';
 import { queryHF, bufferToBase64 } from '@/lib/huggingface';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('image-generate');
 
 const MODELS = {

@@ -4,6 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { getAdEngine, AdPlacement } from '@/lib/advertising/ad-engine';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const adEngine = getAdEngine();
 
 export async function GET(request: NextRequest) {

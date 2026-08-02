@@ -3,6 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth.config';
 import { getAllUsers, searchUsers, getUserById, updateUserPlan, toggleUserActive, updateUserRole, deleteUser, isAdminRole, logAdminAction } from '@/lib/admin';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 async function verifyAdmin(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (session?.user && isAdminRole(session.user.role)) {

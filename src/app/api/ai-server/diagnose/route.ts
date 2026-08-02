@@ -7,7 +7,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runDiagnostics } from '@/lib/ai-integration-server/saas-doctor';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
 
+
+
 // GET — Diagnostics complets (admin only)
+
+
+export const dynamic = "force-dynamic";
 export const GET = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const report = await runDiagnostics();

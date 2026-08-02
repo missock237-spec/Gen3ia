@@ -3,6 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth.config";
 import { executeCommand } from "@/lib/terminal-sandbox";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ success: false, output: "Non authentifie" }, { status: 401 });

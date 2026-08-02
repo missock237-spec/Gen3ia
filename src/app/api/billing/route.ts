@@ -9,6 +9,11 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { paygService, PAYG_RATES } from '@/lib/payg-engine';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('billing');
 
 const PLANS = [

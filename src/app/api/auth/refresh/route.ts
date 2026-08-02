@@ -8,6 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rotateRefreshToken } from '@/lib/auth/jwt';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('auth-refresh');
 
 export async function POST(request: NextRequest) {

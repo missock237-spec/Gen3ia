@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { uploadFile, initChunkUpload, uploadChunk, cancelChunkUpload, validateFile } from '@/lib/upload';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api-upload');
 
 // ============================================================

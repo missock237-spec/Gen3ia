@@ -3,6 +3,11 @@ import { db } from '@/lib/db';
 import { sendVerificationCode } from '@/lib/email/auth-emails';
 import crypto from 'crypto';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const { email, code } = await request.json();

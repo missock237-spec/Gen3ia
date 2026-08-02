@@ -4,6 +4,11 @@ import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import crypto from 'crypto';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api-keys');
 
 const VALID_SCOPES = ['agents:read', 'agents:write', 'agents:execute', 'voice:call', 'messages:send', 'billing:read', 'admin:read'];

@@ -2,8 +2,11 @@ import { NextRequest } from "next/server";
 import { llmStreamer } from "@/lib/agent/stream-llm";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
+
+
+
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {

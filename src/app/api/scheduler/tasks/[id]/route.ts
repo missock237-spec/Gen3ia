@@ -7,6 +7,11 @@ import { applySecurity, secureResponse, verifyOwnership } from '@/lib/security';
 import { cancelTask, updateSchedule, executeScheduledTask } from '@/lib/scheduler/agent-scheduler';
 import { db } from '@/lib/db';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS() {
   const response = new NextResponse(null, { status: 204 });
   response.headers.set('Access-Control-Allow-Methods', 'GET, PUT, DELETE, OPTIONS');

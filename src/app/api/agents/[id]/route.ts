@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(r: NextRequest, { params }: { params: { id: string } }) {
   try {
     const a = await db.agent.findUnique({ where: { id: params.id }, include: { permissions: true, _count: { select: { tasks: true, memories: true } } } });

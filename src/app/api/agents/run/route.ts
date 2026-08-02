@@ -12,6 +12,11 @@ import { ZodError } from "zod";
 // Agent Safety — detection d'injections et jailbreak (Rust natif + fallback JS)
 import { checkPromptInjection, checkJailbreak } from "@gen3ia/agent-safety";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('agent-run');
 const MAX_ITERATIONS = 25;
 const MAX_COST = 1.0;

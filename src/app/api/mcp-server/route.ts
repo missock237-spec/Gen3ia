@@ -9,6 +9,11 @@ import { createLogger } from '@/lib/logger';
 import { applySecurity } from '@/lib/security';
 import { db } from '@/lib/db';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('mcp-server');
 
 const MCP_SERVER_INFO = { name: 'Genova AI OS', version: '1.0.0' };

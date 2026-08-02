@@ -8,11 +8,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import {
+
   storeMemory, retrieveMemories, learnFromInteraction, getAgentMemoryStats, pruneOldMemories,
   type MemoryCategory,
 } from '@/lib/agent-memory';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api-memory');
 
 // Catégories acceptées par l'API (strictement bornées, jamais de chaîne arbitraire)

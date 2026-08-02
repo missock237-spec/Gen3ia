@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const AVAILABLE_PERMISSIONS = [
   'browse_web',
   'social_post',

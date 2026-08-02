@@ -8,6 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { processProject, type CodeFile } from '@/lib/ai-integration-server';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
