@@ -69,10 +69,10 @@ const autoWorker = new Worker<AutoJobData>('agent-execution', async (job: Job<Au
     execLog = await db.agentExecution.create({
       data: {
         agentId, userId,
-        task: (input ?? '').slice(0, 500),
+        input: (input ?? '').slice(0, 500),
+        model: 'auto_scheduler',
         status: 'running',
-        provider: 'auto_scheduler',
-        sessionId: sessionId || null,
+        startedAt: new Date(),
       },
     });
   } else {
@@ -96,16 +96,17 @@ const autoWorker = new Worker<AutoJobData>('agent-execution', async (job: Job<Au
       where: { id: execLog.id },
       data: {
         status: 'completed',
-        result: JSON.stringify({ output: `[Auto] ${agent.name} - execution periodique`, tokens: tokenCount, duration }),
+        output: JSON.stringify({ output: `[Auto] ${agent.name} - execution periodique`, tokens: tokenCount, duration }),
         totalTokens: tokenCount,
         estimatedCost: cost,
+        durationMs: duration,
         completedAt: new Date(),
       },
     });
 
     // Deduire 1 credit (condition atomique)
     const updatedUser = await db.user.update({
-      where: { id: userId, credits: { gte: 1 } },
+      where: { id: userId },
       data: { credits: { decrement: 1 } },
       select: { credits: true },
     });
@@ -124,7 +125,7 @@ const autoWorker = new Worker<AutoJobData>('agent-execution', async (job: Job<Au
     const errMsg = error instanceof Error ? error.message : String(error);
     await db.agentExecution.update({
       where: { id: execLog.id },
-      data: { status: 'failed', error: errMsg, completedAt: new Date() },
+      data: { status: 'failed', output: JSON.stringify({ error: errMsg }), completedAt: new Date() },
     }).catch(() => {});
     throw error; // BullMQ retry automatique
   }
