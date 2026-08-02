@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -81,7 +81,6 @@ model User {
   userCustomizations  UserCustomization[]
   auditLogs           AuditLog[]
   aiCosts             AiCost[]
-
   @@index([email, isActive])
   @@index([plan])
   @@index([role])
@@ -89,7 +88,6 @@ model User {
   @@index([lastActiveAt])
 }
 
-// ============= AUDIT & MONITORING =============
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String
@@ -188,7 +186,6 @@ model Invoice {
   @@index([userId, status])
 }
 
-// ============= SESSIONS & CLÉS =============
 model Session {
   id                String    @id @default(cuid())
   token             String    @unique @db.Text
@@ -267,7 +264,6 @@ model MCPConnector {
   @@index([userId, isActive])
 }
 
-// ============= PUBLICITE =============
 model AdCampaign {
   id               String   @id @default(cuid())
   userId           String
@@ -345,7 +341,6 @@ model AdUserPreference {
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// ============= AFFILIATION =============
 model AffiliateCode {
   id            String   @id @default(cuid())
   code          String   @unique
@@ -379,7 +374,6 @@ model AffiliateReferral {
   @@index([referredEmail])
 }
 
-// ============= COMPETENCES =============
 model Skill {
   id                  String    @id @default(cuid())
   name                String
@@ -425,7 +419,6 @@ model AgentSkill {
   @@index([userId])
 }
 
-// ============= BOUCLES IA =============
 model AILoop {
   id          String    @id @default(cuid())
   name        String
@@ -467,7 +460,6 @@ model AgentLoop {
   @@index([userId])
 }
 
-// ============= PERSONNALISATIONS =============
 model Customization {
   id          String    @id @default(cuid())
   name        String
@@ -509,7 +501,6 @@ model UserCustomization {
   @@index([customizationId])
 }
 
-// ============= MODELES EXISTANTS =============
 model EmailVerification {
   id        String    @id @default(cuid())
   userId    String
@@ -524,7 +515,6 @@ model EmailVerification {
   @@index([email])
 }
 
-// ============= TACHES & GUARDRAILS =============
 model Task {
   id          String    @id @default(cuid())
   userId      String
@@ -561,7 +551,6 @@ model Guardrail {
   @@index([userId, enabled])
 }
 
-// ============= CREDITS =============
 model Credit {
   id        String   @id @default(cuid())
   userId    String   @unique
@@ -573,7 +562,6 @@ model Credit {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// ============= EXECUTIONS & SECURITE AGENT =============
 model AgentExecution {
   id            String    @id @default(cuid())
   userId        String
@@ -722,6 +710,7 @@ model Agent {
   userId                String?
   ownerId               String?
   suiteId               String?
+  suite                 AgentSuite? @relation(fields: [suiteId], references: [id], onDelete: SetNull)
   successes             Int       @default(0)
   failures              Int       @default(0)
   avgTokensUse          Float     @default(0)
@@ -730,7 +719,6 @@ model Agent {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   owner                 User?     @relation(fields: [ownerId], references: [id])
-  suite                 AgentSuite? @relation(fields: [suiteId], references: [id], onDelete: SetNull)
   tools                 AgentTool[]
   memories              AgentMemory[]
   skillBindings         AgentSkill[]
@@ -751,34 +739,34 @@ model Agent {
 }
 
 model AgentTool {
-  id        String   @id @default(cuid())
-  agentId   String
-  userId    String
-  name      String
-  description String @default("") @db.Text
-  type      String   @default("function")
-  config    String   @default("{}") @db.Text
-  enabled   Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([agentId])
+id        String   @id @default(cuid())
+agentId   String
+userId    String
+name      String
+description String @default("") @db.Text
+type      String   @default("function")
+config    String   @default("{}") @db.Text
+enabled   Boolean  @default(true)
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+@@index([agentId])
 }
 
 model AgentMemory {
-  id        String    @id @default(cuid())
-  agentId   String
-  userId    String
-  category  String    @default("episodic")
-  content   String    @db.Text
-  metadata  String    @default("{}") @db.Text
-  importance Float    @default(0.5)
-  expiresAt DateTime?
-  createdAt DateTime  @default(now())
-  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([agentId, userId, category])
+id        String    @id @default(cuid())
+agentId   String
+userId    String
+category  String    @default("episodic")
+content   String    @db.Text
+metadata  String    @default("{}") @db.Text
+importance Float    @default(0.5)
+expiresAt DateTime?
+createdAt DateTime  @default(now())
+agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+@@index([agentId, userId, category])
 }
 
 model AgentDelegation { id String @id @default(cuid()) sourceAgentId String targetAgentId String task String @db.Text context String @default("") @db.Text status String @default("pending") priority Int @default(0) maxWaitMs Int @default(60000) result String? @db.Text error String? @db.Text startedAt DateTime? completedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt sourceAgent Agent @relation("AgentDelegationSource", fields: [sourceAgentId], references: [id], onDelete: Cascade) targetAgent Agent @relation("AgentDelegationTarget", fields: [targetAgentId], references: [id], onDelete: Cascade) @@index([sourceAgentId, status]) @@index([targetAgentId, status]) }
@@ -800,6 +788,7 @@ model AgentSuite {
   updatedAt   DateTime  @updatedAt
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   agents      Agent[]
+  suiteAgents AgentSuiteAgent[] @relation("AgentSuiteMembers")
   executions  AgentSuiteExecution[]
   @@index([userId, status])
   @@index([userId, strategy])
@@ -812,7 +801,7 @@ model AgentSuiteAgent {
   order     Int
   role      String    @default("member")
   createdAt DateTime  @default(now())
-  suite     AgentSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  suite     AgentSuite @relation("AgentSuiteMembers", fields: [suiteId], references: [id], onDelete: Cascade)
   @@index([suiteId])
   @@index([suiteId, agentId])
 }
