@@ -1,17 +1,21 @@
 // ============================================================
-// Gen3ia — Logger structuré avec transport Loki
+// Gen3ia — Logger structuré avec transport Loki (Phase 3.1)
 // Supporte: console (dev), Loki (prod), Sentry (errors)
+// Niveaux : DEBUG, INFO, WARN, ERROR, CRITICAL
+// Sampling : events à haut volume (infoSampled / debugSampled)
+// Correlation ID : injecté depuis correlationManager quand présent
 // ============================================================
 
-import { createHmac } from 'node:crypto';
+// (createHmac non utilisé — retiré pour un fichier propre)
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'critical';
 
-interface LogEntry {
+export interface LogEntry {
   timestamp: string;
   level: LogLevel;
   message: string;
   service: string;
+  correlationId?: string;
   context?: Record<string, unknown>;
   error?: Error;
 }
@@ -21,6 +25,7 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   info: 1,
   warn: 2,
   error: 3,
+  critical: 4,
 };
 
 const CURRENT_LEVEL: LogLevel =
@@ -39,9 +44,7 @@ class LokiTransport {
     this.url = process.env.LOKI_URL || process.env.GRAFANA_LOKI_URL || '';
     this.enabled = !!(this.url && process.env.NODE_ENV === 'production');
     if (this.enabled) {
-      // Démarre le flush périodique
       this.timer = setInterval(() => this.flush(), this.flushIntervalMs);
-      // Flush à l'arrêt
       process.on('beforeExit', () => this.flush());
     }
   }
@@ -56,14 +59,15 @@ class LokiTransport {
       env: process.env.NODE_ENV || 'production',
     };
 
-    // Labels supplémentaires pour les errors
-    if (entry.level === 'error') {
-      labels.error_type = 'application_error';
+    if (entry.level === 'error' || entry.level === 'critical') {
+      labels.error_type = entry.level === 'critical' ? 'critical' : 'application_error';
+    }
+    if (entry.correlationId) {
+      labels.correlation_id = entry.correlationId.slice(0, 16);
     }
 
-    // JSON stringifié pour les contexts
     const logLine = entry.context
-      ? JSON.stringify({ message: entry.message, ...entry.context })
+      ? JSON.stringify({ message: entry.message, ...(entry.correlationId ? { correlationId: entry.correlationId } : {}), ...entry.context })
       : entry.message;
 
     const streamKey = Object.entries(labels)
@@ -116,16 +120,11 @@ class LokiTransport {
       const token = Buffer.from(`${user}:${pass}`).toString('base64');
       return { Authorization: `Basic ${token}` };
     }
-    // Support Grafana Cloud
     const token = process.env.GRAFANA_LOKI_TOKEN || '';
     if (token) return { Authorization: `Bearer ${token}` };
     return {};
   }
 
-  /**
-   * Envoie un log directement à Loki (appel synchrone possible)
-   * Utile pour les logs critiques avant un crash
-   */
   async sendSync(entry: LogEntry): Promise<void> {
     if (!this.enabled) return;
     const labels = {
@@ -168,6 +167,16 @@ class Logger {
     return LOG_LEVELS[level] >= LOG_LEVELS[CURRENT_LEVEL];
   }
 
+  /** Correlation ID courant (via correlationManager), sans import circulaire. */
+  private getCorrelationId(): string | undefined {
+    try {
+      const { correlationManager } = require('./correlation-id');
+      return correlationManager.getCurrentId() ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private log(level: LogLevel, message: string, context?: Record<string, unknown>): void {
     if (this.isTest || !this.shouldLog(level)) return;
 
@@ -176,34 +185,33 @@ class Logger {
       level,
       message,
       service: this.service,
+      correlationId: this.getCorrelationId(),
       context,
     };
 
-    // 1. Loki (prod) — transport structuré
     loki.push(entry);
 
-    // 2. Console (dev + prod fallback)
     if (this.isProd) {
-      console[level](JSON.stringify(entry));
-      if (level === 'error') this.captureSentry(message, context);
+      console[level === 'critical' ? 'error' : level](JSON.stringify(entry));
+      if (level === 'error' || level === 'critical') this.captureSentry(message, level, context);
     } else {
       const prefix = `[${entry.timestamp}] [${level.toUpperCase()}] [${this.service}]`;
-      console[level](`${prefix} ${message}${context ? ' ' + JSON.stringify(context) : ''}`);
+      console[level === 'critical' ? 'error' : level](`${prefix} ${message}${context ? ' ' + JSON.stringify(context) : ''}`);
     }
   }
 
-  private captureSentry(message: string, context?: Record<string, unknown>): void {
+  private captureSentry(message: string, level: LogLevel, context?: Record<string, unknown>): void {
     try {
       const Sentry = require('@sentry/nextjs');
       if (Sentry?.captureException) {
         const error = context?.error instanceof Error ? context.error : new Error(message);
         Sentry.captureException(error, {
-          level: 'error',
+          level: level === 'critical' ? 'fatal' : 'error',
           tags: { service: this.service },
           extra: context || {},
         });
       }
-    } catch { /* Sentry non installe */ }
+    } catch { /* Sentry non installé */ }
   }
 
   debug(message: string, context?: Record<string, unknown>): void { this.log('debug', message, context); }
@@ -215,16 +223,27 @@ class Logger {
       this.log('error', message, { ...rest, errorMessage: error.message, stack: error.stack });
     } else this.log('error', message, context);
   }
+  /** Niveau maximum : erreur critique nécessitant une action immédiate (phase 3.1). */
+  critical(message: string, context?: Record<string, unknown>): void {
+    this.log('critical', message, context);
+  }
 
-  /**
-   * Envoie un log critique de maniere synchrone (avant crash/exit)
-   */
+  // ---------- Sampling (événements à haut volume, Phase 3.1) ----------
+  /** Log info échantillonné : ne loggue qu'environ `ratio` (0..1) des appels. */
+  infoSampled(message: string, ratio: number, context?: Record<string, unknown>): void {
+    if (Math.random() < ratio) this.info(message, context);
+  }
+  debugSampled(message: string, ratio: number, context?: Record<string, unknown>): void {
+    if (Math.random() < ratio) this.debug(message, context);
+  }
+
   async fatalSync(message: string, context?: Record<string, unknown>): Promise<void> {
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
-      level: 'error',
+      level: 'critical',
       message: `FATAL: ${message}`,
       service: this.service,
+      correlationId: this.getCorrelationId(),
       context: { ...context, fatal: true },
     };
     console.error(JSON.stringify(entry));
