@@ -1,15 +1,39 @@
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { FlatCompat } from "@eslint/eslintrc";
+import { globalIgnores } from "eslint/config";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const compat = new FlatCompat({ baseDirectory: __dirname });
 
+// En flat config (ESLint 9), l'option CLI `--ext` n'existe plus : les
+// extensions à linter sont déclarées ici, via les patterns `files`.
+const FILES = ["**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"];
+
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  globalIgnores([
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/.turbo/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/playwright-report/**",
+    "**/test-results/**",
+    "**/.vercel/**",
+    "public/**",
+    "next-env.d.ts",
+  ]),
+  // Configs Next (core-web-vitals + typescript) appliquées aux fichiers TS/TSX/JS/JSX.
+  // (FlatCompat étend les configs legacy : on s'assure que chaque bloc cible nos fichiers.)
+  ...compat.extends("next/core-web-vitals", "next/typescript").map((cfg) => ({
+    ...cfg,
+    files: FILES,
+  })),
   {
+    files: FILES,
     rules: {
       // STRICTE — tout `any` explicite est une erreur (résorption en cours).
       "@typescript-eslint/no-explicit-any": "error",
@@ -20,7 +44,7 @@ const eslintConfig = [
         "error",
         { "ts-ignore": "allow-with-description", minimumDescriptionLength: 10 }
       ],
-      // STRICTE — pas de console.* bruиs ; tout passer par le logger.
+      // STRICTE — pas de console.* bruyants ; tout passer par le logger.
       "no-console": ["error", { allow: ["warn", "error"] }],
       "prefer-const": "error",
       "no-var": "error",
