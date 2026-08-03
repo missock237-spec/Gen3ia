@@ -21,7 +21,7 @@
     "build:worker": "tsc --project tsconfig.worker.json && tsc-alias --project tsconfig.worker.json",
     "postinstall": "node -e \"try { require('child_process').execSync('npx prisma generate', { stdio: 'inherit' }) } catch(e) { console.log('Prisma generate skipped (not critical)') }\"",
     "lint": "turbo run lint",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "lint:fix": "eslint . --fix",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
