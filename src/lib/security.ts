@@ -114,9 +114,14 @@ function validateRole(auth: SecurityContext, options: SecurityOptions): { auth: 
   return { auth };
 }
 
+/** Modèle Prisma possédant une colonne `userId` (ownership check). */
+type OwnedModel = {
+  findUnique(args: { where: { id: string }; select: { userId: true } }): Promise<{ userId: string } | null>;
+};
+
 /**
- * Verify that a resource belongs to the authenticated user
- * Used by API routes to prevent unauthorized access to other users' data
+ * Verify that a resource belongs to the authenticated user.
+ * Used by API routes to prevent unauthorized access to other users' data.
  */
 export async function verifyOwnership(
   resourceType: string,
@@ -124,8 +129,9 @@ export async function verifyOwnership(
   userId: string
 ): Promise<boolean> {
   try {
-    const model = db as any;
-    const record = await model[resourceType]?.findUnique({
+    const model = (db as Record<string, OwnedModel>)[resourceType];
+    if (!model) return false;
+    const record = await model.findUnique({
       where: { id: resourceId },
       select: { userId: true },
     });
