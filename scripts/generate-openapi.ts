@@ -39,7 +39,7 @@ API REST de Gen3ia — AI Agent Operating System
 
 ## Authentification
 
-La plupart des endpoints nécessitent un token JWT dans le header `Authorization: Bearer <token>`.
+La plupart des endpoints nécessitent un token JWT dans le header "Authorization: Bearer TOKEN".
 
 ## Paiements
 
