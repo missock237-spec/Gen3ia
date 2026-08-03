@@ -5,6 +5,7 @@
 // - Limite par ENDPOINT : categories AUTH, PAYMENT, API et défaut
 // - Token bucket (burst contrôlé) via Redis (multi-instance)
 // - Fallback mémoire propre quand Redis indisponible
+// - Limites personnalisées par route (options.limit / options.windowMs)
 // Compatible Vercel Edge, Serverless, et Docker multi-instances
 // ============================================================
 
@@ -28,6 +29,27 @@ const POLICIES: Record<RateLimitScope, Policy> = {
   payment: { capacity: 20,  refillPerMin: 20,  windowSec: 60 },   // webhooks/intents
   api:     { capacity: 300, refillPerMin: 300, windowSec: 60 },   // routeurs API / agents
 };
+
+/** Options personnalisées par route (rétrocompatible). */
+export interface RateLimitOptions {
+  /** Nombre max de requêtes sur la fenêtre. */
+  limit?: number;
+  /** Durée de la fenêtre en ms. */
+  windowMs?: number;
+}
+
+/**
+ * Construit une politique custom à partir des options, ou retourne la
+ * politique globale si aucune limite personnalisée n'est fournie.
+ */
+function resolvePolicy(scope: RateLimitScope, options?: RateLimitOptions): Policy {
+  if (!options?.limit) return POLICIES[scope];
+  const windowMs = options.windowMs ?? 60_000;
+  const windowSec = Math.max(1, Math.ceil(windowMs / 1000));
+  // refillPerMin = capacité complète reconstituée sur la fenêtre (lissage simple)
+  const refillPerMin = Math.max(1, Math.round((options.limit * 60_000) / windowMs));
+  return { capacity: options.limit, refillPerMin, windowSec };
+}
 
 // ---------- Fallback mémoire (utilisé quand Redis n'est pas disponible) ----------
 const memoryStore = new Map<
@@ -149,17 +171,19 @@ export interface RateLimitResult {
  * @param userId   (optionnel) identité authentifiée
  * @param scope    catégorie d'endpoint (défaut: devinée depuis pathname)
  * @param endpoint (optionnel) clé explicite de l'endpoint
+ * @param options  (optionnel) limites personnalisées { limit, windowMs }
  */
 export async function rateLimit(
   request: Request,
   userId?: string,
   scope?: RateLimitScope,
   endpoint?: string,
+  options?: RateLimitOptions,
 ): Promise<RateLimitResult> {
   const url = new URL(request.url);
   const resolvedScope = scope ?? scopeForPath(url.pathname);
   const resolvedEndpoint = endpoint ?? url.pathname;
-  const policy = POLICIES[resolvedScope];
+  const policy = resolvePolicy(resolvedScope, options);
   const key = getRateLimitKey(request, resolvedScope, resolvedEndpoint, userId);
 
   const redis = getRedisClient();
