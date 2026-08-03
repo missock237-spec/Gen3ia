@@ -35,7 +35,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
+      - uses: github/codeql-action/init@v4.37.4
         with:
           languages: javascript-typescript
           config-file: ./.github/codeql-config.yml
@@ -48,7 +48,7 @@ jobs:
           DATABASE_URL: placeholder
           AUTH_SECRET: placeholder
           NEXT_PUBLIC_APP_URL: http://localhost:3000
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@v4.37.4
   secrets:
     name: Secrets Scan
     runs-on: ubuntu-latest
