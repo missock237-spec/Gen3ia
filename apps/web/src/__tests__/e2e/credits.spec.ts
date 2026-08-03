@@ -4,26 +4,44 @@
 
 import { test, expect } from '@playwright/test';
 
+/** Sous-ensemble des champs de plan exposés par GET /api/payments/plans */
+interface PlanSummary {
+  id: string;
+  name: string;
+  price: number;
+  priceUSD: number;
+  credits: number;
+  popular?: boolean;
+}
+
+/** Réponse typée de GET /api/payments/plans */
+interface PlansResponse {
+  success: boolean;
+  data: PlanSummary[];
+}
+
 test.describe('💰 Credits & Plans', () => {
 
   test('should display free plan with 10 credits', async ({ request }) => {
     const res = await request.get('/api/payments/plans');
     expect(res.ok()).toBeTruthy();
 
-    const body = await res.json();
-    const free = body.data.find((p: any) => p.id === 'free');
-    expect(free.credits).toBe(10);
-    expect(free.price).toBe(0);
+    const body = (await res.json()) as PlansResponse;
+    const free = body.data.find((p) => p.id === 'free');
+    expect(free).toBeDefined();
+    expect(free!.credits).toBe(10);
+    expect(free!.price).toBe(0);
   });
 
   test('should display pro plan as popular', async ({ request }) => {
     const res = await request.get('/api/payments/plans');
-    const body = await res.json();
+    const body = (await res.json()) as PlansResponse;
 
-    const pro = body.data.find((p: any) => p.id === 'pro');
-    expect(pro.popular).toBe(true);
-    expect(pro.credits).toBe(5000);
-    expect(pro.price).toBe(15000);
+    const pro = body.data.find((p) => p.id === 'pro');
+    expect(pro).toBeDefined();
+    expect(pro!.popular).toBe(true);
+    expect(pro!.credits).toBe(5000);
+    expect(pro!.price).toBe(15000);
   });
 
   test('should reject checkout without auth', async ({ request }) => {
