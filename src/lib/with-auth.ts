@@ -5,6 +5,8 @@
 // - Authentification : JWT / API Key / Bearer
 // - RBAC : rôles requis (admin, user, ...)
 // - Rate limiting : Redis (distribué) + fallback mémoire
+//   -> Les options { limit, windowMs } de la route SONT transmises
+//      au rate limiter (politique personnalisée par route).
 // - Quota LLM : vérifie le plan + le quota utilisateur
 //
 // Usage :
@@ -18,7 +20,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, type SecurityContext } from '@/lib/security';
-import { rateLimit } from '@/lib/rate-limiter';
+import { rateLimit, type RateLimitOptions } from '@/lib/rate-limiter';
 import { checkTokenLimit, getPlanLimits } from '@/lib/usage-limits';
 import { db } from '@/lib/db';
 
@@ -95,9 +97,21 @@ export function withAuth<P extends Record<string, unknown> = Record<string, stri
     const { auth, error } = await applySecurity(request, { requireAuth, roles });
     if (error) return error;
 
-    // 2. Rate limiting (Redis distribué, ou fallback mémoire)
+    // 2. Rate limiting (Redis distribué, ou fallback mémoire).
+    //    Les options { limit, windowMs } déclarées par la route sont transmises
+    //    au rate limiter : la politique de token bucket est personnalisée.
     if (rlOptions) {
-      const { allowed, remaining, resetIn } = await rateLimit(request, auth?.userId);
+      const rlOpts: RateLimitOptions = {
+        limit: rlOptions.limit,
+        windowMs: rlOptions.windowMs,
+      };
+      const { allowed, remaining, resetIn } = await rateLimit(
+        request,
+        auth?.userId,
+        undefined,
+        undefined,
+        rlOpts,
+      );
       if (!allowed) {
         return NextResponse.json(
           { error: 'Trop de requêtes', remaining, resetIn },
