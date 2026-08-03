@@ -129,7 +129,10 @@ export async function verifyOwnership(
   userId: string
 ): Promise<boolean> {
   try {
-    const model = (db as Record<string, OwnedModel>)[resourceType];
+    // Cast au travers de `unknown` : PrismaClient n'est pas assignable à
+    // Record<string, OwnedModel> (index signature) — le cast direct
+    // déclenchait TS2352 avec `strict: true`.
+    const model = (db as unknown as Record<string, OwnedModel>)[resourceType];
     if (!model) return false;
     const record = await model.findUnique({
       where: { id: resourceId },
