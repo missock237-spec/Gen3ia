@@ -4,6 +4,22 @@
 
 import { test, expect } from '@playwright/test';
 
+/** Sous-ensemble des champs de plan exposés par GET /api/payments/plans */
+interface PlanSummary {
+  id: string;
+  name: string;
+  price: number;
+  priceUSD: number;
+  credits: number;
+  popular?: boolean;
+}
+
+/** Réponse typée de GET /api/payments/plans */
+interface PlansResponse {
+  success: boolean;
+  data: PlanSummary[];
+}
+
 test.describe('🌐 API endpoints', () => {
 
   test('GET /api/health returns 200', async ({ request }) => {
@@ -20,19 +36,19 @@ test.describe('🌐 API endpoints', () => {
     const res = await request.get('/api/payments/plans');
     expect(res.ok()).toBeTruthy();
 
-    const body = await res.json();
+    const body = (await res.json()) as PlansResponse;
     expect(body.success).toBe(true);
     expect(body.data).toHaveLength(4);
 
-    const free = body.data.find((p: any) => p.id === 'free');
+    const free = body.data.find((p) => p.id === 'free');
     expect(free).toBeDefined();
-    expect(free.price).toBe(0);
-    expect(free.credits).toBe(10);
+    expect(free!.price).toBe(0);
+    expect(free!.credits).toBe(10);
 
-    const pro = body.data.find((p: any) => p.id === 'pro');
+    const pro = body.data.find((p) => p.id === 'pro');
     expect(pro).toBeDefined();
-    expect(pro.price).toBe(15000);
-    expect(pro.credits).toBe(5000);
+    expect(pro!.price).toBe(15000);
+    expect(pro!.credits).toBe(5000);
   });
 
   test('GET /api/docs/openapi returns Swagger spec', async ({ request }) => {
