@@ -7,9 +7,6 @@
         "name": "next"
       }
     ],
-    "paths": {
-      "@/*": ["./src/*"]
-    },
     "rootDir": "."
   },
   "include": [
@@ -21,9 +18,10 @@
   ],
   "exclude": [
     "node_modules",
-    "skills",
-    "examples",
-    "upload",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
     "**/*.test.ts",
     "**/*.spec.ts"
   ]
