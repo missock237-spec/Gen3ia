@@ -411,11 +411,12 @@ ${conversationHistory}`;
       };
 
       if (config.llmProvider === 'anthropic') {
+        // BUGFIX: le body Anthropic attend `system` séparé et `messages`
+        // sans rôle 'system'. On remplace le contenu — on ne le supprime pas.
         headers['x-api-key'] = apiKey;
         headers['anthropic-version'] = '2023-06-01';
         body.system = systemPrompt;
         body.messages = [{ role: 'user', content: userMessage }];
-        delete body.messages;
       } else {
         headers['Authorization'] = `Bearer ${apiKey}`;
       }
