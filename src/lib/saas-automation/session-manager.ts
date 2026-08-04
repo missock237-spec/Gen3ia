@@ -17,6 +17,7 @@
 import { prisma } from '@/lib/prisma';
 import { createLogger } from '@/lib/logger';
 import { getSaaSAccountConnector } from './account-connector';
+import { getBrowserBridge } from './browser-bridge';
 
 const log = createLogger('session-manager');
 
@@ -253,25 +254,40 @@ export class SaaSSessionManager {
     const screenshots: string[] = [];
 
     try {
-      // Charger la session avec les cookies existants
+      // Utiliser le BrowserBridge pour exécuter via Playwright
+      const bridge = getBrowserBridge();
       const account = await getSaaSAccountConnector().getAccount(session.userId, session.accountId);
 
-      for (const action of actions) {
-        const result = await this.executeSingleBrowserAction(action, account);
-        results.push(result);
+      // Construire les BrowserActions compatibles
+      const browserActions = actions.map((a, i) => ({
+        id: `action_${i}_${Date.now()}`,
+        type: a.type as 'navigate' | 'click' | 'type' | 'scroll' | 'screenshot' | 'extract' | 'fill_form' | 'wait' | 'hover' | 'select' | 'press_key' | 'evaluate',
+        selector: a.selector,
+        value: a.value,
+        url: a.url,
+        options: a.options,
+      }));
 
-        if (result.screenshot) {
-          screenshots.push(result.screenshot as string);
-        }
-      }
+      const scriptResult = await bridge.executeScript({
+        userId: session.userId,
+        saasAccountId: session.accountId,
+        provider: session.provider,
+        startUrl: session.metadata.startUrl as string || 'about:blank',
+        actions: browserActions,
+        options: {
+          takeScreenshots: true,
+          injectCookies: true,
+          antiDetection: true,
+        },
+      });
 
       session.lastUsedAt = new Date();
 
       return {
-        success: true,
-        results,
-        screenshots: screenshots.length > 0 ? screenshots : undefined,
-        executionTimeMs: Date.now() - startTime,
+        success: scriptResult.success,
+        results: scriptResult.extractedData ? [scriptResult.extractedData] : [],
+        screenshots: scriptResult.screenshots.length > 0 ? scriptResult.screenshots : undefined,
+        executionTimeMs: scriptResult.executionTimeMs,
       };
     } catch (error) {
       session.status = 'error';

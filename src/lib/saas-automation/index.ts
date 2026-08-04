@@ -7,11 +7,12 @@
 //
 // Architecture:
 //   1. Account Connector — Liaison des comptes SaaS externes
-//   2. Session Manager — Sessions persistantes (API + navigateur)
+//   F2. Session Manager — Sessions persistantes (API + navigateur)
 //   3. Safety Guard — Validation pré/post-action, consentement, audit
-//   4. Action Templates — 20+ templates d'actions pré-construits
+//   4. Action Templates — 50+ templates d'actions pré-construits
 //   5. Action Engine — Moteur d'exécution autonome
 //   6. Platform Adapters — Adaptations par provider
+//   7. Browser Bridge — Connexion Playwright au système SaaS
 // ============================================================
 
 // Account Connector
@@ -70,3 +71,11 @@ export {
   registerAdapter,
 } from './platform-adapters';
 export type { PlatformAdapter } from './platform-adapters';
+
+// Browser Bridge
+export { BrowserBridge, getBrowserBridge } from './browser-bridge';
+export type {
+  BrowserBridgeSession,
+  ExecuteBrowserScriptInput,
+  ExecuteBrowserScriptResult,
+} from './browser-bridge';

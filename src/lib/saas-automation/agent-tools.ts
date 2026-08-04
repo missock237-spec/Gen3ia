@@ -10,6 +10,7 @@ import { ToolRegistry } from '@/lib/tools/registry';
 import { getAutonomousActionEngine } from '@/lib/saas-automation/action-engine';
 import { getActionTemplateManager } from '@/lib/saas-automation/action-templates';
 import { getSaaSAccountConnector } from '@/lib/saas-automation/account-connector';
+import { getBrowserBridge } from '@/lib/saas-automation/browser-bridge';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('saas-automation-tools');
@@ -195,7 +196,118 @@ export function registerSaaSAutomationTools(registry: ToolRegistry): void {
     },
   });
 
+  // === Outil: browser_navigate ===
+  registry.register({
+    name: 'browser_navigate',
+    description: 'Ouvre une page web dans le navigateur Playwright en utilisant la session authentifiée d\'un compte SaaS. Permet d\'accéder à des sites sans API en naviguant comme l\'utilisateur.',
+    parameters: {
+      type: 'object',
+      properties: {
+        saasAccountId: { type: 'string', description: 'ID du compte SaaS lié (pour utiliser sa session)' },
+        url: { type: 'string', description: 'URL à naviguer' },
+        takeScreenshot: { type: 'boolean', default: true, description: 'Capturer un screenshot après navigation' },
+      },
+      required: ['saasAccountId', 'url'],
+    },
+    execute: async (params: { saasAccountId: string; url: string; takeScreenshot?: boolean }, context: { userId: string }) => {
+      const bridge = getBrowserBridge();
+      const result = await bridge.navigate(context.userId, params.saasAccountId, params.url);
+      if (params.takeScreenshot) {
+        const screenshot = await bridge.captureScreenshot(context.userId, params.saasAccountId);
+        return { ...result, screenshot };
+      }
+      return result;
+    },
+  });
+
+  // === Outil: browser_execute_script ===
+  registry.register({
+    name: 'browser_execute_script',
+    description: 'Exécute un script navigateur complet (navigate + click + type + extract) via Playwright sur un site web en utilisant la session authentifiée. Pour les sites sans API (Canva, WordPress, Tableau, sites internes, etc.).',
+    parameters: {
+      type: 'object',
+      properties: {
+        saasAccountId: { type: 'string', description: 'ID du compte SaaS (pour la session)' },
+        provider: { type: 'string', description: 'Provider (canva, wordpress, tableau, generic_web, etc.)' },
+        startUrl: { type: 'string', description: 'URL de départ' },
+        actions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', description: 'Type d\'action (navigate, click, type, extract, screenshot, wait, fill_form, scroll, hover, select)' },
+              selector: { type: 'string', description: 'Sélecteur CSS' },
+              value: { type: 'string', description: 'Valeur à saisir' },
+              url: { type: 'string', description: 'URL (pour navigate)' },
+            },
+          },
+          description: 'Séquence d\'actions navigateur',
+        },
+        takeScreenshots: { type: 'boolean', default: true },
+      },
+      required: ['saasAccountId', 'provider', 'startUrl', 'actions'],
+    },
+    execute: async (params: {
+      saasAccountId: string;
+      provider: string;
+      startUrl: string;
+      actions: Array<{ type: string; selector?: string; value?: string; url?: string }>;
+      takeScreenshots?: boolean;
+    }, context: { userId: string; agentId?: string }) => {
+      const bridge = getBrowserBridge();
+      const browserActions = params.actions.map((a, i) => ({
+        id: `step_${i}`,
+        type: a.type as 'navigate' | 'click' | 'type' | 'scroll' | 'screenshot' | 'extract' | 'fill_form' | 'wait' | 'hover' | 'select' | 'press_key' | 'evaluate',
+        selector: a.selector,
+        value: a.value,
+        url: a.url,
+      }));
+
+      return bridge.executeScript({
+        userId: context.userId,
+        agentId: context.agentId,
+        saasAccountId: params.saasAccountId,
+        provider: params.provider,
+        startUrl: params.startUrl,
+        actions: browserActions,
+        options: {
+          takeScreenshots: params.takeScreenshots ?? true,
+          injectCookies: true,
+          antiDetection: true,
+        },
+      });
+    },
+  });
+
+  // === Outil: browser_extract_data ===
+  registry.register({
+    name: 'browser_extract_data',
+    description: 'Extrait des données d\'une page web ouverte dans le navigateur en utilisant des sélecteurs CSS. Retourne les valeurs trouvées.',
+    parameters: {
+      type: 'object',
+      properties: {
+        saasAccountId: { type: 'string' },
+        selectors: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              selector: { type: 'string', description: 'Sélecteur CSS' },
+              attribute: { type: 'string', description: 'Attribut à extraire (text, href, src, etc.)' },
+            },
+          },
+          description: 'Sélecteurs CSS des éléments à extraire',
+        },
+      },
+      required: ['saasAccountId', 'selectors'],
+    },
+    execute: async (params: { saasAccountId: string; selectors: Array<{ selector: string; attribute?: string }> }, context: { userId: string }) => {
+      const bridge = getBrowserBridge();
+      return bridge.extractData(context.userId, params.saasAccountId, params.selectors);
+    },
+  });
+
   log.info('SaaS automation tools registered successfully', {
-    tools: ['saas_list_accounts', 'saas_execute', 'saas_list_templates', 'saas_compose', 'saas_action_history', 'saas_approve_action'],
+    tools: ['saas_list_accounts', 'saas_execute', 'saas_list_templates', 'saas_compose', 'saas_action_history', 'saas_approve_action', 'browser_navigate', 'browser_execute_script', 'browser_extract_data'],
   });
 }
