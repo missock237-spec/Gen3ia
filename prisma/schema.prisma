@@ -240,3 +240,235 @@ model CreatorPayout { id String @id @default(cuid()) userId String amount Int st
 model Conversation { id String @id @default(cuid()) title String type String @default("chat") userId String agentId String? @@index([userId, updatedAt]) }
 model Message { id String @id @default(cuid()) role String content String @db.Text conversationId String @@index([conversationId, createdAt]) }
 model ActivityLog { id String @id @default(cuid()) action String details String? @db.Text category String @default("general") userId String @@index([userId, createdAt]) }
+
+// ============= VOICE & AUDIO SYSTEMS =============
+model VoiceProfile {
+  id String @id @default(cuid())
+  userId String
+  name String
+  description String?
+  
+  // Voice characteristics
+  pitchHz Float @default(120)
+  energyDb Float @default(-20)
+  spectralCentroid Float @default(2000)
+  zeroCrossingRate Float @default(0.05)
+  jitter Float @default(0.01)
+  shimmer Float @default(0.02)
+  mfccCoefficients String @default("[]") @db.Text
+  
+  // Emotional profile
+  defaultEmotion String @default("neutral")
+  emotionScores String @default("{}") @db.Text
+  emotionRange String @default("{}") @db.Text
+  
+  // TTS preferences
+  preferredLanguages String @default("[]") @db.Text
+  preferredTTSVoice String?
+  speechRate Float @default(1.0)
+  pitch Float @default(1.0)
+  
+  // Agent compatibility
+  agentCompatibility String @default("{}") @db.Text
+  
+  // Metadata
+  isDefault Boolean @default(false)
+  recordingCount Int @default(0)
+  confidence Float @default(0)
+  
+  fingerprintId String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordings VoiceRecording[]
+  agentConfigs AgentVoiceConfig[]
+  
+  @@index([userId, isDefault])
+  @@index([fingerprintId])
+}
+
+model VoiceRecording {
+  id String @id @default(cuid())
+  userId String
+  voiceProfileId String
+  
+  audioData Bytes @db.ByteA
+  duration Float
+  sampleRate Int @default(16000)
+  channels Int @default(1)
+  mimeType String @default("audio/wav")
+  
+  // Transcription
+  transcribedText String @default("") @db.Text
+  language String @default("en")
+  confidence Float @default(0)
+  
+  // Emotion
+  detectedEmotion String @default("neutral")
+  emotionScores String @default("{}") @db.Text
+  emotionIntensity Float @default(0)
+  
+  // Metadata
+  context String? @db.Text
+  metadata String @default("{}") @db.Text
+  
+  createdAt DateTime @default(now())
+  
+  voiceProfile VoiceProfile @relation(fields: [voiceProfileId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, voiceProfileId])
+  @@index([language])
+  @@index([detectedEmotion])
+}
+
+model AgentVoiceConfig {
+  id String @id @default(cuid())
+  agentId String
+  userId String
+  voiceProfileId String?
+  
+  name String
+  description String @default("") @db.Text
+  
+  // Voice settings
+  defaultVoiceTemplate String?
+  emotionMapping String @default("{}") @db.Text
+  
+  // Preferences
+  language String @default("en")
+  speechRate Float @default(1.0)
+  pitch Float @default(1.0)
+  
+  // Features
+  enableVoiceRecognition Boolean @default(true)
+  enableEmotionDetection Boolean @default(true)
+  enableVoiceCloning Boolean @default(false)
+  maxResponseDuration Int @default(300)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  voiceProfile VoiceProfile? @relation(fields: [voiceProfileId], references: [id])
+  voiceInteractions VoiceInteraction[]
+  
+  @@index([agentId])
+  @@index([userId])
+}
+
+model VoiceInteraction {
+  id String @id @default(cuid())
+  userId String
+  agentId String
+  configId String
+  
+  inputText String @db.Text
+  inputEmotion String @default("neutral")
+  inputLanguage String @default("en")
+  inputAudio Bytes? @db.ByteA
+  inputDuration Float @default(0)
+  
+  outputText String @db.Text
+  outputAudio Bytes? @db.ByteA
+  outputEmotion String @default("neutral")
+  outputDuration Float @default(0)
+  
+  metadata String @default("{}") @db.Text
+  
+  createdAt DateTime @default(now())
+  
+  config AgentVoiceConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, agentId])
+  @@index([configId])
+  @@index([createdAt])
+}
+
+// ============= IMAGE GENERATION & ENHANCEMENT =============
+model ImageGeneration {
+  id String @id @default(cuid())
+  userId String
+  agentId String?
+  
+  prompt String @db.Text
+  negativePrompt String @default("") @db.Text
+  
+  width Int @default(512)
+  height Int @default(512)
+  model String @default("flux") // flux | stable-diffusion-v2
+  numSteps Int @default(30)
+  guidanceScale Float @default(7.5)
+  seed Int?
+  
+  imageData Bytes @db.ByteA
+  mimeType String @default("image/png")
+  
+  generationTime Int // milliseconds
+  
+  metadata String @default("{}") @db.Text
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId, createdAt])
+  @@index([agentId])
+  @@index([model])
+}
+
+model ImageEnhancement {
+  id String @id @default(cuid())
+  userId String
+  agentId String?
+  
+  originalImageData Bytes @db.ByteA
+  enhancedImageData Bytes @db.ByteA
+  
+  enhancementType String // upscale | inpaint | restoration
+  scale Int @default(4) // for upscaling
+  upscaleModel String @default("real-esrgan-x4")
+  
+  qualityImprovement Float @default(0)
+  processingTime Int // milliseconds
+  
+  metadata String @default("{}") @db.Text
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId, createdAt])
+  @@index([enhancementType])
+}
+
+model ImageBatch {
+  id String @id @default(cuid())
+  userId String
+  agentId String?
+  
+  prompts String @default("[]") @db.Text // JSON array of prompts
+  count Int
+  
+  successCount Int @default(0)
+  failureCount Int @default(0)
+  
+  status String @default("pending") // pending | processing | completed | failed
+  
+  images ImageGeneration[] @relation("BatchImages")
+  
+  totalProcessingTime Int @default(0)
+  
+  metadata String @default("{}") @db.Text
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId, status])
+  @@index([agentId])
+}
+
+// Relation for batch images (workaround for Prisma limitations)
+model BatchImageRelation {
+  id String @id @default(cuid())
+  batchId String
+  imageId String
+  
+  @@unique([batchId, imageId])
+  @@index([batchId])
+}
