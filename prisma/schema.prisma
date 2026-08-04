@@ -82,9 +82,6 @@ model User {
   userCustomizations  UserCustomization[]
   auditLogs           AuditLog[]
   aiCosts             AiCost[]
-  saasAccounts        SaaSAccount[]
-  autonomousActions   AutonomousAction[]
-  actionAudits        ActionAudit[]
   @@index([email, isActive])
   @@index([plan])
   @@index([role])
@@ -975,7 +972,6 @@ model Agent {
   approvedActions       ApprovedAction[]
   pendingActions        PendingAction[]
   actionLogs            AgentActionLog[]
-  autonomousActions     AutonomousAction[]
   @@index([userId, status])
   @@index([ownerId, status])
   @@index([type, role])
@@ -1362,120 +1358,44 @@ model VoiceSession {
 }
 
 // ============================================================
-// SAAS AUTOMATION — Comptes externes, Actions autonomes, Templates, Audit
+// RECOMMANDATION SAAS - partenaires IA & navigateurs
 // ============================================================
 
-/// Compte SaaS externe lié par l'utilisateur (OAuth ou credentials)
-model SaaSAccount {
-  id              String    @id @default(cuid())
-  userId          String
-  provider        String    // google, slack, notion, github, salesforce, hubspot, etc.
-  label           String    // Nom personnalisé (ex: "Mon Gmail pro")
-  authType        String    // oauth2 | api_key | basic_auth | session_cookies | browser
-  accessToken     String?   @db.Text  // Chiffré AES-256-GCM
-  refreshToken    String?   @db.Text  // Chiffré
-  tokenExpiresAt  DateTime?
-  scopes          String    @default("[]") @db.Text  // JSON
-  accountId       String?   // ID du compte côté provider (ex: email, workspace ID)
-  accountEmail    String?   // Email du compte externe
-  accountName     String?   // Nom du compte externe
-  avatarUrl       String?
-  metadata        String    @default("{}") @db.Text  // JSON: extra info, org, domain, etc.
-  sessionData     String?   @db.Text  // JSON: cookies, localStorage, session tokens (chiffré)
-  lastVerifiedAt  DateTime?
-  isActive        Boolean   @default(true)
-  autoReconnect   Boolean   @default(true)  // Reconnexion automatique si session expire
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  actions         AutonomousAction[]
-  audits          ActionAudit[]
-  @@unique([userId, provider, accountId])
-  @@index([userId, isActive])
-  @@index([provider])
-  @@index([tokenExpiresAt])
+model Partner {
+  id             String         @id @default(cuid())
+  name           String
+  type           String         @default("ai") // ai | browser | extension | website
+  apiKey         String         @unique @db.Text
+  referralCode   String?        // code d'affiliation lie (optionnel)
+  website        String?
+  description    String?        @db.Text
+  allowedOrigins String         @default("[]") @db.Text
+  status         String         @default("active") // active | suspended
+  views          Int            @default(0)
+  clicks         Int            @default(0)
+  signups        Int            @default(0)
+  conversions    Int            @default(0)
+  ownerId        String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  events         PartnerEvent[]
+  @@index([status])
+  @@index([type])
+  @@index([ownerId])
 }
 
-/// Action exécutée ou en attente par un agent IA sur un compte SaaS externe
-model AutonomousAction {
-  id              String    @id @default(cuid())
-  userId          String
-  agentId         String?
-  saasAccountId   String
-  templateId      String?   // Référence au template utilisé (si applicable)
-  actionType      String    // api_call | browser_automation | hybrid
-  operation       String    // L'opération (ex: gmail.send_email, notion.create_page, slack.post_message)
-  inputParams     String    @default("{}") @db.Text  // JSON: paramètres d'entrée
-  outputResult    String?   @db.Text  // JSON: résultat de l'action
-  status          String    @default("pending")  // pending | consent_requested | approved | executing | completed | failed | cancelled | rolled_back
-  consentId       String?   // ID de la demande de consentement
-  riskLevel       String    @default("low")  // low | medium | high | critical
-  executionMode   String    @default("autonomous")  // autonomous | supervised | manual
-  maxRetries      Int       @default(3)
-  retryCount      Int       @default(0)
-  timeoutMs       Int       @default(30000)
-  executionTimeMs Int?
-  errorMessage    String?
-  screenshotBefore String?  // Screenshot avant action (pour actions browser)
-  screenshotAfter  String?  // Screenshot après action
-  parentActionId  String?   // Pour les actions composées (sous-étapes)
-  metadata        String    @default("{}") @db.Text  // JSON
-  scheduledAt     DateTime? // Pour les actions différées
-  startedAt       DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  saasAccount     SaaSAccount @relation(fields: [saasAccountId], references: [id], onDelete: Cascade)
-  agent           Agent?      @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  audits          ActionAudit[]
-  @@index([userId, status])
-  @@index([saasAccountId, status])
-  @@index([agentId, status])
-  @@index([createdAt])
-}
-
-/// Template d'action pré-construit pour les plateformes SaaS
-model ActionTemplate {
-  id              String    @id @default(cuid())
-  name            String    // ex: "Envoyer un email Gmail"
-  description     String    @db.Text
-  provider        String    // google_gmail, slack, notion, github, etc.
-  operation       String    // gmail.send_email, slack.post_message, etc.
-  category        String    // communication | productivity | crm | dev_tools | finance | social
-  actionType      String    // api_call | browser_automation | hybrid
-  inputSchema     String    @db.Text  // JSON Schema des paramètres d'entrée
-  outputSchema    String?   @db.Text  // JSON Schema du résultat
-  steps           String    @db.Text  // JSON: étapes séquentielles (pour les actions composées)
-  riskLevel       String    @default("low")
-  requiredScopes  String    @default("[]") @db.Text  // JSON: scopes OAuth requis
-  estimatedTimeMs Int       @default(5000)
-  isBuiltIn       Boolean   @default(true)  // true = système, false = utilisateur
-  isActive        Boolean   @default(true)
-  usageCount      Int       @default(0)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  @@index([provider, category])
-  @@index([isActive])
-}
-
-/// Audit trail complet pour chaque action autonome
-model ActionAudit {
-  id              String    @id @default(cuid())
-  userId          String
-  actionId        String?   // Référence à AutonomousAction (nullable pour les événements système)
-  saasAccountId   String?
-  agentId         String?
-  eventType       String    // action_requested | consent_asked | consent_granted | consent_denied | action_started | action_completed | action_failed | action_rolled_back | session_expired | session_reconnected | rate_limited | security_alert
-  eventDetails    String    @default("{}") @db.Text  // JSON: détails de l'événement
-  severity        String    @default("info")  // info | warning | error | critical
-  ipAddress       String?
-  userAgent       String?
-  timestamp       DateTime  @default(now())
-  saasAccount     SaaSAccount? @relation(fields: [saasAccountId], references: [id], onDelete: SetNull)
-  action          AutonomousAction? @relation(fields: [actionId], references: [id], onDelete: SetNull)
-  user            User? @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, timestamp])
-  @@index([actionId, timestamp])
-  @@index([eventType, timestamp])
-  @@index([severity, timestamp])
+model PartnerEvent {
+  id        String   @id @default(cuid())
+  partnerId String
+  sessionId String?
+  eventType String   // view | click | signup | convert
+  metadata  String   @default("{}") @db.Text
+  ipAddress String?
+  userAgent String?  @db.Text
+  referrer  String?  @db.Text
+  createdAt DateTime @default(now())
+  partner   Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  @@index([partnerId, eventType])
+  @@index([partnerId, createdAt])
+  @@index([sessionId])
 }
