@@ -64,25 +64,6 @@ function checkAIProviders(): ProviderStatus[] {
 function checkVoiceProviders(): ProviderStatus[] {
   return [
     {
-      name: 'WhatsApp (Baileys)',
-      configured: !!process.env.BAILEYS_API_URL,
-      status: process.env.BAILEYS_API_URL ? 'active' : 'not_configured',
-      message: process.env.BAILEYS_API_URL
-        ? 'Baileys WhatsApp Web API configuré'
-        : 'Non configuré. Définissez BAILEYS_API_URL',
-      category: 'Messaging',
-    },
-    {
-      name: 'WhatsApp Business API',
-      configured: !!(process.env.WHATSAPP_API_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID),
-      status: process.env.WHATSAPP_API_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID
-        ? 'active' : 'not_configured',
-      message: process.env.WHATSAPP_API_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID
-        ? 'WhatsApp Cloud API configuré (fallback)'
-        : 'Non configuré. Requis: WHATSAPP_API_TOKEN + WHATSAPP_PHONE_NUMBER_ID',
-      category: 'Messaging',
-    },
-    {
       name: 'SpeechBrain (STT)',
       configured: !!process.env.SPEECHBRAIN_API_URL,
       status: process.env.SPEECHBRAIN_API_URL ? 'active' : 'not_configured',
@@ -247,7 +228,7 @@ export async function GET(request: NextRequest) {
         },
         criticalIssues: criticalIssues.length > 0 ? criticalIssues : undefined,
         fallbackInfo: {
-          message: 'Fluro → z-ai-sdk (chat) | Fluro → z-ai-sdk (STT) | Baileys → Cloud API (WhatsApp)',
+          message: 'Fluro → z-ai-sdk (chat) | Fluro → z-ai-sdk (STT)',
           alwaysAvailable: ['z-ai-sdk Chat', 'z-ai-sdk Streaming', 'z-ai-sdk Image Gen', 'z-ai-sdk ASR', 'Déterministic Embeddings', 'Subprocess Sandbox', 'SQLite Vector Store'],
         },
       }),

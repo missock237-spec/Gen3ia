@@ -12,7 +12,7 @@ export type IntegrationProvider =
   | 'google_gmail' | 'google_calendar' | 'google_drive' | 'google_docs'
   | 'slack' | 'notion' | 'github' | 'gitlab'
   | 'salesforce' | 'hubspot' | 'stripe' | 'ses'
-  | 'twitter' | 'linkedin' | 'telegram' | 'whatsapp'
+  | 'twitter' | 'linkedin' | 'telegram'
   | 'jira' | 'linear' | 'asana' | 'trello'
   | 'datadog' | 'sentry' | 'pagerduty'
   | 'openai' | 'anthropic' | 'elevenlabs'
@@ -73,7 +73,6 @@ export const INTEGRATIONS: IntegrationConfig[] = [
   { id: 'google_gmail', name: 'Gmail', description: 'Envoyer, lire et gérer vos emails Gmail', category: 'communication', authType: 'oauth2', authUrl: 'https://accounts.google.com/o/oauth2/v2/auth', scopes: ['https://www.googleapis.com/auth/gmail.modify'], icon: '📧', color: '#EA4335' },
   { id: 'slack', name: 'Slack', description: 'Envoyer des messages, créer des canaux, notifier vos équipes', category: 'communication', authType: 'oauth2', authUrl: 'https://slack.com/oauth/v2/authorize', scopes: ['channels:read', 'chat:write', 'users:read'], icon: '💬', color: '#4A154B' },
   { id: 'telegram', name: 'Telegram', description: 'Envoyer des messages et notifications via bot Telegram', category: 'communication', authType: 'api_key', icon: '✈️', color: '#0088cc' },
-  { id: 'whatsapp', name: 'WhatsApp', description: 'Envoyer des messages WhatsApp via API Cloud', category: 'communication', authType: 'api_key', icon: '💚', color: '#25D366' },
   { id: 'ses', name: 'Amazon SES', description: 'Service d\'envoi d\'emails transactionnels', category: 'communication', authType: 'api_key', icon: '📨', color: '#FF9900' },
 
   // === Productivité ===
@@ -160,9 +159,6 @@ export const INTEGRATION_ACTIONS: Record<IntegrationProvider, IntegrationAction[
   ],
   ses: [
     { id: 'ses_send', name: 'Envoyer email', description: 'Envoyer un email via SES', provider: 'ses', inputSchema: { to: 'string', subject: 'string', body: 'string', source: 'string' }, requiresAuth: true },
-  ],
-  whatsapp: [
-    { id: 'wa_send', name: 'Envoyer message', description: 'Envoyer un message WhatsApp', provider: 'whatsapp', inputSchema: { to: 'string', text: 'string' }, requiresAuth: true },
   ],
   webhook: [
     { id: 'webhook_send', name: 'Envoyer webhook', description: 'Envoyer un webhook HTTP', provider: 'webhook', inputSchema: { url: 'string', method: 'string', headers: 'object', body: 'any' }, requiresAuth: false },

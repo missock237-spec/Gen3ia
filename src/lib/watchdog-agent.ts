@@ -9,7 +9,7 @@ import { createLogger } from '@/lib/logger';
 const log = createLogger('watchdog-agent');
 
 export type WatchSourceType = 'rss' | 'web_page' | 'twitter' | 'linkedin' | 'news_api' | 'google_trends' | 'custom_api' | 'reddit' | 'github_trending';
-export type AlertChannel = 'email' | 'slack' | 'webhook' | 'telegram' | 'whatsapp' | 'in_app';
+export type AlertChannel = 'email' | 'slack' | 'webhook' | 'telegram' | 'in_app';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
 export interface WatchSource {

@@ -1,7 +1,7 @@
 # Guide de demarrage rapide — Genova AI API
 
 Genova est une plateforme SaaS d'agents IA autonomes, concue pour l'Afrique.
-Paiements Mobile Money, agents WhatsApp, generation d'images/videos/audio.
+Paiements Mobile Money, generation d'images/videos/audio.
 
 ## Obtenir une cle API
 
@@ -49,14 +49,7 @@ const result = await genova.executeAgent(agent.id, "Ecris un poeme sur le Camero
 console.log(result.output);
 ```
 
-### 2. Envoyer un message WhatsApp
-
-```typescript
-await genova.sendWhatsAppMessage({ to: "+237691234567", text: "Bonjour Genova !" });
-await genova.sendWhatsAppMedia({ to: "+237691234567", type: "image", mediaUrl: "https://example.com/img.jpg", caption: "Votre facture" });
-```
-
-### 3. Generer une image
+### 2. Generer une image
 
 ```typescript
 const image = await genova.generateImage({ prompt: "Coucher de soleil sur Kribi", model: "flux-dev", width: 1024, height: 1024 });

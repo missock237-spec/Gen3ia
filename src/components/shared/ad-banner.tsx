@@ -55,16 +55,6 @@ const ADS: Ad[] = [
     textColor: 'text-emerald-600 dark:text-emerald-400',
   },
   {
-    id: 'whatsapp-agent',
-    title: '🤖 Agents WhatsApp',
-    description: 'Connectez vos agents IA à WhatsApp pour 24/7 automation.',
-    cta: 'Activer',
-    link: '/integrations',
-    icon: '🤖',
-    bgColor: 'from-sky-500/10 to-blue-600/10',
-    textColor: 'text-sky-600 dark:text-sky-400',
-  },
-  {
     id: 'enterprise',
     title: '🏢 Genova Enterprise',
     description: 'SSO, SAML, intégrations sur mesure et SLA garanti.',

@@ -95,7 +95,7 @@ Pas de `any` dans `with-auth.ts`: `no-explicit-any`/`no-console` sont en `error`
 
 - `package.json.backup`
 - `next-server.pid`
-- `test-api.mjs`, `test-autonomous.ts`, `test-connectivity.ts`, `test-whatsapp.ts`
+- `test-api.mjs`, `test-autonomous.ts`, `test-connectivity.ts`
 - `test-force-push.txt`, `test-tool.txt`, `test-write.txt`
 - dossier vide `Gen3ia/`
 - `fix_package.json` (utiliser `fix_package.sh`)
@@ -120,7 +120,7 @@ Pas de `any` dans `with-auth.ts`: `no-explicit-any`/`no-console` sont en `error`
 # Fichiers obsolètes / morts
 rm bun.lock pnpm-workspace.yaml next.config.ts .eslintrc.json tailwind.config.ts
 rm package.json.backup schema_backup.prisma next-server.pid
-rm test-api.mjs test-autonomous.ts test-connectivity.ts test-whatsapp.ts
+rm test-api.mjs test-autonomous.ts test-connectivity.ts
 rm test-force-push.txt test-tool.txt test-write.txt
 rm ci.yml ci-workflow.yml deploy.yml deploy-new.yml deploy-workflow.yml release.yml issues.yml refresh-tokens.yml refresh-tokens-workflow.yml vercel-deploy.yml
 rm fix_package.json

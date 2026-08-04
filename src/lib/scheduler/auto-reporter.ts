@@ -2,7 +2,7 @@
  * Auto-Reporting System — Periodic Report Generation & Delivery
  *
  * Generate periodic reports (daily, weekly, monthly) and deliver them
- * via email, WhatsApp, or dashboard notification.
+ * via email or dashboard notification.
  */
 
 import { db } from '@/lib/db';
@@ -15,7 +15,7 @@ const log = createLogger('auto-reporter');
 // ---------------------------------------------------------------------------
 
 export type ReportFrequency = 'daily' | 'weekly' | 'monthly';
-export type DeliveryMethod = 'email' | 'whatsapp' | 'dashboard';
+export type DeliveryMethod = 'email' | 'dashboard';
 export type ReportType = 'usage' | 'agent_performance' | 'cost' | 'security' | 'custom';
 
 export interface ScheduleReportInput {
@@ -25,7 +25,6 @@ export interface ScheduleReportInput {
   frequency: ReportFrequency;
   deliveryMethods: DeliveryMethod[];
   email?: string;
-  whatsappNumber?: string;
   agentId?: string;
   customPrompt?: string;
 }
@@ -82,7 +81,6 @@ export async function scheduleReport(input: ScheduleReportInput): Promise<{
     frequency: input.frequency,
     deliveryMethods: input.deliveryMethods,
     email: input.email,
-    whatsappNumber: input.whatsappNumber,
     customPrompt: input.customPrompt,
   };
 
@@ -148,7 +146,6 @@ export async function generateReport(
     await deliverReport(userId, reportData, {
       deliveryMethods,
       email: payload.email as string | undefined,
-      whatsappNumber: payload.whatsappNumber as string | undefined,
     });
   }
 
@@ -171,7 +168,6 @@ export async function deliverReport(
   options: {
     deliveryMethods: DeliveryMethod[];
     email?: string;
-    whatsappNumber?: string;
   }
 ): Promise<DeliveryResult[]> {
   const results: DeliveryResult[] = [];
@@ -181,11 +177,6 @@ export async function deliverReport(
       switch (method) {
         case 'email': {
           const result = await deliverViaEmail(userId, report, options.email);
-          results.push(result);
-          break;
-        }
-        case 'whatsapp': {
-          const result = await deliverViaWhatsApp(userId, report, options.whatsappNumber);
           results.push(result);
           break;
         }
@@ -481,33 +472,6 @@ async function deliverViaEmail(
       error: error instanceof Error ? error.message : String(error),
     });
     return { method: 'email', success: false, message: 'Email delivery failed' };
-  }
-}
-
-async function deliverViaWhatsApp(
-  userId: string,
-  report: ReportData,
-  whatsappNumber?: string
-): Promise<DeliveryResult> {
-  if (!whatsappNumber) {
-    return { method: 'whatsapp', success: false, message: 'No WhatsApp number provided' };
-  }
-
-  try {
-    const text = formatReportAsText(report);
-    await fetch('/api/whatsapp/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: whatsappNumber, message: text }),
-    });
-
-    return { method: 'whatsapp', success: true, message: `Report sent via WhatsApp` };
-  } catch (error) {
-    log.warn('WhatsApp delivery failed', {
-      userId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { method: 'whatsapp', success: false, message: 'WhatsApp delivery failed' };
   }
 }
 

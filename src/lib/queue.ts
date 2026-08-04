@@ -12,7 +12,6 @@ export const QUEUES = {
   IMAGE_GENERATION: 'genova:image',
   VIDEO_GENERATION: 'genova:video',
   DOCUMENT_PROCESSING: 'genova:document',
-  WHATSAPP: 'genova:whatsapp',
   BACKUP: 'genova:backup',
   WEBHOOK: 'genova:webhook',
 } as const;
@@ -137,25 +136,6 @@ export async function addDocumentJob(data: DocumentJobData): Promise<Job> {
   });
 }
 
-// ============================================================
-// WhatsApp Queue
-// ============================================================
-
-export const whatsappQueue = createQueue(QUEUES.WHATSAPP);
-
-export interface WhatsAppJobData {
-  to: string;
-  message: string;
-  type: 'text' | 'template' | 'image';
-  userId: string;
-}
-
-export async function addWhatsAppJob(data: WhatsAppJobData): Promise<Job> {
-  return whatsappQueue.add('send-whatsapp', data, {
-    priority: 2,
-    attempts: 5,
-  });
-}
 
 // ============================================================
 // Queue Monitor
@@ -168,7 +148,7 @@ export async function getQueueMetrics(): Promise<Record<string, {
   failed: number;
   delayed: number;
 }>> {
-  const queues = [emailQueue, imageQueue, documentQueue, whatsappQueue];
+  const queues = [emailQueue, imageQueue, documentQueue];
   const metrics: Record<string, any> = {};
 
   for (const queue of queues) {
@@ -195,6 +175,5 @@ export async function shutdownQueues(): Promise<void> {
     emailQueue.close(),
     imageQueue.close(),
     documentQueue.close(),
-    whatsappQueue.close(),
   ]);
 }

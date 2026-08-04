@@ -41,9 +41,6 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
       
-      # WhatsApp
-      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-genova_whatsapp_verify}
-      
       # Monitoring
       SENTRY_DSN: ${SENTRY_DSN}
       VAULT_MASTER_KEY: ${VAULT_MASTER_KEY}

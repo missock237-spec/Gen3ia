@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate source
-    const validSources = ['agent', 'ai', 'workflow', 'browser', 'social', 'whatsapp'];
+    const validSources = ['agent', 'ai', 'workflow', 'browser', 'social'];
     if (!validSources.includes(source)) {
       return secureResponse(
         NextResponse.json(

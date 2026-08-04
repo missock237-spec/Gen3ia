@@ -14,7 +14,7 @@ import { withAuth, type RouteParams } from '@/lib/with-auth';
 export const dynamic = "force-dynamic";
 const log = createLogger('ai-orchestrate');
 
-const VALID_TYPES = ['sales','support','marketing','research','rh','accounting','custom','social_media','whatsapp','browser'];
+const VALID_TYPES = ['sales','support','marketing','research','rh','accounting','custom','social_media','browser'];
 
 const SYSTEM_PROMPT = `Tu es l'orchestrateur Gen3ia. Analyse les commandes utilisateur et genere un plan JSON valide.
 FORMAT: {"understanding":"...","steps":[{"title":"...","description":"...","agentType":"type","priority":"high/medium/low"}],"estimatedTime":"...","summary":"..."}

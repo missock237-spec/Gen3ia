@@ -82,38 +82,6 @@ async function migrateUserResources() {
   return { updated, skipped, total: resources.length }
 }
 
-async function migrateWhatsAppConfigs() {
-  const configs = await db.whatsAppConfig.findMany({
-    select: {
-      id: true,
-      apiToken: true,
-    },
-  })
-
-  let updated = 0
-  let skipped = 0
-
-  for (const config of configs) {
-    if (!config.apiToken || looksEncrypted(config.apiToken)) {
-      skipped++
-      continue
-    }
-
-    if (!DRY_RUN) {
-      await db.whatsAppConfig.update({
-        where: { id: config.id },
-        data: {
-          apiToken: encryptSecret(config.apiToken),
-        },
-      })
-    }
-
-    updated++
-  }
-
-  return { updated, skipped, total: configs.length }
-}
-
 async function main() {
   console.log(
     DRY_RUN
@@ -123,7 +91,6 @@ async function main() {
 
   const social = await migrateSocialAccounts()
   const resources = await migrateUserResources()
-  const whatsapp = await migrateWhatsAppConfigs()
 
   console.log('')
   console.log('Migration summary:')
@@ -133,9 +100,6 @@ async function main() {
   )
   console.log(
     `UserResource      total=${resources.total} updated=${resources.updated} skipped=${resources.skipped}`
-  )
-  console.log(
-    `WhatsAppConfig    total=${whatsapp.total} updated=${whatsapp.updated} skipped=${whatsapp.skipped}`
   )
   console.log('')
 

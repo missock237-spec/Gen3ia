@@ -50,7 +50,6 @@ export const OPTIONAL_ENV_VARS: EnvVarDefinition[] = [
   { key: 'GOOGLE_CLIENT_SECRET', type: 'string', required: false, description: 'Google OAuth Client Secret' },
   { key: 'GITHUB_CLIENT_ID', type: 'string', required: false, description: 'GitHub OAuth Client ID' },
   { key: 'GITHUB_CLIENT_SECRET', type: 'string', required: false, description: 'GitHub OAuth Client Secret' },
-  { key: 'WHATSAPP_VERIFY_TOKEN', type: 'string', required: false, description: 'Token de verification WhatsApp', default: 'gen3ia_whatsapp_verify' },
   { key: 'SENTRY_DSN', type: 'url', required: false, description: 'DSN Sentry pour le monitoring' },
   { key: 'N8N_HOST', type: 'string', required: false, description: 'Host n8n' },
   { key: 'HEAP_THRESHOLD_MB', type: 'number', required: false, description: 'Seuil memoire pour alerte (MB)', default: '500' },

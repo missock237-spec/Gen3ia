@@ -23,7 +23,7 @@ const VALID_SERVICES = [
   'github', 'gitlab', 'bitbucket',
   'gmail', 'google_calendar', 'google_drive', 'google_sheets', 'google_docs',
   'outlook', 'office365', 'microsoft_teams', 'microsoft_onedrive',
-  'slack', 'discord', 'telegram', 'whatsapp',
+  'slack', 'discord', 'telegram',
   'twitter', 'linkedin', 'instagram', 'facebook', 'tiktok', 'youtube',
   'notion', 'asana', 'trello', 'jira', 'linear', 'clickup', 'monday',
   'shopify', 'woocommerce', 'stripe', 'paypal',

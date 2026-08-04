@@ -43,7 +43,7 @@ class AutoScheduler {
 
   async scheduleAllAgents(): Promise<void> {
     const agents = await db.agent.findMany({
-      where: { status: { not: "inactive" }, type: { in: ["assistant", "analyst", "whatsapp", "custom"] } },
+      where: { status: { not: "inactive" }, type: { in: ["assistant", "analyst", "custom"] } },
       include: { user: { select: { plan: true, credits: true } } },
     });
     logger.info("auto_scheduler_agents_found", { count: agents.length });

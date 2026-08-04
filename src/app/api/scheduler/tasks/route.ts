@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
         break;
       }
       case 'auto_report': {
-        const { reportType, frequency, deliveryMethods, email, whatsappNumber, customPrompt } = payload || {};
+        const { reportType, frequency, deliveryMethods, email, customPrompt } = payload || {};
         if (!reportType || !frequency) {
           return secureResponse(
             NextResponse.json(
@@ -136,7 +136,6 @@ export async function POST(request: NextRequest) {
           frequency,
           deliveryMethods: deliveryMethods || ['dashboard'],
           email,
-          whatsappNumber,
           agentId,
           customPrompt,
         });

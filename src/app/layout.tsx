@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   description,
   keywords: ['Gen3ia', 'IA', 'agents IA', 'automatisation', 'SaaS', 'AI Operating System',
     'agent autonome', 'ReAct', 'Cameroun', 'Afrique', 'AI agents', 'voice AI',
-    'WhatsApp bot', 'AI automation platform', 'LLM', 'GPT', 'Claude'],
+    'AI automation platform', 'LLM', 'GPT', 'Claude'],
   authors: [{ name: siteConfig.author, url: siteUrl }],
   creator: siteConfig.author,
   publisher: siteConfig.author,

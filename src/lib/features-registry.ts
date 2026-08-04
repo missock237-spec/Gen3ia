@@ -68,7 +68,7 @@ export const FEATURES: Feature[] = [
 
   // ============ AUTRES ============
   { id: 'voice', name: 'Voice calls', description: 'Appels vocaux', status: 'mock', flag: 'GEN3IA_ENABLE_VOICE' },
-  { id: 'whatsapp', name: 'WhatsApp (supprimé)', description: 'Intégration WhatsApp — retirée du projet', status: 'disabled' },
+
   { id: 'affiliate', name: 'Affiliation', description: 'Programme de parrainage', status: 'beta' },
   { id: 'advertising', name: 'Publicité', description: 'Système de pubs avec récompenses', status: 'beta' },
 ];

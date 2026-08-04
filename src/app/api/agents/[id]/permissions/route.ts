@@ -15,8 +15,6 @@ const AVAILABLE_PERMISSIONS = [
   'social_instagram',
   'social_tiktok',
   'social_linkedin',
-  'whatsapp_message',
-  'whatsapp_call',
   'use_api',
   'use_cpu',
   'use_mvp',

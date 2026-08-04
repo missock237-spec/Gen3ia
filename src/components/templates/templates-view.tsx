@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { FileText, Search, Download, Sparkles } from 'lucide-react';
-const T = [{id:'1',name:'Assistant Support',type:'agent',downloads:145},{id:'2',name:'Marketing Automator',type:'workflow',downloads:89},{id:'3',name:'WhatsApp Bot',type:'agent',downloads:234},{id:'4',name:'Analyseur Sentiments',type:'agent',downloads:67}];
+const T = [{id:'1',name:'Assistant Support',type:'agent',downloads:145},{id:'2',name:'Marketing Automator',type:'workflow',downloads:89},{id:'3',name:'Analyseur Sentiments',type:'agent',downloads:67}];
 export function TemplatesView() {
   const [search, setSearch] = useState('');
   const filtered = T.filter(t=>t.name.toLowerCase().includes(search.toLowerCase()));

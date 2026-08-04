@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate agent type
-    const VALID_TYPES = ['sales', 'support', 'marketing', 'research', 'rh', 'accounting', 'custom', 'social_media', 'whatsapp', 'browser'];
+    const VALID_TYPES = ['sales', 'support', 'marketing', 'research', 'rh', 'accounting', 'custom', 'social_media', 'browser'];
     if (!VALID_TYPES.includes(type)) {
       const res = NextResponse.json(
         { error: `Invalid type. Allowed: ${VALID_TYPES.join(', ')}` },
@@ -169,8 +169,6 @@ export async function POST(request: NextRequest) {
       { permission: 'social_instagram', granted: false, requiresApproval: true },
       { permission: 'social_tiktok', granted: false, requiresApproval: true },
       { permission: 'social_linkedin', granted: false, requiresApproval: true },
-      { permission: 'whatsapp_message', granted: false, requiresApproval: true },
-      { permission: 'whatsapp_call', granted: false, requiresApproval: true },
       { permission: 'use_api', granted: false, requiresApproval: true },
       { permission: 'use_cpu', granted: false, requiresApproval: true },
       { permission: 'use_mvp', granted: false, requiresApproval: true },

@@ -1,5 +1,5 @@
 // NextAuth v5 (Auth.js) — Route handler pour l'authentification
-// Supporte: Credentials, Google, GitHub, WhatsApp OTP
+// Supporte: Credentials, Google, GitHub
 
 import NextAuth from 'next-auth';
 import { authOptions } from '@/lib/auth.config';

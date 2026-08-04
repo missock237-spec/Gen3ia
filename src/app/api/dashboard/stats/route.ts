@@ -34,7 +34,6 @@ export async function GET(request: NextRequest) {
       socialAccounts,
       pendingApprovals,
       browserSessions,
-      whatsappConfig,
       totalResources,
     ] = await Promise.all([
       db.agent.count({ where: { userId, status: 'active' } }),
@@ -53,10 +52,6 @@ export async function GET(request: NextRequest) {
       db.socialAccount.count({ where: { userId, isActive: true } }),
       db.approvalRequest.count({ where: { userId, status: 'pending' } }),
       db.browserSession.count({ where: { userId } }),
-      db.whatsAppConfig.findUnique({
-        where: { userId },
-        select: { isActive: true, autoMessage: true, autoCall: true },
-      }),
       db.userResource.count({ where: { userId, isActive: true } }),
     ]);
 
@@ -105,9 +100,6 @@ export async function GET(request: NextRequest) {
       socialAccounts,
       pendingApprovals,
       browserSessions,
-      whatsappActive: whatsappConfig?.isActive ?? false,
-      whatsappAutoMessage: whatsappConfig?.autoMessage ?? false,
-      whatsappAutoCall: whatsappConfig?.autoCall ?? false,
       totalResources,
       recentActivities,
       tasksByStatus,

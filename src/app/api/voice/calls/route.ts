@@ -68,9 +68,9 @@ export async function POST(request: NextRequest) {
       return secureResponse(res, request);
     }
 
-    if (!['twilio', 'whatsapp'].includes(provider)) {
+    if (!['twilio'].includes(provider)) {
       const res = NextResponse.json(
-        { error: 'provider must be twilio or whatsapp' },
+        { error: 'provider must be twilio' },
         { status: 400 },
       );
       return secureResponse(res, request);

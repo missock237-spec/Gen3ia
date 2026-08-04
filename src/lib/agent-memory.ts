@@ -126,7 +126,7 @@ function extractTags(content: string): string[] {
     /\b(api|database|server|client|frontend|backend|deploy|docker|kubernetes)\b/gi,
     /\b(email|calendar|task|project|team|meeting|report|document)\b/gi,
     /\b(sales|marketing|support|research|analytics|finance|accounting)\b/gi,
-    /\b(twitter|facebook|instagram|linkedin|youtube|tiktok|whatsapp)\b/gi,
+    /\b(twitter|facebook|instagram|linkedin|youtube|tiktok)\b/gi,
   ];
 
   for (const pattern of topicPatterns) {

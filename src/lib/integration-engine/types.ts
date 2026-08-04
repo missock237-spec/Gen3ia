@@ -20,7 +20,7 @@ export type IntegrationStatus =
 
 export type IntegrationCategory =
   | 'ai_ml'         // AI/ML models (SpeechBrain, CogVideo, VideoCrafter)
-  | 'communication' // Messaging (Baileys, WhatsApp)
+  | 'communication' // Messaging
   | 'automation'    // Workflow (n8n)
   | 'database'      // Data storage (PocketBase)
   | 'media'         // Image/Video/Audio (ComfyUI)
