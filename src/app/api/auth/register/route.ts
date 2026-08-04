@@ -4,7 +4,7 @@ import * as argon2 from 'argon2';
 import { sign } from 'jsonwebtoken';
 import { sendWelcomeEmail, sendVerificationCode } from '@/lib/email/auth-emails';
 import crypto from 'crypto';
-
+import { attributeSignup } from '@/lib/recommend';
 
 
 
@@ -14,7 +14,7 @@ const JWT_SECRET = process.env.AUTH_SECRET;
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, name, password } = await request.json();
+    const { email, name, password, partner, partnerKey, sid, ref } = await request.json();
 
     if (!email || !name || !password) {
       return NextResponse.json({ error: 'Email, nom et mot de passe requis' }, { status: 400 });
@@ -46,6 +46,17 @@ export async function POST(request: NextRequest) {
         isActive: true,
         credits: 10,
       },
+    });
+
+    // Attribution partenaire (recommandation SaaS) - best effort, jamais bloquant
+    await attributeSignup({
+      partnerId: typeof partner === 'string' && partner ? partner : undefined,
+      partnerApiKey: typeof partnerKey === 'string' && partnerKey ? partnerKey : undefined,
+      sessionId: typeof sid === 'string' && sid ? sid : undefined,
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0] ?? undefined,
+      userAgent: request.headers.get('user-agent') ?? undefined,
+      referrer: typeof ref === 'string' && ref ? ref : undefined,
+      metadata: { email },
     });
 
     const token = sign(
