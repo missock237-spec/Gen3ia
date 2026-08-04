@@ -601,21 +601,30 @@ model AgentPermission {
 }
 
 model VoiceCall {
-  id          String    @id @default(cuid())
-  userId      String
-  agentId     String?
-  phoneNumber String?
-  direction   String    @default("outbound")
-  status      String    @default("initiated")
-  durationMs  Int       @default(0)
-  cost        Float     @default(0)
-  recordingUrl String?
-  transcript  String?   @db.Text
-  startedAt   DateTime?
-  endedAt     DateTime?
-  createdAt   DateTime  @default(now())
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent       Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  id                  String    @id @default(cuid())
+  userId              String
+  agentId             String?
+  phoneNumber         String?
+  provider            String    @default("twilio")
+  callSid             String?
+  fromNumber          String?
+  toNumber            String?
+  language            String    @default("en-US")
+  maxDurationMinutes  Int       @default(30)
+  recordingEnabled    Boolean   @default(false)
+  metadata            String    @default("{}") @db.Text
+  durationSeconds     Int       @default(0)
+  direction           String    @default("outbound")
+  status              String    @default("initiated")
+  durationMs          Int       @default(0)
+  cost                Float     @default(0)
+  recordingUrl        String?
+  transcript          String?   @db.Text
+  startedAt           DateTime?
+  endedAt             DateTime?
+  createdAt           DateTime  @default(now())
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent               Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   @@index([userId, status])
   @@index([agentId, createdAt])
 }
@@ -936,6 +945,7 @@ model Agent {
   isPublic              Boolean   @default(false)
   isMarketplacePublished Boolean  @default(false)
   usageCount            Int       @default(0)
+  config                String    @default("{}") @db.Text
   userId                String?
   ownerId               String?
   suiteId               String?
@@ -1299,4 +1309,50 @@ model ImprovementLog {
   agent      Agent?    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   @@index([userId, createdAt])
   @@index([agentId, createdAt])
+}
+
+model UserResource {
+  id          String    @id @default(cuid())
+  userId      String
+  type        String
+  name        String
+  config      String    @db.Text
+  apiKey      String?
+  endpoint    String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  @@unique([userId, type])
+  @@index([userId])
+}
+
+model VoiceMemory {
+  id              String    @id @default(cuid())
+  userId          String
+  voiceSessionId  String?
+  category        String
+  content         String    @db.Text
+  durationMs      Int       @default(0)
+  language        String    @default("en-US")
+  confidence      Float     @default(0.8)
+  tags            String    @default("[]") @db.Text
+  metadata        String    @default("{}") @db.Text
+  createdAt       DateTime  @default(now())
+  @@index([userId, createdAt])
+}
+
+model VoiceSession {
+  id              String    @id @default(cuid())
+  userId          String
+  type            String    @default("stt")
+  status          String    @default("ended")
+  language        String    @default("en-US")
+  sttProvider     String?
+  transcription   String?
+  durationSeconds Int       @default(0)
+  metadata        String    @default("{}") @db.Text
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+  createdAt       DateTime  @default(now())
+  @@index([userId])
 }
