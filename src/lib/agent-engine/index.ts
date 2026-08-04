@@ -19,6 +19,7 @@ import { executeAgentLoop } from '@/lib/agent-engine/execution-loop';
 import { SandboxManager, getSandboxManager } from '@/lib/tools/sandbox';
 import { getStreamManager, StreamManager } from '@/lib/streaming';
 import { registerServiceTools } from '@/lib/agent-engine/register-service-tools';
+import { registerSaaSAutomationTools } from '@/lib/saas-automation/agent-tools';
 
 // Singleton instance
 let engineInstance: GenovaEngine | null = null;
@@ -53,6 +54,8 @@ export function initializeAgentEngine(): GenovaEngine {
   toolRegistry.register(codeExecutorTool);
   // Register service tools (GitHub, Gmail, Slack, etc.)
   registerServiceTools(toolRegistry);
+  // Register SaaS automation tools (account linking, action execution, templates)
+  registerSaaSAutomationTools(toolRegistry);
 
   // Create job queue
   const jobQueue = new JobQueue(3);
