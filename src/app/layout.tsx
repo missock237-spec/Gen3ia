@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Inter_Tight, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { siteConfig } from '@/lib/seo/config';
 import { ErrorBoundary, ErrorProvider } from '@/components/error-boundary';
 
-const geistSans = Inter({ variable: '--font-geist-sans', subsets: ['latin'] });
+const geistSans = Inter_Tight({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = JetBrains_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 const siteUrl = siteConfig.url;
@@ -17,7 +17,7 @@ const description = siteConfig.description;
 export const viewport: Viewport = {
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#09090b' },
+    { media: '(prefers-color-scheme: dark)', color: '#0A0A0B' },
   ],
   colorScheme: 'dark light',
   width: 'device-width',
@@ -31,7 +31,8 @@ export const metadata: Metadata = {
   description,
   keywords: ['Gen3ia', 'IA', 'agents IA', 'automatisation', 'SaaS', 'AI Operating System',
     'agent autonome', 'ReAct', 'Cameroun', 'Afrique', 'AI agents', 'voice AI',
-    'AI automation platform', 'LLM', 'GPT', 'Claude'],
+    'AI automation platform', 'LLM', 'GPT', 'Claude', 'verifiable autonomy',
+    'proof of correctness', 'agents neuro-symboliques'],
   authors: [{ name: siteConfig.author, url: siteUrl }],
   creator: siteConfig.author,
   publisher: siteConfig.author,
@@ -46,7 +47,7 @@ export const metadata: Metadata = {
       { url: '/icon.svg', type: 'image/svg+xml' },
     ],
     apple: [{ url: '/favicon-gen3ia.png', sizes: '180x180', type: 'image/png' }],
-    other: [{ rel: 'mask-icon', url: '/icon.svg', color: '#7c3aed' }],
+    other: [{ rel: 'mask-icon', url: '/icon.svg', color: '#00F5FF' }],
   },
   manifest: '/manifest.json',
   appleWebApp: {
@@ -92,7 +93,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="me" href={siteConfig.githubUrl} />
         <link rel="author" href={`${siteUrl}/about`} />
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#0f172a" />
+        <meta name="theme-color" content="#0A0A0B" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
