@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
 /* ------------------------------------------------------------------ */
-/*  Petits SVG schemas de circuits / logique (remplacent le cerveau)   */
+/*  Petit SVG schema de circuit (remplace le cerveau)                  */
 /* ------------------------------------------------------------------ */
 function Circuit({ className = '' }: { className?: string }) {
   return (
@@ -14,17 +14,6 @@ function Circuit({ className = '' }: { className?: string }) {
       <circle cx="12" cy="18" r="2.4" stroke="currentColor" strokeWidth="1.4" />
       <path d="M12 8.4v3.2M10 12h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
       <circle cx="12" cy="12" r="1.2" fill="currentColor" />
-    </svg>
-  );
-}
-
-function DecisionTree({ className = '' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
-      <path d="M12 3v4M12 7 6 13M12 7l6 6M6 13v4M18 13v4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <circle cx="12" cy="3" r="2" stroke="currentColor" strokeWidth="1.4" />
-      <circle cx="6" cy="17" r="2" stroke="currentColor" strokeWidth="1.4" />
-      <circle cx="18" cy="17" r="2" stroke="currentColor" strokeWidth="1.4" />
     </svg>
   );
 }
@@ -85,7 +74,7 @@ function TerminalHero() {
       <div className="p-5 font-[family-name:var(--font-geist-mono)] text-[0.8rem] leading-6 min-h-[300px]">
         {lines.map((l, idx) => (
           <div key={idx} className="whitespace-pre-wrap">
-            {l.text === '' ? ' ' : (
+            {l.text === '' ? ' ' : (
               <span className={tintClass(l.tint)}>{l.text}</span>
             )}
           </div>
