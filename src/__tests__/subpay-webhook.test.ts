@@ -1,101 +1,70 @@
 // ============================================================
-// Tests — SubPay Webhook Security (HMAC, anti-replay)
+// Tests — SubPay -> Chariow Adapter (bridge de compatibilité)
+// SubPay est supprimé : l'adaptateur délègue toute la logique à Chariow.
 // ============================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/db', () => ({
-  db: {
-    invoice: { create: vi.fn(), findMany: vi.fn() },
+const { mockVerify, mockIsConfigured } = vi.hoisted(() => ({
+  mockVerify: vi.fn(),
+  mockIsConfigured: vi.fn(),
+}));
+
+vi.mock('@/lib/payment/chariow', () => ({
+  chariow: {
+    verifyWebhookSignature: mockVerify,
+    isConfigured: mockIsConfigured,
+    initiateCheckout: vi.fn(),
+    getSaleStatus: vi.fn(),
   },
 }));
 
-vi.mock('@/lib/logger', () => ({
-  createLogger: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() })),
-  logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
-}));
-
-describe('SubPay Webhook Security', () => {
-  const TEST_SECRET = 'subpay_whsec_test_secret_key_32char!';
-
+describe('SubPay -> Chariow Adapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.SUBPAY_WEBHOOK_SECRET = TEST_SECRET;
+    mockVerify.mockReset();
+    mockIsConfigured.mockReset().mockReturnValue(true);
   });
 
-  describe('verifyWebhookSignature', () => {
-    it('verifie une signature HMAC SHA-256 valide', async () => {
+  describe('verifyWebhookSignature (délégation à Chariow)', () => {
+    it('délègue la vérification de signature à Chariow', async () => {
+      mockVerify.mockReturnValueOnce(true);
       const { subpay } = await import('@/lib/payment/subpay');
-      const { createHmac } = await import('node:crypto');
-      
-      const body = JSON.stringify({
-        event: 'payment.completed',
-        data: { id: 'txn_123', reference: 'ref_456', amount: 15000, status: 'completed' },
-        timestamp: new Date().toISOString(),
-      });
-      const signature = createHmac('sha256', TEST_SECRET).update(body).digest('hex');
-      
-      expect(subpay.verifyWebhookSignature(body, signature)).toBe(true);
+      expect(subpay.verifyWebhookSignature('{"a":1}', 'sig')).toBe(true);
+      expect(mockVerify).toHaveBeenCalledWith('{"a":1}', 'sig');
     });
 
-    it('rejette une signature invalide', async () => {
+    it('rejette une signature invalide via Chariow', async () => {
+      mockVerify.mockReturnValueOnce(false);
       const { subpay } = await import('@/lib/payment/subpay');
-      const body = JSON.stringify({ event: 'test' });
-      expect(subpay.verifyWebhookSignature(body, 'bad_signature')).toBe(false);
+      expect(subpay.verifyWebhookSignature('{}', 'bad')).toBe(false);
     });
 
-    it('rejette si le body a ete modifie', async () => {
+    it('rejette si Chariow retourne false pour un body modifié', async () => {
+      mockVerify.mockReturnValueOnce(false);
       const { subpay } = await import('@/lib/payment/subpay');
-      const { createHmac } = await import('node:crypto');
-      
-      const original = { amount: 15000 };
-      const signature = createHmac('sha256', TEST_SECRET).update(JSON.stringify(original)).digest('hex');
-      
-      const modified = { amount: 99999 };
-      expect(subpay.verifyWebhookSignature(JSON.stringify(modified), signature)).toBe(false);
-    });
-
-    it('rejette un body vide', async () => {
-      const { subpay } = await import('@/lib/payment/subpay');
-      expect(subpay.verifyWebhookSignature('', 'sig')).toBe(false);
-    });
-
-    it('rejette une signature vide', async () => {
-      const { subpay } = await import('@/lib/payment/subpay');
-      expect(subpay.verifyWebhookSignature('{}', '')).toBe(false);
-    });
-
-    it('rejette si aucun secret configure', async () => {
-      delete process.env.SUBPAY_WEBHOOK_SECRET;
-      const { subpay } = await import('@/lib/payment/subpay');
-      expect(subpay.verifyWebhookSignature('{}', 'sig')).toBe(false);
-    });
-
-    it('utilise timingSafeEqual pour la comparaison', async () => {
-      const { subpay } = await import('@/lib/payment/subpay');
-      const { createHmac } = await import('node:crypto');
-      
-      const body = JSON.stringify({ event: 'payment.completed' });
-      const signature = createHmac('sha256', TEST_SECRET).update(body).digest('hex');
-      
-      // Meme avec different secret, ne crash pas
-      expect(() => subpay.verifyWebhookSignature(body, signature)).not.toThrow();
+      expect(subpay.verifyWebhookSignature('{"amount":1}', 'sig')).toBe(false);
     });
   });
 
-  describe('SubPay API', () => {
-    it('retourne les providers disponibles par defaut', async () => {
+  describe('isConfigured (état Chariow)', () => {
+    it('reflète l'état de configuration Chariow', async () => {
+      mockIsConfigured.mockReturnValueOnce(false);
+      const { subpay } = await import('@/lib/payment/subpay');
+      expect(subpay.isConfigured()).toBe(false);
+
+      mockIsConfigured.mockReturnValueOnce(true);
+      expect(subpay.isConfigured()).toBe(true);
+    });
+  });
+
+  describe('SubPay API bridge', () => {
+    it('retourne les providers disponibles par défaut', async () => {
       const { subpay } = await import('@/lib/payment/subpay');
       const providers = await subpay.getAvailableProviders();
       expect(providers).toContain('mtn');
       expect(providers).toContain('orange');
       expect(providers).toContain('wave');
-    });
-
-    it('isConfigured retourne false sans API KEY', () => {
-      const { subpay } = await import('@/lib/payment/subpay');
-      // En test, les vars d'env ne sont pas set
-      expect(subpay.isConfigured()).toBe(false);
     });
   });
 });
