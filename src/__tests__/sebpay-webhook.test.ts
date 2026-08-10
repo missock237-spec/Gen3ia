@@ -1,192 +1,152 @@
 // ============================================================
-// Tests — Webhook SebPay (paiements Mobile Money)
+// Tests — Webhooks de paiement Chariow
+// (ex-SebPay : Chariow est désormais la passerelle unique)
 // ============================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock modules
-vi.mock('@/lib/sebpay', () => ({
-  sebpay: {
+vi.mock('@/lib/logger', () => ({
+  logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+  createLogger: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }),
+}));
+
+vi.mock('@/lib/payment/chariow', () => ({
+  chariow: {
+    isConfigured: vi.fn(() => true),
     verifyWebhookSignature: vi.fn(),
     handleWebhook: vi.fn(),
   },
 }));
 
-vi.mock('@/lib/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  },
-  createLogger: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }),
-}));
-
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    creditTransaction: {
-      findFirst: vi.fn(),
-      create: vi.fn(),
-    },
-    subscription: {
-      upsert: vi.fn(),
-    },
-    user: {
-      findFirst: vi.fn(),
-      update: vi.fn(),
-    },
-    activityLog: {
-      create: vi.fn(),
-    },
+    user: { findUnique: vi.fn(), update: vi.fn() },
+    subscription: { upsert: vi.fn() },
+    creditTransaction: { create: vi.fn() },
+    activityLog: { create: vi.fn() },
+    affiliateReferral: { findFirst: vi.fn(), update: vi.fn() },
+    affiliateCode: { update: vi.fn() },
   },
 }));
 
-const mockSebpay = require('@/lib/sebpay').sebpay;
+vi.mock('@/lib/billing/credit-engine', () => ({
+  getCreditEngine: () => ({ creditUser: vi.fn() }),
+}));
+
+const mockChariow = require('@/lib/payment/chariow').chariow;
 const mockPrisma = require('@/lib/prisma').prisma;
 
-describe('POST /api/payments/webhook — SebPay', () => {
+describe('POST /api/payments/webhook — Chariow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('devrait traiter un paiement complété avec succès', async () => {
-    mockSebpay.verifyWebhookSignature.mockReturnValueOnce(true);
-    mockSebpay.handleWebhook.mockResolvedValueOnce(undefined);
+    mockChariow.verifyWebhookSignature.mockReturnValueOnce(true);
+    mockChariow.handleWebhook.mockResolvedValueOnce(undefined);
 
     const { POST } = await import('@/app/api/payments/webhook/route');
-    
-    const request = new Request('http://localhost:3000/api/payments/webhook', {
+    const res = await POST(new Request('http://localhost/api/payments/webhook', {
       method: 'POST',
-      headers: { 'x-sebpay-signature': 'valid_signature' },
-      body: JSON.stringify({
-        event: 'payment.completed',
-        transaction_id: 'txn_123',
-        reference: 'gen3ia_user_1712345678',
-        status: 'completed',
-        amount: 15000,
-        currency: 'XAF',
-        operator: 'ORANGE_MONEY',
-        phone: '691234567',
-      }),
-    });
+      headers: { 'x-chariow-signature': 'valid_signature' },
+      body: JSON.stringify({ event: 'sale.completed', data: { id: 's1', status: 'completed' } }),
+    }));
 
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
+    expect(res.status).toBe(200);
+    const data = await res.json();
     expect(data.received).toBe(true);
-    expect(mockSebpay.verifyWebhookSignature).toHaveBeenCalledTimes(1);
-    expect(mockSebpay.handleWebhook).toHaveBeenCalledTimes(1);
+    expect(mockChariow.verifyWebhookSignature).toHaveBeenCalledTimes(1);
+    expect(mockChariow.handleWebhook).toHaveBeenCalledTimes(1);
   });
 
   it('devrait rejeter une signature invalide', async () => {
-    mockSebpay.verifyWebhookSignature.mockReturnValueOnce(false);
+    mockChariow.verifyWebhookSignature.mockReturnValueOnce(false);
 
     const { POST } = await import('@/app/api/payments/webhook/route');
-    
-    const request = new Request('http://localhost:3000/api/payments/webhook', {
+    const res = await POST(new Request('http://localhost/api/payments/webhook', {
       method: 'POST',
-      headers: { 'x-sebpay-signature': 'fake_signature' },
-      body: JSON.stringify({ event: 'payment.completed' }),
-    });
+      headers: { 'x-chariow-signature': 'fake_signature' },
+      body: JSON.stringify({ event: 'sale.completed' }),
+    }));
 
-    const response = await POST(request);
-    expect(response.status).toBe(401);
-    const data = await response.json();
+    expect(res.status).toBe(401);
+    const data = await res.json();
     expect(data.error).toBe('Signature invalide');
   });
 
   it('devrait rejeter un webhook sans signature', async () => {
     const { POST } = await import('@/app/api/payments/webhook/route');
-    
-    const request = new Request('http://localhost:3000/api/payments/webhook', {
+    const res = await POST(new Request('http://localhost/api/payments/webhook', {
       method: 'POST',
-      body: JSON.stringify({ event: 'payment.completed' }),
-    });
+      body: JSON.stringify({ event: 'sale.completed' }),
+    }));
 
-    const response = await POST(request);
-    expect(response.status).toBe(401);
+    expect(res.status).toBe(401);
   });
 
   it('devrait gérer les erreurs internes', async () => {
-    mockSebpay.verifyWebhookSignature.mockReturnValueOnce(true);
-    mockSebpay.handleWebhook.mockRejectedValueOnce(new Error('Erreur DB'));
+    mockChariow.verifyWebhookSignature.mockReturnValueOnce(true);
+    mockChariow.handleWebhook.mockRejectedValueOnce(new Error('Erreur DB'));
 
     const { POST } = await import('@/app/api/payments/webhook/route');
-    
-    const request = new Request('http://localhost:3000/api/payments/webhook', {
+    const res = await POST(new Request('http://localhost/api/payments/webhook', {
       method: 'POST',
-      headers: { 'x-sebpay-signature': 'valid_sig' },
-      body: JSON.stringify({ event: 'payment.completed', transaction_id: 'txn_err' }),
-    });
+      headers: { 'x-chariow-signature': 'valid_sig' },
+      body: JSON.stringify({ event: 'sale.completed' }),
+    }));
 
-    const response = await POST(request);
-    expect(response.status).toBe(500);
+    expect(res.status).toBe(500);
   });
 });
 
-describe('POST /api/billing/webhook — SebPay Billing', () => {
+describe('POST /api/billing/webhook — Chariow Billing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('devrait créditer un utilisateur après paiement complété', async () => {
-    mockSebpay.verifyWebhookSignature.mockReturnValueOnce(true);
-    mockPrisma.user.findFirst.mockResolvedValueOnce({ id: 'user_123', email: 'test@test.com' });
-    mockPrisma.creditTransaction.findFirst.mockResolvedValueOnce({ balance: 100 });
-    mockPrisma.creditTransaction.create.mockResolvedValueOnce({ id: 'txn_cred' });
+    mockChariow.verifyWebhookSignature.mockReturnValueOnce(true);
+    mockPrisma.user.findUnique.mockResolvedValueOnce({ id: 'user_123', email: 'test@test.com' });
+    mockPrisma.subscription.upsert.mockResolvedValueOnce({});
+    mockPrisma.user.update.mockResolvedValueOnce({});
     mockPrisma.activityLog.create.mockResolvedValueOnce({});
 
     const { POST } = await import('@/app/api/billing/webhook/route');
-    
-    const request = new Request('http://localhost:3000/api/billing/webhook', {
+    const res = await POST(new Request('http://localhost/api/billing/webhook', {
       method: 'POST',
-      headers: { 'x-sebpay-signature': 'valid_sig' },
+      headers: { 'x-chariow-signature': 'valid_sig' },
       body: JSON.stringify({
-        event: 'payment.completed',
-        transaction_id: 'txn_456',
-        reference: 'gen3ia_user_1712345678',
-        status: 'completed',
-        amount: 5000,
-        currency: 'XAF',
-        operator: 'MTN_MOMO',
-        phone: '691234567',
+        event: 'sale.completed',
+        data: {
+          id: 'sale_456',
+          status: 'completed',
+          metadata: { userId: 'user_123', planId: 'pro', credits: '500' },
+        },
       }),
-    });
+    }));
 
-    const response = await POST(request);
-    expect(response.status).toBe(200);
-    
-    // 5000/10 = 500 crédits
-    expect(mockPrisma.creditTransaction.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ amount: 500 }),
-      })
-    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.received).toBe(true);
+    expect(data.provider).toBe('chariow');
+    expect(data.plan).toBe('pro');
   });
 
   it('devrait ignorer un événement non completed', async () => {
-    mockSebpay.verifyWebhookSignature.mockReturnValueOnce(true);
+    mockChariow.verifyWebhookSignature.mockReturnValueOnce(true);
 
     const { POST } = await import('@/app/api/billing/webhook/route');
-    
-    const request = new Request('http://localhost:3000/api/billing/webhook', {
+    const res = await POST(new Request('http://localhost/api/billing/webhook', {
       method: 'POST',
-      headers: { 'x-sebpay-signature': 'valid_sig' },
+      headers: { 'x-chariow-signature': 'valid_sig' },
       body: JSON.stringify({
         event: 'payment.failed',
-        transaction_id: 'txn_789',
-        reference: 'gen3ia_user_1',
-        status: 'failed',
-        amount: 1000,
-        currency: 'XAF',
-        operator: 'WAVE',
-        phone: '771234567',
+        data: { id: 'sale_789', status: 'failed', metadata: { userId: 'user_123' } },
       }),
-    });
+    }));
 
-    const response = await POST(request);
-    expect(response.status).toBe(200);
-    // Aucune transaction créée
+    expect(res.status).toBe(200);
+    const data = await res.json();
     expect(mockPrisma.creditTransaction.create).not.toHaveBeenCalled();
   });
 });
