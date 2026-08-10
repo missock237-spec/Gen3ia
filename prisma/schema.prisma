@@ -11,7 +11,7 @@ model User {
   id                  String                  @id @default(cuid())
   email               String                  @unique
   name                String?
-  password            String?
+  password            String?   @db.Text
   avatar              String?
   plan                String                  @default("free")
   role                String                  @default("user")
@@ -111,7 +111,7 @@ model MonitoringEvent {
   userId    String    @default("system")
   eventType String    @default("metric")
   source    String    @default("backend")
-  message   String
+  message   String @db.Text
   details   String    @default("{}") @db.Text
   severity  String    @default("info")
   createdAt DateTime  @default(now())
@@ -933,7 +933,7 @@ model Agent {
   name                  String
   type                  String    @default("assistant")
   role                  String    @default("assistant")
-  description           String    @default("")
+  description           String    @default("") @db.Text
   systemPrompt          String    @default("") @db.Text
   instructions          String    @default("") @db.Text
   model                 String    @default("gpt-4o-mini")
@@ -1159,7 +1159,7 @@ model AgentSuiteMessage {
 model Workflow {
   id String @id @default(cuid())
   name String
-  description String @default("")
+  description String @default("") @db.Text
   steps String @default("[]") @db.Text
   trigger String @default("manual")
   status String @default("draft")
@@ -1203,7 +1203,7 @@ model WorkflowBranch {
   id String @id @default(cuid())
   workflowId String
   name String @default("main")
-  description String @default("")
+  description String @default("") @db.Text
   sourceBranchId String?
   isDefault Boolean @default(false)
   isLocked Boolean @default(false)
@@ -1235,7 +1235,7 @@ model WorkflowCollaborator {
 model WorkflowTemplate {
   id String @id @default(cuid())
   name String
-  description String @default("")
+  description String @default("") @db.Text
   category String @default("general")
   icon String @default("zap")
   steps String @default("[]") @db.Text
@@ -1317,7 +1317,7 @@ model UserResource {
   type        String
   name        String
   config      String    @db.Text
-  apiKey      String?
+  apiKey      String?   @db.Text
   endpoint    String?
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
@@ -1348,7 +1348,7 @@ model VoiceSession {
   status          String    @default("ended")
   language        String    @default("en-US")
   sttProvider     String?
-  transcription   String?
+  transcription   String? @db.Text
   durationSeconds Int       @default(0)
   metadata        String    @default("{}") @db.Text
   startedAt       DateTime  @default(now())
