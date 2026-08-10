@@ -1,1 +1,1 @@
-alpha ${{ secrets.FOO }} omega
+this file can be deleted - temporary template check
