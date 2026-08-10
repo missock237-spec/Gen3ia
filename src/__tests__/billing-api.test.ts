@@ -100,7 +100,7 @@ describe('Billing API — GET /api/billing', () => {
     expect(data.data.subscription.plan).toBe('pro');
     expect(data.data.credits.balance).toBe(4500);
     expect(data.data.monthlyUsage.executions).toBe(42);
-    expect(data.data.paymentMethod.provider).toBe('SebPay');
+    expect(data.data.paymentMethod.provider).toBe('Chariow');
     expect(data.data.paymentMethod.methods).toContain('Orange Money');
   });
 
