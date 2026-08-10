@@ -17,7 +17,7 @@
     "test:unit": "vitest run",
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --config apps/web/tests/playwright.config.ts",
     "build:worker": "tsc --project tsconfig.worker.json && tsc-alias --project tsconfig.worker.json",
     "postinstall": "node -e \"try { require('child_process').execSync('npx prisma generate', { stdio: 'inherit' }) } catch(e) { console.log('Prisma generate skipped (not critical)') }\"",
     "lint": "turbo run lint",
