@@ -48,16 +48,16 @@ export async function createAdminAccount(name: string, email: string, password: 
   }
 
   // Créer le compte admin
+  const hashedPassword = await hashPassword(password);
   return prisma.user.create({
     data: {
       email,
       name,
-      password: hashPassword(password),
+      password: hashedPassword,
       role: ADMIN_ROLE,
       plan: ENTERPRISE_PLAN,
       isActive: true,
       isEmailVerified: true,
-      emailVerified: new Date(),
     },
     select: { id: true, email: true, name: true, role: true, plan: true },
   });
