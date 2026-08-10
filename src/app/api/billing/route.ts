@@ -9,10 +9,6 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { paygService, PAYG_RATES } from '@/lib/payg-engine';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('billing');
 
@@ -52,7 +48,7 @@ export async function GET(request: NextRequest) {
           byResource: paygSummary.byResource,
           alerts: paygSummary.alerts,
         },
-        paymentMethod: { provider: 'SebPay', methods: ['Orange Money', 'MTN MoMo', 'Wave', 'Carte Bancaire'], currency: 'XAF' },
+        paymentMethod: { provider: 'Chariow', methods: ['Orange Money', 'MTN MoMo', 'Wave', 'Carte Bancaire'], currency: 'XAF' },
       },
     });
 
