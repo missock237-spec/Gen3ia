@@ -2,21 +2,30 @@
   "name": "@gen3ia/web",
   "version": "0.10.0",
   "private": true,
-  "description": "Tests e2e (Playwright) — l'app Next.js vit à la racine src/ tant que la migration monorepo n'est pas complète.",
+  "description": "Gen3ia - Application web Next.js",
   "scripts": {
-    "dev": "playwright test",
-    "test": "playwright test",
-    "test:e2e": "playwright test",
-    "lint": "eslint .",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "build": "playwright test",
-    "clean": "rm -rf test-results playwright-report"
+    "test:e2e": "playwright test --config tests/playwright.config.ts",
+    "clean": "rm -rf .next test-results playwright-report"
   },
   "dependencies": {
-    "@gen3ia/core": "*"
+    "@gen3ia/core": "*",
+    "next": "14.2.29",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@playwright/test": "^1",
-    "@types/uuid": "^10"
+    "@types/node": "^22",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/uuid": "^10",
+    "eslint": "^9",
+    "eslint-config-next": "14.2.29",
+    "typescript": "^5"
   }
 }
