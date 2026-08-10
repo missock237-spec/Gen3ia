@@ -59,6 +59,17 @@ export class RateLimitError extends ApiError {
 }
 
 // ============================================================
+// BusinessError — Regles metier (preconditions, etats invalides)
+// ============================================================
+
+export class BusinessError extends ApiError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(code, message, 400, details);
+    this.name = "BusinessError";
+  }
+}
+
+// ============================================================
 // AgentError — Boucle ReAct, LLM, outils
 // ============================================================
 
@@ -250,7 +261,7 @@ export class UniqueConstraintError extends DatabaseError {
 }
 
 // ============================================================
-// Types de reponse standardises
+// Types de reponse standardisees
 // ============================================================
 
 export interface ApiSuccessResponse<T = unknown> {
@@ -332,4 +343,22 @@ export function handleApiError(error: unknown): NextResponse<ApiErrorResponse> {
     { success: false, error: { code: 'INTERNAL_ERROR', message: process.env.NODE_ENV === 'development' ? message : 'Une erreur interne est survenue', requestId } },
     { status: 500 }
   );
+}
+
+/**
+ * Wrapper de route API : capture et formate TOUTES les erreurs en JSON structure.
+ * Garantit que chaque route renvoie un corps { success, error: { code, message, details, requestId } }.
+ * Utilisation :
+ *   export const GET = handleRoute(handler);
+ *   export const POST = handleRoute(async (req) => { ... });
+ */
+export function handleRoute<T>(handler: (...args: any[]) => Promise<NextResponse<T> | Response>)
+  : (...args: any[]) => Promise<NextResponse> {
+  return async (...args: any[]) => {
+    try {
+      return (await handler(...args)) as NextResponse;
+    } catch (error) {
+      return handleApiError(error);
+    }
+  };
 }
