@@ -1,7 +1,8 @@
 import { db } from '@/lib/db';
 import { getCreditEngine } from '@/lib/billing/credit-engine';
+import { createLogger } from '@/lib/logger';
 
-const log = { info: (...a: unknown[]) => console.log('[AdEngine]', ...a), error: (...a: unknown[]) => console.error('[AdEngine]', ...a) };
+const log = createLogger('ad-engine');
 const creditEngine = getCreditEngine();
 
 export type AdType = 'unrewarded' | 'rewarded';
