@@ -1,9 +1,10 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json ./
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ ./packages/
-RUN npm install
+RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -17,10 +18,11 @@ COPY next.config.js tsconfig.json ./
 ENV NODE_ENV=production
 RUN npx prisma generate
 RUN npm run build
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 FROM node:20-alpine AS runner
 WORKDIR /app
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
