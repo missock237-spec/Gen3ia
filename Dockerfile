@@ -9,11 +9,11 @@ WORKDIR /app
 
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ ./packages/
 
-RUN npm install
+RUN npm ci
 
 FROM node:20-alpine AS builder
 LABEL stage=builder
@@ -33,7 +33,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npx prisma generate
 RUN npm run build
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 FROM node:20-alpine AS runner
 LABEL stage=runner
