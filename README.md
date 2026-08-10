@@ -1,6 +1,16 @@
 # Gen3ia — AI Agent Operating System
 
-Plateforme SaaS d'agents IA autonomes avec memoire, outils, supervision, et marketplace.
+Plateforme SaaS d'agents IA autonomes avec mémoire, outils, supervision, marketplace, système de crédits et accès développeur (API & serveurs MCP).
+
+## Fonctionnalités
+
+- **Agents IA autonomes** — exécution, supervision et validation sécurisée
+- **Système de crédits** — packs de crédits payants pour l'utilisation des agents
+- **Paiements Chariow** — gestion des transactions et abonnements (carte bancaire)
+- **Authentification** — email/mot de passe + Google OAuth
+- **Espace développeur** — génération de clés API et de serveurs MCP personnalisés
+- **Recommandation distribuée** — diffusion du SaaS au sein des agents IA et navigateurs des utilisateurs
+- **Sécurité** — module Rust `agent-safety` (injection, jailbreak, ressources, sandbox)
 
 ## Architecture
 
@@ -21,7 +31,7 @@ gen3ia/
 │       ├── Cargo.toml             # napi-rs, regex, serde
 │       └── src/lib.rs             # Injection, jailbreak, ressources, sandbox
 ├── prisma/
-│   ├── schema.prisma           # 50+ modeles, 55 indexes
+│   ├── schema.prisma           # Modeles + index optimises
 │   └── migrations/             # Historique des migrations
 ├── Dockerfile                # Build multi-stage Next.js
 ├── Dockerfile.worker          # Build worker BullMQ
@@ -29,8 +39,7 @@ gen3ia/
 ├── turbo.json                 # Pipeline de build monorepo
 ├── vercel.json               # Configuration deploiement Vercel
 ├── .env.example              # Template des variables d'environnement
-├── .env.production           # Configuration production
-└── setup.sh                   # Script de test local
+└── setup.sh                   # Script de setup local (monorepo)
 ```
 
 ## Demarrage rapide
@@ -44,16 +53,18 @@ npm install
 # 2. Generer Prisma
 npx prisma generate
 
-# 3. Tester les builds
-npm run build         # Build Next.js
-npm run build:worker  # Build worker (TS -> JS)
+# 3. Tester les builds (monorepo)
+npm run build --workspaces --if-present   # packages (core, worker, agent-safety)
+npm run build                              # app Next.js
 
 # 4. Lancer en dev
-npm run dev           # http://localhost:3000
+npm run dev                                # http://localhost:3000
 
-# 5. Ou avec Docker Compose
+# 5. Ou via Docker Compose (PostgreSQL, Redis, app, worker)
 docker compose up --build -d
 ```
+
+> **Astuce** : `bash setup.sh` orchestre toutes ces étapes automatiquement (installation, Prisma, builds, démarrage Docker).
 
 ## Services
 
@@ -77,6 +88,11 @@ NEXTAUTH_SECRET=${AUTH_SECRET}
 NEXTAUTH_URL=https://gen3ia.vercel.app
 NEXT_PUBLIC_APP_URL=https://gen3ia.vercel.app
 NODE_ENV=production
+
+# Paiements & OAuth
+CHARIOW_API_KEY=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
 ```
 
 Voir `.env.example` pour la liste complete (40+ variables).
