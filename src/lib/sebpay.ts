@@ -1,11 +1,13 @@
 // ============================================================
-// SEBPAY SERVICE — Paiements Mobile Money Afrique
+// SEBPAY -> CHARIOW ADAPTER
+// L'ancien provider SebPay est supprimé. Tous les paiements passent
+// désormais par Chariow (https://chariow.dev).
+// Ce module conserve l'API historique (sebpay, PLANS, SUBSCRIPTION_PLANS,
+// initiatePayment, SebPayService) pour ne pas casser les imports existants,
+// mais délègue réellement à Chariow.
 // ============================================================
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { db } from "./db";
-import { logger } from "./logger";
-import { parseSubscriptionReference } from "./safe-regex";
+import { chariow } from "@/lib/payment/chariow";
 
 export interface SubscriptionPlan {
   id: string;
@@ -27,30 +29,17 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   { id: "enterprise", name: "Enterprise", price: 50000, priceUSD: 99.99, credits: 25000, maxAgents: -1, maxWorkflows: -1, maxTokensPerMonth: 25_000_000, features: ["Agents illimites", "Workflows illimites", "25M tokens/mois", "Support dedie 24/7", "SLA garanti", "Deploiement prive"] },
 ];
 
-interface SebPayConfig {
-  apiKey: string;
-  apiSecret: string;
-  baseUrl: string;
-  webhookSecret: string;
-}
-
-function getSebPayConfig(): SebPayConfig {
-  return {
-    apiKey: process.env.SEBPAY_API_KEY ?? "",
-    apiSecret: process.env.SEBPAY_API_SECRET ?? "",
-    baseUrl: process.env.SEBPAY_BASE_URL ?? "https://api.sebpay.africa/v1",
-    webhookSecret: process.env.SEBPAY_WEBHOOK_SECRET ?? "",
-  };
-}
-
 export interface SebPayPaymentRequest {
   amount: number;
   currency: string;
-  phone: string;
-  operator: string;
+  phone?: string;
+  operator?: string;
   description: string;
   reference: string;
-  callbackUrl: string;
+  callbackUrl?: string;
+  redirectUrl?: string;
+  customerEmail?: string;
+  customerName?: string;
 }
 
 export interface SebPayPaymentResponse {
@@ -62,97 +51,65 @@ export interface SebPayPaymentResponse {
 }
 
 export class SebPayService {
-  private config: SebPayConfig;
-
-  constructor() {
-    this.config = getSebPayConfig();
-  }
-
+  /**
+   * Initie un paiement. Adaptateur -> Chariow.
+   * Le productId est déduit du reference (plan) ou via la variable d'env générique.
+   */
   async initiatePayment(request: SebPayPaymentRequest): Promise<SebPayPaymentResponse> {
-    logger.info("sebpay_payment_initiated", { amount: request.amount, currency: request.currency, operator: request.operator, reference: request.reference });
     try {
-      const response = await fetch(`${this.config.baseUrl}/payments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Api-Key": this.config.apiKey, "X-Api-Secret": this.config.apiSecret },
-        body: JSON.stringify({
-          amount: request.amount, currency: request.currency, phone: request.phone,
-          operator: request.operator, description: request.description, reference: request.reference,
-          callback_url: request.callbackUrl, metadata: { source: "genova", version: "1.0" },
-        }),
+      const productId =
+        process.env[`CHARIOW_PRODUCT_PLAN_${request.description?.split(' ')[1]?.toUpperCase() || 'PRO'}`] ||
+        process.env.CHARIOW_PRODUCT_DEFAULT ||
+        '';
+
+      if (!productId) {
+        return { success: false, message: "Produit Chariow non configuré (CHARIOW_PRODUCT_DEFAULT)" };
+      }
+
+      const checkout = await chariow.initiateCheckout({
+        productId,
+        customerEmail: request.customerEmail,
+        customerName: request.customerName,
+        metadata: {
+          userId: request.reference.split('_')[1] || '',
+          type: 'plan',
+          reference: request.reference,
+          amount: String(request.amount),
+          currency: request.currency,
+        },
+        successUrl: request.redirectUrl || request.callbackUrl,
+        cancelUrl: request.callbackUrl,
       });
-      if (!response.ok) { const error = await response.text(); logger.error("sebpay_payment_failed", { reference: request.reference, status: response.status, error }); return { success: false, message: `Erreur SebPay: ${response.status}` }; }
-      const data = await response.json();
-      logger.info("sebpay_payment_success", { reference: request.reference, transactionId: data.transaction_id });
-      return { success: true, transactionId: data.transaction_id, paymentUrl: data.payment_url, status: data.status };
+
+      return {
+        success: true,
+        transactionId: checkout.saleId || request.reference,
+        paymentUrl: checkout.checkoutUrl,
+        status: checkout.step === 'payment' ? 'pending' : checkout.step,
+      };
     } catch (error) {
-      logger.error("sebpay_payment_error", { reference: request.reference, error: error instanceof Error ? error.message : String(error) });
-      return { success: false, message: "Erreur de connexion au service SebPay" };
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 
   async checkPaymentStatus(transactionId: string): Promise<SebPayPaymentResponse> {
     try {
-      const response = await fetch(`${this.config.baseUrl}/payments/${transactionId}`, {
-        headers: { "X-Api-Key": this.config.apiKey, "X-Api-Secret": this.config.apiSecret },
-      });
-      if (!response.ok) return { success: false, message: "Transaction introuvable" };
-      const data = await response.json();
-      return { success: data.status === "completed", status: data.status, transactionId };
-    } catch (error) { return { success: false, message: String(error) }; }
+      const { status, sale } = await chariow.getSaleStatus(transactionId);
+      return { success: status === 'completed', status, transactionId };
+    } catch (error) {
+      return { success: false, message: String(error) };
+    }
   }
 
-  /**
-   * Verifie la signature HMAC SHA-256 d'un webhook SebPay avec constant-time compare
-   */
   verifyWebhookSignature(payload: string, signature: string): boolean {
-    const secret = this.config.webhookSecret;
-    if (!secret || !signature || !payload) return false;
-    try {
-      const expected = createHmac('sha256', secret).update(payload).digest('hex');
-      const expectedBuf = Buffer.from(expected, 'utf-8');
-      const signatureBuf = Buffer.from(signature, 'utf-8');
-      if (expectedBuf.length !== signatureBuf.length) return false;
-      return timingSafeEqual(expectedBuf, signatureBuf);
-    } catch {
-      return false;
-    }
+    return chariow.verifyWebhookSignature(payload, signature);
   }
 
-  async handleWebhook(payload: {
-    event: string;
-    transaction_id: string;
-    reference: string;
-    status: string;
-    amount: number;
-    currency: string;
-    operator: string;
-    phone: string;
-  }): Promise<void> {
-    logger.info("sebpay_webhook_received", { event: payload.event, transactionId: payload.transaction_id, reference: payload.reference });
-    if (payload.event !== "payment.completed" || payload.status !== "completed") return;
-
-    const parsed = parseSubscriptionReference(payload.reference);
-    if (!parsed.planId || !parsed.userId) {
-      logger.warn("sebpay_webhook_invalid_reference", { reference: payload.reference });
-      return;
-    }
-
-    const plan = SUBSCRIPTION_PLANS.find((p) => p.id === parsed.planId);
-    if (!plan) { logger.warn("sebpay_webhook_unknown_plan", { planId: parsed.planId }); return; }
-
-    await db.$transaction(async (tx) => {
-      await tx.subscription.upsert({
-        where: { userId: parsed.userId! },
-        update: { plan: parsed.planId, status: "active", currentPeriodStart: new Date(), currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
-        create: { userId: parsed.userId!, plan: parsed.planId, status: "active", currentPeriodStart: new Date(), currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
-      });
-      await tx.creditTransaction.create({
-        data: { userId: parsed.userId!, amount: plan.credits, balance: plan.credits, type: "purchase", resourceType: "subscription", description: `Abonnement ${plan.name} - ${payload.amount} ${payload.currency}` },
-      });
-      await tx.user.update({ where: { id: parsed.userId! }, data: { plan: parsed.planId } });
-    });
-
-    logger.info("sebpay_subscription_activated", { userId: parsed.userId, planId: parsed.planId, credits: plan.credits });
+  async handleWebhook(payload: any): Promise<void> {
+    await chariow.handleWebhook(payload);
   }
 }
 
