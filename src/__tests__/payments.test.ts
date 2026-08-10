@@ -1,113 +1,109 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-function req(url: string, opts: any = {}) {
-  return new Request(url, {
-    method: opts.method || 'GET',
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  });
-}
-function auth(url: string, opts: any = {}) {
-  return req(url, { ...opts, headers: { ...opts.headers, Authorization: 'Bearer token' } });
-}
+vi.mock('jsonwebtoken', () => ({ verify: vi.fn(() => ({ userId: 'user_123' })) }));
 
-describe('/api/credits', () => {
-  const base = 'http://localhost:3000/api/credits';
+vi.mock('@/lib/payment/chariow', () => ({
+  chariow: {
+    isConfigured: vi.fn(() => true),
+    initiateCheckout: vi.fn(),
+    verifyWebhookSignature: vi.fn(() => true),
+    handleWebhook: vi.fn(),
+  },
+}));
 
-  it('devrait retourner 401 sans auth', () => {
-    const r = req(base);
-    expect(r.headers.get('Authorization')).toBeNull();
-  });
+vi.mock('@/lib/db', () => ({
+  db: {
+    user: { update: vi.fn() },
+    creditTransaction: { create: vi.fn() },
+    invoice: { create: vi.fn() },
+  },
+}));
 
-  it('devrait retourner le solde', () => {
-    const r = auth(base);
-    expect(r.headers.get('Authorization')).toBe('Bearer token');
-  });
+vi.mock('@/lib/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }),
+}));
 
-  it('devrait retourner l historique', () => {
-    const r = auth(`${base}?scope=history&limit=10&page=1`);
-    const url = new URL(r.url);
-    expect(url.searchParams.get('scope')).toBe('history');
-    expect(url.searchParams.get('limit')).toBe('10');
-  });
+const mockChariow = require('@/lib/payment/chariow').chariow;
 
-  it('devrait acheter des credits', () => {
-    const r = auth(base, { method: 'POST', body: { amount: 100, packageId: 'pkg-1' } });
-    const b = JSON.parse(r.body as string);
-    expect(b.amount).toBe(100);
-    expect(b.packageId).toBe('pkg-1');
+describe('/api/payments — Checkout Chariow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.AUTH_SECRET = 'test-secret-32-characters-minimum!!';
+    mockChariow.isConfigured.mockReturnValue(true);
   });
 
-  it('devrait rejeter un montant invalide', () => {
-    const r = auth(base, { method: 'POST', body: { amount: -5 } });
-    const b = JSON.parse(r.body as string);
-    expect(b.amount).toBe(-5);
-  });
-});
+  function post(body: any) {
+    return new Request('http://localhost/api/payments/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer valid.token' },
+      body: JSON.stringify(body),
+    });
+  }
 
-describe('/api/stripe', () => {
-  const base = 'http://localhost:3000/api/stripe';
-
-  it('devrait retourner 401 sans auth', () => {
-    const r = req(base);
-    expect(r.headers.get('Authorization')).toBeNull();
-  });
-
-  it('devrait creer un payment intent', () => {
-    const r = auth(`${base}/create-payment`, { method: 'POST', body: { amount: 2000, currency: 'eur' } });
-    const b = JSON.parse(r.body as string);
-    expect(b.amount).toBe(2000);
-    expect(b.currency).toBe('eur');
+  it('devrait retourner 401 sans auth', async () => {
+    const { POST } = await import('@/app/api/payments/checkout/route');
+    const res = await POST(new Request('http://localhost/api/payments/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }));
+    expect(res.status).toBe(401);
   });
 
-  it('devrait lister les factures', () => {
-    const r = auth(`${base}/invoices`);
-    expect(r.url).toContain('/api/stripe/invoices');
+  it('devrait initier un checkout Chariow pour un plan payant', async () => {
+    process.env.CHARIOW_PRODUCT_PLAN_PRO = 'prod_pro';
+    mockChariow.initiateCheckout.mockResolvedValueOnce({
+      step: 'payment',
+      saleId: 'sale_1',
+      checkoutUrl: 'https://checkout.chariow.com/x',
+    });
+
+    const { POST } = await import('@/app/api/payments/checkout/route');
+    const res = await POST(post({ type: 'plan', id: 'pro' }));
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.transactionId).toBe('sale_1');
+    expect(mockChariow.initiateCheckout).toHaveBeenCalledTimes(1);
   });
 
-  it('devrait annuler un abonnement', () => {
-    const r = auth(`${base}/subscription`, { method: 'DELETE' });
-    expect(r.method).toBe('DELETE');
-  });
-});
+  it('devrait activer directement le plan gratuit', async () => {
+    const { POST } = await import('@/app/api/payments/checkout/route');
+    const res = await POST(post({ type: 'plan', id: 'free' }));
+    const data = await res.json();
 
-describe('/api/sebpay', () => {
-  const base = 'http://localhost:3000/api/sebpay';
-
-  it('devrait retourner 401 sans auth', () => {
-    const r = req(base);
-    expect(r.headers.get('Authorization')).toBeNull();
+    expect(res.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(mockChariow.initiateCheckout).not.toHaveBeenCalled();
   });
 
-  it('devrait initier un paiement mobile', () => {
-    const r = auth(`${base}/pay`, { method: 'POST', body: { amount: 5000, phone: '+237600000000', operator: 'mtn' } });
-    const b = JSON.parse(r.body as string);
-    expect(b.amount).toBe(5000);
-    expect(b.operator).toBe('mtn');
+  it('devrait initier un checkout pour un pack de crédits', async () => {
+    process.env.CHARIOW_PRODUCT_CREDITS_MEDIUM = 'prod_cred_medium';
+    mockChariow.initiateCheckout.mockResolvedValueOnce({
+      step: 'payment',
+      saleId: 'sale_cred',
+      checkoutUrl: 'https://checkout.chariow.com/x',
+    });
+
+    const { POST } = await import('@/app/api/payments/checkout/route');
+    const res = await POST(post({ type: 'credits', id: 'medium' }));
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.transactionId).toBe('sale_cred');
   });
 
-  it('devrait verifier un paiement', () => {
-    const r = auth(`${base}/verify?transactionId=txn-123`);
-    const url = new URL(r.url);
-    expect(url.searchParams.get('transactionId')).toBe('txn-123');
-  });
-});
-
-describe('/api/webhook', () => {
-  const base = 'http://localhost:3000/api/webhook';
-
-  it('devrait accepter Stripe (publique)', () => {
-    const r = req(`${base}/stripe`, { method: 'POST', body: { type: 'payment_intent.succeeded' }, headers: { 'stripe-signature': 'sig' } });
-    expect(r.headers.get('stripe-signature')).toBe('sig');
+  it('devrait rejeter un plan invalide', async () => {
+    const { POST } = await import('@/app/api/payments/checkout/route');
+    const res = await POST(post({ type: 'plan', id: 'inexistant' }));
+    expect(res.status).toBe(400);
   });
 
-  it('devrait rejeter Stripe sans signature', () => {
-    const r = req(`${base}/stripe`, { method: 'POST', body: { type: 'test' } });
-    expect(r.headers.get('stripe-signature')).toBeNull();
-  });
-
-  it('devrait accepter SebPay (publique)', () => {
-    const r = req(`${base}/sebpay`, { method: 'POST', body: { status: 'completed', transactionId: 'txn' } });
-    expect(r.method).toBe('POST');
+  it('devrait rejeter un type invalide', async () => {
+    const { POST } = await import('@/app/api/payments/checkout/route');
+    const res = await POST(post({ type: 'crypto', id: 'x' }));
+    expect(res.status).toBe(400);
   });
 });
