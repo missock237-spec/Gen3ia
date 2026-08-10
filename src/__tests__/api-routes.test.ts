@@ -63,22 +63,22 @@ describe('API Routes - Agents', () => {
 });
 
 describe('API Routes - Paiement', () => {
-  it('devrait bloquer les requetes Stripe sans auth', async () => {
-    const req = await callRoute('/api/stripe/create-payment', {
+  it('devrait bloquer les requetes checkout sans auth', async () => {
+    const req = await callRoute('/api/payments/checkout', {
       method: 'POST',
-      body: JSON.stringify({ amount: 1000 }),
+      body: JSON.stringify({ type: 'plan', id: 'pro' }),
       headers: { 'Content-Type': 'application/json' },
     });
-    expect(req.url).toContain('/api/stripe');
+    expect(req.url).toContain('/api/payments/checkout');
   });
 
-  it('devrait accepter les webhooks Stripe', async () => {
-    const req = await callRoute('/api/webhook/stripe', {
+  it('devrait accepter les webhooks Chariow', async () => {
+    const req = await callRoute('/api/payments/webhook', {
       method: 'POST',
-      headers: { 'stripe-signature': 'test_sig' },
-      body: JSON.stringify({ type: 'payment_intent.succeeded' }),
+      headers: { 'x-chariow-signature': 'test_sig' },
+      body: JSON.stringify({ event: 'sale.completed' }),
     });
-    expect(req.url).toContain('/api/webhook/stripe');
+    expect(req.url).toContain('/api/payments/webhook');
   });
 });
 
