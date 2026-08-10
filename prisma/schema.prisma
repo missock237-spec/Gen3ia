@@ -976,6 +976,8 @@ model Agent {
   @@index([ownerId, status])
   @@index([type, role])
   @@index([isMarketplacePublished])
+  @@index([userId, createdAt])
+  @@index([status])
   @@index([ownerId, category])
 }
 
