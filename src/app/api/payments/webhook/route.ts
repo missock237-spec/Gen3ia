@@ -1,30 +1,27 @@
 // ============================================================
-// POST /api/payments/webhook — Webhook SebPay
+// POST /api/payments/webhook — Webhook Chariow
 // ============================================================
 import { NextRequest, NextResponse } from "next/server";
-import { sebpay } from "@/lib/sebpay";
+import { chariow } from "@/lib/payment/chariow";
 import { logger } from "@/lib/logger";
-
-
-
-
 
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
-    const payload = await request.json();
-    const signature = request.headers.get("x-sebpay-signature") ?? "";
+    const raw = await request.text();
+    const payload = JSON.parse(raw);
+    const signature = request.headers.get("x-chariow-signature") ?? request.headers.get("x-signature") ?? "";
 
-    const isValid = sebpay.verifyWebhookSignature(JSON.stringify(payload), signature);
+    const isValid = chariow.verifyWebhookSignature(raw, signature);
     if (!isValid) {
-      logger.warn("sebpay_webhook_invalid_signature");
+      logger.warn("chariow_webhook_invalid_signature");
       return NextResponse.json({ error: "Signature invalide" }, { status: 401 });
     }
 
-    await sebpay.handleWebhook(payload);
+    await chariow.handleWebhook(payload);
     return NextResponse.json({ received: true });
   } catch (error) {
-    logger.error("sebpay_webhook_error", { error: error instanceof Error ? error.message : String(error) });
+    logger.error("chariow_webhook_error", { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ received: false }, { status: 500 });
   }
 }
