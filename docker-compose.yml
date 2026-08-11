@@ -1,6 +1,6 @@
 # ============================================================
 # Gen3ia — Docker Compose (dev + production)
-# Orchestre : PostgreSQL, Redis, Next.js, Worker BullMQ
+# Orchestre : Redis, Next.js, Worker BullMQ (Firestore/Storage gérés par Firebase)
 # ============================================================
 
 version: "3.9"
@@ -8,27 +8,6 @@ version: "3.9"
 name: gen3ia
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: gen3ia-postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: gen3ia
-      POSTGRES_PASSWORD: gen3ia_dev
-      POSTGRES_DB: gen3ia_dev
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gen3ia -d gen3ia_dev"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    networks:
-      - gen3ia-net
-
   redis:
     image: redis:7-alpine
     container_name: gen3ia-redis
@@ -58,27 +37,34 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://gen3ia:gen3ia_dev@postgres:5432/gen3ia_dev
       REDIS_URL: redis://redis:6379
-      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-${AUTH_SECRET}}
-      NEXTAUTH_URL: http://localhost:3000
       NEXT_PUBLIC_APP_URL: http://localhost:3000
       NEXT_TELEMETRY_DISABLED: 1
+      # Firebase (client)
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+      # Firebase (Admin SDK — serveur)
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      # IA / LLM
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Paiements Chariow
+      CHARIOW_API_KEY: ${CHARIOW_API_KEY:-}
+      CHARIOW_WEBHOOK_SECRET: ${CHARIOW_WEBHOOK_SECRET:-}
+      CHARIOW_API_URL: ${CHARIOW_API_URL:-}
+      # Monitoring
       SENTRY_DSN: ${SENTRY_DSN:-}
       LOKI_URL: ${LOKI_URL:-}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -99,16 +85,19 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://gen3ia:gen3ia_dev@postgres:5432/gen3ia_dev
       REDIS_URL: redis://redis:6379
-      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
       NEXT_TELEMETRY_DISABLED: 1
+      # Firebase (Admin SDK — serveur)
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      # IA / LLM
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -140,8 +129,6 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
-    name: gen3ia-postgres-data
   redis_data:
     name: gen3ia-redis-data
   qdrant_data:
