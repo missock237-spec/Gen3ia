@@ -1,0 +1,217 @@
+rules_version = '2';
+
+// ============================================================
+// Gen3ia — Firestore Security Rules
+// ============================================================
+//  Stratégie :
+//   - Tout utilisateur authentifié peut lire/écrire ses propres
+//     documents (userId == request.auth.uid).
+//   - Les collections publiques (marketplace listings published)
+//     sont lisibles par tous.
+//   - Les collections admin (audit_logs, monitoring_events, ai_costs)
+//     sont réservées aux admins (custom claim role == 'admin').
+//   - Les collections de service (fcm_devices, sessions) sont
+//     lisibles/modifiables uniquement par le propriétaire.
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // Helpers
+    // ============================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
+
+    function isCreator() {
+      return isSignedIn() && (request.auth.token.role == 'admin' || request.auth.token.isCreator == true);
+    }
+
+    // ============================================================
+    // Users — profils utilisateurs (miroir étendu de Firebase Auth)
+    // ============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ============================================================
+    // Credits — solde de crédits par utilisateur
+    // ============================================================
+    match /credits/{creditId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Les crédits ne sont JAMAIS modifiés directement par le client.
+      // Seul le backend (Admin SDK) ou les Cloud Functions peuvent les modifier.
+      allow write: if false;
+    }
+
+    // ============================================================
+    // Agents — agents IA créés/achetés
+    // ============================================================
+    match /agents/{agentId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ============================================================
+    // Agent suites / memories / usage
+    // ============================================================
+    match /agent_suites/{suiteId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /agent_memories/{memoryId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /agent_usage/{usageId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false; // Backend only
+    }
+
+    // ============================================================
+    // Conversations + messages (historique des conversations)
+    // ============================================================
+    match /conversations/{conversationId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read, write: if isSignedIn() && get(/databases/$(database)/documents/conversations/$(conversationId)).data.userId == request.auth.uid;
+      }
+    }
+
+    // ============================================================
+    // Notifications — inbox intra-app
+    // ============================================================
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if false; // Backend only (FCM triggers)
+    }
+
+    // ============================================================
+    // FCM device tokens
+    // ============================================================
+    match /fcm_devices/{token} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ============================================================
+    // API keys, tasks, workflows, guardrails, feedback
+    // ============================================================
+    match /api_keys/{keyId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /tasks/{taskId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /workflows/{workflowId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /workflow_templates/{templateId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /guardrails/{guardrailId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /feedback/{feedbackId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /social_accounts/{accountId} {
+      allow read, write: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ============================================================
+    // Marketplace — listings publiques
+    // ============================================================
+    match /marketplace_listings/{listingId} {
+      allow read: if isSignedIn() && (resource.data.status == 'published' || resource.data.sellerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
+    }
+    match /marketplace_purchases/{purchaseId} {
+      allow read: if isSignedIn() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.buyerId == request.auth.uid;
+      allow update, delete: if false; // Backend only
+    }
+    match /marketplace_reviews/{reviewId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ============================================================
+    // Subscriptions / invoices
+    // ============================================================
+    match /subscriptions/{subId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false; // Backend only
+    }
+    match /invoices/{invoiceId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false; // Backend only
+    }
+
+    // ============================================================
+    // Admin-only collections
+    // ============================================================
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Backend only
+    }
+    match /ai_costs/{costId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+    match /monitoring_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /usage_daily/{usageId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+    match /improvement_logs/{logId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+
+    // ============================================================
+    // Uploaded files metadata
+    // ============================================================
+    match /uploaded_files/{fileId} {
+      allow read: if isSignedIn() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+      allow write: if false; // Backend only
+    }
+
+    // ============================================================
+    // Webhooks
+    // ============================================================
+    match /webhooks/{webhookId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ============================================================
+    // Default deny
+    // ============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

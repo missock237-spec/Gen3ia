@@ -1,129 +1,85 @@
 // ============================================================
-// AUTH — Hachage et verification des mots de passe
-// Utilise argon2id (recommandation OWASP 2026)
+// Gen3ia — Auth shim (compatibilité)
+// ============================================================
+//  Préserve l'API historique :
+//    - import { hashPassword, verifyPassword } from '@/lib/auth'
+//    - import { getServerSession } from '@/lib/auth'
+//    - import { verifyAccessToken } from '@/lib/auth'
+//    - import { createAuditLog, generateResetToken } from '@/lib/auth'
+//
+//  Backend : Firebase Authentication (server-side) via Admin SDK.
+//
+//  hashPassword/verifyPassword ne sont plus utilisés : Firebase Auth
+//  gère le hachage (scrypt configurable). On expose des no-ops /
+//  helpers qui lèvent une erreur explicite si appelés directement.
 // ============================================================
 
-import * as argon2 from "argon2";
+export {
+  getServerSession,
+  getCurrentUser,
+  verifyIdToken,
+  verifyAccessToken,
+  createSessionCookie,
+  setSessionCookie,
+  clearSessionCookie,
+  getSessionCookie,
+  createUser,
+  getUserByUid,
+  getUserByEmail,
+  updateUser,
+  setUserRole,
+  deleteUser,
+  revokeAllSessions,
+  sendPasswordResetEmail,
+  sendEmailVerificationLink,
+  validatePasswordStrength,
+  createAuditLog,
+  SESSION_COOKIE_NAME,
+  SESSION_COOKIE_MAX_AGE,
+  type Gen3iaUser,
+  type ServerSession,
+  type AccessTokenPayload,
+} from '@/lib/firebase/auth';
 
-const ARGON2_OPTIONS: argon2.Options & { raw?: false } = {
-  type: argon2.argon2id,
-  memoryCost: 65536,
-  timeCost: 3,
-  parallelism: 4,
-  hashLength: 32,
-  saltLength: 16,
-};
+// ============================================================
+// Legacy helpers — dépréciés (Firebase Auth gère en interne)
+// ============================================================
 
-export async function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, ARGON2_OPTIONS);
+/**
+ * @deprecated Firebase Auth gère le hachage des mots de passe (scrypt).
+ * Cette fonction n'a plus d'effet. Conservée uniquement pour compat
+ * avec d'éventuels imports résiduels.
+ */
+export async function hashPassword(_password: string): Promise<string> {
+  throw new Error(
+    '[auth] hashPassword() est déprécié — Firebase Auth gère le hachage côté serveur. ' +
+    'Utilisez createUser() ou signInWithEmailAndPassword côté client.',
+  );
 }
 
-export async function verifyPassword(hash: string, password: string): Promise<boolean> {
-  try {
-    return await argon2.verify(hash, password, ARGON2_OPTIONS);
-  } catch {
-    return false;
-  }
+/**
+ * @deprecated Firebase Auth gère la vérification côté serveur.
+ */
+export async function verifyPassword(_hash: string, _password: string): Promise<boolean> {
+  throw new Error(
+    '[auth] verifyPassword() est déprécié — Firebase Auth vérifie le mot de passe via signInWithEmailAndPassword.',
+  );
 }
 
-// ============================================================
-// Session token generation
-// ============================================================
-
-import crypto from 'crypto';
-
+/**
+ * Génère un token aléatoire (utilisé pour des identifiants non-Firebase,
+ * ex: tokens d'invitation, tokens API). Conservé car non spécifique à l'auth.
+ */
 export function generateSessionToken(): string {
-  return crypto.randomBytes(48).toString('hex');
+  return require('node:crypto').randomBytes(48).toString('hex');
 }
 
-// ============================================================
-// Audit log — records security-relevant events
-// ============================================================
-
-export async function createAuditLog(params: {
-  userId: string;
-  action: string;
-  resource?: string;
-  details?: Record<string, unknown>;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-  severity?: string;
-}): Promise<void> {
-  try {
-    const { db } = await import('@/lib/db');
-    await db.auditLog.create({
-      data: {
-        userId: params.userId,
-        action: params.action,
-        resource: params.resource || 'unknown',
-        details: params.details ? JSON.stringify(params.details) : null,
-        ipAddress: params.ipAddress || null,
-        userAgent: params.userAgent || null,
-        severity: params.severity || 'info',
-      },
-    });
-  } catch (error) {
-    console.error('[audit-log] Failed to create audit log:', error instanceof Error ? error.message : String(error));
-  }
-}
-
-// ============================================================
-// Server session — get current session from NextAuth
-// ============================================================
-
-export async function getServerSession(): Promise<{
-  user: { id: string; email: string; name: string; role: string };
-} | null> {
-  try {
-    // Dynamic import to avoid circular dependency
-    const { getServerSession: nextAuthGetSession } = await import('next-auth/next');
-    const session = await nextAuthGetSession();
-    if (!session?.user?.email) return null;
-    
-    const { db } = await import('@/lib/db');
-    const user = await db.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, email: true, name: true, role: true },
-    });
-    
-    if (!user) return null;
-    return { user };
-  } catch {
-    return null;
-  }
-}
-
-export function validatePasswordStrength(password: string): { valid: boolean; reasons: string[] } {
-  const reasons: string[] = [];
-  if (password.length < 8) reasons.push("Minimum 8 caractères");
-  if (!/[A-Z]/.test(password)) reasons.push("Au moins une majuscule");
-  if (!/[a-z]/.test(password)) reasons.push("Au moins une minuscule");
-  if (!/[0-9]/.test(password)) reasons.push("Au moins un chiffre");
-  // Minimum 12 pour validation complete, 8 pour compatibilite inscription
-  return { valid: password.length >= 8 && reasons.length <= 1, reasons };
-}
-
-// ============================================================
-// Re-exports from @/lib/auth/jwt
-// ============================================================
-
-export { verifyAccessToken, type AccessTokenPayload } from '@/lib/auth/jwt';
-
-// ============================================================
-// Token generation utilities
-// ============================================================
-
-/**
- * Generate a random token for email verification / password reset
- */
 export function generateResetToken(): string {
-  return crypto.randomBytes(32).toString('hex');
+  return require('node:crypto').randomBytes(32).toString('hex');
 }
 
-/**
- * Hash a token using PBKDF2 (for secure storage in DB)
- */
 export async function hashToken(token: string): Promise<string> {
+  const crypto = await import('node:crypto');
   const salt = crypto.randomBytes(16);
   return new Promise((resolve, reject) => {
     crypto.pbkdf2(token, salt, 100_000, 32, 'sha256', (err, derivedKey) => {

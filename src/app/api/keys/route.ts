@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
-import { getServerSession } from 'next-auth';
+import { getServerSession } from '@/lib/auth';
 import crypto from 'crypto';
 
 

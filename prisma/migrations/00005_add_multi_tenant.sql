@@ -1,2 +1,0 @@
--- OBSOLÈTE — Convention abandonnée (fichiers .sql à plat).
--- Suppression : git rm prisma/migrations/00005_add_multi_tenant.sql

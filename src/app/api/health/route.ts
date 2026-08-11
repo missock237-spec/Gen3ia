@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { Redis } from 'ioredis';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth.config';
+import { getServerSession } from '@/lib/auth';
 
 
 
@@ -19,7 +18,12 @@ const REDIS_URL = process.env.REDIS_URL || '';
 const QDRANT_URL = process.env.QDRANT_URL || '';
 
 async function checkDatabase(): Promise<boolean> {
-  try { await db.$queryRaw`SELECT 1`; return true; } catch { return false; }
+  try {
+    // Firestore : on effectue un simple list collections pour vérifier la connexion
+    const { getAdminDb } = await import('@/lib/firebase/admin');
+    await getAdminDb().listCollections();
+    return true;
+  } catch { return false; }
 }
 
 /** Ping Redis avec un timeout court (ne bloque pas le healthcheck). */
@@ -124,7 +128,7 @@ export async function GET(request: NextRequest) {
   // Mode detaille : reserve aux admins authentifies
   const url = new URL(request.url);
   if (url.searchParams.get('detailed') === 'true') {
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession();
     if (session?.user?.role === 'admin') {
       const components = await getDetailedReport();
       return NextResponse.json({ status, timestamp: new Date().toISOString(), components });

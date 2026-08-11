@@ -1,39 +1,16 @@
-import { PrismaClient } from '@prisma/client';
+// ============================================================
+// Gen3ia — DB shim (compatibilité)
+// ============================================================
+//  Ce fichier préserve l'API historique `import { db, prisma } from '@/lib/db'`
+//  utilisée par ~50 API routes. Il délègue désormais vers Firestore.
+//
+//  Remplace :
+//    - src/lib/db.ts (Prisma)
+//    - src/lib/prisma.ts (Prisma singleton)
+//    - packages/core/src/db.ts (Prisma)
+//
+//  Backend : Firebase Admin SDK -> Cloud Firestore.
+// ============================================================
 
-function resolveDatabaseUrl(): string {
-  const databaseUrl = process.env.DATABASE_URL || process.env.GEN3IA_DATABASE_URL || process.env.GENOVA_DATABASE_URL;
-  if (!databaseUrl) {
-    // During build time, provide a placeholder so Prisma Client can be instantiated
-    if (process.env.NEXT_PHASE === 'phase-production-build') {
-      return 'postgresql://placeholder:placeholder@localhost:5432/placeholder';
-    }
-    throw new Error('DATABASE_URL must be set. Define DATABASE_URL or GEN3IA_DATABASE_URL in your environment.');
-  }
-  if (!databaseUrl.startsWith('postgresql://') && !databaseUrl.startsWith('postgres://')) {
-    if (process.env.NEXT_PHASE === 'phase-production-build') {
-      return 'postgresql://placeholder:placeholder@localhost:5432/placeholder';
-    }
-    throw new Error('DATABASE_URL must be a PostgreSQL connection string');
-  }
-  return databaseUrl;
-}
-
-const databaseUrl = resolveDatabaseUrl();
-
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
-
-export const db =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    datasourceUrl: databaseUrl,
-    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  });
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = db;
-}
-
-// Alias: many files import { prisma } from '@/lib/db'
-export const prisma = db;
-
-export default db;
+export { db, prisma, Collections, FirestoreRepository } from '@/lib/firebase/firestore';
+export { default } from '@/lib/firebase/firestore';

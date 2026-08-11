@@ -1,50 +1,45 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { verify } from 'jsonwebtoken';
+// ============================================================
+// GET /api/auth/me — Retourne l'utilisateur courant (Firebase)
+// ============================================================
 
+import { NextResponse } from 'next/server';
 
+import { getServerSession } from '@/lib/firebase/auth';
+import { db } from '@/lib/firebase/firestore';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-
-export const dynamic = "force-dynamic";
-const JWT_SECRET = process.env.AUTH_SECRET;
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Token requis' }, { status: 401 });
+    const session = await getServerSession();
+    if (!session) {
+      return NextResponse.json({ user: null }, { status: 200 });
     }
 
-    if (!JWT_SECRET || JWT_SECRET.length < 32) {
-      console.error('[AUTH] AUTH_SECRET manquant');
-      return NextResponse.json({ error: 'Erreur de configuration' }, { status: 500 });
-    }
+    // Récupère le profil étendu depuis Firestore
+    const profile = await db.user.findUnique({ where: { id: session.user.id } });
 
-    const token = authHeader.slice(7);
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
-
-    const user = await db.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        avatar: true,
-        plan: true,
-        role: true,
-        credits: true,
-        isActive: true,
-        isEmailVerified: true,
-        createdAt: true,
-        _count: { select: { agents: true } },
+    return NextResponse.json({
+      user: {
+        id: session.user.id,
+        uid: session.user.uid,
+        email: session.user.email,
+        name: session.user.name,
+        picture: session.user.picture,
+        emailVerified: session.user.emailVerified,
+        role: session.user.role,
+        plan: (profile as Record<string, unknown>)?.plan || 'free',
+        credits: (profile as Record<string, unknown>)?.credits || 0,
+        isActive: (profile as Record<string, unknown>)?.isActive ?? true,
+        isCreator: (profile as Record<string, unknown>)?.isCreator ?? false,
       },
     });
-
-    if (!user) return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
-
-    return NextResponse.json(user);
-  } catch {
-    return NextResponse.json({ error: 'Token invalide ou expiré' }, { status: 401 });
+  } catch (error) {
+    console.error('[auth/me] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erreur' },
+      { status: 500 },
+    );
   }
 }

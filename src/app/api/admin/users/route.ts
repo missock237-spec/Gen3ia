@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth.config';
+import { getServerSession } from '@/lib/auth';
 import { getAllUsers, searchUsers, getUserById, updateUserPlan, toggleUserActive, updateUserRole, deleteUser, isAdminRole, logAdminAction } from '@/lib/admin';
 
 
@@ -9,14 +8,14 @@ import { getAllUsers, searchUsers, getUserById, updateUserPlan, toggleUserActive
 
 export const dynamic = "force-dynamic";
 async function verifyAdmin(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession();
   if (session?.user && isAdminRole(session.user.role)) {
     return { userId: session.user.id, role: session.user.role };
   }
   const authHeader = request.headers.get('authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const { verifyAccessToken } = await import('@/lib/auth');
-    const payload = verifyAccessToken(authHeader.slice(7));
+    const payload = await verifyAccessToken(authHeader.slice(7));
     if (payload && isAdminRole(payload.role)) return payload;
   }
   return null;

@@ -1,53 +1,72 @@
+// ============================================================
+// GET / PATCH /api/auth/profile — Profil utilisateur (Firestore)
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { verify } from 'jsonwebtoken';
 
+import { getServerSession, updateUser } from '@/lib/firebase/auth';
+import { db } from '@/lib/firebase/firestore';
+import { createAuditLog } from '@/lib/firebase/analytics';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-
-
-export const dynamic = "force-dynamic";
-const JWT_SECRET = process.env.AUTH_SECRET;
-
-export async function PUT(request: NextRequest) {
+export async function GET() {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ') || !JWT_SECRET || JWT_SECRET.length < 32) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    const session = await getServerSession();
+    if (!session) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+
+    const profile = await db.user.findUnique({ where: { id: session.user.id } });
+    if (!profile) return NextResponse.json({ error: 'Profil introuvable' }, { status: 404 });
+
+    return NextResponse.json({ profile });
+  } catch (error) {
+    console.error('[auth/profile GET] Error:', error);
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const session = await getServerSession();
+    if (!session) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+
+    const body = await req.json().catch(() => null);
+    if (!body) return NextResponse.json({ error: 'Body invalide' }, { status: 400 });
+
+    // Champs modifiables
+    const allowedFields = ['name', 'avatar', 'bio', 'preferences', 'language', 'timezone'];
+    const patch: Record<string, unknown> = {};
+    for (const field of allowedFields) {
+      if (field in body) patch[field] = body[field];
     }
+    patch.updatedAt = new Date();
 
-    const token = authHeader.slice(7);
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    // Update Firestore profile
+    const updated = await db.user.update({ where: { id: session.user.id }, data: patch });
 
-    const { name, email } = await request.json();
-
-    if (!name || name.trim().length < 1) {
-      return NextResponse.json({ error: 'Nom requis' }, { status: 400 });
-    }
-
-    const updateData: Record<string, string> = { name: name.trim() };
-
-    if (email && email !== '') {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return NextResponse.json({ error: 'Format d\'email invalide' }, { status: 400 });
-      }
-      const existing = await db.user.findFirst({
-        where: { email, NOT: { id: decoded.userId } },
+    // Sync displayName / photoURL vers Firebase Auth si modifiés
+    if (body.name || body.avatar) {
+      await updateUser(session.user.id, {
+        ...(body.name ? { displayName: body.name } : {}),
+        ...(body.avatar ? { photoURL: body.avatar } : {}),
       });
-      if (existing) {
-        return NextResponse.json({ error: 'Email déjà utilisé' }, { status: 409 });
-      }
-      updateData.email = email;
     }
 
-    const user = await db.user.update({
-      where: { id: decoded.userId },
-      data: updateData,
-      select: { id: true, email: true, name: true, plan: true, role: true },
+    await createAuditLog({
+      userId: session.user.id,
+      action: 'user.profile.update',
+      resource: 'profile',
+      details: { fields: Object.keys(patch) },
+      severity: 'info',
     });
 
-    return NextResponse.json({ success: true, user });
-  } catch {
-    return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 });
+    return NextResponse.json({ profile: updated });
+  } catch (error) {
+    console.error('[auth/profile PATCH] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erreur serveur' },
+      { status: 500 },
+    );
   }
 }

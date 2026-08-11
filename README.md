@@ -1,5 +1,85 @@
 # Gen3ia — AI Agent Operating System
 
+## 🔥 Stack Firebase (v0.11+)
+
+Gen3ia utilise désormais **Firebase** comme backend managed pour remplacer PostgreSQL/Prisma, NextAuth, le filesystem upload, le notification engine custom et l'analytics custom.
+
+| Fonction Gen3ia | Service Firebase |
+|---|---|
+| Comptes utilisateurs | **Firebase Authentication** (email/password, Google, GitHub, MFA) |
+| Profils utilisateurs | **Cloud Firestore** (collection `users`) |
+| Historique des conversations | **Cloud Firestore** (collections `conversations` + `messages`) |
+| Crédits utilisateurs | **Cloud Firestore** (collection `credits`) |
+| Agents IA achetés/créés | **Cloud Firestore** (collection `agents`) |
+| Fichiers/images | **Cloud Storage** (bucket `uploads/`) |
+| Notifications | **Firebase Cloud Messaging** + Firestore (`notifications`) |
+| Logs / analytics | **Firebase Analytics** + Firestore (`audit_logs`, `monitoring_events`) |
+| Logique backend | **Next.js API Routes** + **Firebase Admin SDK** |
+
+### Variables d'environnement
+
+Copier `.env.example` vers `.env.local` puis renseigner :
+
+```bash
+# Client (exposées au navigateur)
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+
+# Serveur (Firebase Admin SDK) — au choix :
+# Format 1 : JSON complet
+FIREBASE_SERVICE_ACCOUNT={"type":"service_account",...}
+# Format 2 : variables séparées
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
+```
+
+### Fichiers de configuration Firebase
+
+- `firebase.json` — configuration CLI Firebase
+- `.firebaserc` — alias de projets (prod / staging)
+- `firestore.rules` — règles de sécurité Firestore (deny-by-default, ownership-based)
+- `firestore.indexes.json` — index composites (conversations, notifications, agents...)
+- `storage.rules` — règles de sécurité Cloud Storage
+
+### Modules Firebase
+
+- `src/lib/firebase/config.ts` — configuration partagée
+- `src/lib/firebase/client.ts` — Client SDK (navigateur)
+- `src/lib/firebase/admin.ts` — Admin SDK (serveur)
+- `src/lib/firebase/auth.ts` — Authentication (session cookies, ID token verify, MFA)
+- `src/lib/firebase/firestore.ts` — Data layer (API Prisma-like sur Firestore)
+- `src/lib/firebase/storage.ts` — Cloud Storage (upload, signed URLs, chunks)
+- `src/lib/firebase/messaging.ts` — Cloud Messaging (push + inbox)
+- `src/lib/firebase/analytics.ts` — Firebase Analytics + audit logs
+- `src/lib/firebase/auth-client.ts` — Helpers client (signIn, signUp, Google/GitHub popup)
+
+### Compatibilité (shims)
+
+Les imports historiques `@/lib/db`, `@/lib/prisma`, `@/lib/auth`, `@/lib/upload`, `@/lib/notification-engine`, `@/lib/analytics`, `@/lib/audit-trail`, `@/lib/session` sont préservés et délèguent vers les modules Firebase. Les ~50 API routes existantes n'ont pas besoin d'être modifiées.
+
+### Déploiement des règles Firebase
+
+```bash
+npm run firestore:rules    # Déploie firestore.rules
+npm run storage:rules      # Déploie storage.rules
+npm run firestore:indexes  # Déploie les index composites
+npm run firebase:deploy    # Déploiement complet
+```
+
+### Émulateurs locaux
+
+```bash
+npx firebase emulators:start
+```
+
+UI disponible sur http://localhost:4000 (Auth :9099, Firestore :8080, Storage :9199).
+
+---
+
 Plateforme SaaS d'agents IA autonomes avec mémoire, outils, supervision, marketplace, système de crédits et accès développeur (API & serveurs MCP).
 
 ## Fonctionnalités

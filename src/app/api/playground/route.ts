@@ -3,7 +3,7 @@ import { createLogger } from '@/lib/logger';
 import { createAIRouter } from '@/lib/ai-router';
 import { createComputeEngine } from '@/lib/compute/engine';
 import { createHuggingFaceClient } from '@/lib/generation/huggingface-client';
-import { getServerSession } from 'next-auth';
+import { getServerSession } from '@/lib/auth';
 
 
 

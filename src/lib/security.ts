@@ -1,14 +1,17 @@
 // ============================================================
 // Gen3ia — Security Middleware pour les routes API
-// Authentification JWT (access 15min) + API keys + RBAC
+// Authentification Firebase (session cookie + ID token) + API keys + RBAC
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAccessToken } from '@/lib/auth/jwt';
+import { verifyAccessToken, getServerSession } from '@/lib/firebase/auth';
 import { db } from '@/lib/db';
+import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
+import { getAdminAuth } from '@/lib/firebase/admin';
 
 export interface SecurityContext {
   userId: string;
+  uid: string;
   role: string;
   email?: string;
 }
@@ -20,33 +23,36 @@ interface SecurityOptions {
 
 /**
  * Middleware de sécurité pour les routes API.
- * Supporte:
- * - Bearer token JWT (access token 15min)
- * - X-API-Key (API keys persistantes)
- * - Rôles (RBAC)
+ * Supporte (par ordre de priorité) :
+ *  1. Session cookie Firebase (gen3ia_session) — navigateur
+ *  2. Bearer token Firebase ID token — clients API / mobile
+ *  3. X-API-Key — clés API persistantes
+ *  + RBAC via custom claims Firebase (role)
  */
 export async function applySecurity(
   request: NextRequest,
-  options: SecurityOptions = {}
+  options: SecurityOptions = {},
 ): Promise<{ auth?: SecurityContext; error?: NextResponse }> {
-  const secret = process.env.AUTH_SECRET;
-
-  if (!secret || secret.length < 32) {
-    console.error('[SECURITY] AUTH_SECRET manquant ou trop court');
-    if (options.requireAuth) {
-      return { error: NextResponse.json({ error: 'Erreur de configuration serveur' }, { status: 500 }) };
+  // 1. Session cookie Firebase (principalement navigateur)
+  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (sessionCookie) {
+    try {
+      const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
+      const user = await getAdminAuth().getUser(decoded.uid);
+      const role = (user.customClaims?.role as string) || 'user';
+      const auth: SecurityContext = {
+        userId: decoded.uid,
+        uid: decoded.uid,
+        role,
+        email: user.email || undefined,
+      };
+      return validateRole(auth, options);
+    } catch {
+      // Cookie invalide ou expiré, on continue
     }
-    return { auth: { userId: 'anonymous', role: 'guest' } };
   }
 
-  // 1. Essayer API Key d'abord
-  const apiKey = request.headers.get('x-api-key');
-  if (apiKey) {
-    const auth = await authenticateApiKey(apiKey);
-    if (auth) return validateRole(auth, options);
-  }
-
-  // 2. Essayer Bearer token JWT
+  // 2. Bearer token Firebase ID token
   const authHeader = request.headers.get('authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
@@ -54,6 +60,7 @@ export async function applySecurity(
     if (payload) {
       const auth: SecurityContext = {
         userId: payload.sub,
+        uid: payload.uid || payload.sub,
         role: payload.role,
         email: payload.email,
       };
@@ -61,12 +68,19 @@ export async function applySecurity(
     }
   }
 
-  // 3. Si auth requise, retourner 401
+  // 3. API Key (clés persistantes stockées dans Firestore)
+  const apiKey = request.headers.get('x-api-key');
+  if (apiKey) {
+    const auth = await authenticateApiKey(apiKey);
+    if (auth) return validateRole(auth, options);
+  }
+
+  // 4. Si auth requise, retourner 401
   if (options.requireAuth) {
     return { error: NextResponse.json({ error: 'Authentification requise' }, { status: 401 }) };
   }
 
-  return { auth: { userId: 'anonymous', role: 'guest' } };
+  return { auth: { userId: 'anonymous', uid: 'anonymous', role: 'guest' } };
 }
 
 /**
@@ -79,23 +93,32 @@ export function secureResponse(response: NextResponse, _request: NextRequest): N
 }
 
 /**
- * Authentifie via API Key
+ * Authentifie via API Key (Firestore collection `api_keys`)
  */
 async function authenticateApiKey(apiKey: string): Promise<SecurityContext | null> {
   try {
-    const key = await db.accessKey.findFirst({
-      where: { keyValue: apiKey, isActive: true },
-      include: { user: { select: { id: true, role: true } } },
-    });
-    if (!key || !key.user) return null;
+    const key = (await db.apiKey.findFirst({
+      where: [{ field: 'keyValue', op: '==', value: apiKey }, { field: 'isActive', op: '==', value: true }],
+    })) as Record<string, unknown> | null;
 
-    // Mettre à jour lastUsed
-    await db.accessKey.update({
-      where: { id: key.id },
-      data: { lastUsed: new Date() },
-    }).catch(() => {});
+    if (!key) return null;
 
-    return { userId: key.user.id, role: key.user.role };
+    // Récupère l'utilisateur propriétaire pour obtenir son rôle
+    const userId = key.userId as string;
+    const user = await db.user.findUnique({ where: { id: userId } });
+    if (!user) return null;
+
+    // Met à jour lastUsed
+    await db.apiKey
+      .update({ where: { id: key.id as string }, data: { lastUsed: new Date() } })
+      .catch(() => {});
+
+    return {
+      userId,
+      uid: userId,
+      role: ((user as Record<string, unknown>).role as string) || 'user',
+      email: (user as Record<string, unknown>).email as string | undefined,
+    };
   } catch {
     return null;
   }
@@ -114,29 +137,25 @@ function validateRole(auth: SecurityContext, options: SecurityOptions): { auth: 
   return { auth };
 }
 
-/** Modèle Prisma possédant une colonne `userId` (ownership check). */
+/** Modèle Firestore possédant un champ `userId` (ownership check). */
 type OwnedModel = {
-  findUnique(args: { where: { id: string }; select: { userId: true } }): Promise<{ userId: string } | null>;
+  findUnique(args: { where: { id: string }; select?: string[] }): Promise<Record<string, unknown> | null>;
 };
 
 /**
- * Verify that a resource belongs to the authenticated user.
- * Used by API routes to prevent unauthorized access to other users' data.
+ * Vérifie qu'une ressource appartient à l'utilisateur authentifié.
  */
 export async function verifyOwnership(
   resourceType: string,
   resourceId: string,
-  userId: string
+  userId: string,
 ): Promise<boolean> {
   try {
-    // Cast au travers de `unknown` : PrismaClient n'est pas assignable à
-    // Record<string, OwnedModel> (index signature) — le cast direct
-    // déclenchait TS2352 avec `strict: true`.
     const model = (db as unknown as Record<string, OwnedModel>)[resourceType];
     if (!model) return false;
     const record = await model.findUnique({
       where: { id: resourceId },
-      select: { userId: true },
+      select: ['userId'],
     });
     return record?.userId === userId;
   } catch {
@@ -145,8 +164,7 @@ export async function verifyOwnership(
 }
 
 /**
- * Returns the allowed CORS origin if the provided origin matches the whitelist.
- * Used by SSE/streaming endpoints to set Access-Control-Allow-Origin.
+ * Origines CORS autorisées pour les endpoints SSE/streaming.
  */
 export function getAllowedOrigins(origin?: string): string | null {
   const allowedOrigins = [
@@ -158,3 +176,6 @@ export function getAllowedOrigins(origin?: string): string | null {
   if (!origin) return allowedOrigins[0] || null;
   return allowedOrigins.includes(origin) ? origin : null;
 }
+
+// Re-export pour compat avec l'ancienne API
+export { getServerSession };

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth.config";
+import { getServerSession } from '@/lib/auth';
 import { executeCommand } from "@/lib/terminal-sandbox";
 
 
@@ -9,7 +8,7 @@ import { executeCommand } from "@/lib/terminal-sandbox";
 
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession();
   if (!session?.user) return NextResponse.json({ success: false, output: "Non authentifie" }, { status: 401 });
   if (session.user.role !== "admin" && session.user.role !== "developer") {
     return NextResponse.json({ success: false, output: "Acces refuse" }, { status: 403 });

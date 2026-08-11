@@ -1,3 +1,0 @@
-// OBSOLÈTE — Ce fichier maison de suivi des migrations est remplacé par
-// la table _prisma_migrations du moteur prisma migrate.
-// Suppression : git rm prisma/migrations/migration_meta.json

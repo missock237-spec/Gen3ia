@@ -1,5 +1,0 @@
--- OBSOLÈTE — Convention abandonnée (fichiers .sql à plat).
--- Prisma migrate ignore ces fichiers. Le schéma de référence est prisma/schema.prisma
--- et les migrations vivent dans des dossiers  YYYYMMDDHHMMSS_name/migration.sql.
--- Suppression : git rm prisma/migrations/00001_add_connected_integrations.sql
--- REMPLACÉ par : prisma/migrations/002_complete_schema/migration.sql (inclus)

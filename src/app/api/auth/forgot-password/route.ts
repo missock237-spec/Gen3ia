@@ -1,58 +1,52 @@
+// ============================================================
+// POST /api/auth/forgot-password — Demande de reset (Firebase)
+// ============================================================
+//  Body: { email }
+//  Génère un lien Firebase password reset et envoie l'email via Resend.
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { sendPasswordReset } from '@/lib/email/auth-emails';
-import crypto from 'crypto';
 
+import { sendPasswordResetEmail } from '@/lib/firebase/auth';
+import { getUserByEmail } from '@/lib/firebase/auth';
+import { createAuditLog } from '@/lib/firebase/analytics';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-
-export const dynamic = "force-dynamic";
-const SUCCESS_RESPONSE = {
-  message: 'Si un compte existe pour cet email, vous recevrez un code de verification.',
-};
-
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const { email } = await request.json();
-    if (!email) {
-      return NextResponse.json({ error: 'Email requis' }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    const email = body?.email as string | undefined;
+    if (!email) return NextResponse.json({ error: 'Email manquant' }, { status: 400 });
+
+    // On vérifie d'abord si l'utilisateur existe (anti-énumération : on réponds OK dans tous les cas)
+    const user = await getUserByEmail(email);
+    if (user) {
+      await sendPasswordResetEmail(email, {
+        url: `${APP_URL}/reset-password`,
+        handleCodeInApp: true,
+      });
+      await createAuditLog({
+        userId: user.uid,
+        action: 'auth.password.reset.requested',
+        resource: 'auth',
+        severity: 'info',
+      });
     }
 
-    const user = await db.user.findUnique({ where: { email: email.toLowerCase().trim() } });
-
-    // Toujours retourner succes (pas d'enumeration d'emails)
-    if (!user) {
-      return NextResponse.json(SUCCESS_RESPONSE);
-    }
-
-    // Desactiver les anciens tokens
-    await db.passwordReset.updateMany({
-      where: { userId: user.id, used: false },
-      data: { used: true },
+    // Toujours répondre OK (anti-énumération)
+    return NextResponse.json({
+      success: true,
+      message: 'Si cet email existe, un lien de réinitialisation a été envoyé.',
     });
-
-    // Generer un token
-    const token = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-
-    await db.passwordReset.create({
-      data: {
-        token: hashedToken,
-        email: user.email,
-        userId: user.id,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      },
-    });
-
-    // Envoyer l'email (non bloquant)
-    sendPasswordReset(user.email, user.name, token).catch(err =>
-      console.error('[Email] Erreur envoi reset:', err)
-    );
-
-    return NextResponse.json(SUCCESS_RESPONSE);
   } catch (error) {
-    console.error('Forgot-password error:', error);
-    return NextResponse.json(SUCCESS_RESPONSE);
+    console.error('[auth/forgot-password] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erreur' },
+      { status: 500 },
+    );
   }
 }

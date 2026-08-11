@@ -1,35 +1,32 @@
 // ============================================================
-// Gen3ia — Middleware de sécurité (deny-by-default)
+// Gen3ia — Middleware de sécurité (deny-by-default) — Firebase
+// ============================================================
+//  Règle : TOUTE route /api/* est protégée SAUF celles
+//  explicitement listées comme publiques (route par route).
 //
-// Règle : TOUTE route /api/* est protégée SAUF celles
-// explicitement listées comme publiques (route par route).
+//  SECURITE :
+//  - Layer 1 (ce middleware) : exige UNE forme d'auth (session cookie
+//    Firebase OU présence x-api-key/bearer qui seront VALIDES en couche 2
+//    withAuth).
+//  - Les routes ADMIN exigent TOUJOURS le rôle 'admin' (custom claim
+//    Firebase Auth), jamais court-circuité par une api key non validée.
 //
-// SECURITE :
-// - Layer 1 (ce middleware) : exige UNE forme d'auth (token NextAuth OU
-//   présence x-api-key/bearer qui seront VALIDES en couche 2 withAuth).
-// - Les routes ADMIN exigent TOUJOURS le rôle 'admin' du token NextAuth
-//   (jamais court-circuité par une api key non validée).
-//
-// PHASE 2.1 — CSP durcie :
-//   - Whitelist explicite pour CDNs (fonts, analytics)
-//   - Blocage des inline scripts/styles activable via NEXT_PUBLIC_STRICT_CSP=true
-//     (par défaut désactivé pour ne pas casser les chunks inline de Next en dev)
+//  PHASE 2.1 — CSP durcie : whitelist explicite pour CDNs.
 // ============================================================
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getToken } from 'next-auth/jwt';
+import { getAdminAuth } from '@/lib/firebase/admin';
+import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
 
 // Routes publiques LISTÉES ROUTE PAR ROUTE.
 const PUBLIC_PATHS = [
-  '/api/auth/session',
-  '/api/auth/csrf',
-  '/api/auth/callback/google',
-  '/api/auth/callback/github',
-  '/api/auth/callback/credentials',
-  '/api/auth/providers',
-  '/api/auth/signin',
-  '/api/auth/signout',
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email',
+  '/api/auth/send-verification',
   '/api/health',
   '/api/health/features',
   '/api/register',
@@ -37,12 +34,14 @@ const PUBLIC_PATHS = [
   '/api/webhook/sebpay',
   '/api/webhooks/stripe',
   '/api/webhooks/sebpay',
+  '/api/webhooks/chariow',
   '/api/events/sse',
   '/api/docs',
   '/api/docs/openapi.json',
+  '/api/public/',
 ];
 
-// Routes ADMIN : exigent TOUJOURS le rôle 'admin' du token NextAuth.
+// Routes ADMIN : exigent TOUJOURS le rôle 'admin' (custom claim Firebase).
 const ADMIN_ROUTES = [
   '/api/admin/',
   '/api/terminal/execute',
@@ -71,8 +70,6 @@ const SENSITIVE_RESOURCE_ROUTES = [
 ];
 
 // ---------- Phase 2.1 : CSP durcie ----------
-// NEXT_PUBLIC_STRICT_CSP=true => bloque les inline scripts/styles (XSS maximale).
-// Par défaut (false) on autorise les inline (compatibilité chunks Next en dev).
 const STRICT_CSP = process.env.NEXT_PUBLIC_STRICT_CSP === 'true';
 
 const SCRIPT_SRC = STRICT_CSP
@@ -87,12 +84,9 @@ const CSP_HEADER = [
   "default-src 'self'",
   SCRIPT_SRC,
   STYLE_SRC,
-  // Whitelist explicite des images (avatars + CDNs analytics)
-  "img-src 'self' data: blob: https://*.githubusercontent.com https://*.googleusercontent.com https://cdn.huggingface.co https://www.google-analytics.com https://www.googletagmanager.com",
-  // Fonts explicites
+  "img-src 'self' data: blob: https://*.githubusercontent.com https://*.googleusercontent.com https://cdn.huggingface.co https://www.google-analytics.com https://www.googletagmanager.com https://storage.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
-  // connect-src : providers IA + Sentry + API internes
-  "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io https://www.google-analytics.com",
+  "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io https://www.google-analytics.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://fcm.googleapis.com",
   "frame-ancestors 'none'",
   "frame-src 'none'",
   "object-src 'none'",
@@ -103,6 +97,22 @@ const CSP_HEADER = [
 
 function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(route.endsWith('/') ? route : route + '/');
+}
+
+/**
+ * Vérifie le session cookie Firebase sans crasher si Firebase Admin n'est
+ * pas configuré (build phase). Retourne { uid, role } ou null.
+ */
+async function verifyFirebaseSession(cookieValue: string | undefined): Promise<{ uid: string; role: string } | null> {
+  if (!cookieValue) return null;
+  try {
+    const auth = getAdminAuth();
+    const decoded = await auth.verifySessionCookie(cookieValue, false); // checkRevoked=false dans le middleware (perf)
+    const role = (decoded.role as string) || 'user';
+    return { uid: decoded.uid, role };
+  } catch {
+    return null;
+  }
 }
 
 export async function middleware(request: NextRequest) {
@@ -137,20 +147,20 @@ export async function middleware(request: NextRequest) {
   }
 
   // 4. DENY-BY-DEFAULT : une auth est requise.
-  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const session = await verifyFirebaseSession(sessionCookie);
+
   const apiKey = request.headers.get('x-api-key');
   const hasBearer = request.headers.get('authorization')?.startsWith('Bearer ');
 
-  if (!token && !apiKey && !hasBearer) {
+  if (!session && !apiKey && !hasBearer) {
     return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
   }
 
-  // 5. Routes ADMIN : le rôle vient UNIQUEMENT du token NextAuth.
-  //    Une api key ou bearer SEULE ne permet JAMAIS d'accéder aux routes admin.
+  // 5. Routes ADMIN : le rôle vient UNIQUEMENT du custom claim Firebase.
   if (ADMIN_ROUTES.some((p) => pathname.startsWith(p))) {
-    // Il faut un token NextAuth avec rôle admin.
-    if (!token || token.role !== 'admin') {
-      return NextResponse.json({ error: 'Acces reserve aux administrateurs' }, { status: 403 });
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json({ error: 'Accès réservé aux administrateurs' }, { status: 403 });
     }
   }
 

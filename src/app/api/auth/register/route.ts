@@ -1,88 +1,118 @@
+// ============================================================
+// POST /api/auth/register — Firebase Authentication
+// ============================================================
+//  Body: { email, password, name? }
+//  Flux :
+//    1. Côté client : createUserWithEmailAndPassword -> obtient idToken
+//    2. POST cette route avec { idToken, name } -> crée le profil
+//       Firestore + positionne le session cookie.
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import * as argon2 from 'argon2';
-import { sign } from 'jsonwebtoken';
-import { sendWelcomeEmail, sendVerificationCode } from '@/lib/email/auth-emails';
-import crypto from 'crypto';
-import { attributeSignup } from '@/lib/recommend';
 
+import { setSessionCookie, getUserByUid, validatePasswordStrength } from '@/lib/firebase/auth';
+import { db } from '@/lib/firebase/firestore';
+import { createAuditLog } from '@/lib/firebase/analytics';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-
-export const dynamic = "force-dynamic";
-const JWT_SECRET = process.env.AUTH_SECRET;
-
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const { email, name, password, partner, partnerKey, sid, ref } = await request.json();
+    const body = await req.json().catch(() => null);
+    const idToken = body?.idToken as string | undefined;
+    const name = body?.name as string | undefined;
 
-    if (!email || !name || !password) {
-      return NextResponse.json({ error: 'Email, nom et mot de passe requis' }, { status: 400 });
-    }
-    if (password.length < 8) {
-      return NextResponse.json({ error: 'Minimum 8 caractères' }, { status: 400 });
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: "Format d'email invalide" }, { status: 400 });
-    }
-    if (!JWT_SECRET || JWT_SECRET.length < 32) {
-      console.error('[AUTH] AUTH_SECRET manquant ou trop court');
-      return NextResponse.json({ error: 'Erreur de configuration serveur' }, { status: 500 });
+    if (!idToken) {
+      return NextResponse.json({ error: 'idToken manquant (créez le compte côté client via createUserWithEmailAndPassword)' }, { status: 400 });
     }
 
-    const existing = await db.user.findUnique({ where: { email } });
-    if (existing) {
-      return NextResponse.json({ error: 'Email déjà utilisé' }, { status: 409 });
-    }
+    // Positionne le cookie de session
+    await setSessionCookie(idToken);
 
-    const hashedPassword = await argon2.hash(password, { type: argon2.argon2id });
-    const user = await db.user.create({
-      data: {
-        email,
-        name,
-        password: hashedPassword,
-        plan: 'free',
-        role: 'user',
-        isActive: true,
-        credits: 10,
-      },
-    });
-
-    // Attribution partenaire (recommandation SaaS) - best effort, jamais bloquant
-    await attributeSignup({
-      partnerId: typeof partner === 'string' && partner ? partner : undefined,
-      partnerApiKey: typeof partnerKey === 'string' && partnerKey ? partnerKey : undefined,
-      sessionId: typeof sid === 'string' && sid ? sid : undefined,
-      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0] ?? undefined,
-      userAgent: request.headers.get('user-agent') ?? undefined,
-      referrer: typeof ref === 'string' && ref ? ref : undefined,
-      metadata: { email },
-    });
-
-    const token = sign(
-      { userId: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
+    // Récupère l'utilisateur Firebase
+    const user = await getUserByUid(
+      (await (await import('@/lib/firebase/admin')).getAdminAuth().verifySessionCookie(
+        (await import('next/headers')).cookies().get('gen3ia_session')?.value || '',
+        true,
+      )).uid,
     );
 
-    await db.activityLog.create({
-      data: { action: 'Inscription', details: JSON.stringify({ email }), category: 'auth', userId: user.id },
+    if (!user) {
+      return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
+    }
+
+    // Crée le profil Firestore (mirror étendu de Firebase Auth)
+    const now = new Date();
+    await db.user.createWithId(user.uid, {
+      uid: user.uid,
+      email: user.email || '',
+      name: name || user.displayName || user.email?.split('@')[0] || 'Utilisateur',
+      avatar: user.photoURL || null,
+      emailVerified: user.emailVerified,
+      plan: 'free',
+      role: 'user',
+      credits: 100, // crédits de bienvenue
+      isActive: true,
+      isCreator: false,
+      creatorEarnings: 0,
+      creatorWithdrawn: 0,
+      createdAt: now,
+      updatedAt: now,
+      lastActiveAt: now,
     });
 
-    const code = crypto.randomInt(100000, 1000000).toString();
-    await db.emailVerification.create({
-      data: { email, code, userId: user.id, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+    // Crée l'entrée crédits
+    await db.credit.createWithId(`credit_${user.uid}`, {
+      userId: user.uid,
+      balance: 100,
+      totalEarned: 100,
+      totalSpent: 0,
+      currency: 'credits',
+      createdAt: now,
+      updatedAt: now,
     });
 
-    Promise.all([
-      sendWelcomeEmail(email, name),
-      sendVerificationCode(email, name, code),
-    ]).catch(err => console.error('[Email] Erreur envoi:', err));
+    // Audit log
+    await createAuditLog({
+      userId: user.uid,
+      action: 'user.register',
+      resource: 'auth',
+      details: { email: user.email, method: 'password' },
+      severity: 'info',
+    });
 
-    const { password: _, ...userWithoutPassword } = user;
-    return NextResponse.json({ token, user: userWithoutPassword }, { status: 201 });
+    return NextResponse.json({
+      user: {
+        id: user.uid,
+        uid: user.uid,
+        email: user.email,
+        name: name || user.displayName,
+        picture: user.photoURL,
+        emailVerified: user.emailVerified,
+        role: 'user',
+      },
+    });
   } catch (error) {
-    console.error('[AUTH] Register error:', error);
-    return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 });
+    console.error('[auth/register] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erreur lors de l\'inscription' },
+      { status: 500 },
+    );
   }
 }
+
+/**
+ * Validation côté serveur de la force du mot de passe.
+ * À appeler côté client AVANT createUserWithEmailAndPassword.
+ */
+export async function GET() {
+  return NextResponse.json({
+    passwordPolicy: {
+      min: 8,
+      rules: ['Au moins 8 caractères', 'Au moins une majuscule', 'Au moins une minuscule', 'Au moins un chiffre'],
+    },
+  });
+}
+
+export { validatePasswordStrength };

@@ -1,0 +1,72 @@
+rules_version = '2';
+
+// ============================================================
+// Gen3ia — Cloud Storage Security Rules
+// ============================================================
+//  Stratégie :
+//   - Tout utilisateur authentifié peut lire les fichiers publics.
+//   - Les fichiers privés ne sont lisibles que par leur propriétaire
+//     (ownerUid custom metadata == request.auth.uid) ou un admin.
+//   - L'écriture (upload) est permise pour les utilisateurs authentifiés
+//     dans leur propre dossier (uploads/{uid}/...).
+//   - Les signed URLs générées côté serveur (Admin SDK) court-circuitent
+//     ces règles.
+// ============================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
+    function isOwner() {
+      return isSignedIn() && request.resource.metadata.ownerUid == request.auth.uid;
+    }
+
+    // Fichiers publics (avatars, images de marketplace, etc.)
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Uploads privés par utilisateur : uploads/{subdir}/{ownerUid}/...
+    match /uploads/{subdir}/{ownerUid}/{allPaths=**} {
+      allow read: if isSignedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow write: if isSignedIn() && request.auth.uid == ownerUid;
+    }
+
+    // Uploads génériques (legacy) : uploads/{subdir}/{filename}
+    // Lecture : propriétaire ou admin. Écriture : authentifié.
+    match /uploads/{allPaths=**} {
+      allow read: if isSignedIn() && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    // Avatars utilisateurs : avatars/{uid}.ext
+    match /avatars/{uid}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Agents thumbnails : agent_thumbnails/{agentId}.ext
+    match /agent_thumbnails/{agentId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Marketplace assets : marketplace/{listingId}/...
+    match /marketplace/{listingId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
