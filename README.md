@@ -40,7 +40,6 @@ FIREBASE_PRIVATE_KEY=
 ### Fichiers de configuration Firebase
 
 - `firebase.json` — configuration CLI Firebase
-- `.firebaserc` — alias de projets (prod / staging)
 - `firestore.rules` — règles de sécurité Firestore (deny-by-default, ownership-based)
 - `firestore.indexes.json` — index composites (conversations, notifications, agents...)
 - `storage.rules` — règles de sécurité Cloud Storage
@@ -86,8 +85,8 @@ Plateforme SaaS d'agents IA autonomes avec mémoire, outils, supervision, market
 
 - **Agents IA autonomes** — exécution, supervision et validation sécurisée
 - **Système de crédits** — packs de crédits payants pour l'utilisation des agents
-- **Paiements Chariow** — gestion des transactions et abonnements (carte bancaire)
-- **Authentification** — email/mot de passe + Google OAuth
+- **Paiements Chariow** — gestion des transactions et abonnements (Mobile Money Afrique + carte bancaire)
+- **Authentification** — email/mot de passe + Google OAuth (Firebase Auth)
 - **Espace développeur** — génération de clés API et de serveurs MCP personnalisés
 - **Recommandation distribuée** — diffusion du SaaS au sein des agents IA et navigateurs des utilisateurs
 - **Sécurité** — module Rust `agent-safety` (injection, jailbreak, ressources, sandbox)
@@ -101,7 +100,7 @@ gen3ia/
 │   └── package.json            # Dependances uniques (Radix UI, tests)
 ├── packages/
 │   ├── core/                   # @gen3ia/core — Logique partagee
-│   │   ├── src/repositories/     # Pattern Repository (CRUD Prisma)
+│   │   ├── src/repositories/     # Pattern Repository (CRUD Firestore)
 │   │   ├── src/services/         # Logique metier (agents, credits, users)
 │   │   ├── src/validation.ts     # Validation Zod pour les routes API
 │   │   ├── src/errors.ts         # Gestion d'erreurs standardisee
@@ -110,12 +109,13 @@ gen3ia/
 │   └── agent-safety/           # @gen3ia/agent-safety — Module Rust
 │       ├── Cargo.toml             # napi-rs, regex, serde
 │       └── src/lib.rs             # Injection, jailbreak, ressources, sandbox
-├── prisma/
-│   ├── schema.prisma           # Modeles + index optimises
-│   └── migrations/             # Historique des migrations
+├── firebase.json             # Configuration CLI Firebase (Firestore, Storage, Hosting, Emulators)
+├── firestore.rules           # Regles de securite Firestore
+├── firestore.indexes.json    # Index composites Firestore
+├── storage.rules             # Regles de securite Cloud Storage
 ├── Dockerfile                # Build multi-stage Next.js
 ├── Dockerfile.worker          # Build worker BullMQ
-├── docker-compose.yml         # Orchestration (postgres, redis, app, worker, qdrant)
+├── docker-compose.yml         # Orchestration (redis, app, worker, qdrant)
 ├── turbo.json                 # Pipeline de build monorepo
 ├── vercel.json               # Configuration deploiement Vercel
 ├── .env.example              # Template des variables d'environnement
@@ -130,21 +130,26 @@ git clone https://github.com/missock237-spec/Gen3ia.git
 cd Gen3ia
 npm install
 
-# 2. Generer Prisma
-npx prisma generate
+# 2. Configurer l'environnement
+cp .env.example .env.local   # puis renseigner les variables FIREBASE_*
 
 # 3. Tester les builds (monorepo)
 npm run build --workspaces --if-present   # packages (core, worker, agent-safety)
 npm run build                              # app Next.js
 
-# 4. Lancer en dev
+# 4. Deployer les regles Firebase
+npm run firestore:rules
+npm run storage:rules
+npm run firestore:indexes
+
+# 5. Lancer en dev
 npm run dev                                # http://localhost:3000
 
-# 5. Ou via Docker Compose (PostgreSQL, Redis, app, worker)
+# 6. Ou via Docker Compose (Redis, app, worker)
 docker compose up --build -d
 ```
 
-> **Astuce** : `bash setup.sh` orchestre toutes ces étapes automatiquement (installation, Prisma, builds, démarrage Docker).
+> **Astuce** : `bash setup.sh` orchestre toutes ces étapes automatiquement (installation, règles Firebase, builds, démarrage Docker).
 
 ## Services
 
@@ -153,7 +158,9 @@ docker compose up --build -d
 | Web app | Next.js 14 + React 18 | 3000 |
 | API | Next.js API routes | 3000 |
 | Worker | BullMQ + Redis | - |
-| Base de donnees | PostgreSQL 16 | 5432 |
+| Base de donnees | Cloud Firestore (Firebase) | géré |
+| Authentification | Firebase Auth | géré |
+| Stockage | Cloud Storage (Firebase) | géré |
 | Cache | Redis 7 | 6379 |
 | Vecteurs | Qdrant (optionnel) | 6333 |
 
@@ -162,17 +169,19 @@ docker compose up --build -d
 Les variables **critiques** a configurer sur Vercel :
 
 ```bash
-DATABASE_URL=postgresql://...
-AUTH_SECRET=$(openssl rand -hex 64)
-NEXTAUTH_SECRET=${AUTH_SECRET}
-NEXTAUTH_URL=https://gen3ia.vercel.app
-NEXT_PUBLIC_APP_URL=https://gen3ia.vercel.app
-NODE_ENV=production
+# Firebase Auth + Admin SDK
+NEXT_PUBLIC_FIREBASE_API_KEY=...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
+NEXT_PUBLIC_FIREBASE_APP_ID=...
+FIREBASE_PROJECT_ID=...
+FIREBASE_CLIENT_EMAIL=...
+FIREBASE_PRIVATE_KEY=...
 
 # Paiements & OAuth
 CHARIOW_API_KEY=...
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
+NEXT_PUBLIC_APP_URL=https://gen3ia.vercel.app
 ```
 
 Voir `.env.example` pour la liste complete (40+ variables).
@@ -183,12 +192,13 @@ Voir `.env.example` pour la liste complete (40+ variables).
 2. Vercel deploye automatiquement via l'integration GitHub
 3. Configurer les secrets dans GitHub Settings → Secrets → Actions
 4. Lancer `Sync Secrets to Vercel` pour synchroniser les variables
+5. Deployer les regles Firebase : `npm run firebase:deploy`
 
 ## Securite
 
 - Module Rust `agent-safety` pour la detection d'injections et jailbreak
 - Validation Zod systematique sur toutes les routes API
-- Indexes Prisma optimises pour les requetes frequentes
+- Regles de securite Firestore et Cloud Storage (deny-by-default, ownership-based)
 - `NEXT_PUBLIC_` reserve aux variables publiques (aucun secret expose)
 
 ## Licence
