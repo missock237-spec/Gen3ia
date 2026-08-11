@@ -30,9 +30,14 @@ echo "============================================"
 log "1/5 Installation des dépendances (racine + workspaces)..."
 npm install
 
-# 2. Générer le client Prisma
-log "2/5 Génération du client Prisma..."
-npx prisma generate
+# 2. Préparer l'environnement Firebase
+log "2/5 Préparation de l'environnement Firebase..."
+if [ ! -f .env.local ]; then
+  cp .env.example .env.local
+  echo "  📝 .env.local créé depuis .env.example — renseigner les variables FIREBASE_*"
+else
+  echo "  ✅ .env.local déjà présent"
+fi
 
 # 3. Builds : chaque package, puis l'application Next.js
 log "3/5 Build des packages (workspaces) et de l'application..."
@@ -59,7 +64,7 @@ else
 fi
 
 # 5. Démarrage des services (Docker Compose)
-log "5/5 Démarrage des services (PostgreSQL, Redis, app, worker)..."
+log "5/5 Démarrage des services (Redis, app, worker)..."
 
 if [ "$MODE" = "--skip-docker" ]; then
   echo "  ⏭️  Démarrage Docker ignoré (--skip-docker)"
@@ -76,5 +81,6 @@ echo "============================================"
 echo " Setup terminé !"
 echo "  • Web app : http://localhost:3000"
 echo "  • API     : http://localhost:3000/api"
+echo "  • Émulateurs Firebase : npx firebase emulators:start"
 echo "  • Pour arrêter : docker compose down"
 echo "============================================"
