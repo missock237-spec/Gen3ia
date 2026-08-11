@@ -77,6 +77,9 @@ export interface FindUniqueArgs {
   select?: string[];
 }
 
+/** Sélecteur Prisma-like : `{ credits: true }` ou `['credits']` */
+export type Select = string[] | Record<string, boolean>;
+
 // ============================================================
 // Sérialisation
 // ============================================================
@@ -115,12 +118,21 @@ function deserialize(snapshot: DocumentData): Record<string, unknown> {
   return out;
 }
 
-function project(data: Record<string, unknown>, select?: string[]): Record<string, unknown> {
-  if (!select || select.length === 0) return data;
+function normalizeSelect(select?: Select): string[] | undefined {
+  if (!select) return undefined;
+  if (Array.isArray(select)) return select;
+  return Object.entries(select)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+}
+
+function project<T extends Record<string, unknown>>(data: T, select?: Select): T {
+  const fields = normalizeSelect(select);
+  if (!fields || fields.length === 0) return data;
   const out: Record<string, unknown> = {};
-  for (const f of select) if (f in data) out[f] = data[f];
+  for (const f of fields) if (f in data) out[f] = data[f];
   if ('id' in data) out.id = data.id;
-  return out;
+  return out as T;
 }
 
 // ============================================================
@@ -138,15 +150,15 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
     return collection(this.db(), this.collectionName);
   }
 
-  async findById(id: string, select?: string[]): Promise<T | null> {
+  async findById(id: string, select?: Select): Promise<T | null> {
     const snap = await doc(this.db(), this.collectionName, id).get();
     if (!snap.exists) return null;
     const data = deserialize(snap.data()!);
     data.id = snap.id;
-    return project(data, select) as T;
+    return project(data, select);
   }
 
-  async findByIdOrThrow(id: string, select?: string[]): Promise<T> {
+  async findByIdOrThrow(id: string, select?: Select): Promise<T> {
     const found = await this.findById(id, select);
     if (!found) throw new Error(`${this.collectionName} introuvable: ${id}`);
     return found;
@@ -160,9 +172,9 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
     const snap = await getDocs(query(this.col(), ...constraints));
     if (snap.empty) return null;
     const d = snap.docs[0]!;
-    const data = deserialize(d.data());
+    const data = deserialize(d.data() ?? {});
     data.id = d.id;
-    return project(data, args.select) as T;
+    return project(data, args.select);
   }
 
   async findFirst(args: FindManyArgs = {}): Promise<T | null> {
@@ -179,12 +191,12 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
 
     const snap = await getDocs(query(this.col(), ...constraints));
     let items = snap.docs.map((d) => {
-      const data = deserialize(d.data());
+      const data = deserialize(d.data() ?? {});
       data.id = d.id;
       return data as T;
     });
     if (args.skip && args.skip > 0) items = items.slice(args.skip);
-    if (args.select && args.select.length > 0) items = items.map((it) => project(it as Record<string, unknown>, args.select) as T);
+    if (args.select && args.select.length > 0) items = items.map((it) => project(it, args.select) as T);
     return items;
   }
 
@@ -199,7 +211,7 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
     const payload = serialize({ ...data, createdAt: data.createdAt ?? serverTimestamp(), updatedAt: data.updatedAt ?? serverTimestamp() });
     const ref = await addDoc(this.col(), payload);
     const snap = await ref.get();
-    const result = deserialize(snap.data()!);
+    const result = deserialize(snap.data() ?? {});
     result.id = ref.id;
     return result as T;
   }
@@ -208,7 +220,7 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
     const payload = serialize({ ...data, createdAt: data.createdAt ?? serverTimestamp(), updatedAt: data.updatedAt ?? serverTimestamp() });
     await setDoc(doc(this.db(), this.collectionName, id), payload);
     const snap = await doc(this.db(), this.collectionName, id).get();
-    const result = deserialize(snap.data()!);
+    const result = deserialize(snap.data() ?? {});
     result.id = id;
     return result as T;
   }
@@ -217,7 +229,7 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
     const payload = serialize({ ...data, updatedAt: serverTimestamp() });
     await updateDoc(doc(this.db(), this.collectionName, id), payload);
     const snap = await doc(this.db(), this.collectionName, id).get();
-    const result = deserialize(snap.data()!);
+    const result = deserialize(snap.data() ?? {});
     result.id = id;
     return result as T;
   }
