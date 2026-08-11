@@ -20,8 +20,6 @@ export class UserRepository extends BaseRepository<UserRecord> {
   }
 
   async deductCredits(userId: string, amount: number): Promise<UserRecord> {
-    const ref = this.col().doc;
-    void ref;
     const docRef = this.db().collection('users').doc(userId);
     await docRef.update({ credits: increment(-amount) });
     const snap = await docRef.get();
