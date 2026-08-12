@@ -12,13 +12,13 @@ export const GET = withAuth(async (request: NextRequest, ctx: { params?: Promise
   try {
     const [lastTx, history] = await Promise.all([
       db.credit.findFirst({
-        where: { userId: auth.userId },
-        orderBy: { updatedAt: 'desc' },
+        where: [{ field: 'userId', op: '==', value: auth.userId }],
+        orderBy: [{ field: 'updatedAt', direction: 'desc' }],
       }),
       db.creditTransaction.findMany({
-        where: { userId: auth.userId },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
+        where: [{ field: 'userId', op: '==', value: auth.userId }],
+        orderBy: [{ field: 'createdAt', direction: 'desc' }],
+        limit: 50,
       }),
     ]);
 
