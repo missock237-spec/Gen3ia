@@ -4,7 +4,7 @@ on:
   pull_request: { branches: [ main ] }
 permissions: { contents: read }
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   lint:
@@ -14,9 +14,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
       - run: npm ci
-      - run: npx prisma generate
-        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
       - run: npm run lint
+
   typecheck:
     runs-on: ubuntu-latest
     steps:
@@ -24,29 +23,19 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
       - run: npm ci
-      - run: npx prisma generate
-        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
       - run: npx tsc --noEmit
+        env:
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env: { POSTGRES_USER: gen3ia, POSTGRES_PASSWORD: gen3ia, POSTGRES_DB: gen3ia_test }
-        ports: [ 5432:5432 ]
-        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
       - run: npm ci
-      - run: npx prisma generate && npx prisma db push
-        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
       - run: npx vitest run
-        env:
-          DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test
-          AUTH_SECRET: test-secret-32-characters-minimum!!
-          NEXTAUTH_SECRET: test-secret-32-characters-minimum!!
+
   build:
     runs-on: ubuntu-latest
     needs: [lint, typecheck]
@@ -55,13 +44,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
       - run: npm ci
-      - run: npx prisma generate
-        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
       - run: npm run build
         env:
-          DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test
-          NEXTAUTH_SECRET: build-secret-32-characters-minimum!!
           NEXT_PUBLIC_APP_URL: http://localhost:3000
+
   build-worker:
     runs-on: ubuntu-latest
     steps:
@@ -69,6 +55,4 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
       - run: npm ci
-      - run: npx prisma generate
-        env: { DATABASE_URL: postgresql://gen3ia:gen3ia@localhost:5432/gen3ia_test }
       - run: npm run build:worker
