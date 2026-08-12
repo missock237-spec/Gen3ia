@@ -23,6 +23,13 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase/admin';
 import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
+// P1 — Rate limiting (roadmap qualité). Edge-safe : store mémoire/Redis injecté.
+import { rateLimit } from '@/lib/security/rate-limit';
+
+// Quotas de rate limiting (P1). Les clés API ont un quota supérieur.
+const RL_WINDOW_SEC = 60;
+const RL_MAX_ANON = 120;    // IP / session anonyme : 120 req/min
+const RL_MAX_APIKEY = 1000; // clé API validée : 1000 req/min
 
 // Routes publiques LISTÉES ROUTE PAR ROUTE.
 const PUBLIC_PATHS = [
@@ -163,6 +170,34 @@ export async function middleware(request: NextRequest) {
   // 2. Routes non-API
   if (!pathname.startsWith('/api/')) {
     return response;
+  }
+
+  // 2.bis — P1 Rate limiting : protège toutes les routes /api (y compris
+  // publiques comme /api/auth/login) contre l'abus / le brute-force.
+  // Les clés API (x-api-key) ont un quota supérieur. En production,
+  // injecter un client Redis via setRedisClient() pour un compteur distribué.
+  const apiKeyRl = request.headers.get('x-api-key');
+  const clientIp =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    request.headers.get('x-real-ip') ??
+    'unknown';
+  const rlIdentity = apiKeyRl ? `apikey:${apiKeyRl}` : `ip:${clientIp}`;
+  const rlResult = await rateLimit({
+    key: rlIdentity,
+    windowSec: RL_WINDOW_SEC,
+    max: apiKeyRl ? RL_MAX_APIKEY : RL_MAX_ANON,
+    bypass: false,
+  });
+  response.headers.set('X-RateLimit-Limit', String(apiKeyRl ? RL_MAX_APIKEY : RL_MAX_ANON));
+  if (!rlResult.ok) {
+    const retryAfterSec = rlResult.retryAfterSec;
+    const rlRes = NextResponse.json(
+      { error: 'Too Many Requests', retryAfterSec },
+      { status: 429, headers: response.headers },
+    );
+    rlRes.headers.set('Retry-After', String(retryAfterSec));
+    rlRes.headers.set('X-RateLimit-Remaining', '0');
+    return rlRes;
   }
 
   // 3. Routes publiques (liste stricte)

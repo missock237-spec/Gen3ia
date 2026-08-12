@@ -5,6 +5,13 @@ import { Worker, Queue, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
+// P4 — Config worker dynamique par agent (scalabilité roadmap qualité).
+import { getWorkerConfig, desiredWorkers } from '@/lib/worker-dynamic-config';
+// P2 — Initialisation OpenTelemetry au démarrage du worker (contexte serveur).
+import { initTelemetry } from '@/lib/observability/otel-config';
+
+// Démarre le SDK OpenTelemetry (si OTEL_ENABLED=1). No-op sinon.
+initTelemetry();
 
 const log = createLogger('auto-worker');
 
@@ -31,10 +38,25 @@ interface AutoJobData {
   executionId?: string;
 }
 
+// Concurrency globale (bonne pratique BullMQ) : reste prudent ; la config
+// dynamique (P4) régule finement par agent via getWorkerConfig().
+const BASE_CONCURRENCY = 5;
+
 const autoWorker = new Worker<AutoJobData>('agent-execution', async (job: Job<AutoJobData>) => {
   const { agentId, userId, input, sessionId, executionId } = job.data;
 
   log.info('auto_worker_processing', { jobId: job.id, agentId, attempt: job.attemptsMade });
+
+  // P4 — Résout la config worker de l'agent (minWorkers/maxWorkers/concurrency/active).
+  const wCfg = await getWorkerConfig(agentId);
+  if (!wCfg.active) {
+    log.warn('auto_agent_worker_disabled', { agentId });
+    return; // Agent désactivé via config : on ne traite pas.
+  }
+  // Estimation de charge souhaitée pour cet agent (utile pour monitorer/scaler).
+  const pendingForAgent = (await agentQueue.getJobCounts()).waiting ?? 0;
+  const desired = desiredWorkers(wCfg, pendingForAgent);
+  log.debug('auto_worker_desired', { agentId, pending: pendingForAgent, desired, cfg: wCfg });
 
   // Verifier que l'agent existe
   const agent = await db.agent.findUnique({
@@ -131,7 +153,7 @@ const autoWorker = new Worker<AutoJobData>('agent-execution', async (job: Job<Au
   }
 }, {
   connection,
-  concurrency: 5,
+  concurrency: BASE_CONCURRENCY,
   limiter: { max: 10, duration: 1000 },
 });
 
@@ -153,6 +175,6 @@ autoWorker.on('error', (error: Error) => {
   log.error('auto_worker_error', { error: error.message });
 });
 
-log.info('auto_worker_started', { concurrency: 5, queue: 'agent-execution' });
+log.info('auto_worker_started', { concurrency: BASE_CONCURRENCY, queue: 'agent-execution' });
 
 export default autoWorker;

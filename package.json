@@ -24,6 +24,9 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "load:test:smoke": "k6 run k6/smoke.js",
+    "load:test:credits": "k6 run k6/credits.js",
+    "load:test:soak": "k6 run k6/soak.js",
     "firestore:indexes": "firebase deploy --only firestore:indexes",
     "firestore:rules": "firebase deploy --only firestore:rules",
     "storage:rules": "firebase deploy --only storage:rules",
@@ -64,6 +67,10 @@
     "@radix-ui/react-scroll-area": "^1.2.3"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.53.0",
+    "@opentelemetry/sdk-node": "^0.53.0",
+    "@opentelemetry/sdk-trace-node": "^0.53.0",
     "@radix-ui/react-alert-dialog": "^1.1.23",
     "@radix-ui/react-avatar": "^1.0.4",
     "@radix-ui/react-dialog": "^1.0.5",
