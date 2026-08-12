@@ -13,7 +13,6 @@ import { rateLimit } from '@/lib/rate-limiter';
 
 
 
-
 export const dynamic = "force-dynamic";
 const log = createLogger('api-workflows');
 
@@ -25,13 +24,11 @@ export async function GET(request: NextRequest) {
   if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
 
   try {
+    // Facade Firestore : where/orderBy en tableaux, select en string[].
     const workflows = await prisma.workflow.findMany({
-      where: { userId: auth.userId },
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true, name: true, description: true, trigger: true, status: true,
-        updatedAt: true, createdAt: true, activeBranchId: true, currentVersionId: true,
-      },
+      where: [{ field: 'userId', op: '==', value: auth.userId }],
+      orderBy: [{ field: 'updatedAt', direction: 'desc' }],
+      select: ['id', 'name', 'description', 'trigger', 'status', 'updatedAt', 'createdAt', 'activeBranchId', 'currentVersionId'],
     });
     return NextResponse.json({ success: true, workflows });
   } catch (err) {
@@ -57,10 +54,11 @@ export async function POST(request: NextRequest) {
     if (template) {
       const tmpl = await prisma.workflowTemplate.findUnique({ where: { id: template } });
       if (tmpl) {
-        steps = JSON.parse(tmpl.steps);
+        steps = JSON.parse(tmpl.steps as string);
+        // increment() non supporté par la façade -> lecture + écriture explicite.
         await prisma.workflowTemplate.update({
           where: { id: template },
-          data: { usageCount: { increment: 1 } },
+          data: { usageCount: (Number(tmpl.usageCount) || 0) + 1 },
         });
       }
     }
@@ -77,17 +75,13 @@ export async function POST(request: NextRequest) {
 
     // Initialiser versioning (branche main + v1)
     await workflowVersioning.createWithInitialVersion(
-      workflow.id, auth.userId, steps, 'Version initiale'
+      workflow.id as string, auth.userId, steps, 'Version initiale'
     );
 
     log.info('workflow_created_with_versioning', { workflowId: workflow.id });
 
     const fullWorkflow = await prisma.workflow.findUnique({
-      where: { id: workflow.id },
-      include: {
-        branches: { orderBy: { createdAt: 'asc' } },
-        versions: { orderBy: { version: 'desc' }, take: 1 },
-      },
+      where: { id: workflow.id as string },
     });
 
     return NextResponse.json({ success: true, workflow: fullWorkflow });
@@ -111,7 +105,12 @@ export async function PUT(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
 
     // Ownership check : le workflow doit appartenir à l'utilisateur
-    const workflow = await prisma.workflow.findFirst({ where: { id, userId: auth.userId } });
+    const workflow = await prisma.workflow.findFirst({
+      where: [
+        { field: 'id', op: '==', value: id },
+        { field: 'userId', op: '==', value: auth.userId },
+      ],
+    });
     if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
 
     const updated = await prisma.workflow.update({
@@ -149,7 +148,12 @@ export async function DELETE(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
 
     // Ownership check
-    const workflow = await prisma.workflow.findFirst({ where: { id, userId: auth.userId } });
+    const workflow = await prisma.workflow.findFirst({
+      where: [
+        { field: 'id', op: '==', value: id },
+        { field: 'userId', op: '==', value: auth.userId },
+      ],
+    });
     if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
 
     await prisma.workflow.delete({ where: { id } });
