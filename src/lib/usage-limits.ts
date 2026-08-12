@@ -60,28 +60,40 @@ function getMonthlyCredits(tier: PlanTier): number {
 }
 
 export async function getActiveAgentCount(userId: string): Promise<number> {
-  return db.agent.count({ where: { userId, status: 'active' } });
+  return db.agent.count({
+    where: [
+      { field: 'userId', op: '==', value: userId },
+      { field: 'status', op: '==', value: 'active' },
+    ],
+  });
 }
 
 export async function getTotalAgentCount(userId: string): Promise<number> {
-  return db.agent.count({ where: { userId } });
+  return db.agent.count({ where: [{ field: 'userId', op: '==', value: userId }] });
 }
 
 export async function getDailyTokenUsage(userId: string): Promise<number> {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
-  const result = await db.aiCost.aggregate({
-    where: { userId, createdAt: { gte: startOfDay } },
-    _sum: { totalTokens: true },
+  // aggregate() non supporté par la façade -> lecture + calcul en mémoire
+  const rows = await db.aiCost.findMany({
+    where: [
+      { field: 'userId', op: '==', value: userId },
+      { field: 'createdAt', op: '>=', value: startOfDay },
+    ],
   });
-  return result._sum.totalTokens || 0;
+  const total = rows.reduce((sum: number, r) => sum + (Number((r as Record<string, unknown>).totalTokens) || 0), 0);
+  return total;
 }
 
 export async function getDailyApiCallCount(userId: string): Promise<number> {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
   return db.agentInvocation.count({
-    where: { userId, createdAt: { gte: startOfDay } },
+    where: [
+      { field: 'userId', op: '==', value: userId },
+      { field: 'createdAt', op: '>=', value: startOfDay },
+    ],
   }).catch(() => 0);
 }
 
