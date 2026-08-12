@@ -1,31 +1,13 @@
 # ============================================================
-# Gen3ia — Docker Compose pour le développement local
-# Services : PostgreSQL + Redis + Qdrant (vecteurs)
+# Gen3ia — Docker Compose pour le developpement local
+# Services : Redis + Qdrant (vecteurs)
+# La base de donnees applicative est Firestore (Firebase).
 # ============================================================
 # Usage : docker compose -f docker-compose.dev.yml up -d
 #         docker compose -f docker-compose.dev.yml down
 # ============================================================
 
 services:
-  # === PostgreSQL 16 (base de données principale) ===
-  postgres:
-    image: postgres:16-alpine
-    container_name: gen3ia-dev-db
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: gen3ia
-      POSTGRES_PASSWORD: gen3ia_dev
-      POSTGRES_DB: gen3ia_dev
-    volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gen3ia -d gen3ia_dev"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   # === Redis 7 (Cache + BullMQ + Rate Limiting) ===
   redis:
     image: redis:7-alpine
@@ -42,7 +24,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # === Qdrant (Base vectorielle pour la mémoire sémantique) ===
+  # === Qdrant (Base vectorielle pour la memoire semantique) ===
   qdrant:
     image: qdrant/qdrant:v1.13.5
     container_name: gen3ia-dev-qdrant
@@ -63,8 +45,6 @@ services:
       retries: 5
 
 volumes:
-  postgres_dev_data:
-    driver: local
   redis_dev_data:
     driver: local
   qdrant_dev_data:
@@ -73,10 +53,12 @@ volumes:
 # ============================================================
 # Fichier .env.local attendu :
 #
-# DATABASE_URL=postgresql://gen3ia:gen3ia_dev@localhost:5432/gen3ia_dev
 # REDIS_URL=redis://localhost:6379
 # QDRANT_URL=http://localhost:6333
 # AUTH_SECRET=dev-secret-key-32-caracteres-minimum!!
+# FIREBASE_PROJECT_ID=...
+# FIREBASE_CLIENT_EMAIL=...
+# FIREBASE_PRIVATE_KEY=...
 # NEXT_PUBLIC_APP_URL=http://localhost:3000
 #
 # ============================================================
