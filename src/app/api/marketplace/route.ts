@@ -1,8 +1,9 @@
-// API Marketplace - Listings enrichis avec badges et trust
+// API Marketplace - Listings enrichis avec badges (Firestore facade)
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
+import type { FirestoreWhereOp, FirestoreOrderBy } from '@/lib/firebase/firestore';
 
 
 
@@ -14,6 +15,21 @@ const VALID_TYPES = ['agent', 'tool', 'workflow', 'template', 'prompt', 'integra
 
 type MarketplaceSort = 'newest' | 'popular' | 'rating' | 'trust';
 
+// Colonne Firestore correspondant à chaque tri
+const SORT_FIELD: Record<MarketplaceSort, string> = {
+  newest: 'createdAt',
+  popular: 'reviewCount',
+  rating: 'rating',
+  trust: 'trustScore',
+};
+
+interface ListingLike {
+  id?: string;
+  badges?: string | unknown[];
+  name?: string;
+  [key: string]: unknown;
+}
+
 // GET /api/marketplace — Listing public (lecture)
 export async function GET(request: NextRequest) {
   try {
@@ -23,32 +39,32 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(50, Math.max(1, parseInt(request.nextUrl.searchParams.get('limit') || '20')));
     const sort = (request.nextUrl.searchParams.get('sort') || 'newest') as MarketplaceSort;
 
-    const where: Record<string, unknown> = { status: 'published', isActive: true };
-    if (type && VALID_TYPES.includes(type)) where.type = type;
-    if (search) where.name = { contains: search, mode: 'insensitive' };
+    // where === FirestoreWhereOp[] (pas d'objet Prisma, pas de contains/mode)
+    const where: FirestoreWhereOp[] = [
+      { field: 'status', op: '==', value: 'published' },
+      { field: 'isActive', op: '==', value: true },
+    ];
+    if (type && VALID_TYPES.includes(type)) where.push({ field: 'type', op: '==', value: type });
 
-    let orderBy: Record<string, 'asc' | 'desc'> = { createdAt: 'desc' };
-    if (sort === 'popular') orderBy = { reviewCount: 'desc' };
-    else if (sort === 'rating') orderBy = { rating: 'desc' };
-    else if (sort === 'trust') orderBy = { trustScore: 'desc' };
+    const sortField = SORT_FIELD[sort] || 'createdAt';
+    const orderBy: FirestoreOrderBy[] = [{ field: sortField, direction: 'desc' }];
 
-    const [listings, total] = await Promise.all([
-      db.marketplaceListing.findMany({
-        where,
-        orderBy,
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          _count: { select: { purchases: true } },
-          user: { select: { name: true, avatar: true } },
-        },
-      }),
-      db.marketplaceListing.count({ where }),
-    ]);
+    // La façade ne supporte ni contains/mode ni include. On récupère la liste
+    // filtrée (triée), puis on applique recherche + pagination en mémoire.
+    const all = (await db.marketplaceListing.findMany({ where, orderBy })) as ListingLike[];
 
-    const enriched = listings.map(l => ({
+    let rows = all;
+    if (search) {
+      const q = search.toLowerCase();
+      rows = all.filter((l) => (l.name || '').toLowerCase().includes(q));
+    }
+
+    const total = rows.length;
+    const paged = rows.slice((page - 1) * limit, page * limit);
+
+    const enriched = paged.map((l) => ({
       ...l,
-      badges: JSON.parse(l.badges || '[]'),
+      badges: typeof l.badges === 'string' ? JSON.parse(l.badges) : Array.isArray(l.badges) ? l.badges : [],
     }));
 
     return NextResponse.json({
@@ -74,19 +90,27 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteP
     const priceNum = Math.max(0, Number(price) || 0);
 
     if (agentId && listingType === 'agent') {
-      const agent = await db.agent.findUnique({ where: { id: agentId }, select: { userId: true } });
-      if (!agent || agent.userId !== auth.userId) return NextResponse.json({ error: 'Agent introuvable' }, { status: 403 });
+      const agent = await db.agent.findUnique({ where: { id: agentId }, select: ['userId'] });
+      if (!agent || (agent as Record<string, unknown>).userId !== auth.userId) return NextResponse.json({ error: 'Agent introuvable' }, { status: 403 });
     }
 
     const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36);
 
     const listing = await db.marketplaceListing.create({
       data: {
-        name: name.trim(), slug, description,
-        type: listingType, price: priceNum,
-        userId: auth.userId, agentId: agentId || null,
+        name: name.trim(),
+        slug,
+        description,
+        type: listingType,
+        price: priceNum,
+        userId: auth.userId,
+        agentId: agentId || null,
         config: config ? JSON.stringify(config) : '{}',
         status: 'published',
+        isActive: true,
+        reviewCount: 0,
+        rating: 0,
+        trustScore: 0,
       },
     });
 
