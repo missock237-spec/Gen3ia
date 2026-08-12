@@ -323,6 +323,85 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
     return { count: items.length };
   }
 
+  /** Crée plusieurs documents en boucle (remplace createMany de Prisma). */
+  async createMany(options: { data: Array<Record<string, unknown>> }): Promise<{ count: number }> {
+    let count = 0;
+    for (const item of options.data) {
+      await this.create({ data: item });
+      count++;
+    }
+    return { count };
+  }
+
+  /** Agrégation simple en mémoire (remplace aggregate de Prisma). */
+  async groupBy(options: {
+    where?: FindOptions['where'];
+    by?: string[];
+    _sum?: string[];
+    _count?: string[];
+  }): Promise<Record<string, unknown>> {
+    const items = await this.findMany({ where: options.where });
+    return this.aggregateInMemory(items, options);
+  }
+
+  async aggregate(options: {
+    where?: FindOptions['where'];
+    _sum?: Record<string, boolean>;
+    _count?: Record<string, boolean>;
+  }): Promise<{
+    _sum?: Record<string, number>;
+    _count?: Record<string, number>;
+  }> {
+    const items = await this.findMany({ where: options.where });
+    const result: { _sum?: Record<string, number>; _count?: Record<string, number> } = {};
+
+    if (options._sum) {
+      result._sum = {};
+      for (const field of Object.keys(options._sum)) {
+        let sum = 0;
+        for (const it of items) {
+          const v = (it as Record<string, unknown>)[field];
+          if (typeof v === 'number') sum += v;
+        }
+        result._sum[field] = sum;
+      }
+    }
+    if (options._count) {
+      result._count = {};
+      for (const field of Object.keys(options._count)) {
+        result._count[field] = items.length;
+      }
+    }
+    return result;
+  }
+
+  private aggregateInMemory(items: T[], options: { by?: string[]; _sum?: string[]; _count?: string[] }): Record<string, unknown> {
+    const groups: Record<string, Record<string, unknown>[]> = {};
+    for (const it of items) {
+      const rec = it as Record<string, unknown>;
+      const key = (options.by || []).map((f) => String(rec[f])).join('__') || '_all';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(rec);
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, group] of Object.entries(groups)) {
+      const row: Record<string, unknown> = {};
+      for (const f of options.by || []) row[f] = group[0]?.[f];
+      if (options._count) {
+        for (const f of options._count) row[`_count_${f}`] = group.length;
+      }
+      if (options._sum) {
+        for (const f of options._sum) {
+          let sum = 0;
+          for (const g of group) if (typeof g[f] === 'number') sum += g[f];
+          row[`_sum_${f}`] = sum;
+        }
+      }
+      out[key] = row;
+    }
+    return out;
+  }
+
   private whereFromOptions(whereObj: Record<string, unknown>): FirestoreWhereOp[] {
     return Object.entries(whereObj).map(([field, value]) => ({
       field,
@@ -349,9 +428,13 @@ export const Collections = {
   agentSuites: 'agent_suites',
   agentMemories: 'agent_memories',
   agentUsage: 'agent_usage',
+  agentPermissions: 'agent_permissions',
+  agentExecution: 'agent_executions',
+  agentInvocations: 'agent_invocations',
   conversations: 'conversations',
   messages: 'messages',
   credits: 'credits',
+  creditTransactions: 'credit_transactions',
   subscriptions: 'subscriptions',
   invoices: 'invoices',
   apiKeys: 'api_keys',
@@ -392,9 +475,13 @@ export const db = {
   agentSuite: makeRepo<Record<string, unknown>>(Collections.agentSuites),
   agentMemory: makeRepo<Record<string, unknown>>(Collections.agentMemories),
   agentUsage: makeRepo<Record<string, unknown>>(Collections.agentUsage),
+  agentPermission: makeRepo<Record<string, unknown>>(Collections.agentPermissions),
+  agentExecution: makeRepo<Record<string, unknown>>(Collections.agentExecution),
+  agentInvocation: makeRepo<Record<string, unknown>>(Collections.agentInvocations),
   conversation: makeRepo<Record<string, unknown>>(Collections.conversations),
   message: makeRepo<Record<string, unknown>>(Collections.messages),
   credit: makeRepo<Record<string, unknown>>(Collections.credits),
+  creditTransaction: makeRepo<Record<string, unknown>>(Collections.creditTransactions),
   subscription: makeRepo<Record<string, unknown>>(Collections.subscriptions),
   invoice: makeRepo<Record<string, unknown>>(Collections.invoices),
   apiKey: makeRepo<Record<string, unknown>>(Collections.apiKeys),
