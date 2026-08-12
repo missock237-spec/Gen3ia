@@ -1,5 +1,8 @@
 // next.config.js — CommonJS pour compatibilité Vercel et Docker
 // Phase 1.1 — Fondations : headers de sécurité, compression, optimisation d'images, redirects
+// NOTE : la source de vérité est next.config.ts (chargé en priorité par Next.js).
+//       Ce fichier .js est maintenu pour la compat Docker/Vercel et NE DOIT PAS
+//       désactiver le type-checking ni le lint au build (aucun ignoreBuildErrors).
 const path = require('path');
 
 // ——— Headers de sécurité HTTP (COOP/COEP, X-Frame-Options, etc.) ———
@@ -29,16 +32,6 @@ const redirects = () => [
 const nextConfig = {
   // Mode standalone : utilisé par Docker, ignoré par Vercel
   output: 'standalone',
-
-  // Disable ESLint during build (ESLint v9 config incompatibility)
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-
-  // Disable TypeScript strict checking during build (type errors handled separately)
-  typescript: {
-    ignoreBuildErrors: true,
-  },
 
   reactStrictMode: true,
   poweredByHeader: false,
