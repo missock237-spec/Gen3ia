@@ -52,17 +52,18 @@ const worker = new Worker('agent-execution', async (job) => {
       },
     });
   } else {
-    await db.agentExecution.update({ where: { id: exec.id }, data: { status: 'running' } });
+    await db.agentExecution.update({ where: { id: exec.id as string }, data: { status: 'running' } });
   }
 
+  const execId = exec.id as string;
   try {
     await new Promise((r) => setTimeout(r, 2000));
     const tokens = Math.floor(Math.random() * 400) + 100;
     await db.agentExecution.update({
-      where: { id: exec.id },
+      where: { id: execId },
       data: {
         status: 'completed',
-        result: JSON.stringify({ output: '[Auto] ' + agent.name, tokens }),
+        result: JSON.stringify({ output: '[Auto] ' + String(agent.name), tokens }),
         totalTokens: tokens,
         estimatedCost: tokens * 0.000002,
         completedAt: new Date(),
@@ -76,7 +77,7 @@ const worker = new Worker('agent-execution', async (job) => {
     log.info('completed', { jobId: job.id, tokens });
   } catch (e) {
     await db.agentExecution.update({
-      where: { id: exec.id },
+      where: { id: execId },
       data: { status: 'failed', error: String(e), completedAt: new Date() },
     }).catch(() => {});
     throw e;
