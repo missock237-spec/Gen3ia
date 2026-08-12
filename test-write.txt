@@ -1,1 +1,0 @@
-Fichier de test obsolète — à supprimer (git rm test-write.txt)
