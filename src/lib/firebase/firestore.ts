@@ -15,6 +15,7 @@
 //    - notifications (inbox intra-app)
 //    - audit_logs (sécurité / compliance)
 //    - api_keys, tasks, workflows, guardrails, etc.
+//    - partners + partner_events (recommandation SaaS)
 //
 //  Pour préserver la compat avec les ~50 API routes existantes qui
 //  appellent `db.user.findUnique(...)` etc., on expose une facade
@@ -459,6 +460,9 @@ export const Collections = {
   marketplacePurchases: 'marketplace_purchases',
   marketplaceReviews: 'marketplace_reviews',
   uploadedFiles: 'uploaded_files',
+  // Recomandation SaaS (recommand)
+  partners: 'partners',
+  partnerEvents: 'partner_events',
 } as const;
 
 export type CollectionName = typeof Collections[keyof typeof Collections];
@@ -508,6 +512,9 @@ export const db = {
   marketplacePurchase: makeRepo<Record<string, unknown>>(Collections.marketplacePurchases),
   marketplaceReview: makeRepo<Record<string, unknown>>(Collections.marketplaceReviews),
   uploadedFile: makeRepo<Record<string, unknown>>(Collections.uploadedFiles),
+  // Recomandation SaaS (recommand)
+  partner: makeRepo<Record<string, unknown>>(Collections.partners),
+  partnerEvent: makeRepo<Record<string, unknown>>(Collections.partnerEvents),
   $transaction: async <R>(fn: () => Promise<R>): Promise<R> => fn(),
 };
 
