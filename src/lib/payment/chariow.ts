@@ -165,6 +165,10 @@ class ChariowClient {
 
   /**
    * Gère le webhook Chariow : crédite l'utilisateur / active l'abonnement.
+   *
+   * NOTA (façade Firestore) : $transaction() n'injecte pas de client tx et
+   * upsert() n'accepte que where:{id}. On utilise donc des appels directs
+   * db.<model> et un findFirst+create/update pour l'abonnement.
    */
   async handleWebhook(payload: ChariowWebhookPayload): Promise<void> {
     const event = payload.event || '';
@@ -194,44 +198,42 @@ class ChariowClient {
       return;
     }
 
-    await db.$transaction(async (tx) => {
-      // Créditer les crédits achetés
-      if (credits > 0) {
-        await tx.creditTransaction.create({
-          data: {
-            userId,
-            amount: credits,
-            balance: credits,
-            type: 'purchase',
-            resourceType: type === 'credits' ? 'credit_purchase' : 'subscription',
-            description: `Achat via Chariow: ${credits} crédits (sale ${sale.id})`,
-            metadata: JSON.stringify({ provider: 'chariow', saleId: sale.id, type, planId }),
-          },
-        });
-      }
+    // 1. Créditer les crédits achetés
+    if (credits > 0) {
+      await db.creditTransaction.create({
+        data: {
+          userId,
+          amount: credits,
+          balance: credits,
+          type: 'purchase',
+          resourceType: type === 'credits' ? 'credit_purchase' : 'subscription',
+          description: `Achat via Chariow: ${credits} crédits (sale ${sale.id})`,
+          metadata: JSON.stringify({ provider: 'chariow', saleId: sale.id, type, planId }),
+        },
+      });
+    }
 
-      // Activer / mettre à jour l'abonnement si c'est un plan
-      if (planId) {
-        await tx.subscription.upsert({
-          where: { userId },
-          create: {
-            userId,
-            plan: planId,
-            status: 'active',
-            provider: 'chariow',
-            currentPeriodStart: new Date(),
-            currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          },
-          update: {
-            plan: planId,
-            status: 'active',
-            provider: 'chariow',
-            currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          },
-        });
-        await tx.user.update({ where: { id: userId }, data: { plan: planId } });
+    // 2. Activer / mettre à jour l'abonnement si c'est un plan
+    if (planId) {
+      const existing = await db.subscription.findFirst({
+        where: [{ field: 'userId', op: '==', value: userId }],
+      });
+
+      const subData = {
+        plan: planId,
+        status: 'active',
+        provider: 'chariow',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      };
+
+      if (existing && existing.id) {
+        await db.subscription.update({ where: { id: existing.id as string }, data: subData });
+      } else {
+        await db.subscription.create({ data: { userId, ...subData } });
       }
-    });
+      await db.user.update({ where: { id: userId }, data: { plan: planId } });
+    }
 
     log.info('chariow_payment_credited', { userId: userId.slice(0, 8), credits, planId });
   }
