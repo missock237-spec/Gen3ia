@@ -30,36 +30,71 @@ export interface CreateAlertRuleInput {
   channels?: string[]; webhookUrl?: string;
 }
 
+type AnyRec = Record<string, any>;
+
+function toDate(v: unknown): Date {
+  return v instanceof Date ? v : new Date(String(v ?? 0));
+}
+
 export class ObservabilityEngine {
   async getMetricsSummary(userId: string): Promise<MetricsSummary> {
     const now = new Date();
     const last24h = new Date(now.getTime() - 86400000);
 
-    const [invocations, agents, delegations] = await Promise.all([
-      prisma.agentInvocation.findMany({ where: { userId, createdAt: { gte: last24h } }, select: { tokensUsed: true, cost: true, durationMs: true, createdAt: true, agentId: true, output: true } }),
-      prisma.agent.findMany({ where: { ownerId: userId, status: 'active' }, select: { id: true, name: true } }),
-      prisma.agentDelegation.findMany({ where: { OR: [{ sourceAgent: { ownerId: userId } }, { targetAgent: { ownerId: userId } }], createdAt: { gte: last24h } }, include: { sourceAgent: { select: { name: true } }, targetAgent: { select: { name: true } } } }),
+    const [invocations, agents] = await Promise.all([
+      prisma.agentInvocation.findMany({
+        where: [
+          { field: 'userId', op: '==', value: userId },
+          { field: 'createdAt', op: '>=', value: last24h },
+        ],
+        select: ['tokensUsed', 'cost', 'durationMs', 'createdAt', 'agentId', 'output'],
+      }),
+      prisma.agent.findMany({
+        where: [
+          { field: 'ownerId', op: '==', value: userId },
+          { field: 'status', op: '==', value: 'active' },
+        ],
+        select: ['id', 'name'],
+      }),
     ]);
 
     const totalExecutions = invocations.length;
-    const totalTokens = invocations.reduce((s, i) => s + (i.tokensUsed || 0), 0);
-    const totalCost = invocations.reduce((s, i) => s + Number(i.cost || 0), 0);
-    const totalDuration = invocations.reduce((s, i) => s + (i.durationMs || 0), 0);
-    const errors = invocations.filter(i => i.output?.toLowerCase().includes('error') || i.output?.toLowerCase().includes('fail'));
+    const totalTokens = invocations.reduce((s, i: AnyRec) => s + (Number(i.tokensUsed) || 0), 0);
+    const totalCost = invocations.reduce((s, i: AnyRec) => s + Number(i.cost || 0), 0);
+    const totalDuration = invocations.reduce((s, i: AnyRec) => s + (Number(i.durationMs) || 0), 0);
+    const errors = invocations.filter((i: AnyRec) =>
+      String(i.output || '').toLowerCase().includes('error') ||
+      String(i.output || '').toLowerCase().includes('fail'));
     const successRate = totalExecutions > 0 ? ((totalExecutions - errors.length) / totalExecutions) * 100 : 100;
     const avgDurationMs = totalExecutions > 0 ? Math.round(totalDuration / totalExecutions) : 0;
 
     const executionsByDay: Record<string, number> = {};
-    invocations.forEach(i => { const d = i.createdAt.toISOString().slice(0,10); executionsByDay[d] = (executionsByDay[d] || 0) + 1; });
+    invocations.forEach((i: AnyRec) => {
+      const d = toDate(i.createdAt).toISOString().slice(0, 10);
+      executionsByDay[d] = (executionsByDay[d] || 0) + 1;
+    });
 
     const agentCostMap: Record<string, { name: string; cost: number }> = {};
-    agents.forEach(a => { agentCostMap[a.id] = { name: a.name, cost: 0 }; });
-    invocations.forEach(i => { if (agentCostMap[i.agentId]) agentCostMap[i.agentId].cost += Number(i.cost || 0); });
+    agents.forEach((a: AnyRec) => { agentCostMap[String(a.id)] = { name: String(a.name || 'Inconnu'), cost: 0 }; });
+    invocations.forEach((i: AnyRec) => {
+      const key = String(i.agentId);
+      if (agentCostMap[key]) agentCostMap[key].cost += Number(i.cost || 0);
+    });
 
-    const recentActivity: ActivityItem[] = [
-      ...invocations.slice(0,10).map(i => ({ type: 'invocation', agentName: agents.find(a => a.id === i.agentId)?.name || 'Inconnu', action: 'Execution', status: errors.includes(i) ? 'failed' : 'completed', tokens: i.tokensUsed, cost: Number(i.cost), durationMs: i.durationMs, timestamp: i.createdAt })),
-      ...delegations.slice(0,5).map(d => ({ type: 'delegation', agentName: d.sourceAgent.name, action: 'Delegation vers ' + d.targetAgent.name, status: d.status, timestamp: d.createdAt })),
-    ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 15);
+    const recentActivity: ActivityItem[] = invocations.slice(0, 10).map((i: AnyRec) => {
+      const failed = String(i.output || '').toLowerCase().includes('error') ||
+        String(i.output || '').toLowerCase().includes('fail');
+      return {
+        type: 'invocation',
+        agentName: agents.find((a: AnyRec) => String(a.id) === String(i.agentId))?.name || 'Inconnu',
+        action: 'Execution',
+        status: failed ? 'failed' : 'completed',
+        tokens: Number(i.tokensUsed || 0),
+        cost: Number(i.cost || 0),
+        durationMs: Number(i.durationMs || 0),
+        timestamp: toDate(i.createdAt),
+      };
+    }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 15);
 
     return {
       activeAgents: agents.length, totalExecutions24h: totalExecutions,
@@ -89,11 +124,16 @@ export class ObservabilityEngine {
   }
 
   async evaluateAlertRules(userId: string) {
-    const rules = await prisma.alertRule.findMany({ where: { userId, enabled: true } });
+    const rules = await prisma.alertRule.findMany({
+      where: [
+        { field: 'userId', op: '==', value: userId },
+        { field: 'enabled', op: '==', value: true },
+      ],
+    });
     const metrics = await this.getMetricsSummary(userId);
     const triggered: any[] = [];
 
-    for (const rule of rules) {
+    for (const rule of rules as AnyRec[]) {
       let shouldTrigger = false, severity = 'warning', message = '';
       switch (rule.condition) {
         case 'budget_exceeded':
@@ -102,10 +142,11 @@ export class ObservabilityEngine {
         case 'slow_performance':
           if (metrics.avgDurationMs > rule.threshold) { shouldTrigger = true; severity = 'warning'; message = 'Performance anormale: ' + metrics.avgDurationMs + 'ms (seuil: ' + rule.threshold + 'ms)'; }
           break;
-        case 'error_rate':
+        case 'error_rate': {
           const errorRate = 100 - metrics.successRate;
           if (errorRate > rule.threshold) { shouldTrigger = true; severity = 'warning'; message = "Taux d'erreur: " + errorRate + '% (seuil: ' + rule.threshold + '%)'; }
           break;
+        }
         default: break;
       }
       if (shouldTrigger) {
@@ -118,7 +159,13 @@ export class ObservabilityEngine {
   }
 
   async createAlertEvent(data: { ruleId: string; userId: string; agentId?: string; type: string; severity: string; title: string; message: string; metadata?: any }) {
-    const event = await prisma.alertEvent.create({ data: { ruleId: data.ruleId, userId: data.userId, agentId: data.agentId || null, type: data.type, severity: data.severity, title: data.title, message: data.message, metadata: JSON.stringify(data.metadata || {}) } });
+    const event = await prisma.alertEvent.create({
+      data: {
+        ruleId: data.ruleId, userId: data.userId, agentId: data.agentId || null,
+        type: data.type, severity: data.severity, title: data.title, message: data.message,
+        metadata: JSON.stringify(data.metadata || {}),
+      },
+    });
     await prisma.alertRule.update({ where: { id: data.ruleId }, data: { lastTriggeredAt: new Date() } });
     return event;
   }
@@ -138,11 +185,28 @@ export class ObservabilityEngine {
     await prisma.alertEvent.update({ where: { id: event.id }, data: { channelsSent: JSON.stringify(channelsSent) } });
   }
 
-  async getAlertEvents(userId: string, limit = 20) { return prisma.alertEvent.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: limit, include: { rule: { select: { name: true } } } }); }
-  async getAlertRules(userId: string) { return prisma.alertRule.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }); }
-  async markAlertRead(eventId: string, userId: string) { return prisma.alertEvent.updateMany({ where: { id: eventId, userId }, data: { read: true } }); }
-  async toggleAlertRule(ruleId: string, userId: string, enabled: boolean) { return prisma.alertRule.updateMany({ where: { id: ruleId, userId }, data: { enabled } }); }
-  async deleteAlertRule(ruleId: string, userId: string) { return prisma.alertRule.deleteMany({ where: { id: ruleId, userId } }); }
+  async getAlertEvents(userId: string, limit = 20) {
+    return prisma.alertEvent.findMany({
+      where: [{ field: 'userId', op: '==', value: userId }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      limit,
+    });
+  }
+  async getAlertRules(userId: string) {
+    return prisma.alertRule.findMany({
+      where: [{ field: 'userId', op: '==', value: userId }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+    });
+  }
+  async markAlertRead(eventId: string, userId: string) {
+    return prisma.alertEvent.updateMany({ where: [{ field: 'id', op: '==', value: eventId }, { field: 'userId', op: '==', value: userId }], data: { read: true } });
+  }
+  async toggleAlertRule(ruleId: string, userId: string, enabled: boolean) {
+    return prisma.alertRule.updateMany({ where: [{ field: 'id', op: '==', value: ruleId }, { field: 'userId', op: '==', value: userId }], data: { enabled } });
+  }
+  async deleteAlertRule(ruleId: string, userId: string) {
+    return prisma.alertRule.deleteMany({ where: [{ field: 'id', op: '==', value: ruleId }, { field: 'userId', op: '==', value: userId }] });
+  }
 }
 
 export const observability = new ObservabilityEngine();
