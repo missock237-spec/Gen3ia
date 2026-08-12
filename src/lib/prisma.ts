@@ -7,7 +7,7 @@
 
 import { dbExt } from '@/lib/firestore-extra';
 
-export { default, db, prisma, Collections, FirestoreRepository } from '@/lib/firebase/firestore';
-export const prisma = dbExt;
+export { Collections, FirestoreRepository } from '@/lib/firebase/firestore';
 export const db = dbExt;
+export const prisma = dbExt;
 export default dbExt;
