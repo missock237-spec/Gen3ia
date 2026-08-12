@@ -8,10 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
 import { applySecurity } from '@/lib/security';
 import { db } from '@/lib/db';
-
-
-
-
+import type { FirestoreWhereOp } from '@/lib/firebase/firestore';
 
 export const dynamic = "force-dynamic";
 const log = createLogger('mcp-server');
@@ -19,6 +16,9 @@ const log = createLogger('mcp-server');
 const MCP_SERVER_INFO = { name: 'Genova AI OS', version: '1.0.0' };
 const MCP_CAPABILITIES = { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true } };
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-03-26', '2024-11-05'];
+
+/** Filtre Firestore d'égalité (compatible facade `db`). */
+const by = (field: string, value: unknown): FirestoreWhereOp => ({ field, op: '==', value });
 
 async function handleMCPRequest(method: string, params: Record<string, unknown> | undefined, userId: string) {
   switch (method) {
@@ -31,7 +31,14 @@ async function handleMCPRequest(method: string, params: Record<string, unknown> 
     }
 
     case 'tools/list': {
-      const connectors = await db.mCPConnector.findMany({ where: { userId, isActive: true, status: { not: 'error' } }, select: { name: true, tools: true } });
+      const connectors = await db.mCPConnector.findMany({
+        where: [
+          by('userId', userId),
+          by('isActive', true),
+          { field: 'status', op: '!=', value: 'error' },
+        ],
+        select: ['name', 'tools'],
+      });
       const tools: any[] = [
         { name: 'genova_list_agents', description: 'Liste tous les agents Genova', inputSchema: { type: 'object', properties: { status: { type: 'string' } } } },
         { name: 'genova_execute_agent', description: 'Exxe9cute un agent', inputSchema: { type: 'object', properties: { agent_id: { type: 'string' }, message: { type: 'string' } }, required: ['agent_id', 'message'] } },
@@ -55,24 +62,39 @@ async function handleMCPRequest(method: string, params: Record<string, unknown> 
       if (!name) return { error: { code: -32602, message: 'Tool name required' } };
       switch (name) {
         case 'genova_list_agents': {
-          const agents = await db.agent.findMany({ where: { userId }, select: { id: true, name: true, description: true, status: true, createdAt: true }, take: 50 });
+          const agents = await db.agent.findMany({
+            where: [by('userId', userId)],
+            select: ['id', 'name', 'description', 'status', 'createdAt'],
+            limit: 50,
+          });
           return { result: { content: [{ type: 'text', text: JSON.stringify(agents) }] } };
         }
         case 'genova_get_credits': {
-          const credits = await db.credit.findFirst({ where: { userId }, select: { balance: true, used: true } });
+          const credits = await db.credit.findFirst({
+            where: [by('userId', userId)],
+            select: ['balance', 'used'],
+          });
           return { result: { content: [{ type: 'text', text: JSON.stringify(credits || { balance: 0, used: 0 }) }] } };
         }
         case 'genova_search_memory': {
-          const q = args.query as string;
+          const q = String(args.query || '').trim().toLowerCase();
           const limit = Math.min(Number(args.limit) || 10, 50);
-          const memories = await db.memory.findMany({ where: { userId, content: { contains: q, mode: 'insensitive' } }, select: { id: true, content: true, createdAt: true }, take: limit, orderBy: { createdAt: 'desc' } });
-          return { result: { content: [{ type: 'text', text: JSON.stringify(memories) }] } };
+          const memories = (await db.agentMemory.findMany({
+            where: [by('userId', userId)],
+            select: ['id', 'content', 'createdAt'],
+            limit: 100,
+          })) as Array<Record<string, unknown>>;
+          const filtered = memories
+            .filter((m) => q === '' || String(m.content || '').toLowerCase().includes(q))
+            .sort((a, b) => Number(new Date(b.createdAt as Date).getTime()) - Number(new Date(a.createdAt as Date).getTime()))
+            .slice(0, limit);
+          return { result: { content: [{ type: 'text', text: JSON.stringify(filtered) }] } };
         }
         case 'genova_execute_agent': {
           const agentId = args.agent_id as string;
           const message = args.message as string;
           if (!agentId || !message) return { error: { code: -32602, message: 'agent_id and message required' } };
-          const agent = await db.agent.findUnique({ where: { id: agentId }, select: { id: true, userId: true, name: true } });
+          const agent = await db.agent.findUnique({ where: { id: agentId }, select: ['id', 'userId', 'name'] });
           if (!agent || agent.userId !== userId) return { error: { code: -32602, message: 'Agent not found' } };
           return { result: { content: [{ type: 'text', text: JSON.stringify({ status: 'queued', agent: agent.name, message: message.substring(0, 200) }) }] } };
         }
@@ -93,19 +115,34 @@ async function handleMCPRequest(method: string, params: Record<string, unknown> 
       if (!uri) return { error: { code: -32602, message: 'URI required' } };
       const m = uri.match(/^genova:\/\/agent\/(.+)$/);
       if (uri === 'genova://agents') {
-        const agents = await db.agent.findMany({ where: { userId }, select: { id: true, name: true, description: true, status: true } });
+        const agents = await db.agent.findMany({
+          where: [by('userId', userId)],
+          select: ['id', 'name', 'description', 'status'],
+        });
         return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(agents) }] } };
       }
       if (uri === 'genova://usage') {
-        const usage = await db.usageLog.groupBy({ by: ['userId'], where: { userId, createdAt: { gte: new Date(Date.now() - 30 * 86400000) } }, _sum: { cost: true, tokens: true }, _count: { id: true } });
-        return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(usage) }] } };
+        const usage = await db.creditTransaction.aggregate({
+          where: [
+            by('userId', userId),
+            { field: 'type', op: '==', value: 'usage' },
+            { field: 'createdAt', op: '>=', value: new Date(Date.now() - 30 * 86400000) },
+          ],
+          _sum: { amount: true },
+          _count: { id: true },
+        });
+        const spent = Math.abs(usage._sum?.amount ?? 0);
+        return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify({ spent, transactions: usage._count?.id ?? 0, period: '30d' }) }] } };
       }
       if (uri === 'genova://credits') {
-        const c = await db.credit.findFirst({ where: { userId }, select: { balance: true, used: true } });
+        const c = await db.credit.findFirst({
+          where: [by('userId', userId)],
+          select: ['balance', 'used'],
+        });
         return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(c || { balance: 0, used: 0 }) }] } };
       }
       if (m) {
-        const agent = await db.agent.findUnique({ where: { id: m[1] }, select: { id: true, name: true, description: true, model: true, status: true, userId: true } });
+        const agent = await db.agent.findUnique({ where: { id: m[1] }, select: ['id', 'name', 'description', 'model', 'status', 'userId'] });
         if (!agent || agent.userId !== userId) return { error: { code: -32602, message: 'Agent not found' } };
         return { result: { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(agent) }] } };
       }
