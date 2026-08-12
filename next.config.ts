@@ -1,10 +1,12 @@
 // next.config.ts — config source de vérité (TypeScript)
 // Phase 1.1 — Fondations : sécurité, compression, images optimisées, redirects.
 // NOTE : équivalent comportemental à next.config.js. Next.js charge le .ts en priorité.
+// NOTE CSP : Content-Security-Policy est gérée par src/middleware.ts (CSP par nonce),
+// on ne la définit PAS ici pour éviter tout conflit avec la CSP dynamique du middleware.
 
 import path from 'path';
 
-// ——— Headers de sécurité HTTP (COOP/COEP/CSP, X-Frame-Options, etc.) ———
+// ——— Headers de sécurité HTTP (COOP/COEP, X-Frame-Options, etc.) ———
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -14,7 +16,6 @@ const securityHeaders = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-  { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:;" },
 ];
 
 // ——— Redirections permanentes (301) ———
