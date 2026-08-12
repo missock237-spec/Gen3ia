@@ -124,20 +124,20 @@ export function withAuth<P extends Record<string, unknown> = Record<string, stri
     if (quota && auth?.userId) {
       const user = await db.user.findUnique({
         where: { id: auth.userId },
-        select: { plan: true, credits: true },
+        select: ['plan', 'credits'],
       });
       if (!user) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 });
 
-      if (user.credits <= 0 && user.plan !== 'free') {
+      if ((user.credits as number) <= 0 && user.plan !== 'free') {
         return NextResponse.json(
           { error: 'Quota de crédits épuisé. Rechargez vos crédits.' },
           { status: 402 }
         );
       }
 
-      const tokenLimit = await checkTokenLimit(auth.userId, user.plan);
+      const tokenLimit = await checkTokenLimit(auth.userId, (user.plan as string) || 'free');
       if (!tokenLimit.allowed) {
-        const planLimits = getPlanLimits(user.plan);
+        const planLimits = getPlanLimits((user.plan as string) || 'free');
         return NextResponse.json(
           { error: `Quota LLM journalier atteint (${tokenLimit.current}/${tokenLimit.limit}). Dépasse le seuil de ${planLimits.maxTokensPerDay} tokens.` },
           { status: 429 }
