@@ -2,9 +2,14 @@
 // Gen3ia - Système de recommandation SaaS (IA & navigateurs)
 // Permet à des IA et des navigateurs/extensions de proposer
 // Gen3ia à leurs utilisateurs, avec tracking d'attribution.
+//
+// MIGRÉ VERS LA FAÇADE FIRESTORE (src/lib/firebase/firestore.ts)
+//  - `db` = façade Prisma-like sur Firestore.
+//  - `findUnique` : where en OBJET { champ: valeur } ET select en string[].
+//  - `update` : pas d'operation { increment } -> read-modify-write.
 // ============================================================
 import crypto from 'crypto';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/db';
 
 export type PartnerType = 'ai' | 'browser' | 'extension' | 'website';
 export type PartnerEventType = 'view' | 'click' | 'signup' | 'convert';
@@ -53,23 +58,18 @@ export function generatePartnerApiKey(): string {
   return `g3ia_${crypto.randomBytes(24).toString('hex')}`;
 }
 
+// Champs lus pour un partenaire actif (select en string[])
+const PARTNER_SAFE_SELECT = ['id', 'name', 'type', 'referralCode', 'website', 'allowedOrigins', 'status', 'ownerId'];
+
 /**
  * Retrouve un partenaire actif par sa clé API publique.
+ * where en objet { apiKey } (supporté par findUnique de la façade).
  */
 export async function findActivePartner(apiKey: string) {
   if (!apiKey) return null;
-  return prisma.partner.findUnique({
+  return db.partner.findUnique({
     where: { apiKey },
-    select: {
-      id: true,
-      name: true,
-      type: true,
-      referralCode: true,
-      website: true,
-      allowedOrigins: true,
-      status: true,
-      ownerId: true,
-    },
+    select: PARTNER_SAFE_SELECT,
   });
 }
 
@@ -157,13 +157,23 @@ export function buildRecommendationPayload(partner: {
     },
     attribution: {
       partnerId: partner.id,
-      apiKey: partner.id,
+      apiKey: partner.id, // jamais la vraie clé ; identifiant public uniquement
       sessionId,
       signupUrl,
     },
     aiPitch,
     generatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Incrémente un compteur (views/clicks/signups/conversions) sur un partenaire.
+ * Firestore ne supporte pas { increment } : read-modify-write.
+ */
+async function incrementPartnerCounter(partnerId: string, field: string): Promise<void> {
+  const partner = await db.partner.findUnique({ where: { id: partnerId }, select: [field, 'id'] });
+  const current = Number((partner as Record<string, unknown> | null)?.[field] ?? 0);
+  await db.partner.update({ where: { id: partnerId }, data: { [field]: current + 1 } });
 }
 
 /**
@@ -183,7 +193,7 @@ export async function trackPartnerEvent(
 ): Promise<void> {
   try {
     const metadata = JSON.stringify(opts.metadata ?? {});
-    await prisma.partnerEvent.create({
+    await db.partnerEvent.create({
       data: {
         partnerId,
         sessionId: opts.sessionId,
@@ -197,11 +207,7 @@ export async function trackPartnerEvent(
 
     const field =
       eventType === 'view' ? 'views' : eventType === 'click' ? 'clicks' : eventType === 'signup' ? 'signups' : 'conversions';
-    await prisma.partner.update({
-      where: { id: partnerId },
-      data: { [field]: { increment: 1 } },
-      select: { id: true },
-    });
+    await incrementPartnerCounter(partnerId, field);
   } catch (err) {
     // Tracking non bloquant
     console.warn('[RECOMMEND] tracking failed:', (err as Error).message);
@@ -229,12 +235,12 @@ export async function attributeSignup({
   metadata?: Record<string, unknown>;
 }): Promise<{ credited: boolean; partnerName?: string }> {
   try {
-    let partner;
-    if (partnerId) {
-      partner = await prisma.partner.findUnique({ where: { id: partnerId } });
-    } else if (partnerApiKey) {
-      partner = await findActivePartner(partnerApiKey);
-    }
+    const partner = partnerId
+      ? await db.partner.findUnique({ where: { id: partnerId }, select: PARTNER_SAFE_SELECT })
+      : partnerApiKey
+        ? await findActivePartner(partnerApiKey)
+        : null;
+
     if (!partner || partner.status !== 'active') return { credited: false };
 
     await trackPartnerEvent(partner.id, 'signup', {
@@ -245,12 +251,11 @@ export async function attributeSignup({
       metadata: { ...metadata, creditedReward: PARTNER_SIGNUP_REWARD },
     });
 
-    // Créditer le propriétaire du partenaire (optionnel)
+    // Créditer le propriétaire du partenaire (optionnel) — read-modify-write
     if (partner.ownerId) {
-      await prisma.user.update({
-        where: { id: partner.ownerId },
-        data: { credits: { increment: PARTNER_SIGNUP_REWARD } },
-      });
+      const owner = await db.user.findUnique({ where: { id: partner.ownerId }, select: ['id', 'credits'] });
+      const cents = Number((owner as Record<string, unknown> | null)?.credits ?? 0);
+      await db.user.update({ where: { id: partner.ownerId }, data: { credits: cents + PARTNER_SIGNUP_REWARD } });
     }
 
     return { credited: true, partnerName: partner.name };
