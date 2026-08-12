@@ -10,13 +10,29 @@ import { withAuth } from '@/lib/with-auth';
 export const dynamic = "force-dynamic";
 export const GET = withAuth(async (request: NextRequest, ctx: { params?: Promise<Record<string, string | string[]>> }, auth) => {
   try {
+    // Facade Firestore : where/orderBy en tableaux, limit au lieu de take,
+    // include:{_count:{messages}} -> comptage en mémoire.
     const conversations = await db.conversation.findMany({
-      where: { userId: auth.userId },
-      orderBy: { updatedAt: 'desc' },
-      take: 50,
-      include: { _count: { select: { messages: true } } },
+      where: [{ field: 'userId', op: '==', value: auth.userId }],
+      orderBy: [{ field: 'updatedAt', direction: 'desc' }],
+      limit: 50,
     });
-    return NextResponse.json(conversations);
+
+    if (conversations.length === 0) return NextResponse.json([]);
+
+    const ids = conversations.map((c) => String((c as Record<string, unknown>).id));
+    const messages = await db.message.findMany();
+    const countByConv = messages.reduce<Record<string, number>>((acc, m) => {
+      const convId = String((m as Record<string, unknown>).conversationId || '');
+      if (ids.includes(convId)) acc[convId] = (acc[convId] || 0) + 1;
+      return acc;
+    }, {});
+
+    const enriched = conversations.map((c) => ({
+      ...c,
+      _count: { messages: countByConv[String((c as Record<string, unknown>).id)] || 0 },
+    }));
+    return NextResponse.json(enriched);
   } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }, {
   requireAuth: true,
