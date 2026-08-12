@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/db';
 import { applySecurity } from '@/lib/security';
 import { integrationHub, IntegrationConnection } from '@/lib/integration-hub';
 import { createLogger } from '@/lib/logger';
@@ -14,6 +14,9 @@ import { createLogger } from '@/lib/logger';
 
 export const dynamic = "force-dynamic";
 const log = createLogger('api-integrations');
+
+// Champs lus pour une connexion sociale (select en string[])
+const SOCIAL_ACCOUNT_SELECT = ['id', 'platform', 'accountName', 'accessToken', 'refreshToken', 'expiresAt', 'createdAt', 'updatedAt'];
 
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
@@ -27,9 +30,12 @@ export async function GET(request: NextRequest) {
     const stats = searchParams.get('stats') === 'true';
 
     // Récupérer les connexions actives de l'utilisateur depuis SocialAccount
-    const connections = await prisma.socialAccount.findMany({
-      where: { userId: auth.userId, expiresAt: { gt: new Date() } },
-      select: { id: true, platform: true, accountName: true, expiresAt: true, createdAt: true, updatedAt: true },
+    const connections = await db.socialAccount.findMany({
+      where: [
+        { field: 'userId', op: '==', value: auth.userId },
+        { field: 'expiresAt', op: '>', value: new Date() },
+      ],
+      select: SOCIAL_ACCOUNT_SELECT,
     });
 
     const userConnections: IntegrationConnection[] = connections.map(c => ({
@@ -100,26 +106,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Récupérer la connexion pour ce provider
-    const socialAccount = await prisma.socialAccount.findFirst({
-      where: { userId: auth.userId, platform: provider, expiresAt: { gt: new Date() } },
+    const socialAccount = await db.socialAccount.findFirst({
+      where: [
+        { field: 'userId', op: '==', value: auth.userId },
+        { field: 'platform', op: '==', value: provider },
+        { field: 'expiresAt', op: '>', value: new Date() },
+      ],
     });
 
     if (!socialAccount && provider !== 'webhook') {
       return NextResponse.json({ error: `Connexion ${provider} non trouvée` }, { status: 404 });
     }
 
+    const record = socialAccount as Record<string, unknown> | null;
     const connection: IntegrationConnection = {
-      id: socialAccount?.id || 'webhook',
+      id: record?.id || 'webhook',
       provider: provider as any,
       userId: auth.userId,
-      accessToken: socialAccount?.accessToken || '',
-      refreshToken: socialAccount?.refreshToken || undefined,
-      expiresAt: socialAccount?.expiresAt || undefined,
+      accessToken: record?.accessToken || '',
+      refreshToken: record?.refreshToken || undefined,
+      expiresAt: record?.expiresAt || undefined,
       scopes: [],
-      accountName: socialAccount?.accountName || undefined,
+      accountName: record?.accountName || undefined,
       isActive: true,
-      createdAt: socialAccount?.createdAt || new Date(),
-      updatedAt: socialAccount?.updatedAt || new Date(),
+      createdAt: record?.createdAt || new Date(),
+      updatedAt: record?.updatedAt || new Date(),
     };
 
     // Exécuter l'action
