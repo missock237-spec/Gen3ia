@@ -11,7 +11,12 @@
 //  - Les routes ADMIN exigent TOUJOURS le rôle 'admin' (custom claim
 //    Firebase Auth), jamais court-circuité par une api key non validée.
 //
-//  PHASE 2.1 — CSP durcie : whitelist explicite pour CDNs.
+//  CSP durcie (nonce per-request) :
+//  - Un nonce unique est genère par requete et propage a Next.js via
+//    l'header de requete "x-nonce" (Next.js l'applique automatiquement a
+//    ses <script> inline).
+//  - En production, script-src n'autorise PLUS 'unsafe-inline'/'unsafe-eval'
+//    mais 'self' + nonce + CDNs de confiance, eliminant le vecteur XSS.
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -69,31 +74,44 @@ const SENSITIVE_RESOURCE_ROUTES = [
   '/api/browser/',
 ];
 
-// ---------- Phase 2.1 : CSP durcie ----------
-const STRICT_CSP = process.env.NEXT_PUBLIC_STRICT_CSP === 'true';
+// ---------- CSP durcie par nonce ----------
+const IS_PROD = process.env.NODE_ENV === 'production';
 
-const SCRIPT_SRC = STRICT_CSP
-  ? "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://*.jsdelivr.net"
-  : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://*.jsdelivr.net";
+/**
+ * Genere un nonce CSP aleatoire (Edge-safe : Web Crypto + btoa).
+ */
+function generateNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/=+$/, '');
+}
 
-const STYLE_SRC = STRICT_CSP
-  ? "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
-  : "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com";
+/**
+ * Construit la CSP. En production : 'unsafe-inline'/'unsafe-eval' ABSENTS
+ * de script-src (remplacés par un nonce). En dev : on les autorise pour HMR.
+ */
+function buildCsp(nonce: string): string {
+  const scriptSrc = IS_PROD
+    ? `script-src 'self' 'nonce-${nonce}' https://www.googletagmanager.com https://www.google-analytics.com https://*.jsdelivr.net`
+    : `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://*.jsdelivr.net`;
 
-const CSP_HEADER = [
-  "default-src 'self'",
-  SCRIPT_SRC,
-  STYLE_SRC,
-  "img-src 'self' data: blob: https://*.githubusercontent.com https://*.googleusercontent.com https://cdn.huggingface.co https://www.google-analytics.com https://www.googletagmanager.com https://storage.googleapis.com",
-  "font-src 'self' data: https://fonts.gstatic.com",
-  "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io https://www.google-analytics.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://fcm.googleapis.com",
-  "frame-ancestors 'none'",
-  "frame-src 'none'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "upgrade-insecure-requests",
-].join('; ');
+  return [
+    "default-src 'self'",
+    scriptSrc,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https://*.githubusercontent.com https://*.googleusercontent.com https://cdn.huggingface.co https://www.google-analytics.com https://www.googletagmanager.com https://storage.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io https://www.google-analytics.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://fcm.googleapis.com",
+    "frame-ancestors 'none'",
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "upgrade-insecure-requests",
+  ].join('; ');
+}
 
 function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(route.endsWith('/') ? route : route + '/');
@@ -118,15 +136,21 @@ async function verifyFirebaseSession(cookieValue: string | undefined): Promise<{
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const response = NextResponse.next();
+  // CSP par nonce : un nonce unique par requête, propagé à Next.js.
+  const nonce = generateNonce();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('X-DNS-Prefetch-Control', 'off');
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
-  response.headers.set('Content-Security-Policy', CSP_HEADER);
+  response.headers.set('Content-Security-Policy', buildCsp(nonce));
   response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-  if (process.env.NODE_ENV === 'production') {
+  response.headers.set('x-nonce', nonce);
+  if (IS_PROD) {
     response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
 
