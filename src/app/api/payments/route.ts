@@ -89,10 +89,11 @@ export async function GET(request: NextRequest) {
   if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
 
   try {
+    // Facade Firestore : where/orderBy en tableaux FirestoreWhereOp[]/FirestoreOrderBy[], limit au lieu de take.
     const invoices = await db.invoice.findMany({
-      where: { userId: auth.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
+      where: [{ field: 'userId', op: '==', value: auth.userId }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      limit: 20,
     });
 
     return NextResponse.json({ success: true, data: { invoices, provider: 'chariow' } });
