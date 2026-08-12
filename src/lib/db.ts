@@ -11,6 +11,11 @@
 //
 //  Backend : Firebase Admin SDK -> Cloud Firestore.
 // ============================================================
+import { dbExt } from '@/lib/firestore-extra';
 
-export { db, prisma, Collections, FirestoreRepository } from '@/lib/firebase/firestore';
-export { default } from '@/lib/firebase/firestore';
+export { Collections, FirestoreRepository } from '@/lib/firebase/firestore';
+export { FirestoreWhereOp, FirestoreOrderBy } from '@/lib/firebase/firestore';
+
+export const db = dbExt;
+export const prisma = dbExt;
+export default dbExt;
