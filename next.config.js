@@ -2,7 +2,9 @@
 // Phase 1.1 — Fondations : headers de sécurité, compression, optimisation d'images, redirects
 const path = require('path');
 
-// ——— Headers de sécurité HTTP (COOP/COEP/CSP, X-Frame-Options, etc.) ———
+// ——— Headers de sécurité HTTP (COOP/COEP, X-Frame-Options, etc.) ———
+// NOTE : Content-Security-Policy est gérée par src/middleware.ts (CSP par nonce).
+// On ne la met PAS ici pour éviter un conflit avec la CSP dynamique du middleware.
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -14,8 +16,6 @@ const securityHeaders = [
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
   // Cross-Origin Isolation partiel (sans sacrifier les API tierces pour images/IA)
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-  // CSP : self + domaine IA (api.openai/groq/etc.) + sources d'images autorisées
-  { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:;" },
 ];
 
 // ——— Redirections permanentes (301) ———
