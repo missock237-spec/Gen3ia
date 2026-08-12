@@ -76,8 +76,12 @@ class PaygService {
   }
 
   async getBalance(userId: string): Promise<number> {
-    const last = await db.creditTransaction.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' }, select: { balance: true } });
-    return last?.balance ?? 0;
+    const last = await db.creditTransaction.findFirst({
+      where: [{ field: 'userId', op: '==', value: userId }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      select: ['balance'],
+    });
+    return (last?.balance as number) ?? 0;
   }
 
   async getUsageSummary(userId: string) {
@@ -86,19 +90,23 @@ class PaygService {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const txs = await db.creditTransaction.findMany({
-      where: { userId, type: 'usage', createdAt: { gte: monthStart } },
-      orderBy: { createdAt: 'desc' },
+      where: [
+        { field: 'userId', op: '==', value: userId },
+        { field: 'type', op: '==', value: 'usage' },
+        { field: 'createdAt', op: '>=', value: monthStart },
+      ],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
     });
 
     let todayTotal = 0, todayCount = 0, monthTotal = 0, monthCount = 0;
     const byResource: Record<string, { count: number; totalXAF: number }> = {};
 
     for (const tx of txs) {
-      const amt = Math.abs(tx.amount);
+      const amt = Math.abs(tx.amount as number);
       monthTotal += amt; monthCount++;
-      if (tx.createdAt >= today) { todayTotal += amt; todayCount++; }
+      if ((tx.createdAt as Date) >= today) { todayTotal += amt; todayCount++; }
       try {
-        const meta = JSON.parse(tx.metadata || '{}');
+        const meta = JSON.parse((tx.metadata as string) || '{}');
         const r = meta?.resource || tx.resourceType || 'general';
         if (!byResource[r]) byResource[r] = { count: 0, totalXAF: 0 };
         byResource[r].count++; byResource[r].totalXAF += amt;
