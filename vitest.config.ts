@@ -4,23 +4,31 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/__tests__/**/*.test.ts'],
-    exclude: ['node_modules', 'src/__tests__/e2e'],
+    // Inclut les suites racine ET les suites colocalisées (src/**/__tests__) :
+    // rate-limit, otel, audit-retention, worker-config, etc.
+    include: [
+      'src/__tests__/**/*.test.ts',
+      'src/**/__tests__/**/*.test.ts',
+      'src/**/*.test.ts',
+    ],
+    exclude: [
+      'node_modules',
+      'src/__tests__/e2e',
+      '**/node_modules/**',
+      '.next/**',
+      '.turbo/**',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       reportsDirectory: './coverage',
       exclude: ['node_modules/', 'src/__tests__/', 'src/i18n/', '**/*.config.*', '**/*.d.ts'],
-      // Seuils de couverture — cliquet à la hausse : augmenter à chaque sprint.
-      // Cibles prioritaires : débit de crédits, quotas LLM, auth/2FA, webhooks, state-graph.
       thresholds: {
         statements: 40,
         branches: 30,
         functions: 35,
         lines: 40,
       },
-      // Interdire toute regression de couverture per-fichier sur les zones critiques
-      // (crédits, quotas, sécurité). Ajoutez ici les fichiers vitaux.
       thresholdAutoUpdate: true,
     },
     setupFiles: ['./src/__tests__/setup.ts'],
