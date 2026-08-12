@@ -3,7 +3,7 @@
   "version": 2,
   "framework": "nextjs",
   "buildCommand": "npm run build",
-  "installCommand": "npm install && npx prisma generate",
+  "installCommand": "npm install",
   "outputDirectory": ".next",
   "regions": ["fra1"],
   "cleanUrls": true,
