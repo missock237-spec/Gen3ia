@@ -7,6 +7,11 @@ import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 // P4 — Config worker dynamique par agent (scalabilité roadmap qualité).
 import { getWorkerConfig, desiredWorkers } from '@/lib/worker-dynamic-config';
+// P2 — Initialisation OpenTelemetry au démarrage du worker (contexte serveur).
+import { initTelemetry } from '@/lib/observability/otel-config';
+
+// Démarre le SDK OpenTelemetry (si OTEL_ENABLED=1). No-op sinon.
+initTelemetry();
 
 const log = createLogger('auto-worker');
 
