@@ -8,11 +8,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
-
-
-
-
 export const dynamic = "force-dynamic";
+
 interface MetricsData {
   users: number;
   activeAgents: number;
@@ -34,6 +31,10 @@ interface MetricsData {
 }
 
 async function collectMetrics(): Promise<MetricsData> {
+  const now = Date.now();
+  const last24h = new Date(now - 24 * 60 * 60 * 1000);
+  const last1h = new Date(now - 3600000);
+
   const [
     users,
     activeAgents,
@@ -46,56 +47,74 @@ async function collectMetrics(): Promise<MetricsData> {
     terminalSessions,
     conversations,
     workflows,
-    executionsByStatus,
-    recentErrors,
+    executions,
+    allUsers,
+    recentLogs,
   ] = await Promise.all([
-    prisma.user.count({ where: { isActive: true } }),
-    prisma.agent.count({ where: { status: { not: "inactive" } } }),
+    prisma.user.count({ where: [{ field: 'isActive', op: '==', value: true }] }),
+    prisma.agent.count({ where: [{ field: 'status', op: '!=', value: 'inactive' }] }),
     prisma.agentExecution.count(),
     prisma.creditTransaction.aggregate({
-      where: { type: "usage" },
+      where: [{ field: 'type', op: '==', value: 'usage' }],
       _sum: { amount: true },
     }).catch(() => ({ _sum: { amount: 0 } })),
-    prisma.subscription.count({ where: { status: "active" } }).catch(() => 0),
-    prisma.agentExecution.count({ where: { status: "failed" } }).catch(() => 0),
-    prisma.apiKey.count({ where: {} }).catch(() => 0),
+    prisma.subscription.count({ where: [{ field: 'status', op: '==', value: 'active' }] }).catch(() => 0),
+    prisma.agentExecution.count({ where: [{ field: 'status', op: '==', value: 'failed' }] }).catch(() => 0),
+    prisma.apiKey.count({ where: [] }).catch(() => 0),
     prisma.agentExecution.count({
-      where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      where: [{ field: 'createdAt', op: '>=', value: last24h }],
     }).catch(() => 0),
     prisma.agentExecution.count({
-      where: { status: "running" },
+      where: [{ field: 'status', op: '==', value: 'running' }],
     }).catch(() => 0),
     prisma.conversation.count().catch(() => 0),
-    prisma.workflow.count({ where: { status: "active" } }).catch(() => 0),
-    prisma.$queryRawUnsafe<Array<{ status: string; count: bigint }>>(
-      'SELECT status, COUNT(*)::int as count FROM "AgentExecution" GROUP BY status'
-    ).catch(() => []),
-    prisma.activityLog.count({
-      where: {
-        createdAt: { gte: new Date(Date.now() - 3600000) },
-        action: { contains: 'error' },
-      },
-    }).catch(() => 0),
+    prisma.workflow.count({ where: [{ field: 'status', op: '==', value: 'active' }] }).catch(() => 0),
+    prisma.agentExecution.findMany().catch(() => []),
+    prisma.user.findMany({ select: ['plan', 'credits'] }).catch(() => []),
+    prisma.auditLog.findMany({
+      where: [{ field: 'createdAt', op: '>=', value: last1h }],
+      select: ['action', 'type'],
+    }).catch(() => []),
   ]);
 
-  // Credits par plan
-  const creditsByPlan = await prisma.$queryRawUnsafe<Array<{ plan: string; total: bigint }>>(
-    'SELECT plan, SUM(credits)::int as total FROM "User" GROUP BY plan'
-  ).catch(() => []);
+  // Erreurs récentes (1h) à partir des audit_logs
+  const recentErrors = (recentLogs as Array<Record<string, unknown>>).filter((l) => {
+    const a = String(l.action ?? l.type ?? '').toLowerCase();
+    return a.includes('error') || a.includes('fail');
+  }).length;
 
-  // Temps moyen d'execution des 100 dernieres
+  // Exécutions par statut (groupement en mémoire)
+  const statusCount: Record<string, number> = {};
+  for (const e of executions as Array<Record<string, unknown>>) {
+    const s = String(e.status ?? 'unknown');
+    statusCount[s] = (statusCount[s] ?? 0) + 1;
+  }
+  const executionByStatus = Object.entries(statusCount).map(([status, count]) => ({ status, count }));
+
+  // Crédits par plan (groupement en mémoire)
+  const planCredits: Record<string, number> = {};
+  for (const u of allUsers as Array<Record<string, unknown>>) {
+    const p = String(u.plan ?? 'free');
+    planCredits[p] = (planCredits[p] ?? 0) + Number(u.credits ?? 0);
+  }
+  const creditsByPlan = Object.entries(planCredits).map(([plan, total]) => ({ plan, total }));
+
+  // Temps moyen d'exécution des 100 dernières terminées
   const recentExecs = await prisma.agentExecution.findMany({
-    where: { status: 'completed', completedAt: { not: null } },
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-    select: { createdAt: true, completedAt: true },
+    where: [
+      { field: 'status', op: '==', value: 'completed' },
+      { field: 'completedAt', op: '!=', value: null },
+    ],
+    orderBy: [{ field: 'createdAt', direction: 'desc' }],
+    limit: 100,
+    select: ['createdAt', 'completedAt'],
   }).catch(() => []);
 
   let avgExecutionTime = 0;
   if (recentExecs.length > 0) {
-    const durations = recentExecs
+    const durations = (recentExecs as Array<Record<string, unknown>>)
       .filter(e => e.completedAt)
-      .map(e => e.completedAt!.getTime() - e.createdAt.getTime());
+      .map(e => new Date(e.completedAt as string).getTime() - new Date(e.createdAt as string).getTime());
     avgExecutionTime = durations.length > 0
       ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
       : 0;
@@ -105,7 +124,7 @@ async function collectMetrics(): Promise<MetricsData> {
     users,
     activeAgents,
     totalExecutions,
-    totalCreditsUsed: Math.abs(creditUsage._sum.amount ?? 0),
+    totalCreditsUsed: Math.abs(creditUsage._sum?.amount ?? 0),
     activeSubscriptions,
     failedExecutions,
     avgExecutionTime,
@@ -116,14 +135,8 @@ async function collectMetrics(): Promise<MetricsData> {
     totalConversations: conversations,
     totalWorkflows: workflows,
     dbConnectionCount: 0,
-    executionByStatus: executionsByStatus.map(e => ({
-      status: e.status,
-      count: Number(e.count),
-    })),
-    creditsByPlan: creditsByPlan.map(c => ({
-      plan: c.plan,
-      total: Number(c.total),
-    })),
+    executionByStatus,
+    creditsByPlan,
     recentErrors,
   };
 }
