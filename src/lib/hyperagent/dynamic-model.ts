@@ -313,11 +313,11 @@ export class DynamicModelAdapter {
     if (learnedModel && availableModels.some(m => m.provider === learnedModel.provider && m.model === learnedModel.model)) {
       selectedModel = learnedModel;
     } else if (availableModels.length > 0) {
-      selectedModel = availableModels[0];
+      selectedModel = availableModels[0]!;
     } else {
       // Fallback to any available model
       const anyAvailable = this.getAvailableModels('balanced');
-      selectedModel = anyAvailable[0] || MODEL_REGISTRY[0];
+      selectedModel = (anyAvailable[0] || MODEL_REGISTRY[0])!;
       tier = selectedModel.tier;
     }
 
@@ -373,7 +373,7 @@ export class DynamicModelAdapter {
     const currentIdx = tierOrder.indexOf(tier);
 
     if (currentIdx < tierOrder.length - 1) {
-      chain.push(...this.getAvailableModels(tierOrder[currentIdx + 1]));
+      chain.push(...this.getAvailableModels(tierOrder[currentIdx + 1]!));
     }
 
     // Add any remaining models as last resort
