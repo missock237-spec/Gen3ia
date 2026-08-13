@@ -21,7 +21,7 @@
     "build:worker": "tsc --project tsconfig.worker.json && tsc-alias --project tsconfig.worker.json",
     "lint": "turbo run lint",
     "lint:fix": "eslint . --fix",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "load:test:smoke": "k6 run k6/smoke.js",
