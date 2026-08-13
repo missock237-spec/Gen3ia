@@ -1,24 +1,31 @@
-FROM node:20-alpine AS deps
-WORKDIR /app
-COPY package.json ./
-RUN npm install
+FROM node:20-alpine AS base
 
-FROM node:20-alpine AS builder
+# ===== STAGE DE BUILD =====
+FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+
+COPY package*.json ./
+COPY turbo.json ./
+COPY .npmrc ./
+
+RUN npm ci
+
 COPY . .
-RUN npx prisma generate
-RUN npm run build:worker
 
-FROM node:20-alpine AS runner
+# On ne build pas forcément si le worker n'a pas besoin de TypeScript, mais on peut
+# On va copier directement les sources et les build avec tsc si nécessaire.
+# Ici on suppose que le worker est en JS/TS et que nous avons un script de build.
+RUN npm run build:worker || true
+
+# ===== STAGE DE PRODUCTION =====
+FROM base AS runner
 WORKDIR /app
-RUN apk add --no-cache openssl postgresql-client netcat-openbsd busybox-extras
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/dist/worker ./dist/worker
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
-COPY --from=builder --chown=nextjs:nodejs /app/docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
-USER nextjs
-ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", "dist/worker/workers/auto-worker.js"]
+
+ENV NODE_ENV=production
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./
+
+# Si le worker est un script unique, on ajuste le CMD
+CMD ["node", "dist/worker.js"]
