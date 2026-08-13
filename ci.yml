@@ -1,3 +1,0 @@
-# OBSOLÈTE — Les workflows résident dans .github/workflows/
-# Ne pas utiliser. Suppression : git rm ci.yml
-name: OBSOLETE
