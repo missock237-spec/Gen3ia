@@ -81,8 +81,45 @@ const nextConfig = {
     return config;
   },
 
-  // Sécurité : désactive le tracing de source en production
-  productionBrowserSourceMaps: false,
+ /** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'standalone',
+  reactStrictMode: true,
+  swcMinify: true,
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
+  },
+  images: {
+    loader: 'custom',
+    loaderFile: './src/lib/imageLoader.ts', // si vous voulez utiliser Firebase Storage
+    domains: ['firebasestorage.googleapis.com'],
+  },
+  async headers() {
+    return [
+      {
+        source: '/_next/static/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/static/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=86400, stale-while-revalidate=86400',
+          },
+        ],
+      },
+    ];
+  },
+  // Pour OpenTelemetry (si déjà configuré)
+  experimental: {
+    instrumentationHook: true,
+  },
 };
 
 module.exports = nextConfig;
