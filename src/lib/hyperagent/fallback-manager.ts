@@ -327,7 +327,7 @@ export class FallbackManager {
 
     // Try each provider in order
     for (let i = 0; i < availableProviders.length; i++) {
-      const provider = availableProviders[i];
+      const provider = availableProviders[i]!;
       usedProvider = provider.provider;
 
       try {
@@ -392,7 +392,7 @@ export class FallbackManager {
 
         // Fallback to next provider
         if (i < availableProviders.length - 1) {
-          const nextProvider = availableProviders[i + 1];
+          const nextProvider = availableProviders[i + 1]!;
           onFallback?.(provider.provider, nextProvider.provider, errMsg);
           this.metrics.fallbackRequests++;
           log.info('Falling back to next provider', {
