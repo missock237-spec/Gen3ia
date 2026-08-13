@@ -128,7 +128,7 @@ class LatencyTracker {
     if (this.latencies.length === 0) return 0;
     const sorted = [...this.latencies].sort((a, b) => a - b);
     const idx = Math.floor(sorted.length * p / 100);
-    return sorted[Math.min(idx, sorted.length - 1)];
+    return sorted[Math.min(idx, sorted.length - 1)]!;
   }
 
   getAverage(): number {
