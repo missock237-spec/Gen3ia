@@ -348,11 +348,11 @@ export class SpeculativeExecutor {
     if (this.predictions.size >= this.maxPredictions) {
       // Evict oldest predictions
       const entries = Array.from(this.predictions.entries())
-        .sort((a, b) => (a[1].generatedAt || 0) - (b[1].generatedAt || 0));
+        .sort((a, b) => (a[1]!.generatedAt || 0) - (b[1]!.generatedAt || 0));
 
       const toRemove = entries.slice(0, Math.floor(this.maxPredictions * 0.2));
       for (const [key] of toRemove) {
-        this.predictions.delete(key);
+        this.predictions.delete(key!);
       }
     }
 
