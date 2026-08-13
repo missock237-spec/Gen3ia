@@ -94,7 +94,7 @@ class ResultMerger {
     }
 
     if (successfulResults.length === 1) {
-      return successfulResults[0].content;
+      return successfulResults[0]!.content;
     }
 
     switch (strategy) {
@@ -130,7 +130,7 @@ class ResultMerger {
   private mergeBest(results: AgentResult[]): string {
     // Pick the result with the highest confidence
     const sorted = [...results].sort((a, b) => b.confidence - a.confidence);
-    return sorted[0].content;
+    return sorted[0]!.content;
   }
 
   private mergeConsensus(results: AgentResult[]): string {
@@ -191,7 +191,7 @@ class ResultMerger {
         // Add supplementary information not already covered
         const newSentences = content.split(/[.!?]+/)
           .filter(s => s.trim().length > 20)
-          .filter(s => !parts[0].toLowerCase().includes(s.trim().toLowerCase()));
+          .filter(s => !parts[0]!.toLowerCase().includes(s.trim().toLowerCase()));
 
         if (newSentences.length > 0) {
           parts.push(`**Complément (${result.agentType}):** ${newSentences.join('. ')}.`);
