@@ -10,22 +10,30 @@ dist/
 build/
 *.tsbuildinfo
 
-# Env — SECURITY CRITICAL: jamais versionner des secrets
+# ============================================================
+# Env — SECURITE CRITIQUE : ne jamais versionner des secrets
+# ============================================================
+# Fichiers de travail locaux
 .env
 .env.local
 .env.development
 .env.development.local
 .env.test
 .env.test.local
-.env.production
-.env.production.local
-.env.production*
 .env.staging
 .env.staging.local
-.env.staging*
 .env.*.local
-.env.*.validated
-.env.validated
+
+# Fichiers production avec secrets réels (toujours ignorer)
+.env.production.local
+.env.production.secret
+
+# Templates versionnés (contiennent uniquement des placeholders)
+# Si vous souhaitez aussi les ignorer, décommentez :
+# .env.production
+# .env.production.validated
+
+# Patterns génériques
 *.env
 !*.env.example
 !.env.example
@@ -63,7 +71,7 @@ npm-debug.log*
 coverage/
 .nyc_output/
 
-# Temp
+# Temp / fichiers de travail (ne pas versionner)
 tmp/
 temp/
 test-*
@@ -79,27 +87,13 @@ test-api.*
 test-autonomous.*
 test-connectivity.*
 test-whatsapp.*
-
-# Package manager — bun est le gestionnaire officiel (voir bun.lock)
-# On ignore les artefacts des autres gestionnaires pour éviter les conflits
-package-lock.json
-npm-shrinkwrap.json
-yarn.lock
-pnpm-lock.yaml
-bun.lockb
-
-# Backup / fix scripts — ne jamais versionner
-*.backup
-*.bak
 fix_package.*
-*_FIX.md
-*_FIX_REPORT.md
-FIX_REPORT.md
 CI_FIX.md
+FIX_REPORT.md
 WORKFLOWS_FIX.md
 SECURITY_FIXES.md
 
-# Prisma (keep migrations, ignore generated)
+# Prisma
 prisma/migrations/
 !prisma/migrations/migration_lock.toml
 
