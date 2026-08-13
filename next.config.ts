@@ -64,6 +64,9 @@ const nextConfig = {
 
   webpack: (config: any) => {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
+    config.resolve.alias['z-ai-web-dev-sdk'] = path.join(__dirname, 'src/lib/__stubs__/z-ai-web-dev-sdk.ts');
+    config.resolve.alias['./agent-safety.node'] = false;
+    config.resolve.alias['agent-safety.node'] = false;
     return config;
   },
 

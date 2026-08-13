@@ -75,6 +75,9 @@ const nextConfig = {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
     // Stub for z-ai-web-dev-sdk (not publicly available)
     config.resolve.alias['z-ai-web-dev-sdk'] = path.join(__dirname, 'src/lib/__stubs__/z-ai-web-dev-sdk.ts');
+    // Stub for native Rust binary (optional, falls back to JS impl at runtime)
+    config.resolve.alias['./agent-safety.node'] = false;
+    config.resolve.alias['agent-safety.node'] = false;
     return config;
   },
 

@@ -15,8 +15,11 @@ export {
   logMonitoringEvent,
   createAuditLog,
   trackClientEvent,
+  Collections,
   type LogEventInput,
   type AuditLogInput,
 } from '@/lib/firebase/analytics';
 
-export { default } from '@/lib/firebase/analytics';
+// Default export — provide a single object aggregating all analytics helpers.
+import * as analyticsNS from '@/lib/firebase/analytics';
+export default analyticsNS;

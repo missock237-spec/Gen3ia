@@ -23,32 +23,17 @@
 // ============================================================
 
 import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  documentId,
-  endAt,
-  equalTo,
-  getAggregate,
-  getDocs,
-  getFirestore,
-  limit as limitFn,
-  orderBy,
-  query,
-  queryEqual,
-  serverTimestamp,
-  setDoc,
-  startAfter,
-  startAt,
+  Firestore,
   Timestamp,
-  updateDoc,
-  where,
-  WhereFilterOp,
-  writeBatch,
+  FieldValue,
+  type CollectionReference,
   type DocumentData,
-  type QueryConstraint,
+  type DocumentReference,
+  type DocumentSnapshot,
+  type Query,
   type QuerySnapshot,
+  type WhereFilterOp,
+  type WriteBatch,
 } from 'firebase-admin/firestore';
 
 import { getAdminDb } from './admin';
@@ -68,30 +53,136 @@ export type FirestoreOrderBy = {
   direction?: 'asc' | 'desc';
 };
 
+/**
+ * Prisma-compat: `where` can be either:
+ *   - Array form:  [{ field: 'email', op: '==', value: 'a@b.c' }]
+ *   - Object form: { email: 'a@b.c', status: 'active' }  (Prisma-style, == only)
+ *   - Object form with operators: { status: { in: ['a','b'] } }
+ */
+export type WhereInput = FirestoreWhereOp[] | Record<string, unknown>;
+
+/**
+ * Prisma-compat: `orderBy` can be either:
+ *   - Array form:  [{ field: 'createdAt', direction: 'desc' }]
+ *   - Object form: { createdAt: 'desc' }
+ *   - String form: 'createdAt'  (defaults to 'asc')
+ */
+export type OrderByInput = FirestoreOrderBy[] | Record<string, unknown> | string;
+
+/**
+ * Prisma-compat: `select` can be either:
+ *   - Array form:  ['id', 'email']
+ *   - Object form: { id: true, email: true }
+ *   - Object form with nested relations: { id: true, executions: { select: {...}, take: 5 } }
+ *     (nested relations are ignored — only top-level fields are projected)
+ */
+export type SelectInput = string[] | Record<string, unknown>;
+
+/**
+ * Prisma-compat: `include` is accepted but ignored (Firestore returns full docs).
+ */
+export type IncludeInput = Record<string, unknown>;
+
 export interface FindOptions {
-  where?: FirestoreWhereOp[];
-  orderBy?: FirestoreOrderBy[];
+  where?: WhereInput;
+  orderBy?: OrderByInput;
   limit?: number;
   offset?: number;
-  select?: string[];
+  select?: SelectInput;
+  include?: IncludeInput;
+  /** Prisma-compat alias for `limit`. */
+  take?: number;
+  /** Prisma-compat alias for `offset`. */
+  skip?: number;
 }
 
 export interface FindUniqueOptions {
   where: { id?: string; [key: string]: unknown };
-  select?: string[];
+  select?: SelectInput;
+  include?: IncludeInput;
 }
 
 export interface CreateOptions {
   data: Record<string, unknown>;
+  select?: SelectInput;
+  include?: IncludeInput;
 }
 
 export interface UpdateOptions {
   where: { id?: string; [key: string]: unknown };
   data: Record<string, unknown>;
+  select?: SelectInput;
+  include?: IncludeInput;
 }
 
 export interface DeleteOptions {
   where: { id?: string; [key: string]: unknown };
+}
+
+// ============================================================
+// Normalizers — convert Prisma-style inputs to Firestore array form
+// ============================================================
+
+function normalizeWhere(input: WhereInput | undefined): FirestoreWhereOp[] {
+  if (!input) return [];
+  if (Array.isArray(input)) return input as FirestoreWhereOp[];
+  const out: FirestoreWhereOp[] = [];
+  for (const [field, value] of Object.entries(input)) {
+    if (value === undefined) continue;
+    if (value === null) {
+      out.push({ field, op: '==', value: null });
+      continue;
+    }
+    if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      // Operator object: { in: [...], not: ..., gte: ..., ... }
+      for (const [op, v] of Object.entries(value as Record<string, unknown>)) {
+        const firestoreOp = prismaOpToFirestore(op);
+        out.push({ field, op: firestoreOp, value: v });
+      }
+      continue;
+    }
+    out.push({ field, op: '==', value });
+  }
+  return out;
+}
+
+function prismaOpToFirestore(op: string): WhereFilterOp {
+  switch (op) {
+    case 'equals': return '==';
+    case 'not': return '!=';
+    case 'in': return 'in';
+    case 'notIn': return 'not-in';
+    case 'lt': return '<';
+    case 'lte': return '<=';
+    case 'gt': return '>';
+    case 'gte': return '>=';
+    case 'contains': return '=='; // approximated (Firestore doesn't have native LIKE)
+    case 'startsWith': return '==';
+    case 'endsWith': return '==';
+    case 'has': return 'array-contains';
+    case 'hasEvery': return 'array-contains';
+    case 'hasSome': return 'array-contains-any';
+    default: return '==';
+  }
+}
+
+function normalizeOrderBy(input: OrderByInput | undefined): FirestoreOrderBy[] {
+  if (!input) return [];
+  if (typeof input === 'string') return [{ field: input, direction: 'asc' }];
+  if (Array.isArray(input)) return input as FirestoreOrderBy[];
+  return Object.entries(input).map(([field, direction]) => ({
+    field,
+    direction: (direction === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc',
+  }));
+}
+
+function normalizeSelect(input: SelectInput | undefined): string[] | undefined {
+  if (!input) return undefined;
+  if (Array.isArray(input)) return input;
+  return Object.keys(input).filter((k) => {
+    const v = (input as Record<string, unknown>)[k];
+    return v === true || v === 1;
+  });
 }
 
 // ============================================================
@@ -158,40 +249,47 @@ function projectFields(data: Record<string, unknown>, select?: string[]): Record
 // Generic repository (équivalent Prisma repository pattern)
 // ============================================================
 
-export class FirestoreRepository<T extends Record<string, unknown> = Record<string, unknown>> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class FirestoreRepository<T = any> {
   constructor(private collectionName: string) {}
 
-  private db() {
+  private db(): Firestore {
     return getAdminDb();
   }
 
-  private col() {
-    return collection(this.db(), this.collectionName);
+  private col(): CollectionReference {
+    return this.db().collection(this.collectionName);
+  }
+
+  private docRef(id: string): DocumentReference {
+    return this.db().doc(`${this.collectionName}/${id}`);
   }
 
   async findUnique(options: FindUniqueOptions): Promise<T | null> {
     // Recherche par ID
     if (options.where.id) {
-      const snap = await doc(this.db(), this.collectionName, options.where.id).get();
+      const snap = await this.docRef(options.where.id).get();
       if (!snap.exists) return null;
       const data = deserialize(snap.data()!);
       data.id = snap.id;
-      return projectFields(data, options.select) as T;
+      return projectFields(data, normalizeSelect(options.select)) as T;
     }
 
     // Recherche par autre champ unique
     const entries = Object.entries(options.where).filter(([k]) => k !== 'id');
     if (entries.length === 0) return null;
 
-    const constraints: QueryConstraint[] = entries.map(([field, value]) =>
-      where(field, '==', serializeValue(value)),
-    );
-    const snap = await getDocs(query(this.col(), ...constraints));
+    let q: Query = this.col();
+    for (const [field, value] of entries) {
+      q = q.where(field, '==', serializeValue(value));
+    }
+    q = q.limit(1);
+    const snap = await q.get();
     if (snap.empty) return null;
     const d = snap.docs[0]!;
     const data = deserialize(d.data());
     data.id = d.id;
-    return projectFields(data, options.select) as T;
+    return projectFields(data, normalizeSelect(options.select)) as T;
   }
 
   async findFirst(options: FindOptions): Promise<T | null> {
@@ -200,50 +298,49 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
   }
 
   async findMany(options: FindOptions = {}): Promise<T[]> {
-    const constraints: QueryConstraint[] = [];
-
-    if (options.where) {
-      for (const w of options.where) {
-        constraints.push(where(w.field, w.op, serializeValue(w.value)));
-      }
+    let q: Query = this.col();
+    const whereOps = normalizeWhere(options.where);
+    for (const w of whereOps) {
+      q = q.where(w.field, w.op, serializeValue(w.value));
     }
-    if (options.orderBy) {
-      for (const o of options.orderBy) {
-        constraints.push(orderBy(o.field, o.direction || 'asc'));
-      }
+    const orderByOps = normalizeOrderBy(options.orderBy);
+    for (const o of orderByOps) {
+      q = q.orderBy(o.field, o.direction || 'asc');
     }
-    if (options.limit) constraints.push(limitFn(options.limit));
+    const effectiveLimit = options.limit ?? options.take;
+    if (effectiveLimit) q = q.limit(effectiveLimit);
 
-    const snap = await getDocs(query(this.col(), ...constraints));
-    const items: T[] = snap.docs.map((d) => {
+    const snap = await q.get();
+    let items: T[] = snap.docs.map((d) => {
       const data = deserialize(d.data());
       data.id = d.id;
       return data as T;
     });
 
-    if (options.select && options.select.length > 0) {
-      return items.map((it) => projectFields(it, options.select) as T);
+    const selectFields = normalizeSelect(options.select);
+    if (selectFields && selectFields.length > 0) {
+      items = items.map((it) => projectFields(it, selectFields) as T);
     }
-    if (options.offset && options.offset > 0) {
-      return items.slice(options.offset);
+    const effectiveOffset = options.offset ?? options.skip;
+    if (effectiveOffset && effectiveOffset > 0) {
+      items = items.slice(effectiveOffset);
     }
     return items;
   }
 
   async count(options: Pick<FindOptions, 'where'> = {}): Promise<number> {
-    const constraints: QueryConstraint[] = [];
-    if (options.where) {
-      for (const w of options.where) {
-        constraints.push(where(w.field, w.op, serializeValue(w.value)));
-      }
+    let q: Query = this.col();
+    const whereOps = normalizeWhere(options.where);
+    for (const w of whereOps) {
+      q = q.where(w.field, w.op, serializeValue(w.value));
     }
-    const snap = await getDocs(query(this.col(), ...constraints));
+    const snap = await q.get();
     return snap.size;
   }
 
   async create(options: CreateOptions): Promise<T> {
-    const data = serialize({ ...options.data, createdAt: options.data.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
-    const ref = await addDoc(this.col(), data);
+    const data = serialize({ ...options.data, createdAt: options.data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    const ref = await this.col().add(data);
     const snap = await ref.get();
     const result = deserialize(snap.data()!);
     result.id = ref.id;
@@ -252,9 +349,9 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
 
   /** Crée un document avec un ID explicite (ex: uid Firebase Auth) */
   async createWithId(id: string, data: Record<string, unknown>): Promise<T> {
-    const payload = serialize({ ...data, createdAt: data.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
-    await setDoc(doc(this.db(), this.collectionName, id), payload);
-    const snap = await doc(this.db(), this.collectionName, id).get();
+    const payload = serialize({ ...data, createdAt: data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    await this.docRef(id).set(payload);
+    const snap = await this.docRef(id).get();
     const result = deserialize(snap.data()!);
     result.id = id;
     return result as T;
@@ -262,25 +359,42 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
 
   async update(options: UpdateOptions): Promise<T> {
     const id = options.where.id;
-    if (!id) throw new Error('update() requiert where.id');
-    const payload = serialize({ ...options.data, updatedAt: serverTimestamp() });
-    await updateDoc(doc(this.db(), this.collectionName, id), payload);
-    const snap = await doc(this.db(), this.collectionName, id).get();
+    if (!id) {
+      // Look up by other where fields, then update the first match
+      const existing = await this.findUnique({ where: options.where });
+      if (!existing) throw new Error('update() — no record found for where clause');
+      const existingId = (existing as Record<string, unknown>).id as string;
+      const payload = serialize({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
+      await this.docRef(existingId).update(payload);
+      const snap = await this.docRef(existingId).get();
+      const result = deserialize(snap.data()!);
+      result.id = existingId;
+      return result as T;
+    }
+    const payload = serialize({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
+    await this.docRef(id).update(payload);
+    const snap = await this.docRef(id).get();
     const result = deserialize(snap.data()!);
     result.id = id;
     return result as T;
   }
 
   async upsert(options: {
-    where: { id: string };
+    where: { id?: string; [key: string]: unknown };
     create: Record<string, unknown>;
     update: Record<string, unknown>;
   }): Promise<T> {
     const existing = await this.findUnique({ where: options.where });
     if (existing) {
-      return this.update({ where: options.where, data: options.update });
+      // Use the resolved id (from findUnique) if available, otherwise fallback
+      const whereWithId = { ...options.where, id: options.where.id || (existing as Record<string, unknown>).id as string };
+      return this.update({ where: whereWithId, data: options.update });
     }
-    return this.createWithId(options.where.id, options.create);
+    // No existing record — create with explicit id if provided, otherwise auto-id
+    if (options.where.id) {
+      return this.createWithId(options.where.id, options.create);
+    }
+    return this.create({ data: options.create });
   }
 
   async updateMany(options: {
@@ -288,11 +402,11 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
     data: Record<string, unknown>;
   }): Promise<{ count: number }> {
     const items = await this.findMany({ where: options.where });
-    const batch = writeBatch(this.db());
-    const payload = serialize({ ...options.data, updatedAt: serverTimestamp() });
+    const batch: WriteBatch = this.db().batch();
+    const payload = serialize({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
     for (const item of items) {
       const id = (item as Record<string, unknown>).id as string;
-      batch.update(doc(this.db(), this.collectionName, id), payload);
+      batch.update(this.docRef(id), payload);
     }
     await batch.commit();
     return { count: items.length };
@@ -300,25 +414,26 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
 
   async delete(options: DeleteOptions): Promise<void> {
     if (options.where.id) {
-      await deleteDoc(doc(this.db(), this.collectionName, options.where.id));
+      await this.docRef(options.where.id).delete();
       return;
     }
-    // Delete by other field
-    const items = await this.findMany({ where: this.whereFromOptions(options.where) });
-    const batch = writeBatch(this.db());
+    // Delete by other field — normalize object form to where ops
+    const whereOps = normalizeWhere(options.where as WhereInput);
+    const items = await this.findMany({ where: whereOps });
+    const batch: WriteBatch = this.db().batch();
     for (const item of items) {
       const id = (item as Record<string, unknown>).id as string;
-      batch.delete(doc(this.db(), this.collectionName, id));
+      batch.delete(this.docRef(id));
     }
     await batch.commit();
   }
 
   async deleteMany(options: { where: FindOptions['where'] }): Promise<{ count: number }> {
     const items = await this.findMany({ where: options.where });
-    const batch = writeBatch(this.db());
+    const batch: WriteBatch = this.db().batch();
     for (const item of items) {
       const id = (item as Record<string, unknown>).id as string;
-      batch.delete(doc(this.db(), this.collectionName, id));
+      batch.delete(this.docRef(id));
     }
     await batch.commit();
     return { count: items.length };
@@ -339,22 +454,91 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
     where?: FindOptions['where'];
     by?: string[];
     _sum?: string[];
-    _count?: string[];
-  }): Promise<Record<string, unknown>> {
-    const items = await this.findMany({ where: options.where });
-    return this.aggregateInMemory(items, options);
+    _count?: string[] | boolean | Record<string, boolean>;
+    _avg?: string[];
+    _min?: string[];
+    _max?: string[];
+    orderBy?: OrderByInput;
+    take?: number;
+    skip?: number;
+  }): Promise<Record<string, unknown>[]> {
+    let items = await this.findMany({ where: options.where });
+    // Apply orderBy
+    if (options.orderBy) {
+      const orderByOps = normalizeOrderBy(options.orderBy);
+      for (const o of orderByOps) {
+        items = items.sort((a, b) => {
+          const av = (a as Record<string, unknown>)[o.field];
+          const bv = (b as Record<string, unknown>)[o.field];
+          if (typeof av === 'number' && typeof bv === 'number') {
+            return o.direction === 'desc' ? bv - av : av - bv;
+          }
+          return o.direction === 'desc'
+            ? String(bv).localeCompare(String(av))
+            : String(av).localeCompare(String(bv));
+        });
+      }
+    }
+    if (options.take) items = items.slice(0, options.take);
+    if (options.skip) items = items.slice(options.skip);
+
+    // Group in memory
+    const groups: Record<string, Record<string, unknown>[]> = {};
+    for (const it of items) {
+      const rec = it as Record<string, unknown>;
+      const key = (options.by || []).map((f) => String(rec[f])).join('__') || '_all';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(rec);
+    }
+    const out: Record<string, unknown>[] = [];
+    const countFields = options._count === true
+      ? (options.by || ['_all'])
+      : Array.isArray(options._count)
+        ? options._count
+        : options._count && typeof options._count === 'object'
+          ? Object.keys(options._count)
+          : [];
+    for (const [key, group] of Object.entries(groups)) {
+      const row: Record<string, unknown> = {};
+      for (const f of options.by || []) row[f] = group[0]?.[f];
+      if (countFields.length > 0) {
+        for (const f of countFields) row[`_count_${f}`] = group.length;
+        row['_count'] = group.length;
+      }
+      if (options._sum) {
+        for (const f of options._sum) {
+          let sum = 0;
+          for (const g of group) if (typeof g[f] === 'number') sum += g[f];
+          row[`_sum_${f}`] = sum;
+        }
+      }
+      out.push(row);
+    }
+    return out;
   }
 
   async aggregate(options: {
     where?: FindOptions['where'];
     _sum?: Record<string, boolean>;
     _count?: Record<string, boolean>;
+    _avg?: Record<string, boolean>;
+    _min?: Record<string, boolean>;
+    _max?: Record<string, boolean>;
   }): Promise<{
     _sum?: Record<string, number>;
     _count?: Record<string, number>;
+    _avg?: Record<string, number>;
+    _min?: Record<string, number>;
+    _max?: Record<string, number>;
   }> {
     const items = await this.findMany({ where: options.where });
-    const result: { _sum?: Record<string, number>; _count?: Record<string, number> } = {};
+    const result: {
+      _sum?: Record<string, number>;
+      _count?: Record<string, number>;
+      _avg?: Record<string, number>;
+      _min?: Record<string, number>;
+      _max?: Record<string, number>;
+    } = {};
 
     if (options._sum) {
       result._sum = {};
@@ -373,34 +557,41 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
         result._count[field] = items.length;
       }
     }
-    return result;
-  }
-
-  private aggregateInMemory(items: T[], options: { by?: string[]; _sum?: string[]; _count?: string[] }): Record<string, unknown> {
-    const groups: Record<string, Record<string, unknown>[]> = {};
-    for (const it of items) {
-      const rec = it as Record<string, unknown>;
-      const key = (options.by || []).map((f) => String(rec[f])).join('__') || '_all';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(rec);
-    }
-    const out: Record<string, unknown> = {};
-    for (const [key, group] of Object.entries(groups)) {
-      const row: Record<string, unknown> = {};
-      for (const f of options.by || []) row[f] = group[0]?.[f];
-      if (options._count) {
-        for (const f of options._count) row[`_count_${f}`] = group.length;
-      }
-      if (options._sum) {
-        for (const f of options._sum) {
-          let sum = 0;
-          for (const g of group) if (typeof g[f] === 'number') sum += g[f];
-          row[`_sum_${f}`] = sum;
+    if (options._avg) {
+      result._avg = {};
+      for (const field of Object.keys(options._avg)) {
+        let sum = 0;
+        let n = 0;
+        for (const it of items) {
+          const v = (it as Record<string, unknown>)[field];
+          if (typeof v === 'number') { sum += v; n++; }
         }
+        result._avg[field] = n > 0 ? sum / n : 0;
       }
-      out[key] = row;
     }
-    return out;
+    if (options._min) {
+      result._min = {};
+      for (const field of Object.keys(options._min)) {
+        let min = Infinity;
+        for (const it of items) {
+          const v = (it as Record<string, unknown>)[field];
+          if (typeof v === 'number' && v < min) min = v;
+        }
+        result._min[field] = min === Infinity ? 0 : min;
+      }
+    }
+    if (options._max) {
+      result._max = {};
+      for (const field of Object.keys(options._max)) {
+        let max = -Infinity;
+        for (const it of items) {
+          const v = (it as Record<string, unknown>)[field];
+          if (typeof v === 'number' && v > max) max = v;
+        }
+        result._max[field] = max === -Infinity ? 0 : max;
+      }
+    }
+    return result;
   }
 
   private whereFromOptions(whereObj: Record<string, unknown>): FirestoreWhereOp[] {
@@ -409,6 +600,34 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
       op: '==' as WhereFilterOp,
       value,
     }));
+  }
+
+  /** Alias Prisma-compat pour findMany. */
+  async findManyByCursor(options: FindOptions): Promise<T[]> {
+    return this.findMany(options);
+  }
+
+  /** Prisma-compat: returns the first row matching the where clause. */
+  async findFirstOrThrow(options: FindOptions): Promise<T> {
+    const item = await this.findFirst(options);
+    if (!item) throw new Error('findFirstOrThrow: no record found');
+    return item;
+  }
+
+  /** Prisma-compat: returns the unique row or throws. */
+  async findUniqueOrThrow(options: FindUniqueOptions): Promise<T> {
+    const item = await this.findUnique(options);
+    if (!item) throw new Error('findUniqueOrThrow: no record found');
+    return item;
+  }
+
+  /** Prisma-compat: alias for update. */
+  async updateManyAndReturn(options: {
+    where: FindOptions['where'];
+    data: Record<string, unknown>;
+  }): Promise<T[]> {
+    await this.updateMany(options);
+    return this.findMany({ where: options.where });
   }
 
   /** Sous-collection (ex: conversations/{id}/messages) */
@@ -427,11 +646,23 @@ export const Collections = {
   profiles: 'users', // alias (profils utilisateurs = users)
   agents: 'agents',
   agentSuites: 'agent_suites',
+  agentSuiteAgents: 'agent_suite_agents',
+  agentSuiteExecutions: 'agent_suite_executions',
+  agentSuiteMessages: 'agent_suite_messages',
   agentMemories: 'agent_memories',
+  agentMemoryNodes: 'memory_nodes',
+  agentMemoryEdges: 'memory_edges',
   agentUsage: 'agent_usage',
   agentPermissions: 'agent_permissions',
   agentExecution: 'agent_executions',
   agentInvocations: 'agent_invocations',
+  agentActionLogs: 'agent_action_logs',
+  agentAutomations: 'agent_automations',
+  agentCheckpoints: 'agent_checkpoints',
+  agentLoops: 'agent_loops',
+  agentSkills: 'agent_skills',
+  agentTools: 'agent_tools',
+  aiLoops: 'ai_loops',
   conversations: 'conversations',
   messages: 'messages',
   credits: 'credits',
@@ -439,30 +670,107 @@ export const Collections = {
   subscriptions: 'subscriptions',
   invoices: 'invoices',
   apiKeys: 'api_keys',
+  accessKeys: 'access_keys',
   mcpConnectors: 'mcp_connectors',
+  connectorExecutions: 'connector_executions',
   tasks: 'tasks',
+  scheduledTasks: 'scheduled_tasks',
   workflows: 'workflows',
   workflowBranches: 'workflow_branches',
   workflowVersions: 'workflow_versions',
   workflowTemplates: 'workflow_templates',
+  workflowAuthorizations: 'workflow_authorizations',
+  workflowCollaborators: 'workflow_collaborators',
   guardrails: 'guardrails',
   notifications: 'notifications',
   auditLogs: 'audit_logs',
+  actionAudits: 'action_audits',
+  actionTemplates: 'action_templates',
+  approvalRequests: 'approval_requests',
+  autonomousActions: 'autonomous_actions',
+  autonomousRuns: 'autonomous_runs',
   improvementLogs: 'improvement_logs',
+  supervisorLogs: 'supervisor_logs',
   aiCosts: 'ai_costs',
   monitoringEvents: 'monitoring_events',
   usageDaily: 'usage_daily',
+  queryLogs: 'query_logs',
   sessions: 'sessions',
   feedback: 'feedback',
   socialAccounts: 'social_accounts',
   webhooks: 'webhooks',
+  webhookConfigs: 'webhook_configs',
+  webhookLogs: 'webhook_logs',
   marketplaceListings: 'marketplace_listings',
   marketplacePurchases: 'marketplace_purchases',
   marketplaceReviews: 'marketplace_reviews',
+  creatorPayouts: 'creator_payouts',
   uploadedFiles: 'uploaded_files',
   // Recomandation SaaS (recommand)
   partners: 'partners',
   partnerEvents: 'partner_events',
+  // Ad system
+  adCampaigns: 'ad_campaigns',
+  adImpressions: 'ad_impressions',
+  adUserPreferences: 'ad_user_preferences',
+  // Affiliate
+  affiliateCodes: 'affiliate_codes',
+  affiliateReferrals: 'affiliate_referrals',
+  // Avatars
+  avatarConfigs: 'avatar_configs',
+  avatarSessions: 'avatar_sessions',
+  // Browser automation
+  browserAutomations: 'browser_automations',
+  browserSessions: 'browser_sessions',
+  // Code projects
+  codeProjects: 'code_projects',
+  // Connected integrations
+  connectedIntegrations: 'connected_integrations',
+  // Customizations
+  customizations: 'customizations',
+  userCustomizations: 'user_customizations',
+  userPersonalizations: 'user_personalizations',
+  userResources: 'user_resources',
+  // Dashboards
+  dashboards: 'dashboards',
+  // Datasets (data-analyst)
+  datasets: 'datasets',
+  // Documents (RAG)
+  documents: 'documents',
+  documentChunks: 'document_chunks',
+  // Knowledge
+  knowledge: 'knowledge',
+  // Image / video generation
+  imageGenerations: 'image_generations',
+  videoGenerations: 'video_generations',
+  // Multimodal
+  multimodalSessions: 'multimodal_sessions',
+  // OAuth
+  oAuthStates: 'oauth_states',
+  // Plugins
+  plugins: 'plugins',
+  pluginExecutions: 'plugin_executions',
+  // Relay
+  relayUsage: 'relay_usage',
+  // SaaS automation
+  saasAccounts: 'saas_accounts',
+  // Shared agents
+  sharedAgents: 'shared_agents',
+  // Skills
+  skills: 'skills',
+  // URL blocklist (admin)
+  urlBlocklist: 'url_blocklist',
+  // Validations
+  validations: 'validations',
+  // Voice
+  voiceCalls: 'voice_calls',
+  voiceMemories: 'voice_memories',
+  voiceProfiles: 'voice_profiles',
+  voiceSessions: 'voice_sessions',
+  // Workspaces
+  workspaces: 'workspaces',
+  workspaceActivities: 'workspace_activities',
+  workspaceMembers: 'workspace_members',
 } as const;
 
 export type CollectionName = typeof Collections[keyof typeof Collections];
@@ -471,51 +779,156 @@ export type CollectionName = typeof Collections[keyof typeof Collections];
 // API Prisma-like (db.<model>.<method>)
 // ============================================================
 
-function makeRepo<T extends Record<string, unknown> = Record<string, unknown>>(name: string): FirestoreRepository<T> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeRepo<T = any>(name: string): FirestoreRepository<T> {
   return new FirestoreRepository<T>(name);
 }
 
 export const db = {
-  user: makeRepo<Record<string, unknown>>(Collections.users),
-  profile: makeRepo<Record<string, unknown>>(Collections.users),
-  agent: makeRepo<Record<string, unknown>>(Collections.agents),
-  agentSuite: makeRepo<Record<string, unknown>>(Collections.agentSuites),
-  agentMemory: makeRepo<Record<string, unknown>>(Collections.agentMemories),
-  agentUsage: makeRepo<Record<string, unknown>>(Collections.agentUsage),
-  agentPermission: makeRepo<Record<string, unknown>>(Collections.agentPermissions),
-  agentExecution: makeRepo<Record<string, unknown>>(Collections.agentExecution),
-  agentInvocation: makeRepo<Record<string, unknown>>(Collections.agentInvocations),
-  conversation: makeRepo<Record<string, unknown>>(Collections.conversations),
-  message: makeRepo<Record<string, unknown>>(Collections.messages),
-  credit: makeRepo<Record<string, unknown>>(Collections.credits),
-  creditTransaction: makeRepo<Record<string, unknown>>(Collections.creditTransactions),
-  subscription: makeRepo<Record<string, unknown>>(Collections.subscriptions),
-  invoice: makeRepo<Record<string, unknown>>(Collections.invoices),
-  apiKey: makeRepo<Record<string, unknown>>(Collections.apiKeys),
-  mCPConnector: makeRepo<Record<string, unknown>>(Collections.mcpConnectors),
-  task: makeRepo<Record<string, unknown>>(Collections.tasks),
-  workflow: makeRepo<Record<string, unknown>>(Collections.workflows),
-  workflowBranch: makeRepo<Record<string, unknown>>(Collections.workflowBranches),
-  workflowVersion: makeRepo<Record<string, unknown>>(Collections.workflowVersions),
-  workflowTemplate: makeRepo<Record<string, unknown>>(Collections.workflowTemplates),
-  guardrail: makeRepo<Record<string, unknown>>(Collections.guardrails),
-  notification: makeRepo<Record<string, unknown>>(Collections.notifications),
-  auditLog: makeRepo<Record<string, unknown>>(Collections.auditLogs),
-  improvementLog: makeRepo<Record<string, unknown>>(Collections.improvementLogs),
-  aICost: makeRepo<Record<string, unknown>>(Collections.aiCosts),
-  monitoringEvent: makeRepo<Record<string, unknown>>(Collections.monitoringEvents),
-  usageDaily: makeRepo<Record<string, unknown>>(Collections.usageDaily),
-  feedback: makeRepo<Record<string, unknown>>(Collections.feedback),
-  socialAccount: makeRepo<Record<string, unknown>>(Collections.socialAccounts),
-  webhook: makeRepo<Record<string, unknown>>(Collections.webhooks),
-  marketplaceListing: makeRepo<Record<string, unknown>>(Collections.marketplaceListings),
-  marketplacePurchase: makeRepo<Record<string, unknown>>(Collections.marketplacePurchases),
-  marketplaceReview: makeRepo<Record<string, unknown>>(Collections.marketplaceReviews),
-  uploadedFile: makeRepo<Record<string, unknown>>(Collections.uploadedFiles),
+  user: makeRepo(Collections.users),
+  profile: makeRepo(Collections.users),
+  agent: makeRepo(Collections.agents),
+  agentSuite: makeRepo(Collections.agentSuites),
+  agentSuiteAgent: makeRepo(Collections.agentSuiteAgents),
+  agentSuiteExecution: makeRepo(Collections.agentSuiteExecutions),
+  agentSuiteMessage: makeRepo(Collections.agentSuiteMessages),
+  agentMemory: makeRepo(Collections.agentMemories),
+  memoryNode: makeRepo(Collections.agentMemoryNodes),
+  memoryEdge: makeRepo(Collections.agentMemoryEdges),
+  agentUsage: makeRepo(Collections.agentUsage),
+  agentPermission: makeRepo(Collections.agentPermissions),
+  agentExecution: makeRepo(Collections.agentExecution),
+  agentInvocation: makeRepo(Collections.agentInvocations),
+  agentActionLog: makeRepo(Collections.agentActionLogs),
+  agentAutomation: makeRepo(Collections.agentAutomations),
+  agentCheckpoint: makeRepo(Collections.agentCheckpoints),
+  agentLoop: makeRepo(Collections.agentLoops),
+  agentSkill: makeRepo(Collections.agentSkills),
+  agentTool: makeRepo(Collections.agentTools),
+  aILoop: makeRepo(Collections.aiLoops),
+  aiLoop: makeRepo(Collections.aiLoops),
+  conversation: makeRepo(Collections.conversations),
+  message: makeRepo(Collections.messages),
+  credit: makeRepo(Collections.credits),
+  creditTransaction: makeRepo(Collections.creditTransactions),
+  subscription: makeRepo(Collections.subscriptions),
+  invoice: makeRepo(Collections.invoices),
+  apiKey: makeRepo(Collections.apiKeys),
+  accessKey: makeRepo(Collections.accessKeys),
+  mCPConnector: makeRepo(Collections.mcpConnectors),
+  mcpConnector: makeRepo(Collections.mcpConnectors),
+  connectorExecution: makeRepo(Collections.connectorExecutions),
+  task: makeRepo(Collections.tasks),
+  scheduledTask: makeRepo(Collections.scheduledTasks),
+  workflow: makeRepo(Collections.workflows),
+  workflowBranch: makeRepo(Collections.workflowBranches),
+  workflowVersion: makeRepo(Collections.workflowVersions),
+  workflowTemplate: makeRepo(Collections.workflowTemplates),
+  workflowAuthorization: makeRepo(Collections.workflowAuthorizations),
+  workflowCollaborator: makeRepo(Collections.workflowCollaborators),
+  guardrail: makeRepo(Collections.guardrails),
+  notification: makeRepo(Collections.notifications),
+  auditLog: makeRepo(Collections.auditLogs),
+  actionAudit: makeRepo(Collections.actionAudits),
+  actionTemplate: makeRepo(Collections.actionTemplates),
+  approvalRequest: makeRepo(Collections.approvalRequests),
+  autonomousAction: makeRepo(Collections.autonomousActions),
+  autonomousRun: makeRepo(Collections.autonomousRuns),
+  improvementLog: makeRepo(Collections.improvementLogs),
+  supervisorLog: makeRepo(Collections.supervisorLogs),
+  aICost: makeRepo(Collections.aiCosts),
+  aiCost: makeRepo(Collections.aiCosts),
+  monitoringEvent: makeRepo(Collections.monitoringEvents),
+  usageDaily: makeRepo(Collections.usageDaily),
+  queryLog: makeRepo(Collections.queryLogs),
+  session: makeRepo(Collections.sessions),
+  feedback: makeRepo(Collections.feedback),
+  socialAccount: makeRepo(Collections.socialAccounts),
+  webhook: makeRepo(Collections.webhooks),
+  webhookConfig: makeRepo(Collections.webhookConfigs),
+  webhookLog: makeRepo(Collections.webhookLogs),
+  marketplaceListing: makeRepo(Collections.marketplaceListings),
+  marketplacePurchase: makeRepo(Collections.marketplacePurchases),
+  marketplaceReview: makeRepo(Collections.marketplaceReviews),
+  creatorPayout: makeRepo(Collections.creatorPayouts),
+  uploadedFile: makeRepo(Collections.uploadedFiles),
   // Recomandation SaaS (recommand)
-  partner: makeRepo<Record<string, unknown>>(Collections.partners),
-  partnerEvent: makeRepo<Record<string, unknown>>(Collections.partnerEvents),
+  partner: makeRepo(Collections.partners),
+  partnerEvent: makeRepo(Collections.partnerEvents),
+  // Ad system
+  adCampaign: makeRepo(Collections.adCampaigns),
+  adImpression: makeRepo(Collections.adImpressions),
+  adUserPreference: makeRepo(Collections.adUserPreferences),
+  // Affiliate
+  affiliateCode: makeRepo(Collections.affiliateCodes),
+  affiliateReferral: makeRepo(Collections.affiliateReferrals),
+  // Avatars
+  avatarConfig: makeRepo(Collections.avatarConfigs),
+  avatarSession: makeRepo(Collections.avatarSessions),
+  // Browser automation
+  browserAutomation: makeRepo(Collections.browserAutomations),
+  browserSession: makeRepo(Collections.browserSessions),
+  // Code projects
+  codeProject: makeRepo(Collections.codeProjects),
+  // Connected integrations
+  connectedIntegration: makeRepo(Collections.connectedIntegrations),
+  // Customizations
+  customization: makeRepo(Collections.customizations),
+  userCustomization: makeRepo(Collections.userCustomizations),
+  userPersonalization: makeRepo(Collections.userPersonalizations),
+  userResource: makeRepo(Collections.userResources),
+  // Dashboards
+  dashboard: makeRepo(Collections.dashboards),
+  // Datasets (data-analyst)
+  dataset: makeRepo(Collections.datasets),
+  // Documents (RAG)
+  document: makeRepo(Collections.documents),
+  documentChunk: makeRepo(Collections.documentChunks),
+  // Knowledge
+  knowledge: makeRepo(Collections.knowledge),
+  // Image / video generation
+  imageGeneration: makeRepo(Collections.imageGenerations),
+  videoGeneration: makeRepo(Collections.videoGenerations),
+  // Multimodal
+  multimodalSession: makeRepo(Collections.multimodalSessions),
+  // OAuth
+  oAuthState: makeRepo(Collections.oAuthStates),
+  // Plugins
+  plugin: makeRepo(Collections.plugins),
+  pluginExecution: makeRepo(Collections.pluginExecutions),
+  // Relay
+  relayUsage: makeRepo(Collections.relayUsage),
+  // SaaS automation
+  saasAccount: makeRepo(Collections.saasAccounts),
+  saaSAccount: makeRepo(Collections.saasAccounts),
+  // Shared agents
+  sharedAgent: makeRepo(Collections.sharedAgents),
+  // Skills
+  skill: makeRepo(Collections.skills),
+  // URL blocklist (admin)
+  uRLBlocklist: makeRepo(Collections.urlBlocklist),
+  urlBlocklist: makeRepo(Collections.urlBlocklist),
+  // Validations
+  validation: makeRepo(Collections.validations),
+  // Voice
+  voiceCall: makeRepo(Collections.voiceCalls),
+  voiceMemory: makeRepo(Collections.voiceMemories),
+  voiceProfile: makeRepo(Collections.voiceProfiles),
+  voiceSession: makeRepo(Collections.voiceSessions),
+  // Workspaces
+  workspace: makeRepo(Collections.workspaces),
+  workspaceActivity: makeRepo(Collections.workspaceActivities),
+  workspaceMember: makeRepo(Collections.workspaceMembers),
   $transaction: async <R>(fn: () => Promise<R>): Promise<R> => fn(),
+  /** Prisma-compat: no-op disconnect. */
+  $disconnect: async (): Promise<void> => {},
+  /** Prisma-compat: connect no-op. */
+  $connect: async (): Promise<void> => {},
+  /** Prisma-compat: raw SQL — emulated as empty result (Firestore is not SQL). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  $queryRaw: async <T = any>(): Promise<T[]> => [],
+  /** Prisma-compat: raw SQL — emulated as no-op (Firestore is not SQL). */
+  $executeRaw: async (): Promise<number> => 0,
 };
 
 // Alias pour compat avec l'ancien import `prisma` from '@/lib/prisma'

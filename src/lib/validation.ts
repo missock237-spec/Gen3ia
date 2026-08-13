@@ -106,9 +106,11 @@ export function formatZodErrors(error: z.ZodError): Record<string, string[]> {
 // ============================================================
 
 export const multiAgentExecuteSchema = z.object({
-  workflowId: z.string().min(1, "ID workflow requis"),
+  workflowId: z.string().min(1, "ID workflow requis").optional(),
   inputs: z.record(z.unknown()).optional(),
   priority: z.enum(["low", "normal", "high"]).default("normal"),
+  objective: z.string().min(1, "Objectif requis").max(5000),
+  agentIds: z.array(z.string()).min(1, "Au moins un agent requis"),
 });
 
 // ============================================================

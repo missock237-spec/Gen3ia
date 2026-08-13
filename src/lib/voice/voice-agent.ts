@@ -552,6 +552,49 @@ ${conversationHistory}`;
   getActiveCallsByUser(userId: string): CallState[] {
     return Array.from(this.activeCalls.values()).filter(c => c.userId === userId);
   }
+
+  /** Legacy alias for getActiveCall. */
+  getSession(callSid: string): CallState | undefined {
+    return this.getActiveCall(callSid);
+  }
+
+  /** Legacy alias for initiateCall — delegates to makeCall. */
+  async startSession(config: { userId: string; to: string; from?: string }): Promise<CallState> {
+    const callSid = await this.makeCall({
+      userId: config.userId,
+      to: config.to,
+      from: config.from || '',
+      direction: 'outbound',
+    });
+    return this.getActiveCall(callSid)!;
+  }
+
+  /** Legacy alias for makeCall. */
+  async initiateCall(config: { userId: string; to: string; from?: string; direction?: CallDirection }): Promise<CallState> {
+    const callSid = await this.makeCall({
+      userId: config.userId,
+      to: config.to,
+      from: config.from || '',
+      direction: config.direction || 'outbound',
+    });
+    return this.getActiveCall(callSid)!;
+  }
+
+  /** Process audio chunk for an active call — stub for real-time audio. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async processAudio(callSid: string, _audioBase64: string): Promise<{ transcript?: string }> {
+    return {};
+  }
+
+  /** End a call session — legacy alias. */
+  async endSession(callSid: string): Promise<void> {
+    await this.endCall(callSid);
+  }
+
+  /** List calls for a user — legacy alias. */
+  async listCalls(userId: string, _limit = 50): Promise<CallState[]> {
+    return this.getActiveCallsByUser(userId);
+  }
 }
 
 // ============================================================

@@ -19,18 +19,18 @@ export async function GET(request: NextRequest) {
     const scope = url.searchParams.get('scope') || 'decide';
     switch (scope) {
       case 'decide': {
-        const sessionId = url.searchParams.get('sessionId') || auth.id;
+        const sessionId = url.searchParams.get('sessionId') || auth.id || auth.userId;
         const placement = url.searchParams.get('placement') as AdPlacement | undefined;
         const keywords = url.searchParams.get('keywords')?.split(',').filter(Boolean);
-        const decision = await adEngine.decideAd(auth.id, sessionId, undefined, { placement, keywords: keywords?.length ? keywords : undefined });
+        const decision = await adEngine.decideAd(auth.id || auth.userId, sessionId, undefined, { placement, keywords: keywords?.length ? keywords : undefined });
         return NextResponse.json({ success: true, decision });
       }
       case 'stats': {
-        const stats = await adEngine.getUserAdStats(auth.id);
+        const stats = await adEngine.getUserAdStats(auth.id || auth.userId);
         return NextResponse.json({ success: true, stats });
       }
       case 'preferences': {
-        const prefs = await adEngine.getUserAdPreferences(auth.id);
+        const prefs = await adEngine.getUserAdPreferences(auth.id || auth.userId);
         return NextResponse.json({ success: true, preferences: prefs });
       }
       case 'campaigns': {

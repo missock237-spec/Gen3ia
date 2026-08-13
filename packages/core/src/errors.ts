@@ -2,7 +2,7 @@
 // Gen3ia — Classes d'erreur standardisees
 // ============================================================
 
-import { ZodError } from "zod";
+import { ZodError, type ZodIssue } from "zod";
 import { logger } from "./logger";
 import { NextResponse } from "next/server";
 
@@ -11,9 +11,9 @@ import { NextResponse } from "next/server";
 // ============================================================
 
 export class ApiError extends Error {
-  public readonly code: string;
-  public readonly statusCode: number;
-  public readonly details?: Record<string, unknown>;
+  public code: string;
+  public statusCode: number;
+  public details?: Record<string, unknown>;
 
   constructor(code: string, message: string, statusCode = 500, details?: Record<string, unknown>) {
     super(message);
@@ -316,12 +316,12 @@ export function handleApiError(error: unknown): NextResponse<ApiErrorResponse> {
   }
 
   if (error instanceof ZodError) {
-    const details = error.errors.reduce((acc, e) => {
+    const details = (error.issues as ZodIssue[]).reduce<Record<string, string[]>>((acc, e) => {
       const path = e.path.join('.');
       if (!acc[path]) acc[path] = [];
       acc[path].push(e.message);
       return acc;
-    }, {} as Record<string, string[]>);
+    }, {});
     logger.warn('validation_error', { requestId, details });
     return NextResponse.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Donnees invalides', details: { fields: details }, requestId } }, { status: 400 });
   }

@@ -115,4 +115,5 @@ export async function GET() {
   });
 }
 
-export { validatePasswordStrength };
+// Re-export removed — Next.js Route files cannot export non-route symbols.
+// Use `import { validatePasswordStrength } from '@/lib/firebase/auth'` directly.

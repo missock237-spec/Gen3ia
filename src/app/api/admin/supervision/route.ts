@@ -112,7 +112,7 @@ export async function GET() {
         totalUsers,
         totalAgents,
         totalExecutions,
-        totalCost: costAgg._sum.estimatedCost ?? 0,
+        totalCost: costAgg?._sum?.estimatedCost ?? 0,
         activeSubscriptions,
         runningExecutions: runningExecs,
       })),

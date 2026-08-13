@@ -468,9 +468,9 @@ export default function HardTechLanding() {
             </p>
             <div className="mt-8 space-y-4">
               {[
-                ['Barres déterministes', 'Chaque étape du pipeline est segmentée et mesurée — rien n'est décoratif.'],
+                ['Barres déterministes', 'Chaque étape du pipeline est segmentée et mesurée — rien n’est décoratif.'],
                 ['Hashes de vérification', 'Cliquez sur une preuve pour en dérouler la trace de logique brute.'],
-                ['Cartographie d'incertitude', 'Les zones fragiles sont signalées pour intervention humaine.'],
+                ['Cartographie d’incertitude', 'Les zones fragiles sont signalées pour intervention humaine.'],
               ].map(([t, d]) => (
                 <div key={t} className="flex gap-3">
                   <span className="mt-1 text-[#00F5FF]"><Circuit className="h-4 w-4" /></span>

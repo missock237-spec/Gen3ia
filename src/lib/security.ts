@@ -14,11 +14,20 @@ export interface SecurityContext {
   uid: string;
   role: string;
   email?: string;
+  /** Prisma/legacy-compat alias for `userId`. */
+  id?: string;
+  /** Legacy alias — display name (not populated, kept for backward compat). */
+  name?: string;
 }
 
 interface SecurityOptions {
   requireAuth?: boolean;
+  /** Prisma-compat alias for `roles`. */
   roles?: string[];
+  /** Prisma-compat alias for `roles` (accepts string or string[]). */
+  requireRole?: string | string[];
+  /** Legacy no-op field (rate limiting is enforced by middleware). */
+  rateLimit?: { interval?: string | number; limit?: number } | Record<string, unknown>;
 }
 
 /**
@@ -43,6 +52,7 @@ export async function applySecurity(
       const auth: SecurityContext = {
         userId: decoded.uid,
         uid: decoded.uid,
+        id: decoded.uid,
         role,
         email: user.email || undefined,
       };
@@ -61,6 +71,7 @@ export async function applySecurity(
       const auth: SecurityContext = {
         userId: payload.sub,
         uid: payload.uid || payload.sub,
+        id: payload.sub,
         role: payload.role,
         email: payload.email,
       };
@@ -128,7 +139,9 @@ async function authenticateApiKey(apiKey: string): Promise<SecurityContext | nul
  * Vérifie les permissions RBAC
  */
 function validateRole(auth: SecurityContext, options: SecurityOptions): { auth: SecurityContext; error?: NextResponse } {
-  if (options.roles && !options.roles.includes(auth.role)) {
+  const requireRole = options.requireRole;
+  const allowedRoles = options.roles ?? (requireRole ? (Array.isArray(requireRole) ? requireRole : [requireRole]) : undefined);
+  if (allowedRoles && !allowedRoles.includes(auth.role)) {
     return {
       auth,
       error: NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 }),

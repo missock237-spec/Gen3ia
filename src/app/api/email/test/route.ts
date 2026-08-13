@@ -25,13 +25,14 @@ export async function GET() {
     }
 
     const connection = await verifyConnection();
+    const smtpConfig = config as { host: string; port: number; secure: boolean; user: string; fromName: string; fromEmail: string };
     const maskedConfig = {
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      user: config.user.replace(/(.{3}).+(.{2})/, '$1...$2'),
-      fromName: config.fromName,
-      fromEmail: config.fromEmail,
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      secure: smtpConfig.secure,
+      user: smtpConfig.user.replace(/(.{3}).+(.{2})/, '$1...$2'),
+      fromName: smtpConfig.fromName,
+      fromEmail: smtpConfig.fromEmail,
     };
 
     return NextResponse.json({

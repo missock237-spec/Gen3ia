@@ -11,6 +11,7 @@ const ROLES = {
 };
 
 export class RoleBasedSwarm {
+  public missions: Map<string, unknown> = new Map();
   constructor() { this.missions = new Map(); }
 
   async runMission(mainTask, availableAgents, userId) {

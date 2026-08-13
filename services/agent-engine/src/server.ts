@@ -30,7 +30,7 @@ app.post("/execute", async (c) => {
     const parsed = ExecuteSchema.parse(body);
 
     // Simulation execution — a remplacer par vraie boucle ReAct
-    const steps = [];
+    const steps: Array<{ step: number; thought: string; action: string; observation: string; cost: number; tokens: number }> = [];
     for (let i = 0; i < 3; i++) {
       steps.push({
         step: i + 1,
@@ -52,7 +52,7 @@ app.post("/execute", async (c) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return c.json({ success: false, error: "Validation error", details: error.errors }, 400);
+      return c.json({ success: false, error: "Validation error", details: error.issues }, 400);
     }
     return c.json({ success: false, error: String(error) }, 500);
   }

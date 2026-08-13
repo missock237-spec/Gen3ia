@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 });
   }
 
-  const payload = verifyAccessToken(token);
+  const payload = await verifyAccessToken(token);
   if (!payload || !isAdminRole(payload.role)) {
     return NextResponse.json({ error: 'Accès réservé aux administrateurs' }, { status: 403 });
   }

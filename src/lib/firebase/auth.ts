@@ -366,6 +366,10 @@ export interface AccessTokenPayload {
   role: string;
   uid: string;
   type: 'access';
+  /** Prisma/legacy-compat alias for `sub`. */
+  userId: string;
+  /** Prisma/legacy-compat alias for `sub`. */
+  id: string;
 }
 
 /**
@@ -378,6 +382,8 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenPaylo
   return {
     sub: user.uid,
     uid: user.uid,
+    id: user.uid,
+    userId: user.uid,
     email: user.email || '',
     role: (user.customClaims?.role as string) || 'user',
     type: 'access',

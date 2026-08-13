@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       body = executeAgentSchema.parse(await request.json());
     } catch (error) {
       if (error instanceof ZodError) {
-        return NextResponse.json({ error: "Donnees invalides", details: error.errors }, { status: 400 });
+        return NextResponse.json({ error: "Donnees invalides", details: error.issues }, { status: 400 });
       }
       throw error;
     }

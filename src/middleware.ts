@@ -21,7 +21,6 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getAdminAuth } from '@/lib/firebase/admin';
 import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
 // P1 — Rate limiting (roadmap qualité). Edge-safe : store mémoire/Redis injecté.
 import { rateLimit } from '@/lib/security/rate-limit';
@@ -125,16 +124,21 @@ function matchesRoute(pathname: string, route: string): boolean {
 }
 
 /**
- * Vérifie le session cookie Firebase sans crasher si Firebase Admin n'est
- * pas configuré (build phase). Retourne { uid, role } ou null.
+ * Vérifie la présence d'un session cookie Firebase SANS importer firebase-admin
+ * (interdit en Edge Runtime — voir build Next.js). La vérification
+ * cryptographique est reportée sur la couche 2 (withAuth) qui s'exécute en
+ * Node.js Runtime. Ici on ne fait qu'une vérification de présence pour
+ * court-circuiter les requêtes sans aucune auth.
  */
 async function verifyFirebaseSession(cookieValue: string | undefined): Promise<{ uid: string; role: string } | null> {
   if (!cookieValue) return null;
   try {
-    const auth = getAdminAuth();
-    const decoded = await auth.verifySessionCookie(cookieValue, false); // checkRevoked=false dans le middleware (perf)
-    const role = (decoded.role as string) || 'user';
-    return { uid: decoded.uid, role };
+    // Edge-safe : on décode juste le JWT (pas de vérif crypto — la couche 2 le fait)
+    const parts = cookieValue.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const role = (payload.role as string) || 'user';
+    return { uid: payload.uid || payload.sub || '', role };
   } catch {
     return null;
   }

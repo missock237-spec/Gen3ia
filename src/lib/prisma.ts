@@ -6,7 +6,8 @@
 // ============================================================
 import { dbExt } from '@/lib/firestore-extra';
 
-export { Collections, FirestoreRepository, FirestoreWhereOp, FirestoreOrderBy } from '@/lib/firebase/firestore';
+export { Collections, FirestoreRepository } from '@/lib/firebase/firestore';
+export type { FirestoreWhereOp, FirestoreOrderBy, WhereInput, OrderByInput, SelectInput, IncludeInput, FindOptions, FindUniqueOptions, CreateOptions, UpdateOptions, DeleteOptions } from '@/lib/firebase/firestore';
 export const db = dbExt;
 export const prisma = dbExt;
 export default dbExt;

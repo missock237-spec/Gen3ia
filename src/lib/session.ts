@@ -31,4 +31,11 @@ export async function isAdmin(): Promise<boolean> {
   return session?.user.role === 'admin';
 }
 
+/**
+ * Legacy alias for getServerSession — returns the authenticated user.
+ */
+export async function getAuthenticatedUser(): Promise<{ user?: { id: string; email: string; role: string } } | null> {
+  return getServerSession();
+}
+
 export default getServerSession;
