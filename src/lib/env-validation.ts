@@ -229,3 +229,23 @@ export function getEnv(): EnvConfig {
 export function resetEnvCache(): void {
   _env = undefined;
 }
+// Ajoutez dans la fonction validate()
+const requiredVars = [
+  'NEXT_PUBLIC_FIREBASE_API_KEY',
+  'FIREBASE_SERVICE_ACCOUNT',
+  'REDIS_URL',
+  // ... autres variables
+];
+
+for (const v of requiredVars) {
+  if (!process.env[v]) {
+    throw new Error(`Missing required env variable: ${v}`);
+  }
+}
+
+// Vérification du format du service account
+try {
+  JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
+} catch {
+  throw new Error('FIREBASE_SERVICE_ACCOUNT is not valid JSON');
+}
