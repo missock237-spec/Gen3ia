@@ -440,7 +440,7 @@ class ProviderSelector {
 
     // Sort by score and pick the best
     scores.sort((a, b) => b.score - a.score);
-    const best = scores[0];
+    const best = scores[0]!;
 
     return {
       provider: best.provider,
