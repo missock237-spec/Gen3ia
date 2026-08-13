@@ -21,7 +21,28 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
+import { redis } from './lib/redis-client';
+
+const RATE_LIMIT = 100; // requêtes par minute
+const WINDOW = 60;
+
+export async function middleware(req: NextRequest) {
+  const ip = req.ip || 'anonymous';
+  const key = `ratelimit:${ip}`;
+  const current = await redis.incr(key);
+  if (current === 1) {
+    await redis.expire(key, WINDOW);
+  }
+  if (current > RATE_LIMIT) {
+    return new NextResponse('Too Many Requests', { status: 429 });
+  }
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: '/api/:path*', // seulement les API
+};
+
 // P1 — Rate limiting (roadmap qualité). Edge-safe : store mémoire/Redis injecté.
 import { rateLimit } from '@/lib/security/rate-limit';
 
