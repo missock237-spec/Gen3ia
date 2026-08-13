@@ -147,26 +147,26 @@ class SemanticDeduplicator {
     for (let i = 0; i < messages.length; i++) {
       if (removed.has(i)) continue;
 
-      kept.push(messages[i]);
+      kept.push(messages[i]!);
 
       // Check subsequent messages for redundancy
       for (let j = i + 1; j < messages.length; j++) {
         if (removed.has(j)) continue;
 
         // Only compare messages of the same role
-        if (messages[i].role !== messages[j].role) continue;
+        if (messages[i]!.role !== messages[j]!.role) continue;
 
-        const similarity = calculateSimilarity(messages[i].content, messages[j].content);
+        const similarity = calculateSimilarity(messages[i]!.content, messages[j]!.content);
         if (similarity > similarityThreshold) {
           // Mark the shorter/less informative one as redundant
-          const lenI = messages[i].content.length;
-          const lenJ = messages[j].content.length;
+          const lenI = messages[i]!.content.length;
+          const lenJ = messages[j]!.content.length;
 
           if (lenJ < lenI) {
             removed.add(j);
           } else {
             // Replace i with the more informative version
-            kept[kept.length - 1] = messages[j];
+            kept[kept.length - 1] = messages[j]!;
             removed.add(i);
           }
         }
@@ -194,7 +194,7 @@ class MemorySummarizer {
     }
 
     if (messages.length === 1) {
-      return messages[0];
+      return messages[0]!;
     }
 
     // Extract key sentences from each message
