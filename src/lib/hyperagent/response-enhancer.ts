@@ -244,7 +244,7 @@ class ContentFormatter {
     while ((match = codeBlockRegex.exec(content)) !== null) {
       codeBlocks.push({
         language: match[1] || 'text',
-        code: match[2].trim(),
+        code: match[2]!.trim(),
       });
     }
 
