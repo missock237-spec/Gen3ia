@@ -8,13 +8,11 @@ async function deploy() {
   try {
     console.log('📦 Déploiement des règles Firestore...');
     await execAsync('npx firebase-tools deploy --only firestore:rules', {
-      stdio: 'inherit',
       env: { ...process.env, FIREBASE_TOKEN: process.env.FIREBASE_TOKEN },
     });
 
     console.log('📦 Déploiement des règles Storage...');
     await execAsync('npx firebase-tools deploy --only storage:rules', {
-      stdio: 'inherit',
       env: { ...process.env, FIREBASE_TOKEN: process.env.FIREBASE_TOKEN },
     });
 

@@ -29,6 +29,7 @@ const redirects = () => [
   { source: '/dashboard/app', destination: '/dashboard', permanent: true },
 ];
 
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   // Mode standalone : utilisé par Docker, ignoré par Vercel
   output: 'standalone',
@@ -38,6 +39,13 @@ const nextConfig = {
 
   // Compression HTTP gzip/brotli (actif sur le serveur Node standalone ; ignoré par Vercel qui gère lui-même)
   compress: true,
+
+  // SWC minification (plus rapide que Babel)
+  swcMinify: true,
+
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
+  },
 
   // ——— Optimisation des images ———
   images: {
@@ -64,6 +72,12 @@ const nextConfig = {
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
+      {
+        source: '/static/(.*)',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=86400' },
+        ],
+      },
     ];
   },
 
@@ -81,41 +95,6 @@ const nextConfig = {
     return config;
   },
 
- /** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: 'standalone',
-  reactStrictMode: true,
-  swcMinify: true,
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
-  },
-  images: {
-    loader: 'custom',
-    loaderFile: './src/lib/imageLoader.ts', // si vous voulez utiliser Firebase Storage
-    domains: ['firebasestorage.googleapis.com'],
-  },
-  async headers() {
-    return [
-      {
-        source: '/_next/static/(.*)',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      {
-        source: '/static/(.*)',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=86400, stale-while-revalidate=86400',
-          },
-        ],
-      },
-    ];
-  },
   // Pour OpenTelemetry (si déjà configuré)
   experimental: {
     instrumentationHook: true,

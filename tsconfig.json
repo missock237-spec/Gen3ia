@@ -29,6 +29,7 @@
     "upload",
     "packages",
     "apps",
+    "services",
     "src/__tests__",
     "**/*.test.ts",
     "**/*.spec.ts"

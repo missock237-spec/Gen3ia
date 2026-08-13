@@ -201,6 +201,43 @@ service cloud.firestore {
     }
 
     // ============================================================
+    // Ad system — link-only sponsored ads
+    // ------------------------------------------------------------
+    //  - Ad campaigns: admin-write, all signed-in users can read.
+    //  - Ad impressions: backend-only write (anti-fraud). Users can
+    //    read their own impressions for transparency.
+    //  - Ad user preferences: the owner can READ and UPDATE only the
+    //    adsEnabled and rewardedAdsEnabled flags. Plan-rule enforcement
+    //    (free = always on, no rewards) is performed server-side by
+    //    the AdEngine before crediting, so a tampered client cannot
+    //    actually earn credits on a free plan.
+    // ============================================================
+    match /ad_campaigns/{campaignId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+    match /ad_impressions/{impressionId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false; // Backend only (Admin SDK)
+    }
+    match /ad_user_preferences/{prefId} {
+      allow read: if isOwner(prefId);
+      // Owner may upsert their own prefs doc, but may ONLY set the two
+      // toggle fields. All other fields (totals, lastAdViewedAt, etc.)
+      // are managed by the backend.
+      allow create: if isOwner(prefId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.adsEnabled is bool
+        && request.resource.data.rewardedAdsEnabled is bool;
+      allow update: if isOwner(prefId)
+        && request.resource.data.userId == resource.data.userId
+        // Only the two toggles may change.
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['adsEnabled', 'rewardedAdsEnabled']);
+      allow delete: if false;
+    }
+
+    // ============================================================
     // Webhooks
     // ============================================================
     match /webhooks/{webhookId} {

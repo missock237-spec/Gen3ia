@@ -32,10 +32,8 @@ interface ChatInterfaceProps {
   conversationId?: string;
   agent: Agent;
   initialMessages?: Message[];
-  /** Plan utilisateur - free affiche les pubs */
+  /** Plan utilisateur — utilisé pour le footer informatif. */
   plan?: string;
-  /** Intervalle de messages entre chaque pub */
-  adInterval?: number;
 }
 
 // ============================================================
@@ -49,7 +47,6 @@ export function ChatInterface({
   agent,
   initialMessages = [],
   plan = 'free',
-  adInterval = 4,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState('');
@@ -59,7 +56,13 @@ export function ChatInterface({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const showAds = plan === 'free';
+  // Ads are now shown after EVERY AI agent response for ALL plans.
+  // The server (ad-engine) decides whether to actually serve an ad
+  // based on the user's plan + preferences. Free users always see
+  // an unrewarded ad; paid users see a rewarded ad unless they have
+  // opted out (in which case the engine returns shouldShow=false and
+  // the component renders nothing).
+  const showAds = true;
 
   // Auto-scroll vers le bas
   const scrollToBottom = useCallback(() => {
@@ -321,14 +324,12 @@ export function ChatInterface({
               </div>
             </div>
 
-            {/* Publicite conversationnelle (plan free uniquement, tous les N messages) */}
-            {showAds && msg.role === 'assistant' && (index + 1) % adInterval === 0 && (
+            {/* Publicité conversationnelle (lien sponsorisé) — affichée après CHAQUE réponse de l'agent IA. */}
+            {showAds && msg.role === 'assistant' && msg.content && (
               <ConversationAd
                 userId={userId}
                 sessionId={sessionId}
                 conversationId={conversationId}
-                messageCount={index + 1}
-                adInterval={adInterval}
                 keywords={extractKeywords(msg.content)}
               />
             )}
@@ -431,7 +432,9 @@ export function ChatInterface({
             marginTop: '6px',
             opacity: 0.6,
           }}>
-            Contenu sponsorise tous les {adInterval} messages · Passage a Premium pour supprimer les pubs
+            {plan === 'free'
+              ? 'Plan gratuit : un lien sponsorisé est affiché après chaque réponse de l\'agent.'
+              : 'Plan payant : un lien sponsorisé récompensé est affiché après chaque réponse. Désactivable dans les paramètres.'}
           </div>
         )}
       </div>

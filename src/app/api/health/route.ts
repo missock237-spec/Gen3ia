@@ -1,75 +1,53 @@
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/firestore';
-import { redis } from '@/lib/redis-client';
-import { Queue } from 'bullmq';
+// ============================================================
+// Gen3ia — Health check (Firestore + Redis + Qdrant + providers)
+// ------------------------------------------------------------
+// Public mode  : GET /api/health              -> { status: 'healthy'|'unhealthy' }
+// Detailed mode: GET /api/health?detailed=true -> admin-only full report
+// ============================================================
+
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/firebase/firestore';
+import { getServerSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
-  const checks: Record<string, { status: 'ok' | 'error'; message?: string }> = {};
-  let overall = 'ok';
+const REDIS_URL = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL || '';
+const QDRANT_URL = process.env.QDRANT_URL || '';
 
-  // 1. Vérification Firestore
+// ------------------------------------------------------------
+// Lightweight DB ping — the only critical dependency for LB.
+// ------------------------------------------------------------
+async function checkDatabase(): Promise<boolean> {
   try {
     await db.collection('_health').doc('ping').set({ timestamp: Date.now() }, { merge: true });
-    checks.firestore = { status: 'ok' };
-  } catch (err: any) {
-    checks.firestore = { status: 'error', message: err.message };
-    overall = 'error';
+    return true;
+  } catch {
+    return false;
   }
-
-  // 2. Vérification Redis
-  try {
-    await redis.ping();
-    checks.redis = { status: 'ok' };
-  } catch (err: any) {
-    checks.redis = { status: 'error', message: err.message };
-    overall = 'error';
-  }
-
-  // 3. Vérification BullMQ (connexion au queue)
-  try {
-    const queue = new Queue('default', { connection: redis });
-    await queue.getWorkers(); // test simple
-    checks.bullmq = { status: 'ok' };
-  } catch (err: any) {
-    checks.bullmq = { status: 'error', message: err.message };
-    overall = 'error';
-  }
-
-  const statusCode = overall === 'ok' ? 200 : 503;
-  return NextResponse.json(
-    { status: overall, timestamp: Date.now(), checks },
-    { status: statusCode }
-  );
 }
 
-/** Ping Redis avec un timeout court (ne bloque pas le healthcheck). */
+// ------------------------------------------------------------
+// Detailed components — admin only
+// ------------------------------------------------------------
+
 async function checkRedis(): Promise<{ ok: boolean; detail?: string }> {
   if (!REDIS_URL) return { ok: false, detail: 'not_configured' };
-  const client = new Redis(REDIS_URL, {
-    connectTimeout: 2000,
-    lazyConnect: false,
-    maxRetriesPerRequest: 1,
-    retryStrategy: () => null, // pas de retry : fail rapide
-  });
   try {
-    const pong = await Promise.race([
-      client.ping(),
-      new Promise<string>((_, rej) =>
-        setTimeout(() => rej(new Error('ping timeout')), 2000),
-      ),
-    ]);
-    return { ok: pong === 'PONG', detail: pong };
+    // Use fetch for Upstash REST, or fall back to a TCP-less check.
+    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+      const res = await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/ping`, {
+        headers: { Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}` },
+        cache: 'no-store',
+      });
+      return { ok: res.ok, detail: res.ok ? 'PONG' : 'error' };
+    }
+    return { ok: false, detail: 'requires_upstash_rest' };
   } catch (e) {
     return { ok: false, detail: (e as Error).message };
-  } finally {
-    try { client.disconnect(); } catch { /* noop */ }
   }
 }
 
-/** Qdrant : simple vérification de l'URL /readiness si configuré. */
 async function checkQdrant(): Promise<{ status: string }> {
   if (!QDRANT_URL) return { status: 'not_configured' };
   try {
@@ -118,7 +96,11 @@ async function getDetailedReport(): Promise<Record<string, HealthComponent>> {
   };
 
   const mem = process.memoryUsage();
-  components.memory = { status: 'ok', heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`, heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB` };
+  components.memory = {
+    status: 'ok',
+    heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`,
+    heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
+  };
   components.uptime = { status: 'ok', uptime: `${Math.floor(process.uptime())}s` };
   components.node = { status: 'ok', node: process.version };
   components.env = { status: 'ok', env: process.env.NODE_ENV };
@@ -138,24 +120,30 @@ async function getDetailedReport(): Promise<Record<string, HealthComponent>> {
   return components;
 }
 
+// ------------------------------------------------------------
+// GET /api/health
+// ------------------------------------------------------------
+
 export async function GET(request: NextRequest) {
-  // En mode public (par défaut) : DB est la dépendance critique pour LB/Vercel.
-  // Redis/Qdrant sont « dégradables » et donc signalés mais ne font pas passer l'app en 503 seul.
+  // Public mode : DB is the critical dependency for LB/Vercel.
+  // Redis/Qdrant are "degradable" and don't trigger a 503 alone.
   const dbOk = await checkDatabase();
   const status = dbOk ? 'healthy' : 'unhealthy';
 
-  // Mode detaille : reserve aux admins authentifies
   const url = new URL(request.url);
   if (url.searchParams.get('detailed') === 'true') {
-    const session = await getServerSession();
-    if (session?.user?.role === 'admin') {
-      const components = await getDetailedReport();
-      return NextResponse.json({ status, timestamp: new Date().toISOString(), components });
+    try {
+      const session = await getServerSession();
+      if (session?.user?.role === 'admin') {
+        const components = await getDetailedReport();
+        return NextResponse.json({ status, timestamp: new Date().toISOString(), components });
+      }
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 403 });
+    } catch {
+      // If auth server is unavailable, fall through to public mode.
     }
-    return NextResponse.json({ error: 'Non autorise' }, { status: 403 });
   }
 
-  // Mode public : retourne uniquement le statut
   return NextResponse.json(
     { status, timestamp: new Date().toISOString() },
     {

@@ -1,19 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, User, Shield, Bell, CreditCard, Key, Check, Moon, Sun, Monitor, Save, Eye, EyeOff, LogOut, Trash2, RefreshCw } from 'lucide-react';
+import { Settings, User, Shield, Bell, CreditCard, Key, Check, Moon, Sun, Monitor, Save, Eye, EyeOff, LogOut, Trash2, RefreshCw, Megaphone } from 'lucide-react';
+import { AdPreferencesPanel } from '@/components/advertising/ad-preferences-panel';
 
 interface SettingsViewProps {
   initialTab?: string;
 }
 
-type TabId = 'profile' | 'security' | 'notifications' | 'billing' | 'api-keys' | 'approvals';
+type TabId = 'profile' | 'security' | 'notifications' | 'billing' | 'api-keys' | 'approvals' | 'ads';
 
 const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'profile', label: 'Profil', icon: User },
   { id: 'security', label: 'Sécurité', icon: Shield },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'billing', label: 'Facturation', icon: CreditCard },
+  { id: 'ads', label: 'Publicités', icon: Megaphone },
   { id: 'api-keys', label: 'Clés API', icon: Key },
   { id: 'approvals', label: 'Approbations', icon: Check },
 ];
@@ -440,6 +442,7 @@ export function SettingsView({ initialTab = 'profile' }: SettingsViewProps) {
     billing: renderBillingTab,
     'api-keys': renderApiKeysTab,
     approvals: renderApprovalsTab,
+    ads: () => <AdPreferencesPanel />,
   };
 
   return (

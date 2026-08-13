@@ -1,107 +1,233 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+// ============================================================
+// ConversationAd — Sponsored link rendered after every AI agent response.
+// ------------------------------------------------------------
+// Behavior:
+//   * Display format = LINK ONLY (no image, no video, no carousel).
+//   * Free plan users: ad is always shown (cannot be dismissed
+//     permanently). No credit reward.
+//   * Paid plan users: ad is shown with a small credit reward banner.
+//     The user may toggle ads off from the settings page; when off,
+//     the ad does NOT render at all (rewards are also blocked).
+//   * When `decision.canDisableAds === false` (free plan), the close
+//     button is hidden.
+// ============================================================
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+export interface ConversationAdCampaign {
+  id: string;
+  name: string;
+  advertiserName: string;
+  advertiserUrl: string;
+  textContent: string;
+  ctaText: string;
+  ctaUrl: string;
+}
+
+export interface ConversationAdDecision {
+  shouldShow: boolean;
+  adType: 'unrewarded' | 'rewarded';
+  campaign: ConversationAdCampaign | null;
+  reason: string;
+  placement?: string;
+  pendingRewardPerView: number;
+  pendingRewardPerClick: number;
+  isFreePlan: boolean;
+  canDisableAds: boolean;
+}
 
 interface ConversationAdProps {
   userId: string;
   sessionId: string;
   conversationId?: string;
-  messageCount: number;
-  adInterval?: number;
+  /** Optional keywords used for ad targeting. */
   keywords?: string[];
+  /** Notify parent when an impression was credited (for UI feedback). */
+  onRewardEarned?: (credits: number) => void;
 }
 
-interface AdData {
-  shouldShow: boolean;
-  adType: 'unrewarded' | 'rewarded';
-  campaign: {
-    id: string; name: string; textContent: string; ctaText: string;
-    ctaUrl: string; imageUrl?: string; advertiserName: string; format?: string;
-  } | null;
-  reason: string;
-  isSubtle?: boolean;
-  insertAfterMessages?: number;
-}
-
-export function ConversationAd({ userId, sessionId, conversationId, messageCount, adInterval = 4, keywords }: ConversationAdProps) {
-  const [ad, setAd] = useState<AdData | null>(null);
-  const [dismissed, setDismissed] = useState(false);
-  const [clicked, setClicked] = useState(false);
-  const [impressionRecorded, setImpressionRecorded] = useState(false);
-
-  const shouldShowAd = messageCount > 0 && messageCount % adInterval === 0 && !dismissed;
+export function ConversationAd({
+  userId,
+  sessionId,
+  conversationId,
+  keywords,
+  onRewardEarned,
+}: ConversationAdProps) {
+  const [decision, setDecision] = useState<ConversationAdDecision | null>(null);
+  const [impressionId, setImpressionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingReward, setPendingReward] = useState<number>(0);
+  const fetchedRef = useRef<string | null>(null);
 
   const fetchAd = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ scope: 'decide', sessionId, placement: 'conversation_inline', keywords: keywords?.join(',') || '', ...(conversationId ? { conversationId } : {}) });
-      const res = await fetch(`/api/ads?${params}`);
+      const params = new URLSearchParams({
+        scope: 'decide',
+        sessionId,
+        placement: 'conversation_inline',
+      });
+      if (conversationId) params.set('conversationId', conversationId);
+      if (keywords && keywords.length > 0) params.set('keywords', keywords.join(','));
+
+      const res = await fetch(`/api/ads?${params.toString()}`, { cache: 'no-store' });
+      if (!res.ok) {
+        setError('Ad fetch failed');
+        return;
+      }
       const data = await res.json();
-      if (data.success && data.decision) setAd(data.decision);
-    } catch {}
-  }, [sessionId, conversationId, keywords]);
-
-  useEffect(() => { if (shouldShowAd) fetchAd(); }, [shouldShowAd, fetchAd]);
-
-  // Enregistrer l'impression (toujours avant le return, respecte les hooks)
-  useEffect(() => {
-    if (ad?.campaign && !impressionRecorded) {
-      setImpressionRecorded(true);
-      fetch('/api/ads?action=impression', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId: ad.campaign.id, adType: 'unrewarded', sessionId, conversationId }),
-      }).catch(() => {});
+      const dec: ConversationAdDecision | null = data?.decision ?? null;
+      setDecision(dec);
+      if (dec?.shouldShow && dec.campaign) {
+        // Record the impression immediately so the user is credited (if eligible).
+        try {
+          const impRes = await fetch('/api/ads?action=impression', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              campaignId: dec.campaign.id,
+              adType: dec.adType,
+              sessionId,
+              conversationId,
+            }),
+          });
+          if (impRes.ok) {
+            const impData = await impRes.json();
+            const imp = impData?.impression;
+            if (imp?.impressionId) setImpressionId(imp.impressionId);
+            if (imp?.rewardCredited && Number(imp?.rewardAmount ?? 0) > 0) {
+              setPendingReward(Number(imp.rewardAmount));
+              onRewardEarned?.(Number(imp.rewardAmount));
+            }
+          }
+        } catch {
+          // Impression failure is non-fatal — we still render the ad link.
+        }
+      }
+    } catch {
+      setError('Ad fetch failed');
     }
-  }, [ad?.campaign?.id, impressionRecorded, sessionId, conversationId]);
+  }, [sessionId, conversationId, keywords, onRewardEarned]);
+
+  useEffect(() => {
+    // Fetch once per mount — every AI response gets a fresh mount.
+    const key = `${sessionId}:${conversationId || ''}:${Date.now()}`;
+    if (fetchedRef.current === key) return;
+    fetchedRef.current = key;
+    fetchAd();
+  }, [fetchAd, sessionId, conversationId]);
 
   const handleClick = useCallback(async () => {
-    if (clicked) return;
-    setClicked(true);
-    try { await fetch('/api/ads?action=click', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }); } catch {}
-  }, [clicked]);
+    if (!impressionId) return;
+    try {
+      const res = await fetch('/api/ads?action=click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ impressionId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const click = data?.click;
+        if (click?.rewardCredited && Number(click?.rewardAmount ?? 0) > 0) {
+          setPendingReward(prev => prev + Number(click.rewardAmount));
+          onRewardEarned?.(Number(click.rewardAmount));
+        }
+      }
+    } catch {
+      // Click reward failure is non-fatal.
+    }
+  }, [impressionId, onRewardEarned]);
 
-  const handleDismiss = useCallback(() => { setDismissed(true); }, []);
+  if (error || !decision || !decision.shouldShow || !decision.campaign) {
+    return null;
+  }
 
-  if (!shouldShowAd || !ad || !ad.shouldShow || !ad.campaign) return null;
-
-  const { campaign } = ad;
+  const { campaign, isFreePlan, canDisableAds, pendingRewardPerClick } = decision;
+  const ctaUrl = campaign.ctaUrl || campaign.advertiserUrl;
+  const safeUrl = ctaUrl.startsWith('http://') || ctaUrl.startsWith('https://') ? ctaUrl : `https://${ctaUrl}`;
 
   return (
-    <div style={{ position: 'relative', margin: '12px 8px' }}>
-      <div style={{
-        background: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-        padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px', opacity: 0.85,
-      }}>
-        <div style={{
-          fontSize: '0.6rem', color: 'var(--muted-foreground)', textTransform: 'uppercase',
-          position: 'absolute', top: '-8px', left: '12px', background: 'var(--background)',
-          padding: '0 6px', borderRadius: '4px', letterSpacing: '0.5px',
-        }}>Sponsorise</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: '0.8rem', margin: 0, color: 'var(--foreground)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {campaign.textContent || campaign.name}
-          </p>
-          <p style={{ fontSize: '0.65rem', margin: '4px 0 0', color: 'var(--muted-foreground)' }}>{campaign.advertiserName}</p>
-        </div>
-        <a href={campaign.ctaUrl} target="_blank" rel="noopener noreferrer" onClick={handleClick}
-          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)', padding: '6px 14px', borderRadius: 'var(--radius)', fontSize: '0.75rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {campaign.ctaText}
+    <div
+      role="complementary"
+      aria-label="Sponsored link"
+      style={{
+        margin: '10px 0',
+        padding: '8px 12px',
+        border: '1px solid var(--border, #e5e7eb)',
+        borderRadius: '8px',
+        background: 'var(--muted, #f9fafb)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        fontSize: '0.8rem',
+        lineHeight: 1.4,
+      }}
+    >
+      <span
+        style={{
+          fontSize: '0.6rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          color: 'var(--muted-foreground, #6b7280)',
+          background: 'var(--background, #fff)',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          border: '1px solid var(--border, #e5e7eb)',
+          flexShrink: 0,
+        }}
+      >
+        Sponsorisé
+      </span>
+      <span style={{ flex: 1, minWidth: 0, color: 'var(--foreground, #111827)' }}>
+        {campaign.textContent || campaign.name}{' '}
+        <span style={{ color: 'var(--muted-foreground, #6b7280)' }}>— {campaign.advertiserName}</span>
+      </span>
+      <a
+        href={safeUrl}
+        target="_blank"
+        rel="noopener noreferrer sponsored"
+        onClick={handleClick}
+        style={{
+          color: 'var(--primary, #2563eb)',
+          fontWeight: 600,
+          textDecoration: 'none',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}
+      >
+        {campaign.ctaText || 'En savoir plus'} →
+      </a>
+      {!isFreePlan && pendingReward > 0 && (
+        <span
+          aria-live="polite"
+          style={{
+            fontSize: '0.65rem',
+            color: 'var(--success, #16a34a)',
+            background: 'var(--success-soft, #dcfce7)',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            whiteSpace: 'nowrap',
+          }}
+          title={`+${pendingRewardPerClick} crédits si vous cliquez`}
+        >
+          +{pendingReward} crédit{pendingReward > 1 ? 's' : ''}
+        </span>
+      )}
+      {canDisableAds && (
+        <a
+          href="/dashboard/settings?tab=ads"
+          style={{
+            fontSize: '0.65rem',
+            color: 'var(--muted-foreground, #6b7280)',
+            textDecoration: 'none',
+            flexShrink: 0,
+          }}
+          title="Désactiver les publicités"
+        >
+          ⋯
         </a>
-        <button onClick={handleDismiss}
-          style={{ background: 'none', border: 'none', color: 'var(--muted-foreground)', cursor: 'pointer', padding: '2px', fontSize: '0.8rem', lineHeight: 1, opacity: 0.5, flexShrink: 0 }}
-          aria-label="Fermer">×</button>
-      </div>
+      )}
     </div>
   );
-}
-
-export function useMustShowAdsInConversation() {
-  const [mustShow, setMustShow] = useState(false);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    fetch('/api/ads?scope=preferences').then(r => r.json()).then(data => {
-      if (data.success) setMustShow(data.preferences?.mustShowInConversation || data.preferences?.isEligible || false);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
-  return { mustShow, loading };
 }
