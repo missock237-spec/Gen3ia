@@ -1,9 +1,10 @@
 # ============================================================
 # Gen3ia - Dockerfile de production (Monorepo)
 # Build context: racine du monorepo
+# Gestionnaire de paquets : bun (voir bun.lock)
 # ============================================================
 
-FROM node:20-alpine AS base
+FROM oven/bun:1.3-alpine AS base
 
 # Installer les dépendances système nécessaires (si besoin)
 RUN apk add --no-cache libc6-compat
@@ -12,17 +13,15 @@ RUN apk add --no-cache libc6-compat
 FROM base AS builder
 WORKDIR /app
 
-COPY package*.json ./
-COPY turbo.json ./
-COPY .npmrc ./
+COPY package.json bun.lock turbo.json ./
 
 # Installer toutes les dépendances (y compris dev)
-RUN npm ci
+RUN bun install --frozen-lockfile
 
 COPY . .
 
 # Build avec Turborepo
-RUN npm run build
+RUN bun run build
 
 # ===== STAGE DE PRODUCTION =====
 FROM base AS runner
@@ -48,5 +47,3 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-
-CMD ["node", "server.js"]

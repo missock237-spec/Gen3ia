@@ -12,12 +12,13 @@ Si un autre fichier contredit ce tableau, il est **obsolète** — remplacez-le.
 
 | Source de vérité | Statut |
 |---|---|
-| `package.json` (`packageManager: npm@10.8.0`) | ✅ **FAIT FOI** |
-| `package-lock.json` | ⚠️ **À RÉGÉNÉRER** localement via `npm install` (actuellement vide `packages:{}` → `npm ci` échoue). C'est la seule étape restante pour rendre la CI verte. |
-| ~~`bun.lock`~~ | ❌ Obsolète — supprimer |
-| ~~`pnpm-workspace.yaml`~~ | ❌ Obsolète — on utilise les workspaces npm de `package.json` |
+| `package.json` (`packageManager: bun@1.3.14`) | ✅ **FAIT FOI** |
+| `bun.lock` | ✅ **FAIT FOI** — lockfile bun régénéré via `bun install` |
+| ~~`package-lock.json`~~ | ❌ Obsolète — supprimé (conflit de gestionnaire) |
+| ~~`.npmrc`~~ | ❌ Obsolète — supprimé |
+| ~~`pnpm-workspace.yaml`~~ | ❌ Obsolète — on utilise les workspaces de `package.json` |
 
-**Installation :** `npm install` (régénère le lockfile). Puis `git add package-lock.json && git commit && git push`.
+**Installation :** `bun install` (utilise `bun.lock`). Ne jamais commit `package-lock.json`.
 
 ---
 
@@ -26,10 +27,12 @@ Si un autre fichier contredit ce tableau, il est **obsolète** — remplacez-le.
 | Source de vérité | Statut |
 |---|---|
 | `.github/workflows/` | ✅ **FAIT FOI** — seul dossier reconnu par GitHub |
-| ~~`github/workflows/`~~ | ❌ Ignoré par GitHub — supprimer |
-| ~~`ci.yml`, `deploy.yml`, etc. (racine)`~~ | ❌ Orphelins — supprimer |
+| ~~`github/workflows/` (sans point)~~ | ❌ Ignoré par GitHub — supprimé |
+| ~~`workflows/` (racine)~~ | ❌ Ignoré par GitHub — supprimé |
+| ~~`ci.yml`, `deploy.yml`, `vercel-deploy.yml`, etc. (racine)~~ | ❌ Orphelins/OBSOLÈTES — supprimés |
+| ~~`FUNDING.yml` (racine)~~ | ❌ Déplacé vers `.github/FUNDING.yml` |
 
-Le job **`prisma-diff`** (dans `docs/prisma-ci-job.md`) doit être collé dans `.github/workflows/ci.yml`.
+Workflows actifs dans `.github/workflows/` : `ci.yml`, `security.yml`, `deploy-rules.yml`, `issues.yml`, `sync-secrets.yml`.
 
 > ℹ️ Le token GitHub agent ne peut pas écrire dans `.github/workflows/` (action bloquée).
 > Toute évolution de workflow est à faire manuellement/localement.
@@ -40,8 +43,14 @@ Le job **`prisma-diff`** (dans `docs/prisma-ci-job.md`) doit être collé dans `
 
 | Source de vérité | Statut |
 |---|---|
-| `next.config.js` | ✅ **FAIT FOI** — CommonJS, compatible Vercel/Docker |
-| ~~`next.config.ts`~~ | ❌ Obsolète — supprimer |
+| `next.config.mjs` | ✅ **FAIT FOI** — ESM, compatible Next.js 14/15/16, Vercel et Docker |
+| ~~`next.config.js`~~ | ❌ Obsolète — supprimé |
+| ~~`next.config.ts`~~ | ❌ Non supporté par Next.js 14.2.35 — supprimé (sera recréable après upgrade Next 15+) |
+| ~~`apps/web/next.config.js`~~ | ❌ Doublon — supprimé |
+
+> ℹ️ Next.js 14 ne supporte pas `next.config.ts` (ajouté dans Next 15). Tant qu'on reste sur
+> Next 14.2.35, on utilise `next.config.mjs` comme source unique. Lors du passage à Next 15+,
+> ce fichier peut être renommé en `next.config.ts` si souhaité.
 
 ---
 
@@ -68,7 +77,7 @@ Le job **`prisma-diff`** (dans `docs/prisma-ci-job.md`) doit être collé dans `
 
 | Source de vérité | Statut |
 |---|---|
-| `prisma/schema.prisma` | ✅ **FAIT FOI** (définit le schéma) |
+| `prisma/schema.prisma` | ✅ **FAIT FOI** (définit le schéma) — en cours de migration vers Firestore |
 | `prisma/migrations/*/migration.sql` (dossiers) | ✅ **FAIT FOI** — migrations appliquées via `prisma migrate` |
 | `prisma/migrations/migration_lock.toml` | ✅ **REQUIS** (Prisma exige `.toml`) |
 | ~~`*.sql` à plat (`00001_*.sql`…)~~ | ❌ Ignorés par Prisma — supprimer |
@@ -93,13 +102,15 @@ Pas de `any` dans `with-auth.ts`: `no-explicit-any`/`no-console` sont en `error`
 
 ## 8. Fichiers à supprimer (morts)
 
-- `package.json.backup`
+- ~~`package.json.backup`~~ ✓ Supprimé (Jalon 2)
+- ~~`fix_package.sh`, `fix_package.json`~~ ✓ Supprimés (Jalon 2)
+- ~~`CI_FIX.md`, `FIX_REPORT.md`, `WORKFLOWS_FIX.md`, `SECURITY_FIXES.md`~~ ✓ Supprimés (Jalon 2)
+- ~~`worklog.md`~~ ✓ Supprimé (Jalon 2) — désormais ignoré via `.gitignore`
 - `next-server.pid`
 - `test-api.mjs`, `test-autonomous.ts`, `test-connectivity.ts`
 - `test-force-push.txt`, `test-tool.txt`, `test-write.txt`
 - dossier vide `Gen3ia/`
-- `fix_package.json` (utiliser `fix_package.sh`)
-- `tailwind.config.ts`, `next.config.ts`, `.eslintrc.json`
+- `tailwind.config.ts`, `.eslintrc.json`
 - `migration_lock.json`, `migration_meta.json`, `migration_manager.ts`, `schema_backup.prisma`
 
 ## 9. Docs / rapports
@@ -110,37 +121,37 @@ Pas de `any` dans `with-auth.ts`: `no-explicit-any`/`no-console` sont en `error`
 | `docs/` | ✅ FAIT FOI pour la doc technique |
 | `docs/DEVELOPMENT.md` | ✅ FAIT FOI pour le développement |
 | `docs/prisma-ci-job.md` | ✅ Job CI prisma-diff à coller dans ci.yml |
-| ~~`CI_FIX.md`, `FIX_REPORT.md`, `WORKFLOWS_FIX.md`, `SECURITY_FIXES.md`~~ | ❌ Rapports ponctuels — archiver dans `docs/` |
 
 ---
 
-## ✅ Commande de nettoyage finale (à exécuter localement)
+## ✅ Commande de nettoyage (Jalon 2 — appliquée)
 
 ```bash
-# Fichiers obsolètes / morts
-rm bun.lock pnpm-workspace.yaml next.config.ts .eslintrc.json tailwind.config.ts
-rm package.json.backup schema_backup.prisma next-server.pid
-rm test-api.mjs test-autonomous.ts test-connectivity.ts
-rm test-force-push.txt test-tool.txt test-write.txt
-rm ci.yml ci-workflow.yml deploy.yml deploy-new.yml deploy-workflow.yml release.yml issues.yml refresh-tokens.yml refresh-tokens-workflow.yml vercel-deploy.yml
-rm fix_package.json
-rmdir Gen3ia 2>/dev/null || true
-rm -rf github workflows
+# Fichiers parasites versionnés
+git rm CI_FIX.md FIX_REPORT.md WORKFLOWS_FIX.md SECURITY_FIXES.md worklog.md
+git rm package.json.backup fix_package.sh fix_package.json
 
-# Migrations Prisma (convention abandonnée / maison)
-rm prisma/migrations/0000*.sql
-rm prisma/migrations/migration_lock.json prisma/migrations/migration_meta.json
-rm prisma/migration_manager.ts
+# Conflit de gestionnaire de paquets : bun devient la source unique
+git rm package-lock.json .npmrc
+# package.json : packageManager -> "bun@1.3.14"
+bun install  # régénère bun.lock
 
-# Commit + push
+# Configuration Next.js : une seule source (next.config.mjs)
+git rm next.config.js apps/web/next.config.js next.config.ts
+# next.config.ts converti en next.config.mjs (Next 14 ne supporte pas .ts)
+
+# Workflows CI/CD consolidés dans .github/workflows/
+git rm ci.yml ci-workflow.yml deploy.yml deploy-new.yml deploy-workflow.yml \
+       release.yml issues.yml refresh-tokens.yml refresh-tokens-workflow.yml \
+       vercel-deploy.yml
+git rm -r github workflows
+git mv FUNDING.yml .github/FUNDING.yml
+
+# Dockerfiles migrés de npm vers bun
+# .gitignore durci (package-lock.json, *.backup, *_FIX.md, fix_package.*, worklog.md)
+
 git add -A
-git commit -m "chore: cleanup — suppression des fichiers obsolètes (source de vérité consolidée)"
-git push
-
-# Régénérer le lockfile (CRITIQUE pour npm ci — seule étape restante pour CI verte)
-npm install
-git add package-lock.json
-git commit -m "chore: régénérer package-lock.json (npm ci fonctionne)"
+git commit -m "chore(jalon-2): cleanup structure — bun unique, next.config.mjs unique, workflows consolidés"
 git push
 ```
 

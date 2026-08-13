@@ -19,7 +19,7 @@ Feuille de route pour résorber la dette technique.
 - `@typescript-eslint/ban-ts-comment`: `error` (justification ≥10 chars)
 - `no-console`: `error` (exemption : `src/lib/logger.ts` + `packages/core/src/logger.ts` = transport légitime)
 
-> ⚠️ Tant que les `any`/`console` ne sont pas résorbés, `npm run lint` échoue. Voulu.
+> ⚠️ Tant que les `any`/`console` ne sont pas résorbés, `bun run lint` échoue. Voulu.
 
 ### `any` résorbés (fichiers à jour)
 

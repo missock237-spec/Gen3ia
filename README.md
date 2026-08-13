@@ -63,16 +63,16 @@ Les imports historiques `@/lib/db`, `@/lib/prisma`, `@/lib/auth`, `@/lib/upload`
 ### Déploiement des règles Firebase
 
 ```bash
-npm run firestore:rules    # Déploie firestore.rules
-npm run storage:rules      # Déploie storage.rules
-npm run firestore:indexes  # Déploie les index composites
-npm run firebase:deploy    # Déploiement complet
+bun run firestore:rules    # Déploie firestore.rules
+bun run storage:rules      # Déploie storage.rules
+bun run firestore:indexes  # Déploie les index composites
+bun run firebase:deploy    # Déploiement complet
 ```
 
 ### Émulateurs locaux
 
 ```bash
-npx firebase emulators:start
+bun x firebase emulators:start
 ```
 
 UI disponible sur http://localhost:4000 (Auth :9099, Firestore :8080, Storage :9199).
@@ -128,22 +128,22 @@ gen3ia/
 # 1. Cloner et installer
 git clone https://github.com/missock237-spec/Gen3ia.git
 cd Gen3ia
-npm install
+bun install
 
 # 2. Configurer l'environnement
 cp .env.example .env.local   # puis renseigner les variables FIREBASE_*
 
 # 3. Tester les builds (monorepo)
-npm run build --workspaces --if-present   # packages (core, worker, agent-safety)
-npm run build                              # app Next.js
+bun run build --workspaces --if-present   # packages (core, worker, agent-safety)
+bun run build                              # app Next.js
 
 # 4. Deployer les regles Firebase
-npm run firestore:rules
-npm run storage:rules
-npm run firestore:indexes
+bun run firestore:rules
+bun run storage:rules
+bun run firestore:indexes
 
 # 5. Lancer en dev
-npm run dev                                # http://localhost:3000
+bun run dev                                # http://localhost:3000
 
 # 6. Ou via Docker Compose (Redis, app, worker)
 docker compose up --build -d

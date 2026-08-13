@@ -1,6 +1,0 @@
-// ============================================================
-// DEPRECATED — Prisma has been removed from Gen3ia.
-// The data layer is now Firestore (src/lib/firebase/firestore.ts).
-// This file is inert and kept only for historical reference.
-// Safe to delete.
-// ============================================================

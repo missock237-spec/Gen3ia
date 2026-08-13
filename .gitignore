@@ -72,12 +72,32 @@ keep-*
 start-*
 run-*
 worklog.*
+worklog.md
 schema_backup.*
 test-write.*
 test-api.*
 test-autonomous.*
 test-connectivity.*
 test-whatsapp.*
+
+# Package manager — bun est le gestionnaire officiel (voir bun.lock)
+# On ignore les artefacts des autres gestionnaires pour éviter les conflits
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+
+# Backup / fix scripts — ne jamais versionner
+*.backup
+*.bak
+fix_package.*
+*_FIX.md
+*_FIX_REPORT.md
+FIX_REPORT.md
+CI_FIX.md
+WORKFLOWS_FIX.md
+SECURITY_FIXES.md
 
 # Prisma (keep migrations, ignore generated)
 prisma/migrations/

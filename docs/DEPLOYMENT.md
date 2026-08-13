@@ -15,7 +15,7 @@ Il tranche entre les différents fichiers de plateforme.
 | **TLS / proxy** (option VPS autonome) | Caddy | `Caddyfile` |
 
 > ⚠️ **Important : l'app Next vit dans `src/` (racine), pas dans `apps/web`.**
-> La cible Vercel construit via `package.json` racine (`npm run build`).
+> La cible Vercel construit via `package.json` racine (`bun run build`).
 
 ## ❌ Ce que `render.yaml` n'est PAS
 
@@ -24,7 +24,7 @@ Ne pas l'utiliser pour un déploiement Render. La source de vérité est ce docu
 
 ## Mode 1 : Vercel (recommandé)
 
-- `vercel.json` : framework nextjs, build `npm run build`, install `npm install && npx prisma generate`
+- `vercel.json` : framework nextjs, build `bun run build`, install `bun install && bun x prisma generate`
 - **App** servie serverless. ⚠️ Les workers BullMQ ne doivent PAS tourner sur Vercel (serverless = pas d'état long).
 - **Worker** : déployé séparément sur Docker/VPS via `Dockerfile.worker`.
 - Cron Vercel pour le refresh de tokens via `/api/cron/refresh-tokens`.
@@ -33,7 +33,7 @@ Ne pas l'utiliser pour un déploiement Render. La source de vérité est ce docu
 
 - `docker-compose.yml` : orchestration complète (app + worker + postgres + redis + qdrant)
 - `Caddyfile` : proxy inverse TLS (Let's Encrypt) + en-têtes sécurité
-- `next.config.js` a `output: 'standalone'` → build Docker optimisé.
+- `next.config.mjs` a `output: 'standalone'` → build Docker optimisé.
 
 ## Variables d'environnement
 
@@ -93,14 +93,14 @@ le déploiement (bleu tourne encore pendant que vert démarre).
 
 ```bash
 # 1. Créer le fichier de migration
-npx prisma migrate dev --name add_column_x --create-only
+bun x prisma migrate dev --name add_column_x --create-only
 
 # 2. Vérifier que le SQL est ADD-only, appliquer en staging
-npx prisma migrate deploy --schema prisma/schema.prisma
+bun x prisma migrate deploy --schema prisma/schema.prisma
 
 # 3. Tester les deux versions (bleu + vert) contre la même DB
 # 4. Adapter le code applicatif (lecture+écriture de la nouvelle colonne)
-# 5. En prod : npx prisma migrate deploy
+# 5. En prod : bun x prisma migrate deploy
 # 6. Une fois stabilisé : nouvelle migration additive/rename/drop pour nettoyer
 ```
 

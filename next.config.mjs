@@ -1,13 +1,18 @@
-// next.config.js — CommonJS pour compatibilité Vercel et Docker
-// Phase 1.1 — Fondations : headers de sécurité, compression, optimisation d'images, redirects
-// NOTE : la source de vérité est next.config.ts (chargé en priorité par Next.js).
-//       Ce fichier .js est maintenu pour la compat Docker/Vercel et NE DOIT PAS
-//       désactiver le type-checking ni le lint au build (aucun ignoreBuildErrors).
-const path = require('path');
+// next.config.mjs — config source de vérité (ESM, Next.js 14 compatible)
+// Phase 1.1 — Fondations : sécurité, compression, images optimisées, redirects.
+// NOTE : Next.js 14 ne supporte pas next.config.ts (ajouté dans Next.js 15+).
+//        Pour rester sur une source unique, on utilise .mjs qui est supporté
+//        nativement par Next.js 14, 15 et 16. Lors du passage à Next 15+,
+//        ce fichier peut être renommé en next.config.ts si souhaité.
+// NOTE CSP : Content-Security-Policy est gérée par src/middleware.ts (CSP par nonce),
+// on ne la définit PAS ici pour éviter tout conflit avec la CSP dynamique du middleware.
+
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ——— Headers de sécurité HTTP (COOP/COEP, X-Frame-Options, etc.) ———
-// NOTE : Content-Security-Policy est gérée par src/middleware.ts (CSP par nonce).
-// On ne la met PAS ici pour éviter un conflit avec la CSP dynamique du middleware.
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -15,9 +20,7 @@ const securityHeaders = [
   { key: 'X-DNS-Prefetch-Control', value: 'on' },
   { key: 'X-XSS-Protection', value: '1; mode=block' },
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-  // Permissions-Policy : neutralise les APIs non nécessaires
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
-  // Cross-Origin Isolation partiel (sans sacrifier les API tierces pour images/IA)
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
 ];
 
@@ -29,23 +32,13 @@ const redirects = () => [
   { source: '/dashboard/app', destination: '/dashboard', permanent: true },
 ];
 
-/** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Mode standalone : utilisé par Docker, ignoré par Vercel
+  // Mode standalone pour Docker (ignoré par Vercel)
   output: 'standalone',
 
   reactStrictMode: true,
   poweredByHeader: false,
-
-  // Compression HTTP gzip/brotli (actif sur le serveur Node standalone ; ignoré par Vercel qui gère lui-même)
   compress: true,
-
-  // SWC minification (plus rapide que Babel)
-  swcMinify: true,
-
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
-  },
 
   // ——— Optimisation des images ———
   images: {
@@ -63,20 +56,10 @@ const nextConfig = {
 
   async headers() {
     return [
-      // Applique les headers de sécurité à toutes les routes HTML
       { source: '/:path*', headers: securityHeaders },
-      // Cache long terme pour les assets versionnés (/_next/static)
       {
         source: '/_next/static/(.*)',
-        headers: [
-          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
-        ],
-      },
-      {
-        source: '/static/(.*)',
-        headers: [
-          { key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=86400' },
-        ],
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
       },
     ];
   },
@@ -87,18 +70,13 @@ const nextConfig = {
 
   webpack: (config) => {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
-    // Stub for z-ai-web-dev-sdk (not publicly available)
     config.resolve.alias['z-ai-web-dev-sdk'] = path.join(__dirname, 'src/lib/__stubs__/z-ai-web-dev-sdk.ts');
-    // Stub for native Rust binary (optional, falls back to JS impl at runtime)
     config.resolve.alias['./agent-safety.node'] = false;
     config.resolve.alias['agent-safety.node'] = false;
     return config;
   },
 
-  // Pour OpenTelemetry (si déjà configuré)
-  experimental: {
-    instrumentationHook: true,
-  },
+  productionBrowserSourceMaps: false,
 };
 
-module.exports = nextConfig;
+export default nextConfig;
