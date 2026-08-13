@@ -258,5 +258,27 @@ class Logger {
 export function createLogger(service: string): Logger {
   return new Logger(service);
 }
+import pino from 'pino';
 
-export const logger = new Logger();
+const level = process.env.LOG_LEVEL || 'info';
+
+export const logger = pino({
+  level,
+  formatters: {
+    level: (label) => ({ level: label }),
+  },
+  timestamp: pino.stdTimeFunctions.isoTime,
+  // En production, on peut ajouter un transport pour Loki
+  ...(process.env.NODE_ENV === 'production' && {
+    transport: {
+      target: 'pino-loki',
+      options: {
+        host: process.env.LOKI_HOST || 'http://loki:3100',
+        labels: { app: 'gen3ia' },
+        batching: true,
+      },
+    },
+  }),
+});
+
+export default logger;
