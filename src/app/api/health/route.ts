@@ -1,29 +1,48 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { Redis } from 'ioredis';
-import { getServerSession } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/firestore';
+import { redis } from '@/lib/redis-client';
+import { Queue } from 'bullmq';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
+export async function GET() {
+  const checks: Record<string, { status: 'ok' | 'error'; message?: string }> = {};
+  let overall = 'ok';
 
-// ============================================================
-// Phase 1.3 — Route de santé renforcée
-// Vérifie : DB (query), Redis (ping), Qdrant (si configuré), Sentry (statut env)
-// Répond 200 si tout OK → 503 si une dépendance critique échoue.
-// ============================================================
-
-
-
-export const dynamic = "force-dynamic";
-const REDIS_URL = process.env.REDIS_URL || '';
-const QDRANT_URL = process.env.QDRANT_URL || '';
-
-async function checkDatabase(): Promise<boolean> {
+  // 1. Vérification Firestore
   try {
-    // Firestore : on effectue un simple list collections pour vérifier la connexion
-    const { getAdminDb } = await import('@/lib/firebase/admin');
-    await getAdminDb().listCollections();
-    return true;
-  } catch { return false; }
+    await db.collection('_health').doc('ping').set({ timestamp: Date.now() }, { merge: true });
+    checks.firestore = { status: 'ok' };
+  } catch (err: any) {
+    checks.firestore = { status: 'error', message: err.message };
+    overall = 'error';
+  }
+
+  // 2. Vérification Redis
+  try {
+    await redis.ping();
+    checks.redis = { status: 'ok' };
+  } catch (err: any) {
+    checks.redis = { status: 'error', message: err.message };
+    overall = 'error';
+  }
+
+  // 3. Vérification BullMQ (connexion au queue)
+  try {
+    const queue = new Queue('default', { connection: redis });
+    await queue.getWorkers(); // test simple
+    checks.bullmq = { status: 'ok' };
+  } catch (err: any) {
+    checks.bullmq = { status: 'error', message: err.message };
+    overall = 'error';
+  }
+
+  const statusCode = overall === 'ok' ? 200 : 503;
+  return NextResponse.json(
+    { status: overall, timestamp: Date.now(), checks },
+    { status: statusCode }
+  );
 }
 
 /** Ping Redis avec un timeout court (ne bloque pas le healthcheck). */
