@@ -3,59 +3,50 @@
 # Build context: racine du monorepo
 # ============================================================
 
-FROM node:20-alpine AS deps
-LABEL stage=deps
+FROM node:20-alpine AS base
+
+# Installer les dépendances système nécessaires (si besoin)
+RUN apk add --no-cache libc6-compat
+
+# ===== STAGE DE BUILD =====
+FROM base AS builder
 WORKDIR /app
 
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+COPY package*.json ./
+COPY turbo.json ./
+COPY .npmrc ./
 
-COPY package.json package-lock.json ./
-COPY apps/web/package.json ./apps/web/
-COPY packages/ ./packages/
-
+# Installer toutes les dépendances (y compris dev)
 RUN npm ci
 
-FROM node:20-alpine AS builder
-LABEL stage=builder
-WORKDIR /app
+COPY . .
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/package.json ./package.json
-
-COPY src/ ./src/
-COPY public/ ./public/
-COPY apps/web/ ./apps/web/
-COPY packages/ ./packages/
-COPY next.config.js tsconfig.json tsconfig.worker.json ./
-
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-RUN npx prisma generate
+# Build avec Turborepo
 RUN npm run build
-RUN npm prune --omit=dev
 
-FROM node:20-alpine AS runner
-LABEL stage=runner
+# ===== STAGE DE PRODUCTION =====
+FROM base AS runner
 WORKDIR /app
 
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
-
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
 
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/next.config.js ./
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
+# Créer un utilisateur non-root
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copier les fichiers nécessaires depuis le build
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Copier les scripts de validation
+COPY --from=builder /app/instrumentation.ts ./instrumentation.ts
 
 USER nextjs
+
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
