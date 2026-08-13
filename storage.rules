@@ -1,70 +1,127 @@
 rules_version = '2';
 
-// ============================================================
-// Gen3ia — Cloud Storage Security Rules
-// ============================================================
-//  Stratégie :
-//   - Tout utilisateur authentifié peut lire les fichiers publics.
-//   - Les fichiers privés ne sont lisibles que par leur propriétaire
-//     (ownerUid custom metadata == request.auth.uid) ou un admin.
-//   - L'écriture (upload) est permise pour les utilisateurs authentifiés
-//     dans leur propre dossier (uploads/{uid}/...).
-//   - Les signed URLs générées côté serveur (Admin SDK) court-circuitent
-//     ces règles.
-// ============================================================
-
 service firebase.storage {
   match /b/{bucket}/o {
-
     function isSignedIn() {
       return request.auth != null;
     }
+
     function isAdmin() {
       return isSignedIn() && request.auth.token.role == 'admin';
     }
-    function isOwner() {
-      return isSignedIn() && request.resource.metadata.ownerUid == request.auth.uid;
-    }
 
-    // Fichiers publics (avatars, images de marketplace, etc.)
     match /public/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+
+      allow update: if isSignedIn()
+        && resource.metadata.ownerUid == request.auth.uid
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+
+      allow delete: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
     }
 
-    // Uploads privés par utilisateur : uploads/{subdir}/{ownerUid}/...
     match /uploads/{subdir}/{ownerUid}/{allPaths=**} {
-      allow read: if isSignedIn() && (request.auth.uid == ownerUid || isAdmin());
-      allow write: if isSignedIn() && request.auth.uid == ownerUid;
+      allow read: if isSignedIn()
+        && (request.auth.uid == ownerUid || isAdmin());
+
+      allow create: if isSignedIn()
+        && request.auth.uid == ownerUid
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 25 * 1024 * 1024;
+
+      allow update: if isSignedIn()
+        && request.auth.uid == ownerUid
+        && resource.metadata.ownerUid == request.auth.uid
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 25 * 1024 * 1024;
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == ownerUid
+        && resource.metadata.ownerUid == request.auth.uid;
     }
 
-    // Uploads génériques (legacy) : uploads/{subdir}/{filename}
-    // Lecture : propriétaire ou admin. Écriture : authentifié.
     match /uploads/{allPaths=**} {
-      allow read: if isSignedIn() && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn() && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+      allow read: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn()
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 25 * 1024 * 1024;
+
+      allow update: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin())
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 25 * 1024 * 1024;
+
+      allow delete: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
     }
 
-    // Avatars utilisateurs : avatars/{uid}.ext
     match /avatars/{uid}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn() && request.auth.uid == uid;
+
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow update: if isSignedIn()
+        && request.auth.uid == uid
+        && resource.metadata.ownerUid == request.auth.uid
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == uid
+        && resource.metadata.ownerUid == request.auth.uid;
     }
 
-    // Agents thumbnails : agent_thumbnails/{agentId}.ext
     match /agent_thumbnails/{agentId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow update: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin())
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow delete: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
     }
 
-    // Marketplace assets : marketplace/{listingId}/...
     match /marketplace/{listingId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow update: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin())
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow delete: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
     }
 
-    // Default deny
     match /{allPaths=**} {
       allow read, write: if false;
     }
