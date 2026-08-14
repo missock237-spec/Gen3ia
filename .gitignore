@@ -1,6 +1,101 @@
-.agents/.env
+# Dependencies
 node_modules/
-.npm/
-__pycache__/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# ============================================================
+# Env — SECURITE CRITIQUE : ne jamais versionner des secrets
+# ============================================================
+# Fichiers de travail locaux
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.staging
+.env.staging.local
+.env.*.local
+
+# Fichiers production avec secrets réels (toujours ignorer)
+.env.production.local
+.env.production.secret
+
+# Templates versionnés (contiennent uniquement des placeholders)
+# Si vous souhaitez aussi les ignorer, décommentez :
+# .env.production
+# .env.production.validated
+
+# Patterns génériques
+*.env
+!*.env.example
+!.env.example
+docker-compose.*.env
+docker-compose.*.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+dev.log
+server.log
+npm-debug.log*
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Cache
 .cache/
-blobs/
+.eslintcache
+.next/cache/
+
+# Tests
+coverage/
+.nyc_output/
+
+# Temp / fichiers de travail (ne pas versionner)
+tmp/
+temp/
+test-*
+generate_*
+keep-*
+start-*
+run-*
+worklog.*
+worklog.md
+schema_backup.*
+test-write.*
+test-api.*
+test-autonomous.*
+test-connectivity.*
+test-whatsapp.*
+fix_package.*
+CI_FIX.md
+FIX_REPORT.md
+WORKFLOWS_FIX.md
+SECURITY_FIXES.md
+
+# Prisma
+prisma/migrations/
+!prisma/migrations/migration_lock.toml
+
+# Rust
+target/
