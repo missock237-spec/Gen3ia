@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
         };
 
         // Sauvegarde principale dans les logs de conversation WhatsApp
-        await db.collection('whatsapp_incoming_messages').add(savedMessageRecord);
+        await (db as any).collection('whatsapp_incoming_messages').add(savedMessageRecord);
 
         // 2. Transmettre le message à l'Agent OS Gen3ia (orchestrateur multi-agents)
         // Permet à l'agent conversationnel de répondre aux requêtes clients (prix, Mobile Money, dispo produits)
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
           });
 
           // Stockage dans l'historique de conversation de l'agent
-          await db.collection('agent_conversations').add({
+          await (db as any).collection('agent_conversations').add({
             channel: 'whatsapp',
             senderPhone: msg.from,
             userMessage: msg.text.body,

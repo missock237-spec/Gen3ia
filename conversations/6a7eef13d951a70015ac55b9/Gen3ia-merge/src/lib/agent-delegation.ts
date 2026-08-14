@@ -180,7 +180,7 @@ export class AgentDelegationSystem {
   private async callAgentLLM(agent: any, prompt: string): Promise<{ content: string; cost: number; tokens: number }> {
     try {
       const { createAIRouter } = await import('./ai-router');
-      const aiRouter = createAIRouter();
+      const aiRouter = createAIRouter('system');
       const response = await aiRouter.chat([
         { role: 'system', content: agent.instructions || `Tu es ${agent.name}, un agent specialise en ${agent.role}.` },
         { role: 'user', content: prompt },
