@@ -167,8 +167,24 @@ export interface AdCampaign {
   frequencyCap?: number;
   /** ISO country codes for geolocation targeting (e.g. ['CM', 'NG', 'GH']). Empty/undefined = all countries. */
   targetCountries?: string[];
+  /** A/B test variants — if present, engine serves a random variant and tracks CTR per variant. */
+  variants?: AdVariant[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+// ------------------------------------------------------------
+// A/B testing — creative variants per campaign
+// ------------------------------------------------------------
+export interface AdVariant {
+  id: string;
+  textContent: string;
+  ctaText: string;
+  ctaUrl: string;
+  /** Impressions served for this variant (in-memory, resets on restart). */
+  impressions?: number;
+  /** Clicks recorded for this variant. */
+  clicks?: number;
 }
 
 export interface AdServingDecision {
@@ -184,6 +200,12 @@ export interface AdServingDecision {
   isFreePlan: boolean;
   /** Whether the user is allowed to disable ads (false on free). */
   canDisableAds: boolean;
+  /** A/B test variant ID served (if campaign has variants). */
+  variantId?: string;
+  /** A/B test variant text (overrides campaign.textContent). */
+  variantText?: string;
+  /** A/B test variant CTA (overrides campaign.ctaText). */
+  variantCta?: string;
 }
 
 export interface AdImpressionResult {
@@ -530,6 +552,9 @@ export class AdEngine {
     const rewardPerView = prefs.rewardedAdsEnabled ? selected.rewardPerView : 0;
     const rewardPerClick = prefs.rewardedAdsEnabled ? selected.rewardPerClick : 0;
 
+    // A/B test variant selection
+    const variant = selectVariant(selected);
+
     return {
       shouldShow: true,
       adType: prefs.adType,
@@ -540,6 +565,9 @@ export class AdEngine {
       pendingRewardPerClick: rewardPerClick,
       isFreePlan: prefs.isFreePlan,
       canDisableAds: prefs.canDisableAds,
+      variantId: variant.variantId,
+      variantText: variant.variantId ? variant.textContent : undefined,
+      variantCta: variant.variantId ? variant.ctaText : undefined,
     };
   }
 
@@ -768,6 +796,10 @@ export class AdEngine {
       throw new Error('CAMPAIGN_BUDGET_EXHAUSTED');
     }
 
+    // Track A/B variant click if applicable
+    // Variant ID would be stored on the impression — for now we track via campaign
+    // (full variant tracking requires adding variantId to AdImpression schema)
+
     await db.adImpression.update({
       where: { id: impressionId },
       data: {
@@ -897,6 +929,25 @@ export class AdEngine {
       budgetSpent: Number(campaign?.budgetSpent ?? 0),
       budgetTotal: Number(campaign?.budgetTotal ?? 0),
     };
+  }
+
+  /**
+   * Get A/B test variant stats for a campaign.
+   * Returns CTR per variant so advertisers can see which creative performs best.
+   */
+  getVariantStats(campaignId: string): Array<{ variantId: string; impressions: number; clicks: number; ctr: number }> {
+    const cmap = variantStats.get(campaignId);
+    if (!cmap) return [];
+    const results: Array<{ variantId: string; impressions: number; clicks: number; ctr: number }> = [];
+    for (const [variantId, stats] of cmap.entries()) {
+      results.push({
+        variantId,
+        impressions: stats.impressions,
+        clicks: stats.clicks,
+        ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
+      });
+    }
+    return results.sort((a, b) => b.ctr - a.ctr);
   }
 
   async getUserAdStats(userId: string): Promise<{
