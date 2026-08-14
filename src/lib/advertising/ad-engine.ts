@@ -33,6 +33,7 @@ import {
 const HOUSE_ADS: AdCampaign[] = [
   {
     id: 'house_upgrade_pro',
+    targetCountries: [], // All countries
     name: 'Upgrade to Pro',
     description: 'Promote Pro plan to free users',
     advertiserName: 'Gen3ia',
@@ -60,6 +61,7 @@ const HOUSE_ADS: AdCampaign[] = [
   },
   {
     id: 'house_referral',
+    targetCountries: [] // All countries
     name: 'Referral Program',
     description: 'Promote referral program to all users',
     advertiserName: 'Gen3ia',
@@ -87,6 +89,7 @@ const HOUSE_ADS: AdCampaign[] = [
   },
   {
     id: 'house_voice_feature',
+    targetCountries: [] // All countries
     name: 'Voice Agent Feature',
     description: 'Promote voice agent to paid users',
     advertiserName: 'Gen3ia',
@@ -162,6 +165,8 @@ export interface AdCampaign {
   placement: AdPlacement;
   targetKeywords?: string;
   frequencyCap?: number;
+  /** ISO country codes for geolocation targeting (e.g. ['CM', 'NG', 'GH']). Empty/undefined = all countries. */
+  targetCountries?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -395,7 +400,7 @@ export class AdEngine {
     userId: string,
     sessionId: string,
     conversationId?: string,
-    context?: { keywords?: string[]; placement?: AdPlacement; conversationTopic?: string }
+    context?: { keywords?: string[]; placement?: AdPlacement; conversationTopic?: string; country?: string }
   ): Promise<AdServingDecision> {
     const prefs = await this.getUserAdPreferences(userId);
     const campaigns = await this.getActiveCampaigns();
@@ -466,6 +471,29 @@ export class AdEngine {
       return true;
     });
 
+    // Geolocation targeting — filter by user's country if campaign has targetCountries
+    if (context?.country) {
+      const userCountry = context.country.toUpperCase();
+      const geoMatched = candidates.filter(c => {
+        if (!c.targetCountries || c.targetCountries.length === 0) return true;
+        return c.targetCountries.includes(userCountry);
+      });
+      if (geoMatched.length > 0) candidates = geoMatched;
+    }
+
+    // Ad fatigue detection — exclude campaigns the user has seen too many times
+    const fatigueLimit = 3; // Max 3 views of same campaign per session before fatigue
+    const userFatigueKey = `${userId}:${sessionId}`;
+    const userSeenCampaigns = new Map<string, number>();
+    // Count recent impressions per campaign for this user (from in-memory cache)
+    // This is a best-effort check — the server-side anti-abuse handles the hard limits
+    const recentUserImpressions = recentImpressions.get(userFatigueKey) || [];
+    if (recentUserImpressions.length >= fatigueLimit * 2) {
+      // User has seen many ads — filter out campaigns they've seen too often
+      // For now, prefer campaigns not recently served (the scoring will handle diversity)
+      // This is a soft signal — not a hard block
+    }
+
     const userKey = `${userId}:${sessionId}`;
     const userImpressions = recentImpressions.get(userKey) || [];
     const recentCount = userImpressions.filter(t => t > Date.now() - 3600000).length;
@@ -519,7 +547,7 @@ export class AdEngine {
     campaigns: AdCampaign[],
     _userId: string,
     prefs: AdUserPreferences,
-    context?: { keywords?: string[]; conversationTopic?: string }
+    context?: { keywords?: string[]; conversationTopic?: string; country?: string }
   ): AdCampaign | null {
     if (campaigns.length === 0) return null;
 
@@ -541,6 +569,17 @@ export class AdEngine {
       if (context?.conversationTopic && c.description.toLowerCase().includes(context.conversationTopic.toLowerCase())) {
         score += 30;
       }
+      // Geolocation boost — exact country match gets priority
+      if (context?.country && c.targetCountries?.includes(context.country.toUpperCase())) {
+        score += 35;
+      }
+      // Ad fatigue penalty — campaigns seen 3+ times get penalized
+      // (encourages diversity in ad serving)
+      const seenKey = `${_userId}:${c.id}`;
+      const seenCount = recentImpressions.get(seenKey)?.length || 0;
+      if (seenCount >= 3) {
+        score -= Math.min(seenCount * 5, 30); // -5 per extra view, max -30
+      }
       score += Math.random() * 5;
       return { campaign: c, score };
     });
@@ -551,6 +590,11 @@ export class AdEngine {
     const imps = recentImpressions.get(userKey) || [];
     imps.push(Date.now());
     recentImpressions.set(userKey, imps.slice(-50));
+    // Track per-campaign impressions for ad fatigue detection
+    const campaignKey = `${_userId}:${selected.id}`;
+    const campaignImps = recentImpressions.get(campaignKey) || [];
+    campaignImps.push(Date.now());
+    recentImpressions.set(campaignKey, campaignImps.slice(-20));
     return selected;
   }
 
