@@ -21,6 +21,13 @@
 import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
 import { generateCspNonce, buildCspHeader } from '@/lib/csp';
 import { getSecurityHeaders } from '@/lib/security-headers';
+import {
+  getApiVersion,
+  isVersionSupported,
+  getSunsetHeaderValue,
+  CURRENT_API_VERSION,
+  SUPPORTED_API_VERSIONS,
+} from '@/lib/api-version';
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
@@ -53,6 +60,7 @@ const PUBLIC_PATHS = [
   '/api/docs',
   '/api/docs/openapi.json',
   '/api/public/',
+  '/api/version',
 ];
 
 // Routes ADMIN : exigent TOUJOURS le rôle 'admin' (custom claim Firebase).
@@ -141,6 +149,32 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // 2.a — Versioning API
+  const apiVersion = getApiVersion(request);
+
+  if (!isVersionSupported(apiVersion)) {
+    const errorRes = NextResponse.json(
+      {
+        error: `Unsupported API version: ${apiVersion}`,
+        supportedVersions: SUPPORTED_API_VERSIONS,
+        currentVersion: CURRENT_API_VERSION,
+      },
+      { status: 400, headers: response.headers }
+    );
+    errorRes.headers.set('X-API-Version', CURRENT_API_VERSION);
+    return errorRes;
+  }
+
+  requestHeaders.set('x-api-version', apiVersion);
+  response.headers.set('X-API-Version', apiVersion);
+
+  const sunsetHeader = getSunsetHeaderValue(apiVersion);
+  if (sunsetHeader) {
+    response.headers.set('Sunset', sunsetHeader);
+  }
+
+  const normalizedPathname = pathname.replace(/^\/api\/v\d+(?:\.\d+)?/, '/api');
+
   // 2.bis — P1 Rate limiting : protège toutes les routes /api (y compris
   // publiques comme /api/auth/login) contre l'abus / le brute-force.
   // Les clés API (x-api-key) ont un quota supérieur. En production,
@@ -170,7 +204,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 3. Routes publiques (liste stricte)
-  if (PUBLIC_PATHS.some((p) => matchesRoute(pathname, p))) {
+  if (PUBLIC_PATHS.some((p) => matchesRoute(pathname, p) || matchesRoute(normalizedPathname, p))) {
     return response;
   }
 
@@ -183,13 +217,23 @@ export async function middleware(request: NextRequest) {
   const hasBearer = request.headers.get('authorization')?.startsWith('Bearer ');
 
   if (!session && !apiKey && !hasBearer) {
-    return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
+    const unauthRes = NextResponse.json(
+      { error: 'Authentification requise' },
+      { status: 401, headers: response.headers }
+    );
+    unauthRes.headers.set('X-API-Version', apiVersion);
+    return unauthRes;
   }
 
   // 5. Routes ADMIN : le rôle vient UNIQUEMENT du custom claim Firebase.
-  if (ADMIN_ROUTES.some((p) => pathname.startsWith(p))) {
+  if (ADMIN_ROUTES.some((p) => pathname.startsWith(p) || normalizedPathname.startsWith(p))) {
     if (!session || session.role !== 'admin') {
-      return NextResponse.json({ error: 'Accès réservé aux administrateurs' }, { status: 403 });
+      const forbiddenRes = NextResponse.json(
+        { error: 'Accès réservé aux administrateurs' },
+        { status: 403, headers: response.headers }
+      );
+      forbiddenRes.headers.set('X-API-Version', apiVersion);
+      return forbiddenRes;
     }
   }
 
