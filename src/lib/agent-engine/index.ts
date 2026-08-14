@@ -241,8 +241,8 @@ export type { CircuitState, CircuitBreakerConfig } from '@/lib/agent-engine/circ
 export { RetryStrategy, networkRetry, apiRetry, llmRetry } from '@/lib/agent-engine/retry-strategy';
 export type { RetryConfig, RetryResult } from '@/lib/agent-engine/retry-strategy';
 
-export { ParallelCoordinator } from '@/lib/agent-engine/parallel-coordinator';
-export type { CoordinationResult } from '@/lib/agent-engine/parallel-coordinator';
+export { ParallelCoordinator, CoordinatorError, PlanValidationError, TaskTimeoutError } from '@/lib/agent-engine/parallel-coordinator';
+export type { CoordinationResult, CoordinatorOptions, TaskNode, TaskErrorType } from '@/lib/agent-engine/parallel-coordinator';
 
 export { AgentEventBus, agentEventBus, createStepCallback } from '@/lib/agent-engine/streaming-callbacks';
 export type { AgentEvent, AgentEventType, CostTracker } from '@/lib/agent-engine/streaming-callbacks';
