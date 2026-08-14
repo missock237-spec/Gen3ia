@@ -30,3 +30,9 @@ export const WORKSPACE_TOOLS = [
 ];
 
 export { africanTranslator, AfricanTranslator, type SupportedLanguage } from './translator';
+
+export { expenseTracker, ExpenseTracker, type Expense, type ExpenseSummary } from './expense-tracker';
+export { pomodoroTimer, PomodoroTimer, type FocusSession, type PomodoroStats } from './pomodoro';
+export { quickNotes, QuickNotes, type QuickNote } from './quick-notes';
+export { emailTemplateEngine, EmailTemplateEngine, type EmailTemplate } from './email-templates';
+export { dailyPlanner, DailyPlanner, type PlannerTask, type DailyPlan } from './daily-planner';

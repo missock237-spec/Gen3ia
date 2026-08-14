@@ -76,6 +76,11 @@ export const FEATURES: Feature[] = [
   { id: 'meeting-notes', name: 'Notes de Réunion', description: 'Décisions, actions, participants, risques, prochaines étapes', status: 'active' },
   { id: 'advertiser-dashboard', name: 'Dashboard Annonceurs', description: 'Vue d'ensemble campagnes, performance, budget, A/B tests', status: 'active' },
   { id: 'translator', name: 'Traducteur Africain', description: 'Traduction 10 langues: FR, EN, Hausa, Yoruba, Igbo, Swahili, Wolof, Bambara, Lingala, Arabe', status: 'active' },
+  { id: 'expense-tracker', name: 'Suivi Dépenses', description: 'Catégorisation, budgets, résumés mensuels en FCFA', status: 'active' },
+  { id: 'pomodoro', name: 'Pomodoro Focus', description: 'Cycles 25min, pauses, statistiques de productivité', status: 'active' },
+  { id: 'quick-notes', name: 'Notes Rapides', description: 'Notes taggées, recherche, épinglage, export/import', status: 'active' },
+  { id: 'email-templates', name: 'Modèles Emails', description: '10 templates business FR/EN (devis, facture, réunion, proposition)', status: 'active' },
+  { id: 'daily-planner', name: 'Planificateur Journée', description: 'Matrice Eisenhower, créneaux, score productivité', status: 'active' },
 ];
 
 /**
