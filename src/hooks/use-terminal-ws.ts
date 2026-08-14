@@ -37,7 +37,7 @@ export function useTerminalWS(options: UseWSOptions) {
 
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [status, setStatus] = useState<WSStatus>("disconnected");
   const [lastMessage, setLastMessage] = useState<any>(null);
   const mountedRef = useRef(true);

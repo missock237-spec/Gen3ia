@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings, User, Shield, Bell, CreditCard, Key, Check, Moon, Sun, Monitor, Save, Eye, EyeOff, LogOut, Trash2, RefreshCw, Megaphone } from 'lucide-react';
 import { AdPreferencesPanel } from '@/components/advertising/ad-preferences-panel';
 
@@ -435,7 +435,7 @@ export function SettingsView({ initialTab = 'profile' }: SettingsViewProps) {
     </div>
   );
 
-  const tabRenderers: Record<TabId, () => JSX.Element> = {
+  const tabRenderers: Record<TabId, () => React.JSX.Element> = {
     profile: renderProfileTab,
     security: renderSecurityTab,
     notifications: renderNotificationsTab,
