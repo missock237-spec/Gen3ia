@@ -32,6 +32,7 @@ export interface ConversationAdDecision {
   campaign: ConversationAdCampaign | null;
   reason: string;
   placement?: string;
+  variantText?: string;
   pendingRewardPerView: number;
   pendingRewardPerClick: number;
   isFreePlan: boolean;
