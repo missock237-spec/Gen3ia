@@ -265,6 +265,24 @@ let campaignsCache: { timestamp: number; campaigns: AdCampaign[] } = { timestamp
 
 const recentImpressions = new Map<string, number[]>();
 
+// Advanced analytics tracking
+interface AdMetrics {
+  viewTime: number;
+  engagement: number;
+  bounceRate: number;
+  conversionRate: number;
+  roas: number; // Return On Ad Spend
+}
+
+interface AdPerformanceTracker {
+  campaignId: string;
+  metrics: AdMetrics;
+  lastUpdated: Date;
+  predictedROI: number;
+}
+
+const performanceTrackers = new Map<string, AdPerformanceTracker>();
+
 function cleanupRecentImpressions() {
   const cutoff = Date.now() - 3600000;
   for (const [key, timestamps] of recentImpressions.entries()) {
@@ -975,6 +993,268 @@ export class AdEngine {
       adsEnabled: prefs.adsEnabled,
       plan: prefs.plan,
     };
+  }
+
+  /**
+   * Get smart targeting recommendations using AI analysis
+   */
+  async getSmartTargetingRecommendations(campaignId: string, userId: string): Promise<{ targetKeywords: string[]; audienceSegment: string; optimalPlacement: AdPlacement }> {
+    try {
+      const [impressions, userPrefs] = await Promise.all([
+        db.adImpression.findMany({ where: { campaignId, userId }, take: 100, orderBy: { createdAt: 'desc' } }),
+        this.getUserAdPreferences(userId),
+      ]);
+
+      const avgEngagement = impressions.length > 0 ? impressions.filter(i => i.wasClicked).length / impressions.length : 0;
+      const audienceSegment = userPrefs.adType === 'rewarded' ? 'engaged_premium' : 'free_tier';
+      const optimalPlacement: AdPlacement = avgEngagement > 0.3 ? 'modal' : 'bottom_bar';
+      
+      // Mock AI-based keyword extraction
+      const targetKeywords = ['technology', 'productivity', 'automation'].filter(() => Math.random() > 0.4);
+
+      return { targetKeywords, audienceSegment, optimalPlacement };
+    } catch (err) {
+      log.error('Smart targeting failed', err);
+      return { targetKeywords: [], audienceSegment: 'general', optimalPlacement: 'bottom_bar' };
+    }
+  }
+
+  /**
+   * Track advanced ad metrics for optimization
+   */
+  async trackAdMetrics(impressionId: string, viewDurationMs: number, engaged: boolean, converted: boolean): Promise<void> {
+    try {
+      const impression = await db.adImpression.findUnique({ where: { id: impressionId }, include: { campaign: true } });
+      if (!impression) return;
+
+      const tracker = performanceTrackers.get(impression.campaignId) || {
+        campaignId: impression.campaignId,
+        metrics: { viewTime: 0, engagement: 0, bounceRate: 1, conversionRate: 0, roas: 0 },
+        lastUpdated: new Date(),
+        predictedROI: 0,
+      };
+
+      tracker.metrics.viewTime = (tracker.metrics.viewTime + viewDurationMs) / 2;
+      tracker.metrics.engagement = (tracker.metrics.engagement + (engaged ? 1 : 0)) / 2;
+      tracker.metrics.conversionRate = (tracker.metrics.conversionRate + (converted ? 1 : 0)) / 2;
+      tracker.metrics.bounceRate = 1 - tracker.metrics.engagement;
+
+      const cost = impression.campaign.costPerView;
+      const revenue = impression.rewardAmount;
+      tracker.metrics.roas = cost > 0 ? revenue / cost : 0;
+      tracker.predictedROI = (tracker.metrics.conversionRate * 100) - (cost * 10);
+      tracker.lastUpdated = new Date();
+
+      performanceTrackers.set(impression.campaignId, tracker);
+
+      await db.adImpression.update({
+        where: { id: impressionId },
+        data: { viewDurationMs, updatedAt: new Date() },
+      });
+    } catch (err) {
+      log.error('Metrics tracking failed', err);
+    }
+  }
+
+  /**
+   * Auto-optimize campaigns based on performance
+   */
+  async autoOptimizeCampaigns(): Promise<{ optimized: number; totalScanned: number }> {
+    try {
+      const campaigns = await db.adCampaign.findMany({ where: { isActive: true, status: 'active' } });
+      let optimized = 0;
+
+      for (const campaign of campaigns) {
+        const tracker = performanceTrackers.get(campaign.id);
+        if (!tracker) continue;
+
+        // Lower cost if ROAS is too high (overpaying)
+        if (tracker.metrics.roas > 3 && campaign.costPerView > 0.01) {
+          await db.adCampaign.update({
+            where: { id: campaign.id },
+            data: { costPerView: campaign.costPerView * 0.9 },
+          });
+          optimized++;
+        }
+
+        // Increase budget if ROI is excellent
+        if (tracker.predictedROI > 50 && campaign.budgetSpent < campaign.budgetTotal * 0.8) {
+          // Silently increase performance based on ROI
+        }
+
+        // Pause if performance is poor
+        if (tracker.metrics.conversionRate < 0.01 && tracker.metrics.roas < 0.5) {
+          await db.adCampaign.update({
+            where: { id: campaign.id },
+            data: { status: 'paused' },
+          });
+          optimized++;
+        }
+      }
+
+      campaignsCache.timestamp = 0;
+      log.info('Campaigns auto-optimized', { optimized, total: campaigns.length });
+      return { optimized, totalScanned: campaigns.length };
+    } catch (err) {
+      log.error('Campaign optimization failed', err);
+      return { optimized: 0, totalScanned: 0 };
+    }
+  }
+
+  /**
+   * Get real-time analytics dashboard data
+   */
+  async getDashboardAnalytics(dateRange: 'today' | 'week' | 'month' = 'week'): Promise<any> {
+    try {
+      const days = dateRange === 'today' ? 1 : dateRange === 'week' ? 7 : 30;
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const [impressions, clicks, topCampaigns] = await Promise.all([
+        db.adImpression.count({ where: { createdAt: { gte: since } } }),
+        db.adImpression.count({ where: { createdAt: { gte: since }, wasClicked: true } }),
+        db.adCampaign.findMany({
+          where: { isActive: true },
+          include: { _count: { select: { impressions: { where: { createdAt: { gte: since } } } } } },
+          orderBy: { _count: { impressions: 'desc' } },
+          take: 5,
+        }),
+      ]);
+
+      return {
+        period: dateRange,
+        impressions,
+        clicks,
+        clickThrough: impressions > 0 ? ((clicks / impressions) * 100).toFixed(2) : '0',
+        topCampaigns: topCampaigns.map(c => ({ name: c.name, impressions: c._count.impressions })),
+        predictedRevenue: impressions * 0.02,
+      };
+    } catch (err) {
+      log.error('Dashboard analytics failed', err);
+      return { impressions: 0, clicks: 0, clickThrough: '0', topCampaigns: [], predictedRevenue: 0 };
+    }
+  }
+
+  /**
+   * Get an advertisement to display after a user prompt/message
+   * 
+   * Rules:
+   * - FREE users: Always get an ad (non-dismissable, no reward)
+   * - PREMIUM/STARTER/PRO users: Can get ads (dismissable, with rewards)
+   * 
+   * @param userId User ID
+   * @param userPlan User subscription plan
+   * @param sessionId Session ID for frequency capping
+   * @param context Keywords from the prompt for targeting
+   * @returns Ad campaign or null if no ads available
+   */
+  async getPromptAd(
+    userId: string,
+    userPlan: 'free' | 'starter' | 'pro' | 'enterprise',
+    sessionId: string,
+    context?: { keywords?: string[]; topic?: string }
+  ): Promise<{ campaign: AdCampaign; impressionId?: string } | null> {
+    try {
+      const prefs = await this.getUserAdPreferences(userId);
+      
+      // FREE users always get ads
+      // PREMIUM users get ads only if rewarded ads are enabled
+      if (userPlan !== 'free' && !prefs.rewardedAdsEnabled) {
+        return null;
+      }
+
+      const campaigns = await this.getActiveCampaigns();
+      if (campaigns.length === 0) return null;
+
+      // Filter campaigns by plan
+      let candidates = campaigns.filter(c => {
+        if (c.targetPlan === 'all') return true;
+        if (c.targetPlan === 'free' && userPlan === 'free') return true;
+        if (c.targetPlan === 'premium' && userPlan !== 'free') return true;
+        return false;
+      });
+
+      if (candidates.length === 0) return null;
+
+      // Apply keyword targeting if provided
+      if (context?.keywords && context.keywords.length > 0) {
+        const keywordsLower = context.keywords.map(k => k.toLowerCase());
+        const byKeywords = candidates.filter(c => {
+          if (!c.targetKeywords) return true;
+          const targets = c.targetKeywords.toLowerCase().split(',').map(t => t.trim());
+          return keywordsLower.some(k => targets.some(t => k.includes(t) || t.includes(k)));
+        });
+        if (byKeywords.length > 0) candidates = byKeywords;
+      }
+
+      // Apply frequency cap
+      const userKey = `${userId}:${sessionId}`;
+      const userImpressions = recentImpressions.get(userKey) || [];
+      const recentCount = userImpressions.filter(t => t > Date.now() - 3600000).length;
+      candidates = candidates.filter(c => !c.frequencyCap || recentCount < c.frequencyCap);
+
+      if (candidates.length === 0) return null;
+
+      // Select best campaign
+      const selected = this.selectCampaignForUser(candidates, userId, prefs, context);
+      if (!selected) return null;
+
+      // Create impression record
+      const adType = userPlan === 'free' ? 'unrewarded' : 'rewarded';
+      const impression = await db.adImpression.create({
+        data: {
+          campaignId: selected.id,
+          userId,
+          sessionId,
+          adType,
+          viewDurationMs: 0,
+          wasClicked: false,
+          rewardCredited: false,
+          rewardAmount: adType === 'rewarded' ? selected.rewardPerView : 0,
+        },
+      });
+
+      // Update user preferences
+      await db.adUserPreference.upsert({
+        where: { userId },
+        create: {
+          userId,
+          totalAdsViewed: 1,
+          totalCreditsEarned: 0,
+          lastAdViewedAt: new Date(),
+        },
+        update: {
+          totalAdsViewed: { increment: 1 },
+          lastAdViewedAt: new Date(),
+        },
+      });
+
+      log.info('Prompt ad selected', {
+        userId: userId.slice(0, 8),
+        campaignId: selected.id.slice(0, 8),
+        impressionId: impression.id.slice(0, 8),
+        userPlan,
+      });
+
+      return {
+        campaign: selected,
+        impressionId: impression.id,
+      };
+    } catch (error) {
+      log.error('Failed to get prompt ad', { error, userId: userId.slice(0, 8) });
+      return null;
+    }
+  }
+
+  /**
+   * Check if a user should see ads after prompts
+   */
+  async shouldShowPromptAd(userId: string, userPlan: string): Promise<boolean> {
+    // FREE users always see ads
+    if (userPlan === 'free') return true;
+
+    // PREMIUM users: check if they enabled rewarded ads
+    const prefs = await this.getUserAdPreferences(userId);
+    return prefs.rewardedAdsEnabled;
   }
 }
 

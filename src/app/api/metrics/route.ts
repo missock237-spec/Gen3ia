@@ -1,14 +1,55 @@
-// ============================================================
-// GET /api/metrics — Métriques Prometheus enrichies
-// ============================================================
-// Expose les métriques pour Prometheus + Grafana
-// Couvre : agents, API, BullMQ, crédits, webhooks, terminal, DB
-// ============================================================
+/**
+ * GET /api/metrics — Prometheus Metrics Endpoint
+ * 
+ * Exposes application metrics for Prometheus/Grafana scraping
+ * 
+ * Security:
+ * - Protected by API key (METRICS_API_KEY env var)
+ * - Or admin authentication
+ * - Or localhost in development
+ * 
+ * Covers: agents, executions, credits, webhooks, errors, performance
+ */
 
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Verify access to metrics endpoint
+ */
+async function verifyMetricsAccess(request: NextRequest): Promise<boolean> {
+  // Check API key
+  const apiKey = request.headers.get("x-api-key");
+  const expectedKey = process.env.METRICS_API_KEY;
+  
+  if (apiKey && expectedKey && apiKey === expectedKey) {
+    return true;
+  }
+
+  // Check admin auth
+  try {
+    const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+    if (token && token.role === "admin") {
+      return true;
+    }
+  } catch (e) {
+    // Token verification failed
+  }
+
+  // Allow localhost in development
+  if (process.env.NODE_ENV === "development") {
+    const host = request.headers.get("host") || "";
+    if (host.startsWith("127.0.0.1") || host.startsWith("localhost")) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 interface MetricsData {
   users: number;
@@ -141,8 +182,18 @@ async function collectMetrics(): Promise<MetricsData> {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Verify access
+    const hasAccess = await verifyMetricsAccess(request);
+    if (!hasAccess) {
+      logger.warn("Unauthorized metrics access attempt", {
+        ip: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip"),
+        userAgent: request.headers.get("user-agent"),
+      });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const m = await collectMetrics();
 
     const lines: string[] = [];
@@ -188,14 +239,30 @@ export async function GET() {
     // === Timestamp de démarrage ===
     add("Timestamp de démarrage", 'gauge', 'gen3ia_start_time', Date.now() - m.uptime * 1000);
 
+    logger.info("Metrics exported", {
+      lines: lines.length,
+      metrics: Object.keys(m).length,
+    });
+
     return new NextResponse(lines.join('\n'), {
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      },
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error("Metrics collection failed", { error, msg });
+    
     return new NextResponse(
       '# ERROR Failed to collect metrics\n' + `# ${msg}`,
-      { status: 500, headers: { 'Content-Type': 'text/plain' } },
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'text/plain',
+          'Cache-Control': 'no-store',
+        },
+      },
     );
   }
 }
