@@ -99,3 +99,4 @@ prisma/migrations/
 
 # Rust
 target/
+conversations/

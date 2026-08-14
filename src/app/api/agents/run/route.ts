@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     // ============================================================
     // SECURITE: Detection d'injections et jailbreak
     // ============================================================
-    const injectionCheck = checkPromptInjection(input);
+    const injectionCheck = await checkPromptInjection(input);
     if (!injectionCheck.safe) {
       log.warn('prompt_injection_detected', { agentId, score: injectionCheck.score, reason: injectionCheck.reason });
       await db.agentActionLog.create({
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Entree bloque par le securite", reason: injectionCheck.reason }, { status: 400 });
     }
 
-    const jailbreakCheck = checkJailbreak(input);
+    const jailbreakCheck = await checkJailbreak(input);
     if (!jailbreakCheck.safe) {
       log.warn('jailbreak_attempt_detected', { agentId, score: jailbreakCheck.score });
       return NextResponse.json({ error: "Tentative de jailback detectee" }, { status: 400 });
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       totalTokens += llmResponse.tokens;
 
       // Securite: verifier la reponse du LLM aussi
-      const llmInjectionCheck = checkPromptInjection(llmResponse.content);
+      const llmInjectionCheck = await checkPromptInjection(llmResponse.content);
       if (!llmInjectionCheck.safe) {
         log.warn('llm_output_injection', { agentId, score: llmInjectionCheck.score });
         break;
