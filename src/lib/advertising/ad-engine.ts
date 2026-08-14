@@ -26,6 +26,94 @@ import {
   ABUSE_LIMITS,
 } from '@/lib/advertising/anti-abuse';
 
+// ------------------------------------------------------------
+// House ads — fallback when no active campaign is available.
+// Promotes Gen3ia itself (upgrade, referral, features).
+// ------------------------------------------------------------
+const HOUSE_ADS: AdCampaign[] = [
+  {
+    id: 'house_upgrade_pro',
+    name: 'Upgrade to Pro',
+    description: 'Promote Pro plan to free users',
+    advertiserName: 'Gen3ia',
+    advertiserUrl: 'https://gen3ia.com/dashboard/billing',
+    textContent: 'Débloquez les agents illimités, le voice mode et 10x plus de crédits avec le plan Pro',
+    ctaText: 'Passer au Pro',
+    ctaUrl: 'https://gen3ia.com/dashboard/billing',
+    targetPlan: 'free',
+    maxImpressions: 0,
+    maxClicks: 0,
+    rewardPerView: 0,
+    rewardPerClick: 0,
+    costPerView: 0,
+    costPerClick: 0,
+    budgetTotal: 0,
+    budgetSpent: 0,
+    status: 'active',
+    startAt: null,
+    endAt: null,
+    isActive: true,
+    placement: 'conversation_inline',
+    frequencyCap: 3,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: 'house_referral',
+    name: 'Referral Program',
+    description: 'Promote referral program to all users',
+    advertiserName: 'Gen3ia',
+    advertiserUrl: 'https://gen3ia.com/dashboard/settings?tab=referral',
+    textContent: 'Invitez un ami et gagnez 50 crédits bonus quand il souscrit à un plan payant',
+    ctaText: 'Inviter un ami',
+    ctaUrl: 'https://gen3ia.com/dashboard/settings?tab=referral',
+    targetPlan: 'all',
+    maxImpressions: 0,
+    maxClicks: 0,
+    rewardPerView: 0,
+    rewardPerClick: 0,
+    costPerView: 0,
+    costPerClick: 0,
+    budgetTotal: 0,
+    budgetSpent: 0,
+    status: 'active',
+    startAt: null,
+    endAt: null,
+    isActive: true,
+    placement: 'conversation_inline',
+    frequencyCap: 5,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: 'house_voice_feature',
+    name: 'Voice Agent Feature',
+    description: 'Promote voice agent to paid users',
+    advertiserName: 'Gen3ia',
+    advertiserUrl: 'https://gen3ia.com/dashboard/voice',
+    textContent: 'Parlez à vos agents IA par téléphone — disponible maintenant en français, anglais et hausa',
+    ctaText: 'Essayer le Voice',
+    ctaUrl: 'https://gen3ia.com/dashboard/voice',
+    targetPlan: 'paid',
+    maxImpressions: 0,
+    maxClicks: 0,
+    rewardPerView: 0,
+    rewardPerClick: 0,
+    costPerView: 0,
+    costPerClick: 0,
+    budgetTotal: 0,
+    budgetSpent: 0,
+    status: 'active',
+    startAt: null,
+    endAt: null,
+    isActive: true,
+    placement: 'conversation_inline',
+    frequencyCap: 2,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+];
+
 const log = createLogger('ad-engine');
 const creditEngine = getCreditEngine();
 
@@ -326,7 +414,17 @@ export class AdEngine {
       };
     }
 
+    // Fallback: house ads when no active campaigns
+    let activeCampaigns = campaigns;
     if (campaigns.length === 0) {
+      activeCampaigns = HOUSE_ADS.filter(ad => {
+        if (ad.targetPlan === 'free') return prefs.isFreePlan;
+        if (ad.targetPlan === 'paid') return !prefs.isFreePlan;
+        return true;
+      });
+    }
+
+    if (activeCampaigns.length === 0) {
       return {
         shouldShow: false,
         adType: prefs.adType,
@@ -341,18 +439,23 @@ export class AdEngine {
     }
 
     const placement = context?.placement ?? 'conversation_inline';
-    let candidates = campaigns;
-    const byPlacement = campaigns.filter(c => c.placement === placement);
+    let candidates = activeCampaigns;
+    const byPlacement = activeCampaigns.filter(c => c.placement === placement);
     if (byPlacement.length > 0) candidates = byPlacement;
 
+    // Contextual keyword targeting — filter + boost
     if (context?.keywords && context.keywords.length > 0) {
       const keywordsLower = context.keywords.map(k => k.toLowerCase());
-      const byKeywords = candidates.filter(c => {
-        if (!c.targetKeywords) return true;
+      // First: filter campaigns that explicitly target these keywords
+      const withKeywords = candidates.filter(c => {
+        if (!c.targetKeywords) return false;
         const targets = c.targetKeywords.toLowerCase().split(',').map(t => t.trim());
         return keywordsLower.some(k => targets.some(t => k.includes(t) || t.includes(k)));
       });
-      if (byKeywords.length > 0) candidates = byKeywords;
+      // If keyword-matched campaigns exist, prefer them but keep others as fallback
+      if (withKeywords.length > 0) {
+        candidates = withKeywords;
+      }
     }
 
     // Plan-targeted filtering: 'free' = free users only, 'paid' = paid users only, 'all' = everyone
@@ -368,7 +471,20 @@ export class AdEngine {
     const recentCount = userImpressions.filter(t => t > Date.now() - 3600000).length;
     candidates = candidates.filter(c => !c.frequencyCap || recentCount < c.frequencyCap);
 
-    const selected = this.selectCampaignForUser(candidates, userId, prefs, context);
+    let selected = this.selectCampaignForUser(candidates, userId, prefs, context);
+    
+    // Fallback to house ads if no matching campaign
+    if (!selected && campaigns.length > 0) {
+      const houseFallback = HOUSE_ADS.filter(ad => {
+        if (ad.targetPlan === 'free') return prefs.isFreePlan;
+        if (ad.targetPlan === 'paid') return !prefs.isFreePlan;
+        return true;
+      });
+      if (houseFallback.length > 0) {
+        selected = this.selectCampaignForUser(houseFallback, userId, prefs, context);
+      }
+    }
+
     if (!selected) {
       return {
         shouldShow: false,
