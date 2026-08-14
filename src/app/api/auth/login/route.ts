@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       // On décode l'uid du token via le session cookie fraîchement créé
 // @ts-ignore
       (await import('@/lib/firebase/admin')).getAdminAuth().verifySessionCookie(
-        (await import('next/headers')).cookies().get('gen3ia_session')?.value || '',
+        ((await (await import('next/headers')).cookies()).get('gen3ia_session'))?.value || '',
         true,
       ).then((d) => d.uid),
     );
