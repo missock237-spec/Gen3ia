@@ -1,0 +1,31 @@
+{
+  "name": "gen3ia",
+  "version": 2,
+  "framework": "nextjs",
+  "buildCommand": "bun run build",
+  "installCommand": "bun install --frozen-lockfile",
+  "outputDirectory": ".next",
+  "regions": [
+    "fra1"
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "github": {
+    "silent": false,
+    "autoJobCancelation": true,
+    "autoAlias": true,
+    "deployComments": true
+  },
+  "crons": [
+    {
+      "path": "/api/cron/refresh-tokens",
+      "schedule": "0 */4 * * *"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "develop": true
+    }
+  }
+}

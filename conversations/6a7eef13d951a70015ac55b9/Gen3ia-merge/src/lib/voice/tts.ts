@@ -1,6 +1,5 @@
 import { createLogger } from '@/lib/logger';
 import { createHuggingFaceClient } from '@/lib/generation/huggingface-client';
-import { validateUrl } from '@/lib/ssrf-protect';
 
 const log = createLogger('tts');
 
@@ -32,17 +31,11 @@ async function callOpenAITTS(text: string, voice: string, speed: number): Promis
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY not set for TTS');
 
-  const url = 'https://api.openai.com/v1/audio/speech';
-  const ssrfCheck = validateUrl(url, { requireHttps: true });
-  if (!ssrfCheck.safe) {
-    throw new Error(`SSRF bloqué: ${ssrfCheck.error}`);
-  }
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -75,26 +68,19 @@ async function callOpenAITTS(text: string, voice: string, speed: number): Promis
   }
 }
 
+import { validatePathSegment } from '@/lib/security/validate-url';
+
 async function callElevenLabsTTS(text: string, voice: string): Promise<TTSResult> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY not set');
 
-  const voiceId = voice || '21m00Tcm4TlvDq8ikWAM'; // Rachel (voix par défaut)
-  if (!/^[a-zA-Z0-9_\-]+$/.test(voiceId)) {
-    throw new Error('Identifiant de voix invalide');
-  }
-
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`;
-  const ssrfCheck = validateUrl(url, { requireHttps: true });
-  if (!ssrfCheck.safe) {
-    throw new Error(`SSRF bloqué: ${ssrfCheck.error}`);
-  }
-
+  const voiceId = voice || '21m00Tcm4TlvDq8ikWAM';
+  if (!validatePathSegment(voiceId)) throw new Error('Invalid voice ID'); // Rachel (voix par défaut)
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: {
         'xi-api-key': apiKey,

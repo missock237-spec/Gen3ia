@@ -4,7 +4,7 @@
 // ============================================================
 import { prisma } from './prisma';
 import { createLogger } from './logger';
-import { validateUrl } from './ssrf-protect';
+import { validateUrl } from '@/lib/security/validate-url';
 
 const log = createLogger('webhook-engine');
 
@@ -50,19 +50,6 @@ export class WebhookEngine {
     let lastError: string | undefined;
     let attempts = 0;
 
-    // Validation SSRF de l'URL cible
-    const ssrfCheck = validateUrl(payload.url, { requireHttps: true });
-    if (!ssrfCheck.safe) {
-      log.warn('webhook_ssrf_blocked', { url: payload.url, error: ssrfCheck.error });
-      return {
-        success: false,
-        statusCode: 0,
-        durationMs: Date.now() - startTime,
-        attempts: 0,
-        error: `SSRF bloqué: ${ssrfCheck.error}`,
-      };
-    }
-
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       attempts++;
       try {
@@ -86,6 +73,7 @@ export class WebhookEngine {
         // Timestamp pour anti-replay
         headers['X-Gen3ia-Timestamp'] = Math.floor(Date.now() / 1000).toString();
 
+        if (!validateUrl(payload.url)) throw new Error('Invalid webhook URL (SSRF blocked)');
         const response = await fetch(payload.url, {
           method: payload.method || 'POST',
           headers,

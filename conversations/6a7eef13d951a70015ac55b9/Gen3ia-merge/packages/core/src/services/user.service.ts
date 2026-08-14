@@ -53,7 +53,7 @@ class UserService {
   }
 
   private isValidEmail(email: string): boolean {
-    if (!email || typeof email !== 'string' || email.length > 254) return false;
+    if (email.length > 254) return false;
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
 }

@@ -1,5 +1,5 @@
 import { createLogger } from '@/lib/logger';
-import { validateUrl, validateModelPath } from '@/lib/ssrf-protect';
+import { validatePathSegment } from '@/lib/security/validate-url';
 const log = createLogger('huggingface-client');
 const HF_API_BASE = 'https://api-inference.huggingface.co/models';
 
@@ -21,16 +21,11 @@ export class HuggingFaceClient {
 
   private async requestJson<T>(options: HfGenerationOptions): Promise<T> {
     if (!this.isConfigured()) throw new Error('HUGGINGFACE_TOKEN non configuré');
-    const modelValidation = validateModelPath(options.model);
-    if (!modelValidation.safe) throw new Error(`Model invalide: ${modelValidation.error}`);
-    const url = `${HF_API_BASE}/${options.model}`;
-    const ssrfCheck = validateUrl(url, { allowedCategory: 'huggingface', requireHttps: true });
-    if (!ssrfCheck.safe) throw new Error(`SSRF validation failed: ${ssrfCheck.error}`);
-
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs || 120000);
     try {
-      const res = await fetch(url, {
+      if (!/^[a-zA-Z0-9_\/-]+$/.test(options.model)) throw new Error('Invalid model name');
+      const res = await fetch(`${HF_API_BASE}/${options.model}`, {
         method: 'POST', headers: this.getHeaders(),
         body: JSON.stringify({ inputs: options.inputs, parameters: { ...options.parameters, ...(options.waitForModel ? { wait_for_model: true } : {}), ...(options.useCache !== undefined ? { use_cache: options.useCache } : {}) } }),
         signal: controller.signal,
@@ -47,16 +42,11 @@ export class HuggingFaceClient {
   /** BUGFIX: Les modèles d'image et audio retournent du binaire (ArrayBuffer), pas du JSON */
   private async requestBinary(options: HfGenerationOptions): Promise<ArrayBuffer> {
     if (!this.isConfigured()) throw new Error('HUGGINGFACE_TOKEN non configuré');
-    const modelValidation = validateModelPath(options.model);
-    if (!modelValidation.safe) throw new Error(`Model invalide: ${modelValidation.error}`);
-    const url = `${HF_API_BASE}/${options.model}`;
-    const ssrfCheck = validateUrl(url, { allowedCategory: 'huggingface', requireHttps: true });
-    if (!ssrfCheck.safe) throw new Error(`SSRF validation failed: ${ssrfCheck.error}`);
-
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs || 180000);
     try {
-      const res = await fetch(url, {
+      if (!/^[a-zA-Z0-9_\/-]+$/.test(options.model)) throw new Error('Invalid model name');
+      const res = await fetch(`${HF_API_BASE}/${options.model}`, {
         method: 'POST', headers: this.getHeaders(),
         body: JSON.stringify({ inputs: options.inputs, parameters: { ...options.parameters, wait_for_model: true } }),
         signal: controller.signal,

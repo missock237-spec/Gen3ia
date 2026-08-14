@@ -1,0 +1,80 @@
+# ============================================================
+# Genova AI — Robots.txt optimise pour les moteurs de
+# recherche et les crawlers IA (ChatGPT, Perplexity, Claude,
+# Google AI, Bing AI, etc.)
+# ============================================================
+
+# ── Crawlers IA autorises (indexation complete) ──────────────
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /_next/
+Disallow: /admin/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: Claude-Web
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: CCBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: Applebot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+
+User-agent: FacebookBot
+Allow: /
+Disallow: /api/
+
+User-agent: LinkedInBot
+Allow: /
+Disallow: /api/
+
+User-agent: Twitterbot
+Allow: /
+
+# ── Crawlers generaux ────────────────────────────────────────
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /_next/
+Disallow: /admin/
+Disallow: /studio/
+
+Crawl-delay: 5
+
+# ── Sitemaps ─────────────────────────────────────────────────
+Sitemap: https://missock237-spec.github.io/Genova/sitemap.xml
+Sitemap: https://missock237-spec.github.io/Genova/sitemap-pages.xml
+
+# ── References ───────────────────────────────────────────────
+# Host: https://missock237-spec.github.io/Genova
