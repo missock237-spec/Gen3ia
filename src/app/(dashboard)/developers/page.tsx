@@ -1,7 +1,8 @@
 import { ApiKeysManager } from '@/components/api-keys/api-keys-manager';
 import { MCPConnector } from '@/components/connectors/mcp-connector';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Code, Key, Plug, BookOpen } from 'lucide-react';
+import { Code, Key, Plug, BookOpen, Workflow } from 'lucide-react';
+import { AgentFlow } from '@/components/developers/agent-flow';
 
 export default function DevelopersPage() {
   return (
@@ -26,6 +27,10 @@ export default function DevelopersPage() {
           <TabsTrigger value="docs" className="flex items-center gap-2">
             <BookOpen className="h-4 w-4" />
             Documentation
+          </TabsTrigger>
+          <TabsTrigger value="architecture" className="flex items-center gap-2">
+            <Workflow className="h-4 w-4" />
+            Architecture
           </TabsTrigger>
         </TabsList>
 
