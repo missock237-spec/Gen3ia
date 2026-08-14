@@ -2,7 +2,7 @@
   "name": "gen3ia",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "bun run build",
+  "buildCommand": "next build",
   "installCommand": "bun install --frozen-lockfile",
   "outputDirectory": ".next",
   "regions": [
