@@ -79,4 +79,4 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
 };
 
-export default nextConfig;c538dbf4 (fix(build): neutralize next.config.js (next.config.ts is source of truth)):next.config.js
+export default nextConfig;

@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       userId: uid,
       action: isNewUser ? 'phone_register' : 'phone_login',
       resource: 'auth',
-      metadata: { phone: normalized, method: 'sms_otp' },
+       details: { phone: normalized, method: 'sms_otp' },
     }).catch(() => {});
 
     // Créer la réponse avec le cookie

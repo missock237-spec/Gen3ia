@@ -48,7 +48,7 @@ describe('SubPay -> Chariow Adapter', () => {
   });
 
   describe('isConfigured (état Chariow)', () => {
-    it('reflète l'état de configuration Chariow', async () => {
+    it("reflète l'état de configuration Chariow", async () => {
       mockIsConfigured.mockReturnValueOnce(false);
       const { subpay } = await import('@/lib/payment/subpay');
       expect(subpay.isConfigured()).toBe(false);

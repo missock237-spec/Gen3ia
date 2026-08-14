@@ -163,7 +163,7 @@ async function executeInSandbox(code: string, language: string, input?: string):
         // Strip all dangerous globals from the function scope
         // Block code injection patterns
       if (/eval\s*\(|Function\s*\(|child_process|process\.binding|require\s*\(/.test(wrappedCode)) {
-        return Response.json({ error: 'Code contains forbidden patterns' }, { status: 403 });
+        return { output: '', error: 'Code contains forbidden patterns', executionTime: 0, memoryUsage: 0, exitCode: 1 };
       }
       const fn = new Function('console', 'input', 'process', 'require', 'global', 'module',
           'const process=undefined;const require=undefined;const global=undefined;const module=undefined;' +

@@ -88,3 +88,29 @@ export async function hashToken(token: string): Promise<string> {
     });
   });
 }
+
+// ============================================================
+// Route helpers — wrappers for API route authentication
+// ============================================================
+
+/**
+ * Returns the current server session (compat with next-auth style).
+ */
+export async function auth() {
+  return getServerSession();
+}
+
+/**
+ * Wraps an API route handler with authentication.
+ * Passes the session/user info to the callback.
+ */
+export async function withAuth<T = unknown>(
+  request: Request,
+  handler: (session: { userId: string; user?: { id: string; email?: string; role?: string } }) => Promise<T>
+): Promise<T> {
+  const session = await getServerSession();
+  if (!session?.user?.id) {
+    throw new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+  return handler({ userId: session.user.id, user: session.user });
+}
