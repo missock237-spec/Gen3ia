@@ -82,7 +82,7 @@ class EnvironmentConfig {
       return env;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const missingVars = error.errors.map((e) => e.path.join('.')).join(', ');
+        const missingVars = error.issues.map((e) => e.path.join('.')).join(', ');
         log.error('environment_validation_failed', { missingVars });
         throw new Error(`Missing or invalid environment variables: ${missingVars}`);
       }

@@ -24,7 +24,7 @@ import { db } from '@/lib/db';
 // Types
 // ============================================================
 
-interface TaskNode {
+export interface TaskNode {
   index: number;
   taskId: string;
   agentId: string;

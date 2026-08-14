@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint ../../src --config ../../eslint.config.mjs",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test --config tests/playwright.config.ts",
     "clean": "rm -rf .next test-results playwright-report"

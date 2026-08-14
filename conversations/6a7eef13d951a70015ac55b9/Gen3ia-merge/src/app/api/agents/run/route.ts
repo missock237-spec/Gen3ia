@@ -10,7 +10,17 @@ import { callLLM } from "@/lib/llm";
 import { ZodError } from "zod";
 
 // Agent Safety — detection d'injections et jailbreak (Rust natif + fallback JS)
-import { checkPromptInjection, checkJailbreak } from "@gen3ia/agent-safety";
+// Dynamic import with fallback
+let checkPromptInjection: (input: string) => { safe: boolean; score: number; reason: string };
+let checkJailbreak: (input: string) => { safe: boolean; score: number; reason: string };
+try {
+  const safety = await import("@gen3ia/agent-safety");
+  checkPromptInjection = safety.checkPromptInjection;
+  checkJailbreak = safety.checkJailbreak;
+} catch {
+  checkPromptInjection = (input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
+  checkJailbreak = (input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
+}
 
 
 

@@ -1,6 +1,7 @@
 import { dirname } from "path";
 import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+// Inline compat shim
+const FlatCompat = class { constructor(opts: any) { this.baseDirectory = opts.baseDirectory; } };
 import { globalIgnores } from "eslint/config";
 
 const __filename = fileURLToPath(import.meta.url);

@@ -1,6 +1,6 @@
 // Programme d'affiliation - Premium uniquement
 // Le parrain doit etre premium. Le bonus est verse quand le filleul achete un abonnement.
-import { createHash } from 'crypto';
+import { createHash, scryptSync } from 'crypto';
 import { prisma } from '@/lib/prisma';
 
 export interface AffiliateCode {

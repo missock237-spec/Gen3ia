@@ -137,7 +137,8 @@ export type AdPlacement =
   | 'bottom_bar'
   | 'sidebar'
   | 'banner_top'
-  | 'inline';
+  | 'inline'
+  | 'modal';
 
 export interface AdCampaign {
   id: string;
@@ -1169,7 +1170,7 @@ export class AdEngine {
       let candidates = campaigns.filter(c => {
         if (c.targetPlan === 'all') return true;
         if (c.targetPlan === 'free' && userPlan === 'free') return true;
-        if (c.targetPlan === 'premium' && userPlan !== 'free') return true;
+        if (c.targetPlan === 'paid' && userPlan !== 'free') return true;
         return false;
       });
 

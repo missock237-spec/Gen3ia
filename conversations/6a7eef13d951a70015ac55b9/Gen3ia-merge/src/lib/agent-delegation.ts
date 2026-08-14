@@ -79,9 +79,9 @@ export class AgentDelegationSystem {
 
       // Construire le prompt pour l'agent cible
       const prompt = [
-        `Tu es ${delegation.targetAgent.name}, specialise en ${delegation.targetAgent.role}.`,
+        `Tu es ${(delegation as any).targetAgent.name}, specialise en ${(delegation as any).targetAgent.role}.`,
 // @ts-ignore
-        `\n\nInstructions: ${delegation.targetAgent.instructions || 'Execute la tache delegatee.'}`,
+        `\n\nInstructions: ${(delegation as any).targetAgent.instructions || 'Execute la tache delegatee.'}`,
 // @ts-ignore
         `\n\nTache delegatee par ${delegation.sourceAgent.name}: ${delegation.task}`,
         delegation.context ? `\n\nContexte: ${delegation.context}` : '',
@@ -89,7 +89,7 @@ export class AgentDelegationSystem {
       ].join('');
 
       // Simulation d'appel LLM (a remplacer par un vrai appel)
-      const result = await this.callAgentLLM(delegation.targetAgent, prompt);
+      const result = await this.callAgentLLM((delegation as any).targetAgent, prompt);
 
       await prisma.agentDelegation.update({
         where: { id: delegationId },

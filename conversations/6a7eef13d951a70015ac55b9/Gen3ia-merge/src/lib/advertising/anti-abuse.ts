@@ -225,8 +225,7 @@ async function computeFraudScore(userId: string, sessionId: string): Promise<num
     if (sessionId) {
       const recentSessions = await db.adImpression.findMany({
         where: { userId, createdAt: { gte: oneHourAgo } },
-        select: { sessionId: true },
-        distinct: ['sessionId'],
+        select: { sessionId: true }
       });
       if (recentSessions.length > 5) {
         score += 20; // Multi-session suspect

@@ -152,8 +152,7 @@ export class AdOptimizer {
       // Get all AB test groups
       const testGroups = await db.adCampaign.findMany({
         where: { abTestGroup: { not: null } },
-        select: { abTestGroup: true },
-        distinct: ['abTestGroup'],
+        select: { abTestGroup: true }
       });
 
       const winners: string[] = [];

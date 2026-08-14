@@ -31,10 +31,10 @@ export function VoicePlayer({ audioData, duration = 0, emotion, className = '' }
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
-      const blob = new Blob([bytes], { type: 'audio/wav' });
+      const blob = new Blob([new Uint8Array(bytes) as BlobPart], { type: 'audio/wav' });
       audioRef.current.src = URL.createObjectURL(blob);
     } else {
-      const blob = new Blob([audioData], { type: 'audio/wav' });
+      const blob = new Blob([new Uint8Array(audioData) as BlobPart], { type: 'audio/wav' });
       audioRef.current.src = URL.createObjectURL(blob);
     }
 
