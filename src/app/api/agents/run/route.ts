@@ -11,8 +11,9 @@ import { ZodError } from "zod";
 
 // Agent Safety — detection d'injections et jailbreak (Rust natif + fallback JS)
 // Dynamic import with fallback
-let checkPromptInjection: (input: string) => { safe: boolean; score: number; reason: string };
-let checkJailbreak: (input: string) => { safe: boolean; score: number; reason: string };
+type SafetyResult = { safe: boolean; score: number; reason: string };
+let checkPromptInjection: (input: string) => Promise<SafetyResult> | SafetyResult;
+let checkJailbreak: (input: string) => Promise<SafetyResult> | SafetyResult;
 try {
   const safety = await import("@gen3ia/agent-safety");
   checkPromptInjection = safety.checkPromptInjection;
