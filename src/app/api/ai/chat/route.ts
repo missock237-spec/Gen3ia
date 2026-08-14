@@ -92,7 +92,7 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteP
       userId: auth.userId,
       model: response.model,
       provider: response.provider,
-      tokens: response.usage?.total_tokens,
+      tokens: response.usage?.totalTokens,
       costUsd: response.costUsd,
     });
 

@@ -20,7 +20,7 @@ export async function POST(
 
     const { agentId } = await params;
     const agent = await prisma.agent.findUnique({ where: { id: agentId } });
-    if (!agent || agent.userId !== session.userId) {
+    if (!agent || agent.userId !== session.user.id) {
       return NextResponse.json({ error: 'Agent non trouve ou acces refuse' }, { status: 404 });
     }
 
@@ -45,7 +45,7 @@ export async function POST(
     }
 
     const auth = await prisma.workflowAuthorization.findFirst({
-      where: { userId: session.userId, service, isActive: true },
+      where: { userId: session.user.id, service, isActive: true },
     });
 
     if (!auth) {
@@ -60,7 +60,7 @@ export async function POST(
       service,
       action,
       params: actionParams || {},
-      userId: session.userId,
+      userId: session.user.id,
       agentId,
     });
 
@@ -71,7 +71,7 @@ export async function POST(
         details: JSON.stringify({ params: actionParams }),
         status: result.success ? 'completed' : 'failed',
         result: JSON.stringify(result),
-        userId: session.userId,
+        userId: session.user.id,
       },
     });
 
@@ -94,7 +94,7 @@ export async function GET(
 
     const { agentId } = await params;
     const agent = await prisma.agent.findUnique({ where: { id: agentId } });
-    if (!agent || agent.userId !== session.userId) {
+    if (!agent || agent.userId !== session.user.id) {
       return NextResponse.json({ error: 'Agent non trouve' }, { status: 404 });
     }
 
@@ -106,13 +106,13 @@ export async function GET(
         service,
         availableActions: getAvailableActions(service),
         isConnected: !!(await prisma.workflowAuthorization.findFirst({
-          where: { userId: session.userId, service, isActive: true },
+          where: { userId: session.user.id, service, isActive: true },
         })),
       });
     }
 
     const authorizations = await prisma.workflowAuthorization.findMany({
-      where: { userId: session.userId, isActive: true },
+      where: { userId: session.user.id, isActive: true },
       select: { service: true, accountName: true, scopes: true, lastUsedAt: true },
     });
 

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const service = url.searchParams.get('service');
 
     const connected = await prisma.workflowAuthorization.findMany({
-      where: { userId: session.userId, isActive: true },
+      where: { userId: session.user.id, isActive: true },
       select: { service: true, accountName: true },
     });
     const connectedSet = new Set(connected.map(c => c.service));

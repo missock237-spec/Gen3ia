@@ -16,16 +16,16 @@ export async function GET() {
 
     const [lastTx, history, totalSpentAgg] = await Promise.all([
       prisma.creditTransaction.findFirst({
-        where: { userId: session.userId },
+        where: { userId: session.user.id },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.creditTransaction.findMany({
-        where: { userId: session.userId },
+        where: { userId: session.user.id },
         orderBy: { createdAt: 'desc' },
         take: 50,
       }),
       prisma.creditTransaction.aggregate({
-        where: { userId: session.userId, type: 'spend' },
+        where: { userId: session.user.id, type: 'spend' },
         _sum: { amount: true },
       }),
     ]);

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Pack invalide' }, { status: 400 });
     }
 
-    const reference = `gen3ia_${session.userId.slice(0, 8)}_${Date.now()}`;
+    const reference = `gen3ia_${session.user.id.slice(0, 8)}_${Date.now()}`;
 
     // Paiement via SebPay (Mobile Money)
     const payment = await sebpay.initiatePayment({

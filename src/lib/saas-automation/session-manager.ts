@@ -176,7 +176,7 @@ export class SaaSSessionManager {
 
     try {
       // Obtenir le token
-      const token = this.getValidToken(sessionId, session.accountId, session.userId);
+      const token = this.getValidToken(sessionId, session.accountId, session.user.id);
 
       // Construire l'URL avec params
       const fullUrl = new URL(url);
@@ -256,7 +256,7 @@ export class SaaSSessionManager {
     try {
       // Utiliser le BrowserBridge pour exécuter via Playwright
       const bridge = getBrowserBridge();
-      const account = await getSaaSAccountConnector().getAccount(session.userId, session.accountId);
+      const account = await getSaaSAccountConnector().getAccount(session.user.id, session.accountId);
 
       // Construire les BrowserActions compatibles
       const browserActions = actions.map((a, i) => ({
@@ -269,7 +269,7 @@ export class SaaSSessionManager {
       }));
 
       const scriptResult = await bridge.executeScript({
-        userId: session.userId,
+        userId: session.user.id,
         saasAccountId: session.accountId,
         provider: session.provider,
         startUrl: session.metadata.startUrl as string || 'about:blank',
@@ -404,7 +404,7 @@ export class SaaSSessionManager {
       const refreshed = await connector.refreshTokenIfNeeded(account);
 
       if (refreshed) {
-        const accountData = await connector.getAccount(session.userId, session.accountId);
+        const accountData = await connector.getAccount(session.user.id, session.accountId);
         if (accountData.accessToken) {
           this.tokenCache.set(session.id, {
             token: accountData.accessToken,

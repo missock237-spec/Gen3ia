@@ -19,15 +19,15 @@ export async function GET() {
     }
 
     const [auditSummary, tokenHealth, emailConfig, user, agents] = await Promise.all([
-      getSecuritySummary(session.userId),
+      getSecuritySummary(session.user.id),
       getTokenHealth(),
       getEmailConfig(),
       prisma.user.findUnique({
-        where: { id: session.userId },
+        where: { id: session.user.id },
         select: { plan: true, isEmailVerified: true, mfaEnabled: true },
       }),
       prisma.agent.findMany({
-        where: { userId: session.userId, isActive: true },
+        where: { userId: session.user.id, isActive: true },
         select: { id: true, name: true },
       }),
     ]);
@@ -41,7 +41,7 @@ export async function GET() {
     );
 
     const connectedServices = await prisma.workflowAuthorization.count({
-      where: { userId: session.userId, isActive: true },
+      where: { userId: session.user.id, isActive: true },
     });
 
     const securityScore = calculateScore(auditSummary, tokenHealth, emailConfig, user);

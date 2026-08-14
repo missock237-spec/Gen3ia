@@ -360,7 +360,7 @@ class AgentOrchestrator {
               return {
                 content: response.content,
                 cost: response.costUsd || 0.0001,
-                tokens: response.usage?.total_tokens || 150,
+                tokens: response.usage?.totalTokens || 150,
               };
             },
             timeoutMs: 10000,

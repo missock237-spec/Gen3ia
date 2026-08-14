@@ -66,7 +66,7 @@ async function callProvider(
 
   return {
     content: data.choices?.[0]?.message?.content || '',
-    tokens: data.usage?.total_tokens || 0,
+    tokens: data.usage?.totalTokens || 0,
     provider: provider.name,
     model: data.model || selectedModel,
     latencyMs,

@@ -262,7 +262,8 @@ import pino from 'pino';
 
 const level = process.env.LOG_LEVEL || 'info';
 
-export const logger = pino({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const logger: any = pino({
   level,
   formatters: {
     level: (label) => ({ level: label }),

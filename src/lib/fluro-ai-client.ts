@@ -268,7 +268,7 @@ export async function fluroChat(
       usage: {
         promptTokens: usage.prompt_tokens ?? 0,
         completionTokens: usage.completion_tokens ?? 0,
-        totalTokens: usage.total_tokens ?? 0,
+        totalTokens: usage.totalTokens ?? 0,
       },
     };
   } finally {

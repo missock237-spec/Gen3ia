@@ -11,7 +11,7 @@ import { errorResponse, successResponse, ErrorCode, handleApiError } from '@/lib
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(request);
+    const user = await getAuthenticatedUser();
     if (!user) return errorResponse('Non authentifié', ErrorCode.UNAUTHORIZED, 401);
 
     const searchParams = request.nextUrl.searchParams;
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(request);
+    const user = await getAuthenticatedUser();
     if (!user) return errorResponse('Non authentifié', ErrorCode.UNAUTHORIZED, 401);
 
     const body = await request.json();

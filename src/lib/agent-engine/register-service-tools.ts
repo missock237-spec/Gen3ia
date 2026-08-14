@@ -93,7 +93,7 @@ export function registerServiceTools(registry: ToolRegistry): void {
       if (!session?.userId) return { success: false, error: 'Non authentifie' };
 
       const auths = await prisma.workflowAuthorization.findMany({
-        where: { userId: session.userId, isActive: true },
+        where: { userId: session.user.id, isActive: true },
         select: { service: true, accountName: true },
       });
 

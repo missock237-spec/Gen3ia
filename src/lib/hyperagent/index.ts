@@ -554,7 +554,7 @@ export class HyperAgent {
       content: response.content,
       provider: response.provider || provider,
       model: response.model || model,
-      tokensUsed: response.usage?.total_tokens || 0,
+      tokensUsed: response.usage?.totalTokens || 0,
       costUsd: response.costUsd || 0,
       fallbackUsed: false,
     };

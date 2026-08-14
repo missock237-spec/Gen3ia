@@ -16,7 +16,7 @@ export async function POST() {
     }
 
     const authorizations = await prisma.workflowAuthorization.findMany({
-      where: { userId: session.userId, isActive: true, refreshToken: { not: null } },
+      where: { userId: session.user.id, isActive: true, refreshToken: { not: null } },
       select: { id: true, service: true, accountName: true },
     });
 

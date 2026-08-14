@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
         details: JSON.stringify({ language, codeLength: code.length }),
         status: result.error ? 'failed' : 'completed',
         result: JSON.stringify({ outputLength: result.output.length, executionTime: result.executionTime }),
-        userId: session.userId,
+        userId: session.user.id,
       },
     });
     return NextResponse.json({

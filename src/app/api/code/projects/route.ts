@@ -13,7 +13,7 @@ export async function GET() {
     if (!session?.userId) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
     const projects = await prisma.codeProject.findMany({
-      where: { userId: session.userId },
+      where: { userId: session.user.id },
       orderBy: { updatedAt: 'desc' },
       select: { id: true, name: true, language: true, fileCount: true, updatedAt: true, createdAt: true },
       take: 50,
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         language,
-        userId: session.userId,
+        userId: session.user.id,
         fileCount: files?.length || 1,
         files: JSON.stringify(files || [{ name: 'main.' + language, content: '', language }]),
       },
@@ -61,7 +61,7 @@ export async function DELETE(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 });
 
     const project = await prisma.codeProject.findUnique({ where: { id } });
-    if (!project || project.userId !== session.userId) {
+    if (!project || project.userId !== session.user.id) {
       return NextResponse.json({ error: 'Projet non trouve' }, { status: 404 });
     }
 
@@ -81,7 +81,7 @@ export async function PATCH(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 });
 
     const project = await prisma.codeProject.findUnique({ where: { id } });
-    if (!project || project.userId !== session.userId) {
+    if (!project || project.userId !== session.user.id) {
       return NextResponse.json({ error: 'Projet non trouve' }, { status: 404 });
     }
 
