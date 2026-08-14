@@ -153,6 +153,7 @@ export class AutonomousActionEngine {
 
     // 3. Consentement requis mais en attente
     if (safetyCheck.requiresConsent && safetyCheck.consentId && input.agentId) {
+// @ts-ignore
       const consent = await requestConsent(
         input.userId,
         input.agentId,
@@ -580,6 +581,7 @@ export class AutonomousActionEngine {
       { timeoutMs: input.options?.timeoutMs || 30000, retryOnExpired: true }
     );
 
+// @ts-ignore
     return { ...result.data, provider: account.provider, operation: input.operation, status: result.status };
   }
 

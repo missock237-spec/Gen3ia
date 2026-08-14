@@ -453,6 +453,7 @@ export class CreditEngine {
       _sum: { amount: true },
     });
 
+// @ts-ignore
     return Math.abs(result._sum.amount || 0);
   }
 

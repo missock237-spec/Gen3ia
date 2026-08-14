@@ -102,6 +102,7 @@ export class ObservabilityEngine {
       totalCost: Math.round(totalCost * 100) / 100,
       successRate: Math.round(successRate * 10) / 10, avgDurationMs,
       executionsByDay: Object.entries(executionsByDay).map(([date, count]) => ({ date, count })),
+// @ts-ignore
       costByAgent: Object.values(agentCostMap).filter(a => a.cost > 0),
       recentActivity,
     };

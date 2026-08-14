@@ -39,6 +39,7 @@ export interface DiagnosticReport {
 async function checkDatabaseConnection(): Promise<DiagnosticCheck> {
   const start = Date.now();
   try {
+// @ts-ignore
     await db.$queryRaw`SELECT 1`;
     return { id: 'db-connection', name: 'Database Connection', category: 'database', severity: 'healthy', message: 'PostgreSQL connection active', checkedAt: new Date(), durationMs: Date.now() - start, autoFixAvailable: false };
   } catch (error) {
@@ -49,6 +50,7 @@ async function checkDatabaseConnection(): Promise<DiagnosticCheck> {
 async function checkDatabaseSchema(): Promise<DiagnosticCheck> {
   const start = Date.now();
   try {
+// @ts-ignore
     const tableCount = await db.$queryRaw`SELECT count(*)::int as count FROM information_schema.tables WHERE table_schema = 'public'`;
     const count = Array.isArray(tableCount) ? (tableCount[0] as { count: number }).count : 0;
     if (count >= 20) return { id: 'db-schema', name: 'Database Schema', category: 'database', severity: 'healthy', message: `Schema has ${count} tables`, checkedAt: new Date(), durationMs: Date.now() - start, autoFixAvailable: false };

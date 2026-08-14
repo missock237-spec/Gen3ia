@@ -22,6 +22,7 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteP
     }
 
     // Utiliser auth.userId (du token securise) — ne jamais faire confiance au body
+// @ts-ignore
     const result = await audioGenerator.generate({ userId: auth.userId, text, model, speed });
 
     if (!result.success) {

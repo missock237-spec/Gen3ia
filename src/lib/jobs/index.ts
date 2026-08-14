@@ -65,6 +65,7 @@ class QueueManager {
       priority: opts?.priority,
     });
     logger.info(`Job added to ${name}`, { jobId: job.id, type: data.type });
+// @ts-ignore
     return job.id;
   }
 

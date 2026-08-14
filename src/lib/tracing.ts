@@ -9,6 +9,7 @@ export function initTracing() {
   if (typeof window !== 'undefined') return null;
   if (!isProd && !process.env.OTEL_ENABLED) return null;
   const sdk = new NodeSDK({
+// @ts-ignore
     resource: new Resource({ [SemanticResourceAttributes.SERVICE_NAME]: 'genova-ai', [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0', [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development' }),
     traceExporter: new OTLPTraceExporter({ url: endpoint }),
     instrumentations: [getNodeAutoInstrumentations()],

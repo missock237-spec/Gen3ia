@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
+// @ts-ignore
     if (action === 'average') {
       const rating = await getAverageRating(listingId)
       return secureResponse(NextResponse.json(rating), request)

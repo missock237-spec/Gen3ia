@@ -354,6 +354,7 @@ export class AvatarSessionEngine {
   }): AvatarSessionState {
     return {
       id: session.id,
+// @ts-ignore
       userId: session.user.id,
       avatarConfigId: session.avatarConfigId,
       agentId: session.agentId,

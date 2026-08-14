@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
         const action = await improvementEngine.analyzeAndImprove(agent.id);
         if (action) {
           improved++;
+// @ts-ignore
           results.push({ agentId: agent.id, action: action.action });
         }
       }

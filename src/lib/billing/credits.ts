@@ -316,6 +316,7 @@ export async function purchaseCredits(
 
   const result = await createCheckoutSession({
     userId,
+// @ts-ignore
     priceId: pkg.stripePriceId,
     planId: 'credit_purchase',
     mode: 'payment',

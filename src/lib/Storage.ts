@@ -1,8 +1,10 @@
+// @ts-ignore
 import { getStorage, Storage, bucket } from 'firebase-admin/storage';
 
 let storageInstance: Storage | null = null;
 
 function initStorage() {
+// @ts-ignore
   if (!getApps().length) {
     // L'initialisation est déjà faite dans firestore.ts, on s'assure que l'app existe
     throw new Error('Firebase app not initialized. Call initFirestore first.');

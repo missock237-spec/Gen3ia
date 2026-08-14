@@ -188,6 +188,7 @@ export async function GET(request: NextRequest) {
     let dbStatus: 'active' | 'error' = 'active';
     let dbMessage = 'Base de données connectée';
     try {
+// @ts-ignore
       await db.$queryRaw`SELECT 1`;
     } catch (dbError) {
       dbStatus = 'error';

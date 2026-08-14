@@ -29,7 +29,6 @@ export default defineConfig({
         functions: 35,
         lines: 40,
       },
-      thresholdAutoUpdate: true,
     },
     setupFiles: ['./src/__tests__/setup.ts'],
     testTimeout: 30000,

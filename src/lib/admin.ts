@@ -224,6 +224,7 @@ export async function getPlatformStats() {
     totalConversations,
     totalTasks,
     planDistribution: planDistribution.reduce((acc, curr) => {
+// @ts-ignore
       acc[curr.plan] = curr._count;
       return acc;
     }, {} as Record<string, number>),

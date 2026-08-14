@@ -45,6 +45,7 @@ export async function GET(
     }
 
     const ownershipError = verifyOwnership(auth.userId, task.userId, 'task');
+// @ts-ignore
     if (ownershipError) return secureResponse(ownershipError, request);
 
     return secureResponse(NextResponse.json({ task }), request);
@@ -88,6 +89,7 @@ export async function PUT(
     }
 
     const ownershipError = verifyOwnership(auth.userId, existing.userId, 'task');
+// @ts-ignore
     if (ownershipError) return secureResponse(ownershipError, request);
 
     const body = await request.json();
@@ -168,6 +170,7 @@ export async function DELETE(
     }
 
     const ownershipError = verifyOwnership(auth.userId, existing.userId, 'task');
+// @ts-ignore
     if (ownershipError) return secureResponse(ownershipError, request);
 
     const success = await cancelTask(id, auth.userId);

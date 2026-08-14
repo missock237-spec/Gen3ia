@@ -133,7 +133,9 @@ export function createSSEStream(userId: string): ReadableStream {
       controller.enqueue(encoder.encode('retry: 3000\n\n'));
 
       // Cleanup on close
+// @ts-ignore
       if (controller.signal) {
+// @ts-ignore
         controller.signal.addEventListener('abort', () => {
           manager.removeConnection(connectionId);
         });

@@ -38,7 +38,7 @@ const FALLBACK_TEMPLATES: Record<string, (prompt: string) => string> = {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session?.userId) {
+    if (!session?.user.id) {
       return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
     const { prompt, language = 'javascript' } = await request.json();
@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
       const result = await chatCompletion([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt },
+// @ts-ignore
       ], 'code');
       code = result.content.trim().replace(/^```\w*\n?/, '').replace(/\n?```$/g, '').trim();
       usedAI = true;

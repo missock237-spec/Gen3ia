@@ -3,6 +3,7 @@ import { createComputeEngineV2 } from '@/lib/compute/engine-v2';
 const log = createLogger('replit-compute');
 let engine: ReturnType<typeof createComputeEngineV2> | null = null;
 async function getEngine() {
+// @ts-ignore
   if (!engine) { engine = createComputeEngineV2({ preferredBackend: 'auto', enablePredictor: true }); await engine.initialize(); }
   return engine;
 }

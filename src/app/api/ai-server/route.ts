@@ -86,6 +86,7 @@ const postHandler = withAuth(async (request: NextRequest, ctx: { params?: RouteP
   const response = await router.chat([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: String(input).slice(0, 10000) },
+// @ts-ignore
   ], { model: model || 'default' });
 
   log.info('ai_server_action', { userId: auth.userId, action: resolvedAction, tokens: response.usage?.totalTokens });

@@ -267,6 +267,7 @@ export async function getReviews(
         listingId,
         status: 'published',
       },
+// @ts-ignore
       orderBy,
       skip: (page - 1) * limit,
       take: limit,

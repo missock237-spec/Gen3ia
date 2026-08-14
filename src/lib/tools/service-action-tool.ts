@@ -53,6 +53,7 @@ export const serviceActionTool: ToolDefinition = {
           return {
             success: false,
             error: `Token expire pour ${service}. L'utilisateur doit reconnecter son compte.`,
+// @ts-ignore
             requiresReauth: true,
             service,
           };

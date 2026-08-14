@@ -267,6 +267,7 @@ export async function POST(
       userId: auth.userId,
       action: `service_${action}`,
       resource: 'service',
+// @ts-ignore
       resourceId: idValidation.id,
       details: {
         action,

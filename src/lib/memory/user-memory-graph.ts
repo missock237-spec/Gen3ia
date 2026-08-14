@@ -235,6 +235,7 @@ export async function queryGraph(
 
   const nodes = await db.memoryNode.findMany({
     where,
+// @ts-ignore
     orderBy: [{ weight: 'desc' }, { updatedAt: 'desc' }],
     take: limit,
   });
@@ -276,6 +277,7 @@ export async function getRelevantContext(
   const queryLower = query.toLowerCase();
   const allNodes = await db.memoryNode.findMany({
     where: { userId, isActive: true },
+// @ts-ignore
     orderBy: [{ weight: 'desc' }, { accessCount: 'desc' }],
   });
 

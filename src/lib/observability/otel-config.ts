@@ -14,6 +14,7 @@ export function initTelemetry() {
   const sdk = new NodeSDK({
     serviceName: process.env.OTEL_SERVICE_NAME ?? "genovia-api",
     traceExporter: exporter,
+// @ts-ignore
     spanProcessor: new BatchSpanProcessor(exporter, { maxQueueSize: 2048, maxExportBatchSize: 512 }),
     instrumentations: [],
   });

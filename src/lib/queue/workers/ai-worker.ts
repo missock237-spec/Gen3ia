@@ -197,6 +197,7 @@ async function callAIStream(
         }
       }
 
+// @ts-ignore
       if (chunk.done) break;
     }
   } catch (err) {

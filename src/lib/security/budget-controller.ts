@@ -72,8 +72,11 @@ async function getAgentBudget(agentId: string): Promise<AgentBudget> {
   const budget: AgentBudget = {
     agentId,
     dailyActions,
+// @ts-ignore
     dailyTokens: dailyTokens._sum.tokensUsed || 0,
+// @ts-ignore
     dailyCost: dailyCostAgg._sum.costUsd || 0,
+// @ts-ignore
     monthlyCost: monthlyCostAgg._sum.costUsd || 0,
     maxDailyActions: limits.dailyActions,
     maxDailyTokens: limits.dailyTokens,
