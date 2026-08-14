@@ -551,40 +551,72 @@ export class AdEngine {
   ): AdCampaign | null {
     if (campaigns.length === 0) return null;
 
-    const scored = campaigns.map(c => {
-      let score = 0;
-      if (c.targetPlan === 'all') score += 10;
-      if (c.targetPlan === 'free' && prefs.isFreePlan) score += 20;
-      if (c.targetPlan === 'paid' && !prefs.isFreePlan) score += 15;
+    // --- Weighted round-robin selection ---
+    // Chaque campagne reçoit un poids basé sur :
+    //   - Budget restant (plus de budget = plus de poids)
+    //   - CTR historique (pas encore disponible — fallback uniforme)
+    //   - Matching contextuel (keywords, geolocation, topic)
+    //   - Fatigue penalty (campagnes trop vues = poids réduit)
+    //   - Petit facteur aléatoire pour éviter la déterminisme total
+    //
+    // La sélection se fait par weighted random plutôt que par max(score),
+    // ce qui assure une rotation naturelle entre campagnes qualifiées.
+
+    const weighted = campaigns.map(c => {
+      let weight = 100; // Base weight
+
+      // Budget restant — plus de budget = plus de poids
       if (c.budgetTotal > 0) {
-        score += ((c.budgetTotal - c.budgetSpent) / c.budgetTotal) * 10;
+        const budgetRatio = (c.budgetTotal - c.budgetSpent) / c.budgetTotal;
+        weight *= Math.max(0.1, budgetRatio); // Min 10% weight even near budget
       }
-      if (prefs.rewardedAdsEnabled && c.rewardPerView > 0) score += c.rewardPerView * 100;
+
+      // Plan targeting match
+      if (c.targetPlan === 'free' && prefs.isFreePlan) weight *= 1.3;
+      if (c.targetPlan === 'paid' && !prefs.isFreePlan) weight *= 1.2;
+
+      // Keyword match boost
       if (context?.keywords && c.targetKeywords) {
         const kwLower = context.keywords.map(k => k.toLowerCase());
         const targets = c.targetKeywords.toLowerCase().split(',').map(t => t.trim());
         const matchCount = kwLower.filter(k => targets.some(t => k.includes(t) || t.includes(k))).length;
-        score += matchCount * 25;
+        if (matchCount > 0) weight *= 1 + matchCount * 0.5; // +50% per keyword match
       }
+
+      // Conversation topic match
       if (context?.conversationTopic && c.description.toLowerCase().includes(context.conversationTopic.toLowerCase())) {
-        score += 30;
+        weight *= 1.3;
       }
-      // Geolocation boost — exact country match gets priority
+
+      // Geolocation boost
       if (context?.country && c.targetCountries?.includes(context.country.toUpperCase())) {
-        score += 35;
+        weight *= 1.5;
       }
-      // Ad fatigue penalty — campaigns seen 3+ times get penalized
-      // (encourages diversity in ad serving)
+
+      // Ad fatigue penalty — campaigns seen 3+ times get weight reduced
       const seenKey = `${_userId}:${c.id}`;
       const seenCount = recentImpressions.get(seenKey)?.length || 0;
       if (seenCount >= 3) {
-        score -= Math.min(seenCount * 5, 30); // -5 per extra view, max -30
+        weight *= Math.max(0.1, 1 - (seenCount - 2) * 0.2); // -20% per extra view, min 10%
       }
-      score += Math.random() * 5;
-      return { campaign: c, score };
+
+      // Small random factor to break ties and ensure rotation
+      weight *= 0.8 + Math.random() * 0.4; // 0.8x - 1.2x
+
+      return { campaign: c, weight: Math.max(0.01, weight) };
     });
-    scored.sort((a, b) => b.score - a.score);
-    const selected = scored[0].campaign;
+
+    // Weighted random selection
+    const totalWeight = weighted.reduce((sum, w) => sum + w.weight, 0);
+    let random = Math.random() * totalWeight;
+    let selected = weighted[0].campaign;
+    for (const w of weighted) {
+      random -= w.weight;
+      if (random <= 0) {
+        selected = w.campaign;
+        break;
+      }
+    }
 
     const userKey = `${_userId}:session`;
     const imps = recentImpressions.get(userKey) || [];
