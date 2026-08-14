@@ -163,11 +163,11 @@ export class AdAnalytics {
         },
         rewards: {
           total: totalRewards.toFixed(2),
-          avgPerUser: userStats?._sum.totalCreditsEarned ? (userStats?._sum.totalCreditsEarned / totalImpressions).toFixed(4) : '0',
+          avgPerUser: userStats?._sum?.totalCreditsEarned ? (userStats?._sum?.totalCreditsEarned / totalImpressions).toFixed(4) : '0',
         },
         userMetrics: {
-          avgClicks: userStats?._avg.totalAdsClicked?.toFixed(2) || '0',
-          avgViews: userStats?._avg.totalAdsViewed?.toFixed(2) || '0',
+          avgClicks: userStats?._avg?.totalAdsClicked?.toFixed(2) || '0',
+          avgViews: userStats?._avg?.totalAdsViewed?.toFixed(2) || '0',
         },
       };
     } catch (err) {
