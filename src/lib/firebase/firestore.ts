@@ -38,6 +38,17 @@ import {
 
 import { getAdminDb } from './admin';
 
+
+// ============================================================
+// Transaction context — exposes a subset of Firestore Transaction
+// ============================================================
+export interface TransactionContext {
+  get: (ref: DocumentReference) => Promise<Record<string, unknown> | null>;
+  set: (ref: DocumentReference, data: Record<string, unknown>) => void;
+  update: (ref: DocumentReference, data: Record<string, unknown>) => void;
+  delete: (ref: DocumentReference) => void;
+}
+
 // ============================================================
 // Types
 // ============================================================
@@ -250,6 +261,22 @@ function projectFields(data: Record<string, unknown>, select?: string[]): Record
 // ============================================================
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
+// ============================================================
+// Helper — découpe un tableau en chunks de taille `size`
+// (Firestore limite les batches à 500 opérations)
+// ============================================================
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  if (size <= 0) return [arr];
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
+const FIRESTORE_BATCH_LIMIT = 400; // 400 < 500 pour marge de sécurité
+
 export class FirestoreRepository<T = any> {
   constructor(private collectionName: string) {}
 
@@ -335,8 +362,15 @@ export class FirestoreRepository<T = any> {
     for (const w of whereOps) {
       q = q.where(w.field, w.op, serializeValue(w.value));
     }
-    const snap = await q.get();
-    return snap.size;
+    // Utilise count().get() (agrégation côté serveur) au lieu de charger tous les docs
+    // Fallback: snap.size si l'agrégation n'est pas disponible
+    try {
+      const countSnap = await q.count().get();
+      return countSnap.data().count;
+    } catch {
+      const snap = await q.get();
+      return snap.size;
+    }
   }
 
   async create(options: CreateOptions): Promise<T> {
@@ -403,13 +437,16 @@ export class FirestoreRepository<T = any> {
     data: Record<string, unknown>;
   }): Promise<{ count: number }> {
     const items = await this.findMany({ where: options.where });
-    const batch: WriteBatch = this.db().batch();
     const payload = serialize({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
-    for (const item of items) {
-      const id = (item as Record<string, unknown>).id as string;
-      batch.update(this.docRef(id), payload);
+    const chunks = chunkArray(items, FIRESTORE_BATCH_LIMIT);
+    for (const chunk of chunks) {
+      const batch: WriteBatch = this.db().batch();
+      for (const item of chunk) {
+        const id = (item as Record<string, unknown>).id as string;
+        batch.update(this.docRef(id), payload);
+      }
+      await batch.commit();
     }
-    await batch.commit();
     return { count: items.length };
   }
 
@@ -421,22 +458,28 @@ export class FirestoreRepository<T = any> {
     // Delete by other field — normalize object form to where ops
     const whereOps = normalizeWhere(options.where as WhereInput);
     const items = await this.findMany({ where: whereOps });
-    const batch: WriteBatch = this.db().batch();
-    for (const item of items) {
-      const id = (item as Record<string, unknown>).id as string;
-      batch.delete(this.docRef(id));
+    const chunks = chunkArray(items, FIRESTORE_BATCH_LIMIT);
+    for (const chunk of chunks) {
+      const batch: WriteBatch = this.db().batch();
+      for (const item of chunk) {
+        const id = (item as Record<string, unknown>).id as string;
+        batch.delete(this.docRef(id));
+      }
+      await batch.commit();
     }
-    await batch.commit();
   }
 
   async deleteMany(options: { where: FindOptions['where'] }): Promise<{ count: number }> {
     const items = await this.findMany({ where: options.where });
-    const batch: WriteBatch = this.db().batch();
-    for (const item of items) {
-      const id = (item as Record<string, unknown>).id as string;
-      batch.delete(this.docRef(id));
+    const chunks = chunkArray(items, FIRESTORE_BATCH_LIMIT);
+    for (const chunk of chunks) {
+      const batch: WriteBatch = this.db().batch();
+      for (const item of chunk) {
+        const id = (item as Record<string, unknown>).id as string;
+        batch.delete(this.docRef(id));
+      }
+      await batch.commit();
     }
-    await batch.commit();
     return { count: items.length };
   }
 
@@ -920,7 +963,27 @@ export const db = {
   workspace: makeRepo(Collections.workspaces),
   workspaceActivity: makeRepo(Collections.workspaceActivities),
   workspaceMember: makeRepo(Collections.workspaceMembers),
-  $transaction: async <R>(fn: () => Promise<R>): Promise<R> => fn(),
+  $transaction: async <R>(fn: (tx: TransactionContext) => Promise<R>): Promise<R> => {
+    const dbInstance = getAdminDb();
+    return dbInstance.runTransaction(async (tx) => {
+      const ctx: TransactionContext = {
+        get: async (ref: DocumentReference) => {
+          const snap = await tx.get(ref);
+          return snap.exists ? deserialize(snap.data()!) : null;
+        },
+        set: (ref: DocumentReference, data: Record<string, unknown>) => {
+          tx.set(ref, serialize(data));
+        },
+        update: (ref: DocumentReference, data: Record<string, unknown>) => {
+          tx.update(ref, serialize({ ...data, updatedAt: FieldValue.serverTimestamp() }));
+        },
+        delete: (ref: DocumentReference) => {
+          tx.delete(ref);
+        },
+      };
+      return fn(ctx);
+    });
+  },
   /** Prisma-compat: no-op disconnect. */
   $disconnect: async (): Promise<void> => {},
   /** Prisma-compat: connect no-op. */

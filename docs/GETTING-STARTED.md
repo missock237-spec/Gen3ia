@@ -1,18 +1,18 @@
-# Guide de demarrage rapide — Genova AI API
+# Guide de demarrage rapide — Gen3ia AI API
 
 Genova est une plateforme SaaS d'agents IA autonomes, concue pour l'Afrique.
 Paiements Mobile Money, generation d'images/videos/audio.
 
 ## Obtenir une cle API
 
-1. Creez un compte sur https://genova.app
+1. Creez un compte sur https://gen3ia.app
 2. Allez dans Parametres > Cles API
 3. Cliquez sur "Generer une cle"
 4. Copiez la cle et stockez-la dans votre fichier .env
 
 ```env
 GENOVA_API_KEY=gen_votre_cle_api
-GENOVA_API_URL=https://genova.app/api
+GEN3IA_API_URL=https://gen3ia.app/api
 ```
 
 ## Utiliser le SDK
@@ -20,17 +20,17 @@ GENOVA_API_URL=https://genova.app/api
 ### Installation
 
 ```bash
-npm install genova-sdk
+npm install gen3ia-sdk
 # ou
-yarn add genova-sdk
+yarn add gen3ia-sdk
 ```
 
 ### Initialisation
 
 ```typescript
-import { GenovaClient } from "genova-sdk";
+import { Gen3iaClient } from "gen3ia-sdk";
 
-const genova = new GenovaClient({
+const gen3ia = new Gen3iaClient({
   apiKey: process.env.GENOVA_API_KEY,
 });
 ```
@@ -40,38 +40,38 @@ const genova = new GenovaClient({
 ### 1. Creer et executer un agent
 
 ```typescript
-const agent = await genova.createAgent({
+const agent = await gen3ia.createAgent({
   name: "Mon Assistant",
   type: "assistant",
   systemPrompt: "Tu es un assistant serviable.",
 });
-const result = await genova.executeAgent(agent.id, "Ecris un poeme sur le Cameroun");
+const result = await gen3ia.executeAgent(agent.id, "Ecris un poeme sur le Cameroun");
 console.log(result.output);
 ```
 
 ### 2. Generer une image
 
 ```typescript
-const image = await genova.generateImage({ prompt: "Coucher de soleil sur Kribi", model: "flux-dev", width: 1024, height: 1024 });
+const image = await gen3ia.generateImage({ prompt: "Coucher de soleil sur Kribi", model: "flux-dev", width: 1024, height: 1024 });
 console.log(image.imageUrl);
 ```
 
 ### 4. Generer une video
 
 ```typescript
-const video = await genova.generateVideo({ prompt: "Un lion dans la savane", model: "ltx-video", numFrames: 25 });
+const video = await gen3ia.generateVideo({ prompt: "Un lion dans la savane", model: "ltx-video", numFrames: 25 });
 ```
 
 ### 5. Generer du son (TTS)
 
 ```typescript
-const audio = await genova.generateAudio({ text: "Bienvenue sur Genova AI", model: "mms-fra" });
+const audio = await gen3ia.generateAudio({ text: "Bienvenue sur Gen3ia AI", model: "mms-fra" });
 ```
 
 ### 6. S'abonner via Mobile Money
 
 ```typescript
-const payment = await genova.subscribe({ planId: "pro", phone: "+237691234567", operator: "mtn" });
+const payment = await gen3ia.subscribe({ planId: "pro", phone: "+237691234567", operator: "mtn" });
 ```
 
 ## Webhooks
@@ -85,7 +85,7 @@ const payment = await genova.subscribe({ planId: "pro", phone: "+237691234567", 
 ```typescript
 // Exemple de recepteur (Next.js)
 export async function POST(request: NextRequest) {
-  const event = request.headers.get("x-genova-event");
+  const event = request.headers.get("x-gen3ia-event");
   const payload = await request.json();
   console.log(`Evenement: ${event}`, payload);
   return NextResponse.json({ received: true });
@@ -94,5 +94,5 @@ export async function POST(request: NextRequest) {
 
 ## Support
 
-- Email : support@genova.ai
+- Email : support@gen3ia.ai
 - GitHub : https://github.com/missock237-spec/Genova

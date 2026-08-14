@@ -18,6 +18,7 @@
 //  - En production, script-src n'autorise PLUS 'unsafe-inline'/'unsafe-eval'
 //    mais 'self' + nonce + CDNs de confiance, eliminant le vecteur XSS.
 // ============================================================
+import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
