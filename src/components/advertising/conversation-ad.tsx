@@ -33,6 +33,7 @@ export interface ConversationAdDecision {
   reason: string;
   placement?: string;
   variantText?: string;
+  variantCta?: string;
   pendingRewardPerView: number;
   pendingRewardPerClick: number;
   isFreePlan: boolean;
