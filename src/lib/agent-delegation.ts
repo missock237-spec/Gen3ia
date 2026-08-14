@@ -79,7 +79,6 @@ export class AgentDelegationSystem {
 
       // Construire le prompt pour l'agent cible
       const prompt = [
-// @ts-ignore
         `Tu es ${delegation.targetAgent.name}, specialise en ${delegation.targetAgent.role}.`,
 // @ts-ignore
         `\n\nInstructions: ${delegation.targetAgent.instructions || 'Execute la tache delegatee.'}`,
@@ -176,15 +175,32 @@ export class AgentDelegationSystem {
   }
 
   /**
-   * Appel LLM (simule pour l'instant)
+   * Appel LLM via l'AI Router (avec fallback sur reponse simulee marquee)
    */
   private async callAgentLLM(agent: any, prompt: string): Promise<{ content: string; cost: number; tokens: number }> {
-    await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
-    return {
-      content: `[${agent.name}] Resultat de la tache delegatee:\n\nAnalyse effectuee selon les instructions specialisees.\n\nPrompt recu: ${prompt.slice(0, 100)}...`,
-      cost: 0.0002,
-      tokens: 200,
-    };
+    try {
+      const { createAIRouter } = await import('./ai-router');
+      const aiRouter = createAIRouter();
+      const response = await aiRouter.chat([
+        { role: 'system', content: agent.instructions || `Tu es ${agent.name}, un agent specialise en ${agent.role}.` },
+        { role: 'user', content: prompt },
+      ], { model: agent.model || 'gpt-4o-mini' });
+
+      return {
+        content: response.content,
+        cost: response.costUsd || 0.0001,
+        tokens: response.usage?.totalTokens || 150,
+      };
+    } catch (error) {
+      // Fallback simule — MARQUE explicitement que c'est une simulation
+      log.warn('delegation_llm_fallback', { agent: agent.name, error: String(error) });
+      await new Promise(r => setTimeout(r, 200));
+      return {
+        content: `[SIMULATION] ${agent.name} n'a pas pu joindre le LLM. Reponse de fallback:\n\nAnalyse basee sur le prompt: ${prompt.slice(0, 200)}...`,
+        cost: 0,
+        tokens: 0,
+      };
+    }
   }
 }
 

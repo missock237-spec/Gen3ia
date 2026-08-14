@@ -129,7 +129,10 @@ impl ExecutionTracker {
         Ok(())
     }
 
-    pub fn record_tokens(&self, session_id: &str, tokens: u64) -> Result<(), AgentSafetyError> {
+    /// Record token consumption and optionally update memory peak.
+    /// `memory_bytes` is the actual memory allocated for this operation (if known).
+    /// If 0, we estimate at 2 bytes per token (conservative UTF-8 average).
+    pub fn record_tokens(&self, session_id: &str, tokens: u64, memory_bytes: u64) -> Result<(), AgentSafetyError> {
         let sessions = self.sessions.lock().map_err(|e| {
             AgentSafetyError::Internal(format!("Mutex lock failed: {}", e))
         })?;
@@ -137,17 +140,20 @@ impl ExecutionTracker {
         let entry = sessions.get(session_id)
             .ok_or_else(|| AgentSafetyError::SessionNotFound(session_id.to_string()))?;
 
-        // Addition atomique + update du peak
+        // Addition atomique des tokens consommés
         entry.tokens_consumed.fetch_add(tokens, std::sync::atomic::Ordering::Relaxed);
+
+        // Update du pic mémoire — utilise la vraie valeur si fournie,
+        // sinon estimation conservatrice (2 bytes/token, pas 4)
+        let estimated_bytes = if memory_bytes > 0 { memory_bytes } else { tokens * 2 };
         loop {
             let current_peak = entry.memory_peak_bytes.load(std::sync::atomic::Ordering::Relaxed);
-            let new_peak = current_peak.max(tokens * 4);
-            if new_peak <= current_peak {
+            if estimated_bytes <= current_peak {
                 break;
             }
             if entry.memory_peak_bytes.compare_exchange(
                 current_peak,
-                new_peak,
+                estimated_bytes,
                 std::sync::atomic::Ordering::Relaxed,
                 std::sync::atomic::Ordering::Relaxed,
             ).is_ok() {
@@ -228,11 +234,11 @@ mod tests {
     fn test_record_tokens() {
         let tracker = ExecutionTracker::new();
         let session_id = tracker.start_session("test-agent", 30000).unwrap();
-        tracker.record_tokens(&session_id, 500).unwrap();
-        tracker.record_tokens(&session_id, 300).unwrap();
+        tracker.record_tokens(&session_id, 500, 0).unwrap();
+        tracker.record_tokens(&session_id, 300, 0).unwrap();
         let status = tracker.get_status(&session_id).unwrap();
         assert_eq!(status.tokens_consumed, 800);
-        assert_eq!(status.memory_peak_bytes, 500 * 4); // max(500*4, 300*4)
+        assert_eq!(status.memory_peak_bytes, 500 * 2); // max(500*2, 300*2) with new estimation
     }
 
     #[test]
