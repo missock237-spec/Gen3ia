@@ -19,6 +19,12 @@ import { db } from '@/lib/db';
 import { getCreditEngine } from '@/lib/billing/credit-engine';
 import { createLogger } from '@/lib/logger';
 import type { PlanTier } from '@/lib/billing/plans';
+import {
+  checkImpressionAllowed,
+  checkClickAllowed,
+  atomicBudgetIncrement,
+  ABUSE_LIMITS,
+} from '@/lib/advertising/anti-abuse';
 
 const log = createLogger('ad-engine');
 const creditEngine = getCreditEngine();
@@ -450,9 +456,27 @@ export class AdEngine {
     const campaign = await db.adCampaign.findUnique({ where: { id: campaignId } });
     if (!campaign) throw new Error('CAMPAIGN_NOT_FOUND');
 
+    // --- Anti-abuse check (server-side, DB-backed) ---
+    const abuseCheck = await checkImpressionAllowed(userId, campaignId, sessionId);
+    if (!abuseCheck.allowed) {
+      log.warn('impression_blocked', {
+        userId: userId.slice(0, 8),
+        reason: abuseCheck.reason,
+        fraudScore: abuseCheck.fraudScore,
+      });
+      throw new Error(`IMPRESSION_BLOCKED:${abuseCheck.reason}`);
+    }
+
     const prefs = await this.getUserAdPreferences(userId);
     const isRewarded = adType === 'rewarded' && prefs.rewardedAdsEnabled && !prefs.isFreePlan;
     const rewardAmount = isRewarded ? Number(campaign.rewardPerView ?? 0) : 0;
+
+    // --- Atomic budget check + increment (no race condition) ---
+    const costIncrement = isRewarded ? Number(campaign.costPerView ?? 0) : Number(campaign.costPerView ?? 0) * 0.5;
+    const budgetOk = await atomicBudgetIncrement(campaignId, costIncrement);
+    if (!budgetOk) {
+      throw new Error('CAMPAIGN_BUDGET_EXHAUSTED');
+    }
 
     const impression = await db.adImpression.create({
       data: {
@@ -475,12 +499,6 @@ export class AdEngine {
         data: { rewardCredited: true, rewardAmount },
       });
     }
-
-    const costIncrement = isRewarded ? Number(campaign.costPerView ?? 0) : Number(campaign.costPerView ?? 0) * 0.5;
-    await db.adCampaign.update({
-      where: { id: campaignId },
-      data: { budgetSpent: { increment: costIncrement } },
-    });
 
     await db.adUserPreference.upsert({
       where: { userId },
@@ -531,9 +549,32 @@ export class AdEngine {
     const campaign = await db.adCampaign.findUnique({ where: { id: impression.campaignId } });
     if (!campaign) throw new Error('CAMPAIGN_NOT_FOUND');
 
+    // Vérifier que l'impression n'a pas déjà été cliquée
+    if (impression.wasClicked) {
+      throw new Error('IMPRESSION_ALREADY_CLICKED');
+    }
+
+    // --- Anti-abuse check (server-side, DB-backed) ---
+    const abuseCheck = await checkClickAllowed(impression.userId as string, impressionId);
+    if (!abuseCheck.allowed) {
+      log.warn('click_blocked', {
+        userId: (impression.userId as string).slice(0, 8),
+        reason: abuseCheck.reason,
+        fraudScore: abuseCheck.fraudScore,
+      });
+      throw new Error(`CLICK_BLOCKED:${abuseCheck.reason}`);
+    }
+
     const prefs = await this.getUserAdPreferences(impression.userId as string);
     const isRewarded = impression.adType === 'rewarded' && prefs.rewardedAdsEnabled && !prefs.isFreePlan;
     const rewardAmount = isRewarded ? Number(campaign.rewardPerClick ?? 0) : 0;
+
+    // --- Atomic budget check + increment ---
+    const clickCost = Number(campaign.costPerClick ?? 0);
+    const budgetOk = await atomicBudgetIncrement(impression.campaignId, clickCost);
+    if (!budgetOk) {
+      throw new Error('CAMPAIGN_BUDGET_EXHAUSTED');
+    }
 
     await db.adImpression.update({
       where: { id: impressionId },
@@ -548,11 +589,6 @@ export class AdEngine {
     if (isRewarded && rewardAmount > 0) {
       await this.creditReward(impression.userId as string, rewardAmount, impressionId);
     }
-
-    await db.adCampaign.update({
-      where: { id: impression.campaignId },
-      data: { budgetSpent: { increment: Number(campaign.costPerClick ?? 0) } },
-    });
 
     await db.adUserPreference.upsert({
       where: { userId: impression.userId as string },
