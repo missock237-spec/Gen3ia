@@ -50,7 +50,7 @@ export function validateParams<T>(schema: ZodSchema<T>, params: Record<string, s
  * Formate les erreurs Zod en structure lisible
  */
 function formatZodErrors(error: ZodError): Record<string, string[]> {
-  return error.errors.reduce((acc, e) => {
+  return error.issues.reduce((acc, e) => {
     const path = e.path.join('.');
     if (!acc[path]) acc[path] = [];
     acc[path].push(e.message);
@@ -102,6 +102,6 @@ export const UpdateProfileSchema = z.object({
 export const StripeWebhookSchema = z.object({
   type: z.string(),
   data: z.object({
-    object: z.record(z.unknown()),
+    object: z.record(z.string(), z.unknown()),
   }),
 });

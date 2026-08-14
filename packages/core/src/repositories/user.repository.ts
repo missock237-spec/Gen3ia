@@ -1,4 +1,4 @@
-import { increment } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { BaseRepository } from './base.repository.js';
 
 // ============================================================
@@ -21,7 +21,7 @@ export class UserRepository extends BaseRepository<UserRecord> {
 
   async deductCredits(userId: string, amount: number): Promise<UserRecord> {
     const docRef = this.db().collection('users').doc(userId);
-    await docRef.update({ credits: increment(-amount) });
+    await docRef.update({ credits: FieldValue.increment(-amount) });
     const snap = await docRef.get();
     const data = snap.data() ?? {};
     return { ...data, id: snap.id } as UserRecord;
@@ -29,7 +29,7 @@ export class UserRepository extends BaseRepository<UserRecord> {
 
   async addCredits(userId: string, amount: number): Promise<UserRecord> {
     const docRef = this.db().collection('users').doc(userId);
-    await docRef.update({ credits: increment(amount) });
+    await docRef.update({ credits: FieldValue.increment(amount) });
     const snap = await docRef.get();
     const data = snap.data() ?? {};
     return { ...data, id: snap.id } as UserRecord;

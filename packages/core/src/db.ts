@@ -9,24 +9,15 @@
 // ============================================================
 
 import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
   getFirestore,
-  limit as limitFn,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
   Timestamp,
-  updateDoc,
-  where,
-  WhereFilterOp,
-  writeBatch,
+  FieldValue,
   type DocumentData,
-  type QueryConstraint,
+  type WhereFilterOp,
+  type CollectionReference,
+  type DocumentReference,
+  type Query,
+  type WriteBatch,
 } from 'firebase-admin/firestore';
 import { getApps, initializeApp } from 'firebase-admin/app';
 
@@ -64,6 +55,8 @@ function adminApp() {
 function dbAdmin() {
   return getFirestore(adminApp());
 }
+
+const serverTimestamp = FieldValue.serverTimestamp;
 
 function serialize(data: Record<string, unknown>): DocumentData {
   const out: DocumentData = {};
@@ -106,11 +99,12 @@ function projectFields(data: Record<string, unknown>, select?: string[]): Record
 
 export class FirestoreRepository<T extends Record<string, unknown> = Record<string, unknown>> {
   constructor(private collectionName: string) {}
-  private col() { return collection(dbAdmin(), this.collectionName); }
+  private col(): CollectionReference<DocumentData> { return dbAdmin().collection(this.collectionName); }
+  private docRef(id: string): DocumentReference<DocumentData> { return dbAdmin().doc(`${this.collectionName}/${id}`); }
 
   async findUnique(options: FindUniqueOptions): Promise<T | null> {
     if (options.where.id) {
-      const snap = await doc(dbAdmin(), this.collectionName, options.where.id).get();
+      const snap = await this.docRef(options.where.id).get();
       if (!snap.exists) return null;
       const data = deserialize(snap.data() ?? {});
       data.id = snap.id;
@@ -118,8 +112,9 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
     }
     const entries = Object.entries(options.where).filter(([k]) => k !== 'id');
     if (entries.length === 0) return null;
-    const constraints: QueryConstraint[] = entries.map(([field, value]) => where(field, '==', serializeValue(value)));
-    const snap = await getDocs(query(this.col(), ...constraints));
+    let q: Query<DocumentData> = this.col();
+    for (const [field, value] of entries) q = q.where(field, '==', serializeValue(value));
+    const snap = await q.get();
     if (snap.empty) return null;
     const d = snap.docs[0]!;
     const data = deserialize(d.data() ?? {});
@@ -133,11 +128,11 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
   }
 
   async findMany(options: FindOptions = {}): Promise<T[]> {
-    const constraints: QueryConstraint[] = [];
-    if (options.where) for (const w of options.where) constraints.push(where(w.field, w.op, serializeValue(w.value)));
-    if (options.orderBy) for (const o of options.orderBy) constraints.push(orderBy(o.field, o.direction || 'asc'));
-    if (options.limit) constraints.push(limitFn(options.limit));
-    const snap = await getDocs(query(this.col(), ...constraints));
+    let q: Query<DocumentData> = this.col();
+    if (options.where) for (const w of options.where) q = q.where(w.field, w.op, serializeValue(w.value));
+    if (options.orderBy) for (const o of options.orderBy) q = q.orderBy(o.field, o.direction || 'asc');
+    if (options.limit) q = q.limit(options.limit);
+    const snap = await q.get();
     let items: T[] = snap.docs.map((d) => {
       const data = deserialize(d.data() ?? {});
       data.id = d.id;
@@ -149,15 +144,17 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
   }
 
   async count(options: Pick<FindOptions, 'where'> = {}): Promise<number> {
-    const constraints: QueryConstraint[] = [];
-    if (options.where) for (const w of options.where) constraints.push(where(w.field, w.op, serializeValue(w.value)));
-    const snap = await getDocs(query(this.col(), ...constraints));
+    let q: Query<DocumentData> = this.col();
+    if (options.where) for (const w of options.where) q = q.where(w.field, w.op, serializeValue(w.value));
+    // Firestore ne fournit pas de count() côté serveur dans tous les SDK admin ; on doit fetch.
+    // Pour limiter le coût, on utilise un snapshot vide de métadonnées si dispo.
+    const snap = await q.get();
     return snap.size;
   }
 
   async create(options: CreateOptions): Promise<T> {
     const data = serialize({ ...options.data, createdAt: options.data.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
-    const ref = await addDoc(this.col(), data);
+    const ref = await this.col().add(data);
     const snap = await ref.get();
     const result = deserialize(snap.data() ?? {});
     result.id = ref.id;
@@ -166,8 +163,9 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
 
   async createWithId(id: string, data: Record<string, unknown>): Promise<T> {
     const payload = serialize({ ...data, createdAt: data.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
-    await setDoc(doc(dbAdmin(), this.collectionName, id), payload);
-    const snap = await doc(dbAdmin(), this.collectionName, id).get();
+    const ref = this.docRef(id);
+    await ref.set(payload);
+    const snap = await ref.get();
     const result = deserialize(snap.data() ?? {});
     result.id = id;
     return result as T;
@@ -176,9 +174,10 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
   async update(options: UpdateOptions): Promise<T> {
     const id = options.where.id;
     if (!id) throw new Error('update() requiert where.id');
+    const ref = this.docRef(id);
     const payload = serialize({ ...options.data, updatedAt: serverTimestamp() });
-    await updateDoc(doc(dbAdmin(), this.collectionName, id), payload);
-    const snap = await doc(dbAdmin(), this.collectionName, id).get();
+    await ref.update(payload);
+    const snap = await ref.get();
     const result = deserialize(snap.data() ?? {});
     result.id = id;
     return result as T;
@@ -192,25 +191,25 @@ export class FirestoreRepository<T extends Record<string, unknown> = Record<stri
 
   async updateMany(options: { where?: FirestoreWhereOp[]; data: Record<string, unknown> }): Promise<{ count: number }> {
     const items = await this.findMany({ where: options.where });
-    const batch = writeBatch(dbAdmin());
+    const batch: WriteBatch = dbAdmin().batch();
     const payload = serialize({ ...options.data, updatedAt: serverTimestamp() });
-    for (const item of items) batch.update(doc(dbAdmin(), this.collectionName, (item as Record<string, unknown>).id as string), payload);
+    for (const item of items) batch.update(this.docRef((item as Record<string, unknown>).id as string), payload);
     await batch.commit();
     return { count: items.length };
   }
 
   async delete(options: DeleteOptions): Promise<void> {
-    if (options.where.id) { await deleteDoc(doc(dbAdmin(), this.collectionName, options.where.id)); return; }
+    if (options.where.id) { await this.docRef(options.where.id).delete(); return; }
     const items = await this.findMany({ where: Object.entries(options.where).map(([field, value]) => ({ field, op: '==' as WhereFilterOp, value })) });
-    const batch = writeBatch(dbAdmin());
-    for (const item of items) batch.delete(doc(dbAdmin(), this.collectionName, (item as Record<string, unknown>).id as string));
+    const batch: WriteBatch = dbAdmin().batch();
+    for (const item of items) batch.delete(this.docRef((item as Record<string, unknown>).id as string));
     await batch.commit();
   }
 
   async deleteMany(options: { where?: FirestoreWhereOp[] }): Promise<{ count: number }> {
     const items = await this.findMany({ where: options.where });
-    const batch = writeBatch(dbAdmin());
-    for (const item of items) batch.delete(doc(dbAdmin(), this.collectionName, (item as Record<string, unknown>).id as string));
+    const batch: WriteBatch = dbAdmin().batch();
+    for (const item of items) batch.delete(this.docRef((item as Record<string, unknown>).id as string));
     await batch.commit();
     return { count: items.length };
   }

@@ -26,9 +26,9 @@ class UserService {
 
   async updateProfile(userId: string, data: { name?: string; email?: string }) {
     if (data.email && !this.isValidEmail(data.email)) {
-      throw new ValidationError('EMAIL_INVALID', "Format d'email invalide");
+      throw new ValidationError("Format d'email invalide", { field: 'email', code: 'EMAIL_INVALID' });
     }
-    return userRepository.update(userId, data);
+    return userRepository.update(userId, data as Record<string, unknown>);
   }
 
   async getUserStats(userId: string) {

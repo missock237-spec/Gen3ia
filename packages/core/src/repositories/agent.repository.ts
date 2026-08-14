@@ -25,10 +25,13 @@ export interface ExecutionRecord extends Record<string, unknown> {
   createdAt?: Date;
 }
 
-function toWhere(filter: Record<string, unknown>): WhereOp[] {
-  return Object.entries(filter)
+/** Convertit un filtre objet en liste de WhereOp (ignore `id`). */
+function toWhere(filter?: Record<string, unknown>): WhereOp[] | undefined {
+  if (!filter) return undefined;
+  const ops = Object.entries(filter)
     .filter(([k]) => k !== 'id')
     .map(([field, value]) => ({ field, op: '==' as const, value }));
+  return ops.length > 0 ? ops : undefined;
 }
 
 export class AgentRepository extends BaseRepository<AgentRecord> {
@@ -36,8 +39,10 @@ export class AgentRepository extends BaseRepository<AgentRecord> {
     super('agents');
   }
 
-  async count(filter?: Record<string, unknown>): Promise<number> {
-    return super.count(filter ? toWhere(filter) : undefined);
+  /** Surcharge acceptant `WhereOp[]` (héritée) ou `Record<string, unknown>` (Prisma-like). */
+  async count(where?: WhereOp[] | Record<string, unknown>): Promise<number> {
+    const ops = Array.isArray(where) ? where : toWhere(where as Record<string, unknown> | undefined);
+    return super.count(ops);
   }
 }
 
@@ -46,8 +51,10 @@ export class ExecutionRepository extends BaseRepository<ExecutionRecord> {
     super('agent_usage');
   }
 
-  async count(filter?: Record<string, unknown>): Promise<number> {
-    return super.count(filter ? toWhere(filter) : undefined);
+  /** Surcharge acceptant `WhereOp[]` (héritée) ou `Record<string, unknown>` (Prisma-like). */
+  async count(where?: WhereOp[] | Record<string, unknown>): Promise<number> {
+    const ops = Array.isArray(where) ? where : toWhere(where as Record<string, unknown> | undefined);
+    return super.count(ops);
   }
 }
 

@@ -8,24 +8,15 @@
 
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
   getFirestore,
-  limit as limitFn,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
   Timestamp,
-  updateDoc,
-  where,
-  writeBatch,
+  FieldValue,
   type DocumentData,
-  type QueryConstraint,
   type WhereFilterOp,
+  type CollectionReference,
+  type DocumentReference,
+  type Query,
+  type WriteBatch,
 } from 'firebase-admin/firestore';
 
 // Initialisation idempotente du SDK Admin (si clés fournies)
@@ -146,16 +137,20 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
     return getFirestore(adminApp());
   }
 
-  protected col() {
-    return collection(this.db(), this.collectionName);
+  protected col(): CollectionReference<DocumentData> {
+    return this.db().collection(this.collectionName);
+  }
+
+  protected docRef(id: string): DocumentReference<DocumentData> {
+    return this.db().doc(`${this.collectionName}/${id}`);
   }
 
   async findById(id: string, select?: Select): Promise<T | null> {
-    const snap = await doc(this.db(), this.collectionName, id).get();
+    const snap = await this.docRef(id).get();
     if (!snap.exists) return null;
     const data = deserialize(snap.data()!);
     data.id = snap.id;
-    return project(data, select);
+    return project(data as T, select);
   }
 
   async findByIdOrThrow(id: string, select?: Select): Promise<T> {
@@ -168,13 +163,14 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
     if (args.where.id) return this.findById(args.where.id, args.select);
     const entries = Object.entries(args.where).filter(([k]) => k !== 'id');
     if (entries.length === 0) return null;
-    const constraints: QueryConstraint[] = entries.map(([field, value]) => where(field, '==', serializeValue(value)));
-    const snap = await getDocs(query(this.col(), ...constraints));
+    let q: Query<DocumentData> = this.col();
+    for (const [field, value] of entries) q = q.where(field, '==', serializeValue(value));
+    const snap = await q.get();
     if (snap.empty) return null;
     const d = snap.docs[0]!;
     const data = deserialize(d.data() ?? {});
     data.id = d.id;
-    return project(data, args.select);
+    return project(data as T, args.select);
   }
 
   async findFirst(args: FindManyArgs = {}): Promise<T | null> {
@@ -183,13 +179,13 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
   }
 
   async findMany(args: FindManyArgs = {}): Promise<T[]> {
-    const constraints: QueryConstraint[] = [];
-    if (args.where) for (const w of args.where) constraints.push(where(w.field, w.op, serializeValue(w.value)));
+    let q: Query<DocumentData> = this.col();
+    if (args.where) for (const w of args.where) q = q.where(w.field, w.op, serializeValue(w.value));
     const order = args.orderBy ? (Array.isArray(args.orderBy) ? args.orderBy : [args.orderBy]) : [];
-    for (const o of order) constraints.push(orderBy(o.field, o.direction || 'asc'));
-    if (args.take) constraints.push(limitFn(args.take));
+    for (const o of order) q = q.orderBy(o.field, o.direction || 'asc');
+    if (args.take) q = q.limit(args.take);
 
-    const snap = await getDocs(query(this.col(), ...constraints));
+    const snap = await q.get();
     let items = snap.docs.map((d) => {
       const data = deserialize(d.data() ?? {});
       data.id = d.id;
@@ -201,15 +197,15 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
   }
 
   async count(where?: WhereOp[]): Promise<number> {
-    const constraints: QueryConstraint[] = [];
-    if (where) for (const w of where) constraints.push(where(w.field, w.op, serializeValue(w.value)));
-    const snap = await getDocs(query(this.col(), ...constraints));
+    let q: Query<DocumentData> = this.col();
+    if (where) for (const w of where) q = q.where(w.field, w.op, serializeValue(w.value));
+    const snap = await q.get();
     return snap.size;
   }
 
   async create(data: Record<string, unknown>): Promise<T> {
-    const payload = serialize({ ...data, createdAt: data.createdAt ?? serverTimestamp(), updatedAt: data.updatedAt ?? serverTimestamp() });
-    const ref = await addDoc(this.col(), payload);
+    const payload = serialize({ ...data, createdAt: data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: data.updatedAt ?? FieldValue.serverTimestamp() });
+    const ref = await this.col().add(payload);
     const snap = await ref.get();
     const result = deserialize(snap.data() ?? {});
     result.id = ref.id;
@@ -217,32 +213,34 @@ export class BaseRepository<T extends Record<string, unknown> = Record<string, u
   }
 
   async createWithId(id: string, data: Record<string, unknown>): Promise<T> {
-    const payload = serialize({ ...data, createdAt: data.createdAt ?? serverTimestamp(), updatedAt: data.updatedAt ?? serverTimestamp() });
-    await setDoc(doc(this.db(), this.collectionName, id), payload);
-    const snap = await doc(this.db(), this.collectionName, id).get();
+    const payload = serialize({ ...data, createdAt: data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: data.updatedAt ?? FieldValue.serverTimestamp() });
+    const ref = this.docRef(id);
+    await ref.set(payload);
+    const snap = await ref.get();
     const result = deserialize(snap.data() ?? {});
     result.id = id;
     return result as T;
   }
 
   async update(id: string, data: Record<string, unknown>): Promise<T> {
-    const payload = serialize({ ...data, updatedAt: serverTimestamp() });
-    await updateDoc(doc(this.db(), this.collectionName, id), payload);
-    const snap = await doc(this.db(), this.collectionName, id).get();
+    const ref = this.docRef(id);
+    const payload = serialize({ ...data, updatedAt: FieldValue.serverTimestamp() });
+    await ref.update(payload);
+    const snap = await ref.get();
     const result = deserialize(snap.data() ?? {});
     result.id = id;
     return result as T;
   }
 
   async delete(id: string): Promise<void> {
-    await deleteDoc(doc(this.db(), this.collectionName, id));
+    await this.docRef(id).delete();
   }
 
   async updateMany(where: WhereOp[], data: Record<string, unknown>): Promise<{ count: number }> {
     const items = await this.findMany({ where });
-    const batch = writeBatch(this.db());
-    const payload = serialize({ ...data, updatedAt: serverTimestamp() });
-    for (const item of items) batch.update(doc(this.db(), this.collectionName, (item as Record<string, unknown>).id as string), payload);
+    const batch: WriteBatch = this.db().batch();
+    const payload = serialize({ ...data, updatedAt: FieldValue.serverTimestamp() });
+    for (const item of items) batch.update(this.docRef((item as Record<string, unknown>).id as string), payload);
     await batch.commit();
     return { count: items.length };
   }
