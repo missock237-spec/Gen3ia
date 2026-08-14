@@ -231,3 +231,18 @@ export type { CheckpointState } from '@/lib/agent-engine/checkpoint-manager';
 // ============================================================
 export { sendSmsAlert, sendDirectSms, isSmsConfigured } from '@/lib/sms-engine';
 export type { SmsAlertInput, SmsMessage, SmsSeverity } from '@/lib/sms-engine';
+
+// ============================================================
+// Enhanced Agent Engine — v2 components
+// ============================================================
+export { CircuitBreaker, circuitBreaker } from '@/lib/agent-engine/circuit-breaker';
+export type { CircuitState, CircuitBreakerConfig } from '@/lib/agent-engine/circuit-breaker';
+
+export { RetryStrategy, networkRetry, apiRetry, llmRetry } from '@/lib/agent-engine/retry-strategy';
+export type { RetryConfig, RetryResult } from '@/lib/agent-engine/retry-strategy';
+
+export { ParallelCoordinator } from '@/lib/agent-engine/parallel-coordinator';
+export type { CoordinationResult } from '@/lib/agent-engine/parallel-coordinator';
+
+export { AgentEventBus, agentEventBus, createStepCallback } from '@/lib/agent-engine/streaming-callbacks';
+export type { AgentEvent, AgentEventType, CostTracker } from '@/lib/agent-engine/streaming-callbacks';
