@@ -74,6 +74,8 @@ export const FEATURES: Feature[] = [
   { id: 'doc-analyzer', name: 'Analyseur de Documents', description: 'Résumé, points clés, action items, entités, sentiment', status: 'active' },
   { id: 'business-calc', name: 'Calculateurs Business', description: 'Devises africaines, marges, prêts, TVA, ROI, prix optimal', status: 'active' },
   { id: 'meeting-notes', name: 'Notes de Réunion', description: 'Décisions, actions, participants, risques, prochaines étapes', status: 'active' },
+  { id: 'advertiser-dashboard', name: 'Dashboard Annonceurs', description: 'Vue d'ensemble campagnes, performance, budget, A/B tests', status: 'active' },
+  { id: 'translator', name: 'Traducteur Africain', description: 'Traduction 10 langues: FR, EN, Hausa, Yoruba, Igbo, Swahili, Wolof, Bambara, Lingala, Arabe', status: 'active' },
 ];
 
 /**

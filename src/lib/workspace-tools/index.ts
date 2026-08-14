@@ -28,3 +28,5 @@ export const WORKSPACE_TOOLS = [
     method: 'POST',
   },
 ];
+
+export { africanTranslator, AfricanTranslator, type SupportedLanguage } from './translator';
