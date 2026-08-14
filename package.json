@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
-    "build": "next build && turbo run build",
+    "build": "next build",
     "build:root": "next build",
     "build:packages": "turbo run build",
     "start": "next start",
