@@ -73,7 +73,7 @@ export async function saveSubscription(
     return { success: true };
   } catch (err) {
     log.error('Failed to save push subscription', { error: String(err) });
-    return { success: false, error: 'Erreur lors de l\\'enregistrement' };
+    return { success: false, error: 'Erreur lors de l\'enregistrement' };
   }
 }
 
@@ -238,7 +238,7 @@ export const NOTIFICATION_TEMPLATES = {
   },
   feedbackResponse: {
     title: 'Réponse à votre feedback 💬',
-    body: 'L\\'équipe Gen3ia a répondu à votre feedback.',
+    body: 'L\'équipe Gen3ia a répondu à votre feedback.',
     tag: 'feedback',
     url: '/support',
   },

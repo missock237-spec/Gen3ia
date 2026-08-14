@@ -79,6 +79,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('[campay] API error:', error);
-    return NextResponse.json({ error: 'Erreur lors de l\\'initiation du paiement' }, { status: 500 });
+    return NextResponse.json({ error: "Erreur lors de l'initiation du paiement" }, { status: 500 });
   }
 }

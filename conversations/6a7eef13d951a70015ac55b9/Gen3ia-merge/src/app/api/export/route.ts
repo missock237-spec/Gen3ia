@@ -68,7 +68,7 @@ async function handler(req: NextRequest): Promise<NextResponse> {
     return response;
   } catch (error) {
     console.error('[export] error:', error);
-    return NextResponse.json({ error: 'Erreur lors de l\\'export' }, { status: 500 });
+    return NextResponse.json({ error: "Erreur lors de l'export" }, { status: 500 });
   }
 }
 

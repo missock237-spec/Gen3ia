@@ -125,14 +125,14 @@ export async function sendOtp(phoneNumber: string): Promise<{ success: boolean; 
 
     if (!result.success) {
       log.error('OTP SMS send failed', { phone: normalized, error: result.error });
-      return { success: false, error: 'Envoi SMS échoué. Réessayez ou utilisez l\\'auth email.' };
+      return { success: false, error: 'Envoi SMS échoué. Réessayez ou utilisez l\'auth email.' };
     }
 
     log.info('OTP sent', { phone: normalized });
     return { success: true };
   } catch (err) {
     log.error('sendOtp failed', { phone: normalized, error: String(err) });
-    return { success: false, error: 'Erreur lors de l\\'envoi du code' };
+    return { success: false, error: 'Erreur lors de l\'envoi du code' };
   }
 }
 

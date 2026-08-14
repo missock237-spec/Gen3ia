@@ -119,7 +119,7 @@ export async function detectSuspiciousActivity(userId: string): Promise<{ alerts
   // Création d'agents en rafale
   const agentCreates = recentLogs.filter(l => l.action === 'agent_create');
   if (agentCreates.length > 20) {
-    alerts.push('Création d\\'agents en rafale (potentiel abus)');
+    alerts.push('Création d\'agents en rafale (potentiel abus)');
   }
 
   // Clés API créées en rafale

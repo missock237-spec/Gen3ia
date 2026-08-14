@@ -179,7 +179,7 @@ class CampayClient {
         success: false,
         reference: request.reference,
         status: 'failed',
-        message: 'Erreur lors de l\\'initiation du paiement',
+        message: 'Erreur lors de l\'initiation du paiement',
       };
     }
   }

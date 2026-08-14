@@ -39,7 +39,7 @@ export async function sendEmail(options: EmailOpts): Promise<EmailResult> {
         });
         return { success: true, messageId: info.messageId };
       } catch (err) {
-        console.log('[Email] SMTP echoue, fallback Resend:', err instanceof Error ? err.message : '?');
+        console.warn('[Email] SMTP echoue, fallback Resend:', err instanceof Error ? err.message : '?');
         transportInstance = null;
         useResend = true;
       }

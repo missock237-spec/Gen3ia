@@ -188,7 +188,7 @@ export async function skipStep(
     return { success: true, nextStep };
   } catch (err) {
     log.error('skipStep failed', { error: String(err) });
-    return { success: false, error: 'Erreur lors du saut d\\'étape' };
+    return { success: false, error: 'Erreur lors du saut d\'étape' };
   }
 }
 

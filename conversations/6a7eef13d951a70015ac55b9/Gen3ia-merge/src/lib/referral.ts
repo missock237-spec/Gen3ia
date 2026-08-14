@@ -136,7 +136,7 @@ export async function applyReferralCode(
     // Notifier le parrain
     await sendPushNotification(referrerId, {
       title: 'Nouveau filleul ! 🎉',
-      body: `${(newUser as Record<string, unknown>)?.name || 'Quelqu\\'un'} s\\'est inscrit avec votre code. Vous avez gagné ${REFERRAL_BONUS_REFERRER} crédits !`,
+      body: `${(newUser as Record<string, unknown>)?.name || "Quelqu'un"} s'est inscrit avec votre code. Vous avez gagné ${REFERRAL_BONUS_REFERRER} crédits !`,
       tag: 'referral',
       url: '/settings/referral',
     }).catch(() => {});
@@ -148,7 +148,7 @@ export async function applyReferralCode(
     };
   } catch (err) {
     log.error('applyReferralCode failed', { error: String(err) });
-    return { success: false, error: 'Erreur lors de l\\'application du code' };
+    return { success: false, error: 'Erreur lors de l\'application du code' };
   }
 }
 

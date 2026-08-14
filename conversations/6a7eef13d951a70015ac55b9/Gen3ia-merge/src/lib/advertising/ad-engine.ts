@@ -61,7 +61,7 @@ const HOUSE_ADS: AdCampaign[] = [
   },
   {
     id: 'house_referral',
-    targetCountries: [] // All countries
+    targetCountries: [], // All countries
     name: 'Referral Program',
     description: 'Promote referral program to all users',
     advertiserName: 'Gen3ia',
@@ -89,7 +89,7 @@ const HOUSE_ADS: AdCampaign[] = [
   },
   {
     id: 'house_voice_feature',
-    targetCountries: [] // All countries
+    targetCountries: [], // All countries
     name: 'Voice Agent Feature',
     description: 'Promote voice agent to paid users',
     advertiserName: 'Gen3ia',

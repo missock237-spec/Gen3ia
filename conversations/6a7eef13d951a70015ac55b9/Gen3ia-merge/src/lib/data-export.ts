@@ -161,7 +161,7 @@ export async function exportUserData(request: ExportRequest): Promise<ExportResu
       filename,
       collections: [],
       totalRecords: 0,
-      error: 'Erreur lors de l\\'export des données',
+      error: 'Erreur lors de l\'export des données',
     };
   }
 }

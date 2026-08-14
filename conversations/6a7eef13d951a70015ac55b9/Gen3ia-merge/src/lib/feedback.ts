@@ -73,7 +73,7 @@ export async function createFeedback(entry: FeedbackEntry): Promise<{ success: b
     return { success: true, id };
   } catch (err) {
     log.error('Failed to create feedback', { error: String(err) });
-    return { success: false, error: 'Impossible d\\'enregistrer le feedback' };
+    return { success: false, error: 'Impossible d\'enregistrer le feedback' };
   }
 }
 
