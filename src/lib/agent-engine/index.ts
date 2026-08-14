@@ -219,3 +219,15 @@ export type {
   GraphEventCallback,
   PersistedGraphState,
 } from '@/lib/agent-engine/state-graph';
+
+// ============================================================
+// Checkpoint Manager — sauvegarde et reprise d'exécution
+// ============================================================
+export { CheckpointManager, checkpointManager } from '@/lib/agent-engine/checkpoint-manager';
+export type { CheckpointState } from '@/lib/agent-engine/checkpoint-manager';
+
+// ============================================================
+// SMS Engine — alertes par SMS (Twilio)
+// ============================================================
+export { sendSmsAlert, sendDirectSms, isSmsConfigured } from '@/lib/sms-engine';
+export type { SmsAlertInput, SmsMessage, SmsSeverity } from '@/lib/sms-engine';

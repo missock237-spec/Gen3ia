@@ -20,6 +20,7 @@
 
 import { getAdminMessaging } from './admin';
 import { db, Collections } from './firestore';
+import { maybeSendSmsForNotification } from '@/lib/sms-engine';
 
 // ============================================================
 // Types

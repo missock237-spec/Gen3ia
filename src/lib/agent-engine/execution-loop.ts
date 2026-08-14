@@ -5,6 +5,7 @@ import { ToolRegistry } from '@/lib/tools/registry';
 import { ShortTermMemory } from '@/lib/memory/short-term';
 import { LongTermMemory } from '@/lib/memory/long-term';
 import { db } from '@/lib/db';
+import { checkpointManager, CheckpointState } from '@/lib/agent-engine/checkpoint-manager';
 import { Tracer } from '@/lib/observability/tracer';
 import { ResourceGuard, limitString } from '@/lib/resource-guard';
 
@@ -221,24 +222,139 @@ export async function executeAgentLoop(context: ExecutionContext, toolRegistry: 
   const tracer = new Tracer();
   const traceId = tracer.startTrace(context.agentId, context.task);
   const startTime = Date.now();
+  // ============================================================
+  // Checkpoint : tenter de reprendre une exécution interrompue
+  // ============================================================
+  if (context.executionId) {
+    const existingCheckpoint = await checkpointManager.load(context.executionId);
+    if (existingCheckpoint && existingCheckpoint.status === 'failed' && existingCheckpoint.retryCount < 2) {
+      // Reprendre depuis le dernier checkpoint
+      context.steps = existingCheckpoint.steps as ExecutionStep[];
+      currentStep = existingCheckpoint.currentStepIndex;
+      context.totalTokensUsed = existingCheckpoint.totalTokensUsed;
+      context.totalCost = existingCheckpoint.totalCost;
+      context.status = 'running';
+    }
+  }
+
   while (currentStep < context.maxSteps && context.status === 'running') {
-    if (Date.now() - startTime > 120000) { context.status = 'failed'; break; } // Hard timeout global 2min
+    if (Date.now() - startTime > 120000) {
+      // Timeout — sauvegarder le checkpoint avant de quitter
+      if (context.executionId) {
+        await checkpointManager.save({
+          agentId: context.agentId,
+          userId: context.userId,
+          executionId: context.executionId,
+          task: context.task,
+          steps: context.steps,
+          currentStepIndex: currentStep,
+          plan: context.plan,
+          status: 'failed',
+          totalTokensUsed: context.totalTokensUsed,
+          totalCost: context.totalCost,
+          startedAt: context.startedAt,
+          lastCheckpointAt: new Date().toISOString(),
+          conversationId: context.conversationId,
+          toolsUsed: context.tools,
+          error: 'Global timeout exceeded (120s)',
+          retryCount: 0,
+        }, true);
+      }
+      context.status = 'failed';
+      break;
+    }
     currentStep++;
     try {
       const step = await thinkStep(context, toolRegistry);
       tracer.addStep(traceId, { type: step.type, content: limitString(step.content, 200), duration: step.duration || 0, tokensUsed: Math.ceil(step.content.length / 4), model: 'auto-routed', provider: 'groq/openrouter', toolName: step.toolName, toolDuration: step.duration });
       if (onStep) onStep(step);
+
+      // ============================================================
+      // Checkpoint : sauvegarder la progression après chaque étape
+      // ============================================================
+      if (context.executionId && currentStep % 2 === 0) {
+        await checkpointManager.save({
+          agentId: context.agentId,
+          userId: context.userId,
+          executionId: context.executionId,
+          task: context.task,
+          steps: context.steps,
+          currentStepIndex: currentStep,
+          plan: context.plan,
+          status: context.status,
+          totalTokensUsed: context.totalTokensUsed,
+          totalCost: context.totalCost,
+          startedAt: context.startedAt,
+          lastCheckpointAt: new Date().toISOString(),
+          conversationId: context.conversationId,
+          toolsUsed: context.tools,
+          retryCount: 0,
+        });
+      }
+
       if (['completed', 'awaiting_approval', 'paused', 'failed'].includes(context.status)) break;
       if (step.type === 'result') { context.status = 'completed'; break; }
       const recentErrors = context.steps.slice(-3).filter(s => s.type === 'error').length;
-      if (recentErrors >= 3) { context.status = 'failed'; break; }
+      if (recentErrors >= 3) {
+        // Sauvegarder le checkpoint avant de déclarer échec
+        if (context.executionId) {
+          await checkpointManager.save({
+            agentId: context.agentId,
+            userId: context.userId,
+            executionId: context.executionId,
+            task: context.task,
+            steps: context.steps,
+            currentStepIndex: currentStep,
+            plan: context.plan,
+            status: 'failed',
+            totalTokensUsed: context.totalTokensUsed,
+            totalCost: context.totalCost,
+            startedAt: context.startedAt,
+            lastCheckpointAt: new Date().toISOString(),
+            conversationId: context.conversationId,
+            toolsUsed: context.tools,
+            error: 'Too many consecutive errors (3+)',
+            retryCount: 0,
+          }, true);
+        }
+        context.status = 'failed';
+        break;
+      }
     } catch (error) {
       const errorStep: ExecutionStep = { id: generateStepId(), type: 'error', content: `Erreur: ${error instanceof Error ? error.message : 'Inconnue'}`, timestamp: new Date().toISOString() };
       context.steps.push(errorStep);
       if (onStep) onStep(errorStep);
+
+      // Sauvegarder le checkpoint en cas d'exception
+      if (context.executionId) {
+        await checkpointManager.save({
+          agentId: context.agentId,
+          userId: context.userId,
+          executionId: context.executionId,
+          task: context.task,
+          steps: context.steps,
+          currentStepIndex: currentStep,
+          plan: context.plan,
+          status: 'failed',
+          totalTokensUsed: context.totalTokensUsed,
+          totalCost: context.totalCost,
+          startedAt: context.startedAt,
+          lastCheckpointAt: new Date().toISOString(),
+          conversationId: context.conversationId,
+          toolsUsed: context.tools,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          retryCount: 0,
+        }, true);
+      }
+
       context.status = 'failed';
       break;
     }
+  }
+
+  // Nettoyer le checkpoint si l'exécution a réussi
+  if (context.status === 'completed' && context.executionId) {
+    await checkpointManager.delete(context.executionId);
   }
   if (currentStep >= context.maxSteps && context.status === 'running') {
     context.status = 'completed';
