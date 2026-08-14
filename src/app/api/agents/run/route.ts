@@ -16,8 +16,15 @@ let checkPromptInjection: (input: string) => Promise<SafetyResult> | SafetyResul
 let checkJailbreak: (input: string) => Promise<SafetyResult> | SafetyResult;
 try {
   const safety = await import("@gen3ia/agent-safety");
-  checkPromptInjection = safety.checkPromptInjection;
-  checkJailbreak = safety.checkJailbreak;
+  // Adapt the module's return shape {detected,score,patterns} to {safe,score,reason}
+  checkPromptInjection = async (input: string) => {
+    const r = await safety.checkPromptInjection(input);
+    return { safe: !r.detected, score: r.score, reason: (r.patterns || []).join(', ') || 'clean' };
+  };
+  checkJailbreak = async (input: string) => {
+    const r = await safety.checkJailbreak(input);
+    return { safe: !r.detected, score: r.score, reason: (r.patterns || []).join(', ') || 'clean' };
+  };
 } catch {
   checkPromptInjection = (input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
   checkJailbreak = (input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
