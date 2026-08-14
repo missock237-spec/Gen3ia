@@ -100,3 +100,7 @@ prisma/migrations/
 # Rust
 target/
 conversations/
+.agents/.env
+.npm/
+__pycache__/
+blobs/
