@@ -1,6 +1,6 @@
-// GET /api/notifications — Récupérer les notifications non lues
+// POST /api/notifications/read — Marquer toutes les notifications comme lues
 import { NextRequest, NextResponse } from 'next/server';
-import { getUnreadNotifications } from '@/lib/push-notifications';
+import { markAllAsRead } from '@/lib/push-notifications';
 import { withRateLimit, RATE_LIMIT_PRESETS } from '@/lib/api-rate-limit';
 
 export const runtime = 'nodejs';
@@ -17,8 +17,8 @@ async function handler(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Session invalide' }, { status: 401 });
   }
 
-  const notifications = await getUnreadNotifications(userId);
-  return NextResponse.json({ notifications, unreadCount: notifications.length });
+  await markAllAsRead(userId);
+  return NextResponse.json({ success: true });
 }
 
-export const GET = withRateLimit(handler, RATE_LIMIT_PRESETS.default);
+export const POST = withRateLimit(handler, RATE_LIMIT_PRESETS.default);

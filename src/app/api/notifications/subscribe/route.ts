@@ -1,6 +1,6 @@
-// GET /api/notifications — Récupérer les notifications non lues
+// POST /api/notifications/subscribe — Enregistrer une souscription push
 import { NextRequest, NextResponse } from 'next/server';
-import { getUnreadNotifications } from '@/lib/push-notifications';
+import { saveSubscription } from '@/lib/push-notifications';
 import { withRateLimit, RATE_LIMIT_PRESETS } from '@/lib/api-rate-limit';
 
 export const runtime = 'nodejs';
@@ -17,8 +17,15 @@ async function handler(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Session invalide' }, { status: 401 });
   }
 
-  const notifications = await getUnreadNotifications(userId);
-  return NextResponse.json({ notifications, unreadCount: notifications.length });
+  const body = await req.json().catch(() => null);
+  if (!body?.endpoint || !body?.keys?.p256dh || !body?.keys?.auth) {
+    return NextResponse.json({ error: 'Souscription invalide' }, { status: 400 });
+  }
+
+  const result = await saveSubscription(userId, body);
+  if (!result.success) return NextResponse.json({ error: result.error }, { status: 500 });
+
+  return NextResponse.json({ success: true });
 }
 
-export const GET = withRateLimit(handler, RATE_LIMIT_PRESETS.default);
+export const POST = withRateLimit(handler, RATE_LIMIT_PRESETS.default);
