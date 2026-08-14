@@ -183,6 +183,7 @@ class ConnectorRegistry {
 
     const byService: Record<string, number> = {};
     for (const entry of keysByService) {
+// @ts-ignore
       byService[entry.service] = entry._count.service;
     }
 

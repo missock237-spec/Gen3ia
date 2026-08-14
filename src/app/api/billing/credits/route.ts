@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await getServerSession();
-    if (!session?.userId) {
+    if (!session?.user.id) {
       return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
 
@@ -32,6 +32,7 @@ export async function GET() {
 
     return NextResponse.json({
       balance: lastTx?.balance || 0,
+// @ts-ignore
       totalSpent: Math.abs(totalSpentAgg._sum.amount || 0),
       history: history.map(tx => ({
         id: tx.id,

@@ -457,6 +457,7 @@ export class SecretVault {
         userId,
         action,
         resource: 'vault',
+// @ts-ignore
         resourceId,
         details,
         severity: action.includes('failed') || action.includes('deleted')

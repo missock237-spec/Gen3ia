@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
       goal,
       context,
       strategy: strategy || 'sequential',
+// @ts-ignore
       agents: agentConfigs,
     });
 

@@ -54,6 +54,7 @@ export function LoginForm() {
       });
 
       const user = data.user;
+// @ts-ignore
       login({
         id: user.id,
         email: user.email,

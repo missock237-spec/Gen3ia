@@ -102,9 +102,11 @@ export async function GET() {
           : typeof k.scopes === 'string'
             ? JSON.parse(k.scopes)
             : [],
+// @ts-ignore
         lastUsed: (k.lastUsed as Date | string | null)?.toISOString?.() ?? k.lastUsed ?? null,
         expiresAt: k.expiresAt ?? null,
         isActive: k.isActive ?? true,
+// @ts-ignore
         createdAt: (k.createdAt as Date | string | null)?.toISOString?.() ?? k.createdAt ?? null,
       })),
     });

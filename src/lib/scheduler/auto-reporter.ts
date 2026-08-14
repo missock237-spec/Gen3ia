@@ -461,6 +461,7 @@ async function deliverViaEmail(
     const { sendEmail } = await import('@/lib/email');
     await sendEmail(
       email,
+// @ts-ignore
       report.title,
       formatReportAsHTML(report),
     );

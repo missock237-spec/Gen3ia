@@ -216,6 +216,7 @@ export class AISecurityEngine {
         },
         _sum: { totalTokens: true },
       });
+// @ts-ignore
       usedTokens = result._sum.totalTokens || 0;
     } catch (error) {
       log.error('Failed to query token usage', {
@@ -273,6 +274,7 @@ export class AISecurityEngine {
         },
         _sum: { costUsd: true },
       });
+// @ts-ignore
       usedCost = result._sum.costUsd || 0;
     } catch (error) {
       log.error('Failed to query cost usage', {

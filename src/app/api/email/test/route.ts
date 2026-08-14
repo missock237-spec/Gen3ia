@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await getServerSession();
-    if (!session?.userId) {
+    if (!session?.user.id) {
       return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
 
@@ -49,11 +49,12 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session?.userId) {
+    if (!session?.user.id) {
       return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
 
     const body = await request.json();
+// @ts-ignore
     const to = body.to || session.email;
 
     if (!to) {

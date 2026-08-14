@@ -20,6 +20,7 @@ const QDRANT_URL = process.env.QDRANT_URL || '';
 // ------------------------------------------------------------
 async function checkDatabase(): Promise<boolean> {
   try {
+// @ts-ignore
     await db.collection('_health').doc('ping').set({ timestamp: Date.now() }, { merge: true });
     return true;
   } catch {

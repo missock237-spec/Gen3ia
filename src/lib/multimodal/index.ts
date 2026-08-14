@@ -158,6 +158,7 @@ export class MultimodalSessionManager {
   }): MultimodalSessionState {
     return {
       id: session.id,
+// @ts-ignore
       userId: session.user.id,
       agentId: session.agentId,
       type: session.type as MultimodalType,

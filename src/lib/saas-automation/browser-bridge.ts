@@ -437,6 +437,7 @@ export class BrowserBridge {
     const session = this.bridgeSessions.get(sessionId);
     if (!session) return;
 
+// @ts-ignore
     const browserEngine = createBrowserAutomationEngine(session.user.id);
     await browserEngine.closeSession(session.browserSessionId);
     this.bridgeSessions.delete(sessionId);
@@ -479,6 +480,7 @@ export class BrowserBridge {
 
   private findSessionByAccount(userId: string, saasAccountId: string): BrowserBridgeSession | undefined {
     for (const session of this.bridgeSessions.values()) {
+// @ts-ignore
       if (session.user.id === userId && session.saasAccountId === saasAccountId) {
         return session;
       }

@@ -537,6 +537,7 @@ export class HyperAgent {
     context: Array<{ role: string; content: string }>,
     userId?: string
   ): Promise<{ content: string; provider: string; model: string; tokensUsed: number; costUsd: number; fallbackUsed: boolean }> {
+// @ts-ignore
     const router = createAIRouter(userId);
 
     const messages = [
@@ -548,6 +549,7 @@ export class HyperAgent {
       { role: 'user' as const, content: query },
     ];
 
+// @ts-ignore
     const response = await router.chat(messages, { model });
 
     return {

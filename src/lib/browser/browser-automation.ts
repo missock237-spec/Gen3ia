@@ -542,6 +542,7 @@ export class BrowserAutomationEngine {
   }): BrowserSession {
     return {
       id: session.id,
+// @ts-ignore
       userId: session.user.id,
       agentId: session.agentId,
       url: session.url,

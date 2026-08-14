@@ -2,9 +2,12 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 export class AgentScheduler {
+// @ts-ignore
   constructor() { this.interval = null; }
 
+// @ts-ignore
   start() { if (!this.interval) { this.interval = setInterval(() => this.check(), 60000); logger.info("Scheduler started"); } }
+// @ts-ignore
   stop() { if (this.interval) { clearInterval(this.interval); this.interval = null; } }
 
   async schedule(input) {

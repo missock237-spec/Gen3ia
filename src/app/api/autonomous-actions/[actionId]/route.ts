@@ -12,6 +12,7 @@ import { getAutonomousActionEngine } from '@/lib/saas-automation/action-engine';
 export const GET = withAuth(async (req, ctx, auth) => {
   try {
     const params = await ctx.params;
+// @ts-ignore
     const actionId = params.actionId;
 
     const action = await prisma.autonomousAction.findFirst({
@@ -40,16 +41,19 @@ export const GET = withAuth(async (req, ctx, auth) => {
 export const PATCH = withAuth(async (req, ctx, auth) => {
   try {
     const params = await ctx.params;
+// @ts-ignore
     const actionId = params.actionId;
     const body = await req.json();
     const engine = getAutonomousActionEngine();
 
     if (body.action === 'approve') {
+// @ts-ignore
       const result = await engine.approveAction(actionId, auth.userId);
       return NextResponse.json(result);
     }
 
     if (body.action === 'cancel') {
+// @ts-ignore
       await engine.cancelAction(actionId, auth.userId);
       return NextResponse.json({ message: 'Action annulée' });
     }

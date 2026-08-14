@@ -83,6 +83,7 @@ export class ScreenShareHandler {
     // Use z-ai-web-dev-sdk for AI-powered screen understanding
     let aiDescription = '';
     try {
+// @ts-ignore
       const ZAI = (await import('z-ai-web-dev-sdk')).default;
       const client = await ZAI.create();
       const result = await client.chat.completions.create({

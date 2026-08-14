@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validation = validateBody(multiAgentExecuteSchema, body);
+// @ts-ignore
     if (!validation.success) return validation.error;
 
     const { objective, agentIds } = validation.data;

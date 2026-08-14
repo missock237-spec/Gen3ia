@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await getServerSession();
-    if (!session?.userId) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+    if (!session?.user.id) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
     const projects = await prisma.codeProject.findMany({
       where: { userId: session.user.id },
@@ -28,7 +28,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session?.userId) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+    if (!session?.user.id) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
     const { name, language, files } = await request.json();
     if (!name || !language) {
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session?.userId) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+    if (!session?.user.id) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
     const url = new URL(request.url);
     const id = url.searchParams.get('id');
@@ -75,7 +75,7 @@ export async function DELETE(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session?.userId) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+    if (!session?.user.id) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
 
     const { id, name, files } = await request.json();
     if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 });

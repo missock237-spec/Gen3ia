@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
     const session = await getServerSession();
-    if (!session?.userId) {
+    if (!session?.user.id) {
       return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
     const { code, language, input } = await request.json();

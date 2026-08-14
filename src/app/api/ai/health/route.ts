@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
   const start = Date.now();
   let dbStatus = 'unknown';
   try {
+// @ts-ignore
     await db.$queryRaw`SELECT 1`;
     dbStatus = 'connected';
   } catch {

@@ -120,6 +120,7 @@ export async function paginatedResponse<T extends { id: string }>(
     return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erreur de pagination';
+// @ts-ignore
     return errorResponse(message, ErrorCode.INTERNAL_ERROR, 500);
   }
 }

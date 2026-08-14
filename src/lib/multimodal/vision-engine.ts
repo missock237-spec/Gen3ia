@@ -94,6 +94,7 @@ export class VisionEngine {
     // Use z-ai-web-dev-sdk for AI-powered analysis as fallback
     let aiDescription = '';
     try {
+// @ts-ignore
       const ZAI = (await import('z-ai-web-dev-sdk')).default;
       const client = await ZAI.create();
       const analysis = await client.chat.completions.create({

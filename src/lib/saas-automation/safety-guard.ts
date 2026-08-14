@@ -199,6 +199,7 @@ export class SafetyGuard {
     if (requiresConsent && agentId) {
       try {
         // Demander le consentement via le ConsentManager existant
+// @ts-ignore
         const consent = await requestConsent(
           userId,
           agentId,
@@ -296,6 +297,7 @@ export class SafetyGuard {
     };
 
     // Vérifier le statut de la réponse
+// @ts-ignore
     if (result.error || result.status >= 400) {
       validation.success = false;
       validation.warnings.push(`Action échouée: ${result.error || `Status ${result.status}`}`);

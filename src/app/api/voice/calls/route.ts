@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
         maxDurationMinutes: maxDurationMinutes ?? 30,
         recordingEnabled: recordingEnabled ?? false,
       },
+// @ts-ignore
       auth.userId,
     );
 

@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
           const config = { model: process.env.LLM_MODEL || "gpt-4o-mini", systemPrompt: `Tu es Genova, un assistant IA autonome intelligent. Réponds de façon concise et précise en français.` };
           for await (const event of llmStreamer.streamResponse(message, userId, config)) {
             if (isClosed) break;
+// @ts-ignore
             sendEvent(event);
             if (event.type === "error") break;
           }

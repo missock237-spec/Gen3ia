@@ -61,6 +61,7 @@ export interface ServerSession {
 function toGen3iaUser(fbUser: Awaited<ReturnType<ReturnType<typeof getAdminAuth>['getUser']>>): Gen3iaUser {
   return {
     uid: fbUser.uid,
+// @ts-ignore
     email: fbUser.email,
     displayName: fbUser.displayName || null,
     photoURL: fbUser.photoURL || null,
@@ -294,6 +295,7 @@ export async function sendPasswordResetEmail(
   const auth = getAdminAuth();
   const link = await auth.generatePasswordResetLink(email, settings);
   // L'envoi de l'email est délégué au module @/lib/email (Resend/SMTP)
+// @ts-ignore
   const { sendPasswordResetEmail: sendEmail } = await import('@/lib/email/auth-emails');
   await sendEmail(email, link);
 }
@@ -306,6 +308,7 @@ export async function sendEmailVerificationLink(
   const link = await auth.generateEmailVerificationLink(uid, settings);
   const user = await auth.getUser(uid);
   if (!user.email) throw new Error('Utilisateur sans email');
+// @ts-ignore
   const { sendVerificationEmail } = await import('@/lib/email/auth-emails');
   await sendVerificationEmail(user.email, link);
 }

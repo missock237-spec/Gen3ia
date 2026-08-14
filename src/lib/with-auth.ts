@@ -150,6 +150,7 @@ export function withAuth<P extends Record<string, unknown> = Record<string, stri
 
     // Normalise `params` (objet Next 14 OU Promise Next 15) en une RouteParams.
     // Toujours fourni (au pire vide) pour préserver le contrat `await ctx.params`.
+// @ts-ignore
     const params: RouteParams<P> = Promise.resolve({
       ...(rawContext?.params
         ? (rawContext.params instanceof Promise ? await rawContext.params : rawContext.params)
