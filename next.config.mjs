@@ -68,11 +68,32 @@ const nextConfig = {
     return redirects();
   },
 
+  // Exclude native modules that can't run on Vercel serverless
+  serverExternalPackages: [
+    'isolated-vm',
+    '@valkey/valkey-glide',
+    'bullmq',
+    'ioredis',
+    'redis',
+    'better-sqlite3',
+    'sqlite3',
+    'canvas',
+    'sharp',
+  ],
+
   webpack: (config) => {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
     config.resolve.alias['z-ai-web-dev-sdk'] = path.join(__dirname, 'src/lib/__stubs__/z-ai-web-dev-sdk.ts');
     config.resolve.alias['./agent-safety.node'] = false;
     config.resolve.alias['agent-safety.node'] = false;
+
+    // Mark native modules as external (can't be bundled on Vercel)
+    config.externals = config.externals || [];
+    config.externals.push({
+      'isolated-vm': 'commonjs isolated-vm',
+      '@valkey/valkey-glide': 'commonjs @valkey/valkey-glide',
+    });
+
     return config;
   },
 

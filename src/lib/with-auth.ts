@@ -89,9 +89,12 @@ export function withAuth<P extends Record<string, unknown> = Record<string, stri
   // Signature souple (type local, non-générique public) acceptant les deux
   // formats de Next, ce qui évite toute erreur d'assignabilité TS17805/TS2345
   // sur les exports `GET` / `POST` / `PUT` / `DELETE`.
+  // Use a loose context type to stay compatible across Next.js versions
+  // (Next 14 passes an object, Next 15 passes a Promise). The actual
+  // normalization happens inside the handler body below.
   return async function wrappedHandler(
     request: NextRequest,
-    rawContext?: NextRawContext
+    rawContext: any
   ): Promise<NextResponse | Response> {
     // 1. Authentification + RBAC
     const { auth, error } = await applySecurity(request, { requireAuth, roles });
