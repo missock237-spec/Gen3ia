@@ -71,6 +71,9 @@ export const FEATURES: Feature[] = [
 
   { id: 'affiliate', name: 'Affiliation', description: 'Programme de parrainage', status: 'beta' },
   { id: 'advertising', name: 'Publicité', description: 'Système de pubs avec récompenses', status: 'beta' },
+  { id: 'doc-analyzer', name: 'Analyseur de Documents', description: 'Résumé, points clés, action items, entités, sentiment', status: 'active' },
+  { id: 'business-calc', name: 'Calculateurs Business', description: 'Devises africaines, marges, prêts, TVA, ROI, prix optimal', status: 'active' },
+  { id: 'meeting-notes', name: 'Notes de Réunion', description: 'Décisions, actions, participants, risques, prochaines étapes', status: 'active' },
 ];
 
 /**
