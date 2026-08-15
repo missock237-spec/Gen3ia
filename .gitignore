@@ -104,3 +104,4 @@ conversations/
 .npm/
 __pycache__/
 blobs/
+.vercel
