@@ -18,7 +18,7 @@ const rateLimitStore: Map<string, { count: number; resetTime: number }> = new Ma
  * Rate limiting middleware
  */
 export function rateLimit(req: NextRequest): NextResponse | null {
-  const clientId = req.headers.get('x-api-key') || req.ip || 'unknown';
+  const clientId = req.headers.get('x-api-key') || req.headers.get('x-forwarded-for') || 'unknown';
   const now = Date.now();
 
   let bucket = rateLimitStore.get(clientId);
