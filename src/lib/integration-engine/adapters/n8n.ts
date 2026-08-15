@@ -208,7 +208,7 @@ export class N8nAdapter implements IntegrationAdapter {
 
   private async executeWorkflow(params: Record<string, unknown>): Promise<ExecutionResult> {
     const startTime = Date.now();
-    const { workflowId, inputData, _waitForResult } = params as { workflowId: string; inputData?: Record<string, unknown>; waitForResult?: boolean };
+    const { workflowId, inputData, waitForResult } = params as { workflowId: string; inputData?: Record<string, unknown>; waitForResult?: boolean };
 
     try {
       const url = `${N8N_API_URL}/rest/workflows/${workflowId}/execute`;

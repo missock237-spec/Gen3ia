@@ -86,6 +86,9 @@ const nextConfig = {
     config.resolve.alias['z-ai-web-dev-sdk'] = path.join(__dirname, 'src/lib/__stubs__/z-ai-web-dev-sdk.ts');
     config.resolve.alias['./agent-safety.node'] = false;
     config.resolve.alias['agent-safety.node'] = false;
+    // Workspace package — resolve to source (avoids needing workspace:* dependency
+    // which can break with npm install --legacy-peer-deps on Vercel).
+    config.resolve.alias['@gen3ia/agent-safety'] = path.join(__dirname, 'packages/agent-safety/index.js');
 
     // Mark native modules as external (can't be bundled on Vercel)
     config.externals = config.externals || [];

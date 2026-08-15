@@ -5,7 +5,7 @@ import { Search, Clock, ArrowRight } from "lucide-react";
 export default function TemplateSelector({ onSelect }) {
   const [templates, setTemplates] = useState<Array<{id: string; name: string; description?: string; category?: string; icon?: string; estimatedSetupMinutes?: number; defaultTools?: string[]}>>([]);
   const [categories, setCategories] = useState<Array<{id: string; name: string; count: number; icon?: string; description?: string; estimatedSetupMinutes?: number; defaultTools?: string[]}>>([]);
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
