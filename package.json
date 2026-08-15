@@ -52,9 +52,6 @@
     "@opentelemetry/sdk-trace-base": "^1.30.1",
     "@opentelemetry/sdk-metrics": "^1.30.1",
     "@opentelemetry/resources": "^1.30.1",
-    "next-auth": "^4.24.15",
-    "sharp": "^0.35.3",
-    "postcss": "^8.5.26",
     "undici": "^6.28.0",
     "rollup": "^4.62.4"
   },
@@ -110,7 +107,7 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.525.0",
     "next": "15.5.21",
-    "next-auth": "^4.24.11",
+    "next-auth": "^4.24.15",
     "next-intl": "^4.13.6",
     "next-themes": "^0.4.6",
     "nodemailer": "^9.0.3",
