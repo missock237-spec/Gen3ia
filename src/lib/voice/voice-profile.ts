@@ -244,7 +244,7 @@ export class VoiceProfileManager {
         name: 'Calm & Soothing',
         description: 'Gentle and relaxing voice',
         emotion: {
-          emotion: 'calm',
+          emotion: 'neutral',
           confidence: 0.85,
           scores: {
             neutral: 0.85,
@@ -354,7 +354,7 @@ export const VOICE_STYLES = {
     pitch: 1.15,
   },
   meditation: {
-    emotion: 'calm',
+    emotion: 'neutral',
     speechRate: 0.8,
     pitch: 0.95,
   },
