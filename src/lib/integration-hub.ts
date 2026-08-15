@@ -39,8 +39,8 @@ export interface IntegrationAction {
   name: string;
   description: string;
   provider: IntegrationProvider;
-  inputSchema: Record<string, any>;
-  outputSchema?: Record<string, any>;
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
   requiresAuth: boolean;
 }
 
@@ -61,8 +61,8 @@ export interface IntegrationConnection {
 
 export type IntegrationActionHandler = (
   connection: IntegrationConnection,
-  params: Record<string, any>
-) => Promise<Record<string, any>>;
+  params: Record<string, unknown>
+) => Promise<Record<string, unknown>>;
 
 // ============================================================
 // REGISTRY DES INTÉGRATIONS
@@ -212,8 +212,8 @@ class IntegrationHub {
   async executeAction(
     connection: IntegrationConnection,
     actionId: string,
-    params: Record<string, any>
-  ): Promise<Record<string, any>> {
+    params: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
     const handler = this.actionHandlers.get(actionId);
     if (!handler) {
       // Mode simulation — retourne un résultat simulé

@@ -51,7 +51,12 @@
     "@opentelemetry/core": "^1.30.1",
     "@opentelemetry/sdk-trace-base": "^1.30.1",
     "@opentelemetry/sdk-metrics": "^1.30.1",
-    "@opentelemetry/resources": "^1.30.1"
+    "@opentelemetry/resources": "^1.30.1",
+    "next-auth": "^4.24.15",
+    "sharp": "^0.35.3",
+    "postcss": "^8.5.26",
+    "undici": "^6.28.0",
+    "rollup": "^4.62.4"
   },
   "dependencies": {
     "@huggingface/inference": "^4.0.0",

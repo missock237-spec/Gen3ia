@@ -30,9 +30,9 @@ export interface WorkflowVersion {
 }
 
 export interface VersionDiff {
-  added: any[];
-  removed: any[];
-  modified: any[];
+  added: unknown[];
+  removed: unknown[];
+  modified: unknown[];
   summary: string;
 }
 
@@ -262,7 +262,7 @@ class VersioningEngine {
     baseVersion: string,
     otherVersion: string,
     userId: string,
-  ): Promise<{ merged: WorkflowCanvas; conflicts: any[] }> {
+  ): Promise<{ merged: WorkflowCanvas; conflicts: unknown[] }> {
     const base = await this.getVersion(workflowId, baseVersion);
     const other = await this.getVersion(workflowId, otherVersion);
 
@@ -270,7 +270,7 @@ class VersioningEngine {
       throw new Error('One or both versions not found');
     }
 
-    const conflicts: any[] = [];
+    const conflicts: unknown[] = [];
     const merged = { ...base.canvas };
 
     // Simple merge: take blocks from both, flag conflicts

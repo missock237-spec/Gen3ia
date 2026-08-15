@@ -33,7 +33,7 @@ export interface N8NNode {
   type: string;
   name: string;
   position: [number, number];
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
 }
 
 export interface N8NConnection {
@@ -179,8 +179,8 @@ class N8NSyncEngine {
    */
   async executeN8NWorkflow(
     n8nWorkflowId: string,
-    input: Record<string, any>,
-  ): Promise<Record<string, any>> {
+    input: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     if (!this.config) {
       throw new Error('N8N not configured');
     }

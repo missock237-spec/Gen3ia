@@ -148,10 +148,10 @@ export const SCOPE_DEFINITIONS: Record<PermissionScope, ScopeDefinition> = {
 const db = {
   collection: (_name: string) => ({
     add: async (_data: any) => ({ id: 'mock-' + Date.now() }),
-    get: async () => ({ docs: [] as any[] }),
+    get: async () => ({ docs: [] as unknown[] }),
     where: () => ({
-      get: async () => ({ docs: [] as any[] }),
-      limit: () => ({ get: async () => ({ docs: [] as any[] }) }),
+      get: async () => ({ docs: [] as unknown[] }),
+      limit: () => ({ get: async () => ({ docs: [] as unknown[] }) }),
     }),
     doc: (_id: string) => ({
       delete: async () => undefined,
