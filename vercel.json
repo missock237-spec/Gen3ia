@@ -1,1 +1,9 @@
-{"buildCommand":"npx prisma generate && next build","installCommand":"npm install --legacy-peer-deps","framework":"nextjs","regions":["iad1"],"env":{"DATABASE_URL":"@database_url","REDIS_URL":"@redis_url","NEXT_PUBLIC_SUPABASE_URL":"@next_public_supabase_url"}}
+{
+  "buildCommand": "next build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "nextjs",
+  "regions": [
+    "iad1"
+  ],
+  "outputDirectory": ".next"
+}
