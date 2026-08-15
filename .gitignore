@@ -105,3 +105,6 @@ conversations/
 __pycache__/
 blobs/
 .vercel
+
+# Turborepo
+.turbo

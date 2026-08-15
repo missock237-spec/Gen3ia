@@ -57,11 +57,13 @@ jobs:
           cache: 'npm'
       - run: npm install --legacy-peer-deps
       - run: npm run lint
-        continue-on-error: true
+        env:
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
       - run: npm run typecheck
-        continue-on-error: true
+        env:
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
       - run: npm run test:unit
-        continue-on-error: true
+        continue-on-error: true  # tests nécessitent env DB/Redis
       - run: npm run build
         env:
           NEXT_PUBLIC_APP_URL: https://gen3ia.vercel.app
