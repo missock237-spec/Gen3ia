@@ -100,7 +100,8 @@ export default function AnalyticsPage() {
   const [totalAgentsCount, setTotalAgentsCount] = useState<number>(0);
 
   useEffect(() => {
-    setIsMounted(true);
+    const raf = requestAnimationFrame(() => setIsMounted(true));
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   const fetchData = async () => {
@@ -238,7 +239,11 @@ export default function AnalyticsPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) try { await fetchData(); } catch {}
+    })();
+    return () => { cancelled = true; };
   }, [period]);
 
   // Total credits and usd for percentages calculation

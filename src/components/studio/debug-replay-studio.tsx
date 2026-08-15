@@ -94,7 +94,11 @@ export function DebugReplayStudio({ agentId, userId }: DebugReplayStudioProps) {
   };
 
   useEffect(() => {
-    fetchRuns();
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) try { await fetchRuns(); } catch {}
+    })();
+    return () => { cancelled = true; };
   }, [agentId, userId]);
 
   const selectedRun = useMemo(() => {

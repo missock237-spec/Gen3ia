@@ -211,32 +211,6 @@ export function AgentDetailView({ agent, onBack }: AgentDetailViewProps) {
 
   const hasBrowser = configTools.includes('browse_web');
 
-  // Load browser session
-  useEffect(() => {
-    if (hasBrowser && agent.id) {
-      loadBrowserSession();
-    }
-  }, [agent.id, hasBrowser]);
-
-  // Load action logs
-  useEffect(() => {
-    if (agent.id) {
-      loadActionLogs();
-    }
-  }, [agent.id]);
-
-  // Load permissions
-  useEffect(() => {
-    if (agent.id) {
-      loadPermissions();
-    }
-  }, [agent.id]);
-
-  // Scroll to bottom of chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   const loadBrowserSession = async () => {
     try {
       const data = await apiFetch<BrowserSession>(`/api/agents/${agent.id}/browser`);
@@ -269,6 +243,32 @@ export function AgentDetailView({ agent, onBack }: AgentDetailViewProps) {
       setLoadingPerms(false);
     }
   };
+
+  // Load browser session
+  useEffect(() => {
+    if (hasBrowser && agent.id) {
+      void loadBrowserSession();
+    }
+  }, [agent.id, hasBrowser]);
+
+  // Load action logs
+  useEffect(() => {
+    if (agent.id) {
+      void loadActionLogs();
+    }
+  }, [agent.id]);
+
+  // Load permissions
+  useEffect(() => {
+    if (agent.id) {
+      void loadPermissions();
+    }
+  }, [agent.id]);
+
+  // Scroll to bottom of chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleTogglePermission = async (permId: string, field: 'granted' | 'requiresApproval') => {
     const perm = permissions?.find((p) => p.id === permId);

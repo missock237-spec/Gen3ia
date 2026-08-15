@@ -24,12 +24,14 @@ export function AnalyticsView() {
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     fetch(`/api/analytics?period=${period}`)
       .then((r) => r.json())
-      .then((d) => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [period]);
 
   if (loading) {

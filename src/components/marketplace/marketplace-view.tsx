@@ -39,8 +39,22 @@ export function MarketplaceView({ userId }: { userId: string }) {
     } catch {}
   }, [agentId]);
 
-  useEffect(() => { fetchMarketplace('skill'); fetchMarketplace('loop'); fetchMarketplace('customization'); setLoading(false); }, [fetchMarketplace]);
-  useEffect(() => { if (agentId) fetchInstalled(); }, [agentId, fetchInstalled]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await Promise.all([fetchMarketplace('skill'), fetchMarketplace('loop'), fetchMarketplace('customization')]);
+      } catch {}
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [fetchMarketplace]);
+  useEffect(() => {
+    if (!agentId) return;
+    let cancelled = false;
+    (async () => { if (!cancelled) try { await fetchInstalled(); } catch {} })();
+    return () => { cancelled = true; };
+  }, [agentId, fetchInstalled]);
 
   const install = useCallback(async (type: ItemType, itemId: string) => {
     if (!agentId && type !== 'customization') { alert('Selectionnez un agent'); return; }

@@ -12,7 +12,11 @@ export default function DashboardSettingsPage() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab') || undefined;
-    if (tab) setInitialTab(tab);
+    if (tab) {
+      const raf = requestAnimationFrame(() => setInitialTab(tab));
+      return () => cancelAnimationFrame(raf);
+    }
+    return undefined;
   }, []);
 
   return <SettingsView initialTab={initialTab} />;

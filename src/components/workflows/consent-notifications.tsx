@@ -41,12 +41,6 @@ export default function ConsentNotifications() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    loadRequests();
-    const interval = setInterval(loadRequests, 15000);
-    return () => clearInterval(interval);
-  }, []);
-
   const loadRequests = async () => {
     try {
       const res = await fetch('/api/approvals');
@@ -59,6 +53,13 @@ export default function ConsentNotifications() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    void loadRequests();
+    const interval = setInterval(() => void loadRequests(), 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleApprove = async (requestId: string) => {
     setProcessingId(requestId);

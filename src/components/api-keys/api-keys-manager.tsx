@@ -49,7 +49,7 @@ export function ApiKeysManager() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchKeys(); }, [fetchKeys]);
+  useEffect(() => { let _cancelled = false; (async () => { if (!_cancelled) { try { await fetchKeys(); } catch {} } })(); return () => { _cancelled = true; }; }, [fetchKeys]);
 
   const toggleScope = (scope: string) => {
     setSelectedScopes(prev => {

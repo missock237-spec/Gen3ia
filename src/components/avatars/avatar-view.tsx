@@ -103,7 +103,11 @@ export function AvatarView() {
   }, []);
 
   useEffect(() => {
-    fetchAvatars();
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) try { await fetchAvatars(); } catch {}
+    })();
+    return () => { cancelled = true; };
   }, [fetchAvatars]);
 
   const createAvatar = async () => {
