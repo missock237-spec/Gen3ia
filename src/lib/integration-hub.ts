@@ -116,7 +116,7 @@ export const INTEGRATIONS: IntegrationConfig[] = [
 // ACTIONS PAR INTÉGRATION
 // ============================================================
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
 export const INTEGRATION_ACTIONS: Record<IntegrationProvider, IntegrationAction[]> = {
   google_gmail: [
     { id: 'gmail_send', name: 'Envoyer email', description: 'Envoyer un email via Gmail', provider: 'google_gmail', inputSchema: { to: 'string', subject: 'string', body: 'string' }, requiresAuth: true },

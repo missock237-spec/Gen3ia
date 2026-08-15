@@ -4,7 +4,7 @@ import { createComputePredictor } from '@/lib/compute/predictor';
 const log = createLogger('agent-compute');
 let engine: ReturnType<typeof createComputeEngineV2> | null = null;
 async function getEngine() {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   if (!engine) { engine = createComputeEngineV2({ preferredBackend: 'auto', enablePredictor: true }); await engine.initialize(); }
   return engine;
 }

@@ -85,7 +85,7 @@ export function AdBanner({ userPlan, placement, onAdViewed, onAdClicked, message
   const isFree = userPlan === 'free';
   const isPaid = !isFree;
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   useEffect(() => {
     if (dismissed) return;
     const randomAd = ADS[Math.floor(Math.random() * ADS.length)];

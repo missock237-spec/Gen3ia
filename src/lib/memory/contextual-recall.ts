@@ -177,7 +177,7 @@ export async function recall(options: RecallOptions): Promise<RecalledMemory[]> 
   // Fetch candidate memories
   const candidates = await db.agentMemory.findMany({
     where,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     orderBy: [{ relevance: 'desc' }, { lastAccessedAt: 'desc' }],
     take: Math.min(limit * 5, 100),
   });

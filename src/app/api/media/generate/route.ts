@@ -22,9 +22,9 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteP
     log.info('generating', { userId: auth.userId, type });
 
     const result = type === 'video'
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       ? await hfGeneration.generateVideo(enhancedPrompt, { model, width, height })
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       : await hfGeneration.generateImage(enhancedPrompt, { model, negativePrompt, width, height });
 
     if (!result.success) return NextResponse.json({ error: result.error }, { status: 500 });

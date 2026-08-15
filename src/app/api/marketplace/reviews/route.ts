@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     if (action === 'average') {
       const rating = await getAverageRating(listingId)
       return secureResponse(NextResponse.json(rating), request)

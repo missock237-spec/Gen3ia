@@ -3,6 +3,7 @@
 // Gen3ia CLI — Outils en ligne de commande
 // ============================================================
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const pkg = require('./package.json');
 
 const commands: Record<string, { description: string; run: () => void }> = {

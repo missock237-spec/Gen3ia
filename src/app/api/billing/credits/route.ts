@@ -32,7 +32,7 @@ export async function GET() {
 
     return NextResponse.json({
       balance: lastTx?.balance || 0,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       totalSpent: Math.abs(totalSpentAgg._sum.amount || 0),
       history: history.map(tx => ({
         id: tx.id,

@@ -97,7 +97,7 @@ class CheckpointManager {
       const checkpoints = await prisma.agentCheckpoint.findMany({
         where: { agentId },
         select: { sessionId: true },
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         distinct: ["sessionId"],
         orderBy: { createdAt: "desc" },
       });

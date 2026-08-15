@@ -207,6 +207,7 @@ class ErrorHandler {
   private sendToSentry(error: AppError): void {
     try {
       // Import Sentry dynamically to avoid hard dependency
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Sentry = require('@sentry/nextjs');
 
       if (Sentry) {

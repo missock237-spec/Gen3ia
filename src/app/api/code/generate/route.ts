@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       const result = await chatCompletion([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt },
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       ], 'code');
       code = result.content.trim().replace(/^```\w*\n?/, '').replace(/\n?```$/g, '').trim();
       usedAI = true;

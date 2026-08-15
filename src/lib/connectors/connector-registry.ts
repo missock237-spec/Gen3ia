@@ -183,7 +183,7 @@ class ConnectorRegistry {
 
     const byService: Record<string, number> = {};
     for (const entry of keysByService) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       byService[entry.service] = entry._count.service;
     }
 

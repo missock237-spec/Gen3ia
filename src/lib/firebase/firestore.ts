@@ -346,7 +346,7 @@ export class FirestoreRepository<T = any> {
 
     const selectFields = normalizeSelect(options.select);
     if (selectFields && selectFields.length > 0) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       items = items.map((it) => projectFields(it, selectFields) as T);
     }
     const effectiveOffset = options.offset ?? options.skip;

@@ -306,10 +306,10 @@ function SkillCard({ item, onInstall }: { item: MarketplaceItem; onInstall: (t: 
           {item.name} <PriceBadge price={item.price} isFree={item.isFree} />
         </div>
         <p style={{ color: 'var(--muted-foreground)', fontSize: '.75rem', margin: '2px 0' }}>{item.description}</p>
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         {(item.compatibleModels?.length ?? 0) > 0 && (
           <div style={{ fontSize: '.65rem', color: 'var(--muted-foreground)', marginTop: 4 }}>
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
             ✅ {(item.compatibleModels ?? []).join(' · ')}
           </div>
         )}

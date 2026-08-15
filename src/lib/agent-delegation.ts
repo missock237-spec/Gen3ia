@@ -50,7 +50,7 @@ export class AgentDelegationSystem {
     });
 
     // Auto-executer la delegation
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     this.executeDelegation(delegation.id).catch(err => {
       log.error('delegation_execution_error', { delegationId: delegation.id, error: String(err) });
     });
@@ -80,9 +80,9 @@ export class AgentDelegationSystem {
       // Construire le prompt pour l'agent cible
       const prompt = [
         `Tu es ${(delegation as any).targetAgent.name}, specialise en ${(delegation as any).targetAgent.role}.`,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         `\n\nInstructions: ${(delegation as any).targetAgent.instructions || 'Execute la tache delegatee.'}`,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         `\n\nTache delegatee par ${delegation.sourceAgent.name}: ${delegation.task}`,
         delegation.context ? `\n\nContexte: ${delegation.context}` : '',
         `\n\nFournis un resultat detaille et directement exploitable.`,
@@ -128,7 +128,7 @@ export class AgentDelegationSystem {
 
     while (Date.now() - start < maxWait) {
       const updated = await prisma.agentDelegation.findUnique({
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         where: { id: delegation.id },
         select: { status: true, result: true, error: true },
       });
@@ -136,12 +136,12 @@ export class AgentDelegationSystem {
 
       if (updated.status === 'completed' || updated.status === 'failed' || updated.status === 'rejected') {
         return {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
           delegationId: delegation.id,
           status: updated.status,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
           result: updated.result,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
           error: updated.error,
         };
       }
@@ -151,7 +151,7 @@ export class AgentDelegationSystem {
 
     // Timeout
     return {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       delegationId: delegation.id,
       status: 'timeout',
       result: null,

@@ -170,6 +170,8 @@ class Logger {
   /** Correlation ID courant (via correlationManager), sans import circulaire. */
   private getCorrelationId(): string | undefined {
     try {
+      // Lazy-load correlationManager to avoid circular dependency
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { correlationManager } = require('./correlation-id');
       return correlationManager.getCurrentId() ?? undefined;
     } catch {
@@ -202,6 +204,7 @@ class Logger {
 
   private captureSentry(message: string, level: LogLevel, context?: Record<string, unknown>): void {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Sentry = require('@sentry/nextjs');
       if (Sentry?.captureException) {
         const error = context?.error instanceof Error ? context.error : new Error(message);

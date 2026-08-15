@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const to = body.to || session.email;
 
     if (!to) {

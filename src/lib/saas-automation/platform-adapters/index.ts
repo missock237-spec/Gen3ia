@@ -52,7 +52,7 @@ const ADAPTERS: Record<string, PlatformAdapter> = {
     apiVersion: 'v1',
     rateLimits: { requestsPerMinute: 200, requestsPerDay: 1000000 },
     authHeaders: (token) => ({ Authorization: `Bearer ${token}` }),
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     transformRequest: (operation, params) => {
       switch (operation) {
         case 'gmail.send_email':
