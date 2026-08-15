@@ -345,23 +345,6 @@ function selectVariant(
     ctaText: chosen.ctaText,
   };
 }
-  // Weighted random: prefer variants with higher CTR (explore/exploit balance via epsilon-greedy)
-  const epsilon = 0.2; // 20% exploration
-  let chosen: AdVariant;
-  if (Math.random() < epsilon) {
-    chosen = campaign.variants[Math.floor(Math.random() * campaign.variants.length)];
-  } else {
-    // Exploit: pick variant with highest CTR
-    const cmap = variantStats.get(campaign.id);
-    chosen = campaign.variants.reduce((best, v) => {
-      const stats = cmap?.get(v.id);
-      const ctrBest = stats && stats.impressions > 0 ? stats.clicks / stats.impressions : 0;
-      const ctrV = stats && stats.impressions > 0 ? stats.clicks / stats.impressions : 0;
-      return ctrV > ctrBest ? v : best;
-    }, campaign.variants[0]);
-  }
-  return { variantId: chosen.id, textContent: chosen.textContent, ctaText: chosen.ctaText };
-}
 
 function cleanupRecentImpressions() {
   const cutoff = Date.now() - 3600000;
