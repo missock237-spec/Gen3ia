@@ -295,10 +295,56 @@ const variantStats = new Map<string, Map<string, VariantStats>>();
  * Returns `{ variantId: '', textContent: '', ctaText: '' }` if the campaign
  * has no variants configured.
  */
-function selectVariant(campaign: AdCampaign): { variantId: string; textContent: string; ctaText: string } {
+function selectVariant(
+  campaign: AdCampaign,
+): {
+  variantId: string;
+  textContent: string;
+  ctaText: string;
+} {
   if (!campaign.variants || campaign.variants.length === 0) {
-    return { variantId: '', textContent: '', ctaText: '' };
+    return {
+      variantId: '',
+      textContent: '',
+      ctaText: '',
+    };
   }
+
+  const epsilon = 0.2;
+  let chosen: AdVariant;
+
+  if (Math.random() < epsilon) {
+    chosen =
+      campaign.variants[
+        Math.floor(Math.random() * campaign.variants.length)
+      ];
+  } else {
+    const cmap = variantStats.get(campaign.id);
+
+    chosen = campaign.variants.reduce((best, variant) => {
+      const bestStats = cmap?.get(best.id);
+      const variantStatsValue = cmap?.get(variant.id);
+
+      const bestCTR =
+        bestStats && bestStats.impressions > 0
+          ? bestStats.clicks / bestStats.impressions
+          : 0;
+
+      const variantCTR =
+        variantStatsValue && variantStatsValue.impressions > 0
+          ? variantStatsValue.clicks / variantStatsValue.impressions
+          : 0;
+
+      return variantCTR > bestCTR ? variant : best;
+    }, campaign.variants[0]);
+  }
+
+  return {
+    variantId: chosen.id,
+    textContent: chosen.textContent,
+    ctaText: chosen.ctaText,
+  };
+}
   // Weighted random: prefer variants with higher CTR (explore/exploit balance via epsilon-greedy)
   const epsilon = 0.2; // 20% exploration
   let chosen: AdVariant;
