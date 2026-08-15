@@ -2,10 +2,12 @@
   "name": "gen3ia",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "bun run build",
-  "installCommand": "bun install --frozen-lockfile",
+  "buildCommand": "next build",
+  "installCommand": "npm install --legacy-peer-deps",
   "outputDirectory": ".next",
-  "regions": ["fra1"],
+  "regions": [
+    "fra1"
+  ],
   "cleanUrls": true,
   "trailingSlash": false,
   "github": {
