@@ -1,6 +1,6 @@
 # ============================================================
 # Déploiement automatique vers Vercel à chaque push sur main
-# - Preview deploy sur les PR (via Vercel GitHub app native)
+# - Preview deploy sur les autres branches (via Vercel GitHub app native)
 # - Production deploy sur merge vers main
 # - Notification du statut dans le commit
 # ============================================================
@@ -14,28 +14,27 @@ on:
 permissions:
   contents: read
   deployments: write
+  statuses: write
 
 concurrency:
   group: vercel-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false  # ne pas annuler un déploiement en cours
 
 jobs:
   deploy:
     name: Deploy to Vercel Production
     runs-on: ubuntu-latest
-    # Attend que le CI passe avant de déployer
-    needs: []
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: '20'
 
       - name: Install Vercel CLI
-        run: bun add -g vercel@latest
+        run: npm install -g vercel@latest
 
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
