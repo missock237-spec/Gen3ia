@@ -368,7 +368,7 @@ export function AgentDetailView({ agent, onBack }: AgentDetailViewProps) {
           }
         }
       }
-    } catch (err) {
+    } catch (_err) {
       setMessages((prev) => {
         const newMessages = [...prev];
         newMessages[newMessages.length - 1] = {
@@ -636,6 +636,7 @@ export function AgentDetailView({ agent, onBack }: AgentDetailViewProps) {
                 {/* Browser viewport */}
                 <div className="bg-muted/30 rounded-lg border border-border/50 aspect-video flex items-center justify-center overflow-hidden">
                   {browserSession?.screenshot ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={browserSession.screenshot}
                       alt="Browser screenshot"

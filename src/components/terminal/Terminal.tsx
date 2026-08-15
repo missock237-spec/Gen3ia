@@ -4,8 +4,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { useTheme } from "next-themes";
 import {
   Terminal as TermIcon, Copy, Play, Square, FileCode,
-  ArrowUp, ArrowDown, AlertTriangle, Edit3, Save, Trash2,
-  ShieldAlert, X, Wand2, Wifi, WifiOff, Loader2
+  ArrowUp, ArrowDown, _AlertTriangle, Edit3, Save, Trash2,
+  ShieldAlert, X, Wand2, _Wifi, _WifiOff, _Loader2
 } from "lucide-react";
 
 function langColor(p: string) {

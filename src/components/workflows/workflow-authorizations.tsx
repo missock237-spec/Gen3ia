@@ -71,7 +71,7 @@ export default function WorkflowAuthorizations() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { void loadAuthorizations(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void loadAuthorizations();   }, []);
 
   const handleConnect = async (service: string) => {
     setConnecting(service);

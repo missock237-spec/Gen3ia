@@ -26,7 +26,7 @@ function genHMAC(payload, secret) {
   return h.digest('hex');
 }
 
-export default function () {
+export default function _default() {
   group('Webhooks - HMAC + Plans', () => {
     const events = ['payment.completed', 'payment.failed', 'subscription.created'];
     const evt = events[Math.floor(Math.random() * events.length)];

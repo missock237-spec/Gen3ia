@@ -366,7 +366,7 @@ export class AutonomousActionEngine {
           failedSteps++;
           if (input.failureStrategy === 'abort') break;
         }
-      } catch (error) {
+      } catch (_error) {
         failedSteps++;
         if (input.failureStrategy === 'abort') break;
       }

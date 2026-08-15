@@ -85,7 +85,7 @@ export function useTerminalWS(options: UseWSOptions) {
         setStatus("error");
         onError?.(err);
       };
-    } catch (err) {
+    } catch (_err) {
       setStatus("error");
       if (mountedRef.current && retryRef.current < maxRetries) {
         retryRef.current++;

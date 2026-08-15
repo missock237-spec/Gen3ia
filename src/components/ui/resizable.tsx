@@ -12,7 +12,6 @@ function ResizablePanelGroup({
 // @ts-ignore — type narrowing pending, see refactor ticket
 }: React.ComponentProps<typeof ResizablePrimitive.Group>) {
   return (
-// @ts-ignore — type narrowing pending, see refactor ticket
     <ResizablePrimitive.Group
       data-slot="resizable-panel-group"
       className={cn(
@@ -39,7 +38,6 @@ function ResizableHandle({
   withHandle?: boolean
 }) {
   return (
-// @ts-ignore — type narrowing pending, see refactor ticket
     <ResizablePrimitive.Separator
       data-slot="resizable-handle"
       className={cn(
@@ -53,7 +51,6 @@ function ResizableHandle({
           <GripVerticalIcon className="size-2.5" />
         </div>
       )}
-// @ts-ignore — type narrowing pending, see refactor ticket
     </ResizablePrimitive.Separator>
   )
 }

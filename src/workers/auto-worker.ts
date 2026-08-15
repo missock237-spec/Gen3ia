@@ -43,7 +43,7 @@ interface AutoJobData {
 const BASE_CONCURRENCY = 5;
 
 const autoWorker = new Worker<AutoJobData>('agent-execution', async (job: Job<AutoJobData>) => {
-  const { agentId, userId, input, sessionId, executionId } = job.data;
+  const { agentId, userId, input, _sessionId, executionId } = job.data;
 
   log.info('auto_worker_processing', { jobId: job.id, agentId, attempt: job.attemptsMade });
 

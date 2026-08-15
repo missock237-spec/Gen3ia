@@ -704,7 +704,7 @@ export interface CodeAnalysisOptions {
  * This is the main entry point for the AI Code Analyzer.
  */
 export async function analyzeCode(options: CodeAnalysisOptions): Promise<CodeAnalysisResult> {
-  const { files, projectName, repository, readmeContent } = options;
+  const { files, projectName, _repository, readmeContent } = options;
   const startTime = Date.now();
 
   log.info('Starting AI code analysis', { project: projectName, fileCount: files.length });

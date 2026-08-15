@@ -229,4 +229,5 @@ export function validateModelPath(modelPath: string): SSRFCheckResult {
   return { safe: true, sanitizedUrl: modelPath };
 }
 
+// eslint-disable-next-line import/no-anonymous-default-export
 export default { validateUrl, safeFetch, validateModelPath };

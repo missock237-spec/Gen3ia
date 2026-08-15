@@ -356,7 +356,7 @@ export class SafetyGuard {
   /**
    * Évaluer le niveau de risque d'une opération
    */
-  assessRiskLevel(operation: string, params: Record<string, unknown>): RiskLevel {
+  assessRiskLevel(operation: string, _params: Record<string, unknown>): RiskLevel {
     // Opérations destructives → critical
     if (this.config.destructiveOperations.includes(operation)) {
       return 'critical';

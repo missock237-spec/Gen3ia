@@ -171,7 +171,7 @@ class HuggingFaceTTS {
         const audioDataSize = audioBuffer.length - 44; // Subtract header
         duration = audioDataSize / byteRate;
       }
-    } catch (error) {
+    } catch (_error) {
       console.warn('[TTS] Could not parse audio metadata, using defaults');
     }
 

@@ -340,6 +340,7 @@ export function AvatarView() {
                   <CardContent>
                     <div className="aspect-square bg-muted/50 rounded-lg flex items-center justify-center mb-3 overflow-hidden">
                       {avatar.thumbnailUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={avatar.thumbnailUrl}
                           alt={avatar.name}
@@ -397,6 +398,7 @@ export function AvatarView() {
                 <CardContent>
                   <div className="aspect-square bg-muted/50 rounded-lg flex items-center justify-center overflow-hidden">
                     {selectedAvatar.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={selectedAvatar.thumbnailUrl}
                         alt={selectedAvatar.name}
@@ -494,6 +496,7 @@ export function AvatarView() {
                 <CardContent>
                   <div className="aspect-square bg-muted/50 rounded-lg flex items-center justify-center overflow-hidden mb-4">
                     {selectedAvatar.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={selectedAvatar.thumbnailUrl}
                         alt={selectedAvatar.name}

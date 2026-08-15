@@ -91,7 +91,7 @@ export default function DashboardPage() {
                   <span className="text-white font-medium">{formatUptime(stats?.uptime ?? 0)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Temps d'exécution moyen</span>
+                  <span className="text-gray-400">Temps d&apos;exécution moyen</span>
                   <span className="text-white font-medium">{stats?.avgExecutionTime ?? '—'} ms</span>
                 </div>
                 <div className="flex justify-between">

@@ -94,7 +94,7 @@ class VersioningEngine {
   /**
    * List all versions of a workflow
    */
-  async listVersions(workflowId: string, limit: number = 50): Promise<WorkflowVersion[]> {
+  async listVersions(workflowId: string, _limit: number = 50): Promise<WorkflowVersion[]> {
     // This would query the database in production
     // For now, returning mock structure
     return [];
@@ -103,7 +103,7 @@ class VersioningEngine {
   /**
    * Get specific version
    */
-  async getVersion(workflowId: string, versionNumber: string): Promise<WorkflowVersion | null> {
+  async getVersion(_workflowId: string, _versionNumber: string): Promise<WorkflowVersion | null> {
     // This would query the database
     return null;
   }
@@ -310,7 +310,7 @@ class VersioningEngine {
   /**
    * Get version by tag
    */
-  async getVersionByTag(workflowId: string, tag: string): Promise<WorkflowVersion | null> {
+  async getVersionByTag(_workflowId: string, _tag: string): Promise<WorkflowVersion | null> {
     // Query by tag
     return null;
   }

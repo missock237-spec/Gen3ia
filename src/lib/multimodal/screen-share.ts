@@ -166,7 +166,7 @@ export class ScreenShareHandler {
   // ----------------------------------------------------------
   // Extract UI Elements
   // ----------------------------------------------------------
-  extractUIElements(frame: ScreenFrame): UIElement[] {
+  extractUIElements(_frame: ScreenFrame): UIElement[] {
     // Simulated UI element extraction
     const elements: UIElement[] = [
       {

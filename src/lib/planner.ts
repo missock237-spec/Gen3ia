@@ -223,7 +223,7 @@ class AdaptivePlanner {
   /**
    * Détecte si une adaptation du plan est nécessaire.
    */
-  private needsAdaptation(step: PlanStep, plan: AdaptivePlan): boolean {
+  private needsAdaptation(step: PlanStep, _plan: AdaptivePlan): boolean {
     // Si l'étape a nécessité des retries, le résultat est peut-être partiel
     if (step.retryCount > 0) return true;
 
@@ -236,7 +236,7 @@ class AdaptivePlanner {
   /**
    * Crée une étape corrective adaptative.
    */
-  private async createCorrectiveStep(previousStep: PlanStep, plan: AdaptivePlan): Promise<PlanStep> {
+  private async createCorrectiveStep(previousStep: PlanStep, _plan: AdaptivePlan): Promise<PlanStep> {
     return {
       id: `step_corrective_${Date.now()}`,
       description: `Affiner le résultat de l'étape précédente basé sur: ${previousStep.output?.slice(0, 100) ?? ""}`,

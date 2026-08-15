@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
       }),
       request
     );
-  } catch (error) {
+  } catch (_error) {
     return secureResponse(
       NextResponse.json(
         { status: 'error', message: 'Failed to check system status' },

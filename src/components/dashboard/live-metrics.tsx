@@ -25,7 +25,7 @@ interface LiveMetricsProps {
   refreshInterval?: number;
 }
 
-export function LiveMetrics({ userId, refreshInterval = 5000 }: LiveMetricsProps) {
+export function LiveMetrics({ userId, _refreshInterval = 5000 }: LiveMetricsProps) {
   const [metrics, setMetrics] = useState<Metric[]>([
     { label: 'Providers actifs', value: '—', icon: <BrainCircuit className="h-5 w-5 text-blue-500" /> },
     { label: 'Requêtes/min', value: '—', icon: <Zap className="h-5 w-5 text-yellow-500" /> },

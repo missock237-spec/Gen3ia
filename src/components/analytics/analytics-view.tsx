@@ -60,7 +60,7 @@ export function AnalyticsView() {
             <BarChart3 className="h-6 w-6 text-primary" />
             Analytiques
           </h1>
-          <p className="text-muted-foreground">Statistiques et métriques d'utilisation</p>
+          <p className="text-muted-foreground">Statistiques et métriques d&apos;utilisation</p>
         </div>
         <div className="flex gap-1 bg-muted rounded-lg p-1">
           {(['7d', '30d', '90d'] as const).map((p) => (

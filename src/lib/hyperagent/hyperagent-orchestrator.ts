@@ -111,7 +111,7 @@ class HyperAgentOrchestrator {
       let response: string;
       try {
         response = await this.executeQuery(request.query, modelSelection);
-      } catch (error) {
+      } catch (_error) {
         const fallbackResult = await intelligentFallback.executeWithFallback(
           'quality',
           async (provider) => {

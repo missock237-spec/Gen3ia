@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { provider, action, params, connectorId } = body;
+    const { provider, action, params, _connectorId } = body;
 
     if (!provider) {
       return NextResponse.json({ error: 'provider requis' }, { status: 400 });

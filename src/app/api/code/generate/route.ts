@@ -30,7 +30,7 @@ const FALLBACK_TEMPLATES: Record<string, (prompt: string) => string> = {
   html: (p) => '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>' + p + '</title><style>body{font-family:sans-serif;padding:2rem;}</style></head><body><h1>' + p + '</h1></body></html>',
   css: (p) => '/* ' + p + ' */\nbody {\n  font-family: system-ui, sans-serif;\n  background: linear-gradient(135deg, #667eea, #764ba2);\n  min-height: 100vh;\n  display: flex;\n  justify-content: center;\n  align-items: center;\n}',
   jsx: (p) => 'import React, { useState } from "react";\nconst App = () => {\n  const [count, setCount] = useState(0);\n  return (<div style={{padding:20}}><h1>' + p + '</h1><p>Count: {count}</p><button onClick={()=>setCount(c=>c+1)}>+</button></div>);\n};\nexport default App;',
-  tsx: (p) => 'interface Props { title: string; }\nconst App: React.FC<Props> = ({ title }) => {\n  return <h1 style={{color:"#6c5ce7"}}>{title}</h1>;\n};\nexport default App;',
+  tsx: (_p) => 'interface Props { title: string; }\nconst App: React.FC<Props> = ({ title }) => {\n  return <h1 style={{color:"#6c5ce7"}}>{title}</h1>;\n};\nexport default App;',
   sql: (p) => '-- ' + p + '\nSELECT * FROM table_name\nWHERE condition = true\nORDER BY created_at DESC\nLIMIT 100;',
   bash: (p) => '#!/bin/bash\n# ' + p + '\nset -euo pipefail\necho "Execution..."',
 };

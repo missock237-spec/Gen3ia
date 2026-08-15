@@ -70,12 +70,12 @@ const profileStore = new Map<string, LanguageProfile>();
 
 // Mock Firebase / Firestore pattern as required
 const db = {
-  collection: (name: string) => ({
-    add: async (data: any) => ({ id: 'mock-' + Date.now() }),
+  collection: (_name: string) => ({
+    add: async (_data: any) => ({ id: 'mock-' + Date.now() }),
     get: async () => ({ docs: [] }),
     where: () => ({ get: async () => ({ docs: [] }) }),
-    doc: (id: string) => ({
-      update: async (data: any) => undefined,
+    doc: (_id: string) => ({
+      update: async (_data: any) => undefined,
       get: async () => ({ exists: false }),
     }),
   }),

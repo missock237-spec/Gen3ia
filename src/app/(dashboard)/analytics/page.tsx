@@ -484,9 +484,9 @@ export default function AnalyticsPage() {
             ) : (
               <div className="h-64 flex flex-col items-center justify-center border border-dashed border-gray-700 rounded-lg text-gray-500">
                 <BarChart3 className="h-10 w-10 mb-2 stroke-1" />
-                <p className="text-sm font-medium">Aucune donnée d'utilisation enregistrée pour cette période</p>
+                <p className="text-sm font-medium">Aucune donnée d&apos;utilisation enregistrée pour cette période</p>
                 <p className="text-xs text-gray-600 mt-1">
-                  Les exécutions d'agents généreront un historique ici
+                  Les exécutions d&apos;agents généreront un historique ici
                 </p>
               </div>
             )}

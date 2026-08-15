@@ -164,7 +164,7 @@ export class TenantIsolation {
     return Number(result[0]?.count || 0n);
   }
 
-  private static getPermissionsForRole(role: TenantContext['role'], plan: string): string[] {
+  private static getPermissionsForRole(role: TenantContext['role'], _plan: string): string[] {
     const basePermissions = ['agents:read', 'messages:send'];
     if (role === 'viewer') return basePermissions;
     const memberPermissions = [...basePermissions, 'agents:create', 'agents:update', 'voice:call', 'billing:read'];

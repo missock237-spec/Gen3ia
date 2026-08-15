@@ -453,7 +453,7 @@ class ConnectorRegistry {
   /**
    * Run health checks on all active MCP connectors.
    */
-  async checkMCPHealth(userId: string): Promise<Record<string, {
+  async checkMCPHealth(_userId: string): Promise<Record<string, {
     healthy: boolean;
     responseTimeMs: number;
     error?: string;

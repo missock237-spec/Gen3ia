@@ -22,7 +22,7 @@ const AVAILABLE_PERMISSIONS = [
 
 export async function OPTIONS(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { _params }: { params: Promise<{ id: string }> }
 ) {
   const { error } = await applySecurity(request);
   if (error) return error;

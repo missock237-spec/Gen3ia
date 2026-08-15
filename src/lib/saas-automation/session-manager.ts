@@ -385,7 +385,7 @@ export class SaaSSessionManager {
     return undefined;
   }
 
-  private getValidToken(sessionId: string, accountId: string, userId: string): string {
+  private getValidToken(sessionId: string, _accountId: string, _userId: string): string {
     const cached = this.tokenCache.get(sessionId);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.token;

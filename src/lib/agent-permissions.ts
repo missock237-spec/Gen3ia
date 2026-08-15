@@ -146,16 +146,16 @@ export const SCOPE_DEFINITIONS: Record<PermissionScope, ScopeDefinition> = {
 
 // Firestore mock pattern as specified in system instructions
 const db = {
-  collection: (name: string) => ({
-    add: async (data: any) => ({ id: 'mock-' + Date.now() }),
+  collection: (_name: string) => ({
+    add: async (_data: any) => ({ id: 'mock-' + Date.now() }),
     get: async () => ({ docs: [] as any[] }),
     where: () => ({
       get: async () => ({ docs: [] as any[] }),
       limit: () => ({ get: async () => ({ docs: [] as any[] }) }),
     }),
-    doc: (id: string) => ({
+    doc: (_id: string) => ({
       delete: async () => undefined,
-      update: async (data: any) => undefined,
+      update: async (_data: any) => undefined,
       get: async () => ({ exists: false }),
     }),
   }),

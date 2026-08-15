@@ -37,7 +37,7 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteP
       latencyMs: result.latencyMs,
       mimeType: result.mimeType,
     });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur de generation' }, { status: 500 });
   }
 }, {

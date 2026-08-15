@@ -23,7 +23,7 @@ export async function computeToolScore(tools: string[]): Promise<Record<string, 
   const e = await getEngine();
   const embeddings = tools.map(t => new Float32Array([t.length, t.split('_').length, t.charCodeAt(0) || 0, t.charCodeAt(t.length - 1) || 0]));
   const results = await e.computeBatch({
-    operations: embeddings.map((emb, i) => ({ operation: 'sigmoid', input: emb, options: { priority: 'normal', cacheTTLMs: 300000 } })),
+    operations: embeddings.map((emb, _i) => ({ operation: 'sigmoid', input: emb, options: { priority: 'normal', cacheTTLMs: 300000 } })),
     options: { useCache: true, usePredictor: true },
   });
   const scores: Record<string, number> = {};

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { MarketplaceTab, MarketplaceItem, InstalledItem, CreatorForm, ItemType } from './types';
 
-export function MarketplaceView({ userId }: { userId: string }) {
+export function MarketplaceView({ _userId }: { userId: string }) {
   const [activeTab, setActiveTab] = useState<MarketplaceTab>('loops');
   const [items, setItems] = useState<Record<ItemType, MarketplaceItem[]>>({ skill: [], loop: [], customization: [] });
   const [installed, setInstalled] = useState<InstalledItem[]>([]);
@@ -185,7 +185,7 @@ export function MarketplaceView({ userId }: { userId: string }) {
           </div>
           {installed.length === 0 && (
             <p style={{ color: 'var(--muted-foreground)', fontSize: '.85rem', textAlign: 'center', padding: 20 }}>
-              Aucun item installé. Allez dans l'onglet Boucles ou Compétences pour installer.
+              Aucun item installé. Allez dans l&apos;onglet Boucles ou Compétences pour installer.
             </p>
           )}
           {installed.map(item => (
@@ -306,10 +306,8 @@ function SkillCard({ item, onInstall }: { item: MarketplaceItem; onInstall: (t: 
           {item.name} <PriceBadge price={item.price} isFree={item.isFree} />
         </div>
         <p style={{ color: 'var(--muted-foreground)', fontSize: '.75rem', margin: '2px 0' }}>{item.description}</p>
-// @ts-ignore — type narrowing pending, see refactor ticket
         {(item.compatibleModels?.length ?? 0) > 0 && (
           <div style={{ fontSize: '.65rem', color: 'var(--muted-foreground)', marginTop: 4 }}>
-// @ts-ignore — type narrowing pending, see refactor ticket
             ✅ {(item.compatibleModels ?? []).join(' · ')}
           </div>
         )}

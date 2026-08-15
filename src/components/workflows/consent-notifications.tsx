@@ -58,7 +58,7 @@ export default function ConsentNotifications() {
     void loadRequests();
     const interval = setInterval(() => void loadRequests(), 15000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const handleApprove = async (requestId: string) => {

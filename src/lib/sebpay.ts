@@ -97,7 +97,7 @@ export class SebPayService {
 
   async checkPaymentStatus(transactionId: string): Promise<SebPayPaymentResponse> {
     try {
-      const { status, sale } = await chariow.getSaleStatus(transactionId);
+      const { status, _sale } = await chariow.getSaleStatus(transactionId);
       return { success: status === 'completed', status, transactionId };
     } catch (error) {
       return { success: false, message: String(error) };

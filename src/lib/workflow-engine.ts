@@ -262,7 +262,7 @@ function evaluateSwitch(config: Record<string, any>, ctx: Record<string, any>): 
 // ============================================================
 
 async function classifyWithAI(config: Record<string, any>, ctx: Record<string, any>): Promise<{ label: string; confidence: number }> {
-  const { prompt, categories, model, input } = config;
+  const { _prompt, categories, _model, input } = config;
   const text = interpolate(input || '', ctx);
   const cats = (categories || 'Positif,Négatif,Neutre').split(',').map((c: string) => c.trim());
 

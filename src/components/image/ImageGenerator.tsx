@@ -11,7 +11,7 @@ interface ImageGeneratorProps {
   agentId?: string;
 }
 
-export function ImageGenerator({ onGenerateComplete, agentId }: ImageGeneratorProps) {
+export function ImageGenerator({ onGenerateComplete, _agentId }: ImageGeneratorProps) {
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -114,6 +114,7 @@ export function ImageGenerator({ onGenerateComplete, agentId }: ImageGeneratorPr
 
       {generatedImage && (
         <div className="space-y-3">
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={`data:image/png;base64,${generatedImage}`}
             alt="Generated"

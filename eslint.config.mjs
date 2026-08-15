@@ -39,11 +39,17 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "react-hooks/exhaustive-deps": "warn",
-      // T1 — Déblocage Vercel : @ts-ignore dégradé en warning (327 occurrences à corriger en T3a).
+      // T1 — Déblocage Vercel : @ts-ignore/@ts-nocheck dégradés en warning.
       // La règle reste active pour traquer les directives sans description, mais ne bloque plus le build.
+      // ts-nocheck est toléré avec description (fichiers legacy sandbox/e2b en cours de refactor).
       "@typescript-eslint/ban-ts-comment": [
         "warn",
-        { "ts-ignore": "allow-with-description", minimumDescriptionLength: 10 }
+        {
+          "ts-ignore": "allow-with-description",
+          "ts-nocheck": "allow-with-description",
+          "ts-expect-error": "allow-with-description",
+          minimumDescriptionLength: 10,
+        }
       ],
       // T1 — Déblocage Vercel : no-console dégradé en warning (45 occurrences à corriger en T3c).
       "no-console": ["warn", { allow: ["warn", "error"] }],

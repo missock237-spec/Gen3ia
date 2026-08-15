@@ -724,7 +724,7 @@ export async function fluroGetVideoStatus(taskId: string): Promise<{
       progress: data.progress || 0,
       videoUrl: data.videoUrl || data.url,
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       status: 'error',
       progress: 0,
