@@ -33,8 +33,10 @@ const redirects = () => [
 ];
 
 const nextConfig = {
-  // Mode standalone pour Docker (ignoré par Vercel)
-  output: 'standalone',
+  // Mode standalone retiré — Vercel gère l'output nativement,
+  // et standalone mode provoque des erreurs de copy des client-reference-manifest
+  // pour les routes dynamiques avec parentheses (app router).
+  // output: 'standalone',
 
   reactStrictMode: true,
   poweredByHeader: false,
