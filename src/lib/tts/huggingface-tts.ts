@@ -70,7 +70,7 @@ class HuggingFaceTTS {
   private async synthesizeWithBark(text: string, options: TTSOptions): Promise<TTSResult> {
     const voicePresets = this.getVoicePreset(options.emotion || 'neutral', options.speakerId);
 
-    const audioStream = await this.client.textToSpeech({
+    const audioBlob = await this.client.textToSpeech({
       model: this.models.bark,
       inputs: text,
       data: {
@@ -78,7 +78,7 @@ class HuggingFaceTTS {
       },
     });
 
-    return this.processAudioStream(audioStream);
+    return this.processAudioBlob(audioBlob);
   }
 
   /**
@@ -102,12 +102,12 @@ class HuggingFaceTTS {
 
     const mmsLanguage = languageMap[language] || 'eng';
 
-    const audioStream = await this.client.textToSpeech({
+    const audioBlob = await this.client.textToSpeech({
       model: `facebook/mms-tts-${mmsLanguage}`,
       inputs: text,
     });
 
-    return this.processAudioStream(audioStream);
+    return this.processAudioBlob(audioBlob);
   }
 
   /**
@@ -130,28 +130,12 @@ class HuggingFaceTTS {
   }
 
   /**
-   * Process audio stream from Hugging Face API
+   * Process audio blob from Hugging Face API
+   * @huggingface/inference.textToSpeech returns a Blob, not a ReadableStream.
    */
-  private async processAudioStream(stream: ReadableStream<Uint8Array>): Promise<TTSResult> {
-    const chunks: Uint8Array[] = [];
-    const reader = stream.getReader();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-      }
-    } finally {
-      reader.releaseLock();
-    }
-
-    const audioBuffer = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      audioBuffer.set(chunk, offset);
-      offset += chunk.length;
-    }
+  private async processAudioBlob(audioBlob: Blob): Promise<TTSResult> {
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const audioBuffer = new Uint8Array(arrayBuffer);
 
     // Parse audio metadata
     const { sampleRate, channels, duration } = this.parseAudioMetadata(audioBuffer);
