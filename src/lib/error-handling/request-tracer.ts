@@ -192,8 +192,9 @@ class RequestTracer {
     // Close any remaining spans
     trace.spans.forEach((span) => {
       if (span.status === 'pending') {
-        span.endTime = trace.endTime;
-        span.duration = span.endTime - span.startTime;
+        const endTime = trace.endTime ?? Date.now();
+        span.endTime = endTime;
+        span.duration = endTime - span.startTime;
         span.status = 'completed';
       }
     });

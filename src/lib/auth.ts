@@ -41,6 +41,8 @@ export {
   type AccessTokenPayload,
 } from '@/lib/firebase/auth';
 
+import { getServerSession as getServerSessionImpl } from '@/lib/firebase/auth';
+
 // ============================================================
 // Legacy helpers — dépréciés (Firebase Auth gère en interne)
 // ============================================================
@@ -97,7 +99,7 @@ export async function hashToken(token: string): Promise<string> {
  * Returns the current server session (compat with next-auth style).
  */
 export async function auth() {
-  return getServerSession();
+  return getServerSessionImpl();
 }
 
 /**
@@ -108,7 +110,7 @@ export async function withAuth<T = unknown>(
   request: Request,
   handler: (session: { userId: string; user?: { id: string; email?: string; role?: string } }) => Promise<T>
 ): Promise<T> {
-  const session = await getServerSession();
+  const session = await getServerSessionImpl();
   if (!session?.user?.id) {
     throw new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }

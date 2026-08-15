@@ -128,13 +128,15 @@ class CompressionOptimizer {
     return new Promise((resolve, reject) => {
       // Brotli is available in Node.js 11.7.0+
       if (!zlib.createBrotliCompress) {
-        return this.compressGzip(data, originalSize).then(resolve).catch(reject);
+        this.compressGzip(data, originalSize).then(resolve).catch(reject);
+        return;
       }
 
       zlib.brotliCompress(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }, (err, compressed) => {
         if (err) {
           log.warn('brotli_compression_failed', { error: err.message });
-          return this.compressGzip(data, originalSize).then(resolve).catch(reject);
+          this.compressGzip(data, originalSize).then(resolve).catch(reject);
+          return;
         }
 
         const compressedSize = compressed.length;

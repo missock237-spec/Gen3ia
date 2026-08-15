@@ -121,7 +121,7 @@ export async function exportUserData(request: ExportRequest): Promise<ExportResu
     }
 
     // Compter le total d'enregistrements
-    const totalRecords = Object.values(data).reduce((sum, arr) => {
+    const totalRecords = Object.values(data).reduce((sum: number, arr) => {
       if (Array.isArray(arr)) return sum + arr.length;
       if (arr && typeof arr === 'object') return sum + 1;
       return sum;
@@ -227,11 +227,13 @@ export async function deleteUserData(userId: string): Promise<{ success: boolean
 
     for (const collection of collections) {
       try {
-        const records = await (db as Record<string, { findMany: (args: { where: Record<string, unknown> }) => Promise<Record<string, unknown>[]>; deleteMany: (args: { where: Record<string, unknown> }) => Promise<unknown> }>)[collection].findMany({ where: {} });
+        const repo = (db as unknown as Record<string, { findMany: (args: { where: Record<string, unknown> }) => Promise<Record<string, unknown>[]>; deleteMany: (args: { where: Record<string, unknown> }) => Promise<unknown> }>)[collection];
+        if (!repo || typeof repo.findMany !== 'function') continue;
+        const records = await repo.findMany({ where: {} });
         const userRecords = records.filter(r => r.userId === userId || r.createdBy === userId);
 
         if (userRecords.length > 0) {
-          await (db as Record<string, { deleteMany: (args: { where: Record<string, unknown> }) => Promise<unknown> }>)[collection].deleteMany({
+          await repo.deleteMany({
             where: { userId },
           });
           deleted.push(`${collection} (${userRecords.length})`);

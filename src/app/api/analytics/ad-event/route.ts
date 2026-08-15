@@ -49,7 +49,7 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promis
         const now = Date.now();
         const today = getTodayKey();
 
-        let userRewards = rewardStore.get(userKey) || {
+        const userRewards = rewardStore.get(userKey) || {
           credits: 0,
           lastReward: 0,
           dailyCount: 0,

@@ -165,7 +165,7 @@ export function sanitizeQueryParam(param: any): string {
     /execute/gi,
   ];
 
-  let sanitized = param;
+  const sanitized = param;
   dangerousPatterns.forEach((pattern) => {
     if (pattern.test(sanitized)) {
       log.warn('potential_sql_injection', { pattern: pattern.source, param: param.slice(0, 50) });

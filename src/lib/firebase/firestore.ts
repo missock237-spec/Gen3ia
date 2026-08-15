@@ -260,7 +260,7 @@ function projectFields(data: Record<string, unknown>, select?: string[]): Record
 // Generic repository (équivalent Prisma repository pattern)
 // ============================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 
 // ============================================================
 // Helper — découpe un tableau en chunks de taille `size`
@@ -815,6 +815,10 @@ export const Collections = {
   workspaces: 'workspaces',
   workspaceActivities: 'workspace_activities',
   workspaceMembers: 'workspace_members',
+  // Phone auth (OTP)
+  otpRequests: 'otp_requests',
+  // Executions (generic alias for agent executions)
+  executions: 'agent_executions',
 } as const;
 
 export type CollectionName = typeof Collections[keyof typeof Collections];
@@ -963,6 +967,10 @@ export const db = {
   workspace: makeRepo(Collections.workspaces),
   workspaceActivity: makeRepo(Collections.workspaceActivities),
   workspaceMember: makeRepo(Collections.workspaceMembers),
+  // Phone auth (OTP)
+  otpRequest: makeRepo(Collections.otpRequests),
+  // Generic executions alias (points to agent_executions)
+  execution: makeRepo(Collections.executions),
   $transaction: async <R>(fn: (tx: TransactionContext) => Promise<R>): Promise<R> => {
     const dbInstance = getAdminDb();
     return dbInstance.runTransaction(async (tx) => {

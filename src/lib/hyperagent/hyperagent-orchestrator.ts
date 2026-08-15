@@ -15,14 +15,20 @@
  */
 
 import { createLogger } from '@/lib/logger';
-import { smartRouter, type RouteDecision } from './smart-router';
-import { contextCompressor, type CompressionResult } from './context-compressor';
-import { parallelExecutor, type MergedResult } from './parallel-executor';
+import { getSmartRouter } from './smart-router';
+import { getContextCompressor } from './context-compressor';
+import { getParallelExecutor } from './parallel-executor';
 import { speculativeExecutor, type SpeculativeResult } from './speculative-executor';
 import { dynamicModelAdapter, type SelectionResult } from './dynamic-model-adapter';
-import { embeddingCache } from './embedding-cache';
+import { getEmbeddingCache } from './embedding-cache';
 import { intelligentFallback, type FallbackResult } from './fallback-system';
-import { responseEnhancer, type EnhancedResponse } from './response-enhancer';
+import { getResponseEnhancer } from './response-enhancer';
+
+const smartRouter = getSmartRouter();
+const contextCompressor = getContextCompressor();
+const parallelExecutor = getParallelExecutor();
+const embeddingCache = getEmbeddingCache();
+const responseEnhancer = getResponseEnhancer();
 
 const log = createLogger('hyperagent-orchestrator');
 
@@ -73,12 +79,12 @@ class HyperAgentOrchestrator {
 
     try {
       // Phase 1: Smart Routing
-      const routeDecision = await smartRouter.route(request.query, request.userId);
+      const routeDecision = await smartRouter.route({ query: request.query, userId: request.userId });
 
-      if (routeDecision.shouldRoute && routeDecision.directAnswer) {
+      if (routeDecision.canDirectAnswer && routeDecision.directAnswer) {
         const latency = performance.now() - startTime;
         return this.buildResponse(routeDecision.directAnswer, {
-          routingTime: routeDecision.routingTime,
+          routingTime: routeDecision.estimatedLatencyMs,
           latency,
           cost: 0,
           cacheHit: routeDecision.cacheHit,
@@ -94,11 +100,11 @@ class HyperAgentOrchestrator {
       if (request.context) {
         const blocks = [{
           id: 'context',
-          type: 'memory' as const,
+          role: 'system' as const,
           content: request.context,
         }];
         const compressed = await contextCompressor.compress(blocks);
-        compressionSavings = compressed.original.tokenCount - compressed.compressed.tokenCount;
+        compressionSavings = compressed.originalTokenCount - compressed.compressedTokenCount;
       }
 
       // Phase 4: Execute with Fallback
@@ -117,10 +123,10 @@ class HyperAgentOrchestrator {
       }
 
       // Phase 5: Enhance Response
-      const enhanced = await responseEnhancer.enhance(response, request.context);
+      const enhanced = await responseEnhancer.enhance(response, request.query, {}, { contextMessages: request.context ? [request.context] : [] });
 
       // Phase 6: Cache Result
-      smartRouter.cacheAnswer(request.query, request.userId, enhanced.enhanced);
+      await smartRouter.cacheResponse(request.query, enhanced.content, request.userId);
 
       const totalLatency = performance.now() - startTime;
 
@@ -131,15 +137,15 @@ class HyperAgentOrchestrator {
         cacheHit: routeDecision.cacheHit,
       });
 
-      return this.buildResponse(enhanced.enhanced, {
-        routingTime: routeDecision.routingTime,
+      return this.buildResponse(enhanced.content, {
+        routingTime: routeDecision.estimatedLatencyMs,
         compressionSavings,
         latency: totalLatency,
         cost: modelSelection.estimatedCost,
         cacheHit: routeDecision.cacheHit,
         modelUsed: modelSelection.model,
         enhanced: true,
-        verified: enhanced.verified,
+        verified: enhanced.verificationStatus === 'verified',
       });
     } catch (error) {
       log.error('hyperagent_request_failed', { error: String(error) });
@@ -217,7 +223,7 @@ class HyperAgentOrchestrator {
       averageLatency: `${avgLatency}ms`,
       totalCostSavings: `$${this.executionMetrics.totalCostSavings.toFixed(4)}`,
       routerMetrics: smartRouter.getMetrics(),
-      embeddingCacheStats: embeddingCache.getStats(),
+      embeddingCacheStats: embeddingCache.getMetrics(),
       fallbackMetrics: intelligentFallback.getMetrics(),
       responseEnhancerMetrics: responseEnhancer.getMetrics(),
     };

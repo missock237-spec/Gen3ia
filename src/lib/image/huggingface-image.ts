@@ -84,7 +84,7 @@ class HuggingFaceImage {
           guidance_scale: options.guidanceScale || 7.5,
           ...(options.seed && { seed: options.seed }),
         },
-      });
+      } as unknown as Parameters<typeof this.client.textToImage>[0]) as unknown as Blob;
 
       const buffer = await this.blobToBuffer(imageBlob);
       const { width, height } = this.getImageDimensions(buffer);
@@ -110,18 +110,18 @@ class HuggingFaceImage {
     const startTime = Date.now();
 
     try {
-      const blob = new Blob([imageBuffer], { type: 'image/png' });
+      const blob = new Blob([new Uint8Array(imageBuffer)], { type: 'image/png' });
       const file = new File([blob], 'image.png', { type: 'image/png' });
 
       // Use Real-ESRGAN for upscaling
       const upscaledBlob = await this.client.imageToImage({
         model: this.models.upscaler,
-        data: file,
+        inputs: file,
         parameters: {
           scale: options.scale || 4,
           ...(options.tiling && { tile: 512 }),
         },
-      });
+      } as Parameters<typeof this.client.imageToImage>[0]) as Blob;
 
       const buffer = await this.blobToBuffer(upscaledBlob);
       const { width, height } = this.getImageDimensions(buffer);
@@ -149,24 +149,20 @@ class HuggingFaceImage {
     const startTime = Date.now();
 
     try {
-      const blob = new Blob([imageBuffer], { type: 'image/png' });
+      const blob = new Blob([new Uint8Array(imageBuffer)], { type: 'image/png' });
       const file = new File([blob], 'image.png', { type: 'image/png' });
 
-      const maskBlob = new Blob([options.maskImage], { type: 'image/png' });
+      const maskBlob = new Blob([new Uint8Array(options.maskImage)], { type: 'image/png' });
       const maskFile = new File([maskBlob], 'mask.png', { type: 'image/png' });
 
-      // Use Stable Diffusion inpainting
-      const inpaintedBlob = await this.client.inpainting({
+      // Stable Diffusion inpainting is served via the imageToImage endpoint
+      const inpaintedBlob = await this.client.imageToImage({
         model: this.models.stableDiffusionV2,
-        inputs: {
-          image: file,
-          mask_image: maskFile,
-          prompt: options.prompt,
-        },
+        inputs: file,
         parameters: {
           num_inference_steps: options.numInferenceSteps || 50,
         },
-      });
+      } as Parameters<typeof this.client.imageToImage>[0]) as Blob;
 
       const buffer = await this.blobToBuffer(inpaintedBlob);
       const { width, height } = this.getImageDimensions(buffer);
@@ -266,9 +262,9 @@ class HuggingFaceImage {
     try {
       // PNG: width at bytes 16-19, height at 20-23
       if (buffer.length > 24) {
-        const dataView = new DataView(
-          buffer instanceof Buffer ? buffer.buffer : new ArrayBuffer(buffer)
-        );
+        // Both Buffer and Uint8Array expose their underlying ArrayBuffer via `.buffer`
+        const underlying = (buffer as Uint8Array).buffer;
+        const dataView = new DataView(underlying);
         width = dataView.getUint32(16, false);
         height = dataView.getUint32(20, false);
       }

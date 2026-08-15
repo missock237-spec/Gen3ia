@@ -1,8 +1,7 @@
 import { dirname } from "path";
 import { fileURLToPath } from "url";
-// Inline compat shim
-const FlatCompat = class { constructor(opts: any) { this.baseDirectory = opts.baseDirectory; } };
 import { globalIgnores } from "eslint/config";
+import { FlatCompat } from "@eslint/eslintrc";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -28,7 +27,7 @@ const eslintConfig = [
     "next-env.d.ts",
   ]),
   // Configs Next (core-web-vitals + typescript) appliquées aux fichiers TS/TSX/JS/JSX.
-  // (FlatCompat étend les configs legacy : on s'assure que chaque bloc cible nos fichiers.)
+  // (FlatCompat from @eslint/eslintrc convertit les configs legacy en flat config.)
   ...compat.extends("next/core-web-vitals", "next/typescript").map((cfg) => ({
     ...cfg,
     files: FILES,

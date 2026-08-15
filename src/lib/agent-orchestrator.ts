@@ -171,6 +171,7 @@ class AgentOrchestrator {
   ) {
     let currentInput = goal;
     let totalCost = 0, totalTokens = 0, messagesCount = 0;
+    let anySimulated = false;
     const round = 1;
 
     for (const agent of agents) {
@@ -213,6 +214,7 @@ class AgentOrchestrator {
     executionId: string, agents: AgentConfig[], goal: string, context?: string,
     onProgress?: (msg: any) => void
   ) {
+    let anySimulated = false;
     const results = await Promise.all(agents.filter(a => a.role !== 'coordinator').map(async agent => {
       const prompt = context ? `Contexte: ${context}\n\nObjectif: ${goal}` : `Objectif: ${goal}`;
       const response = await this.callLLM(agent, `En tant que ${agent.role} spécialisé, analyse: ${prompt}`);
@@ -245,6 +247,7 @@ class AgentOrchestrator {
     executionId: string, agents: AgentConfig[], goal: string, context?: string,
     maxRounds?: number, onProgress?: (msg: any) => void
   ) {
+    let anySimulated = false;
     // Phase 1: Parallèle pour les rôles de recherche/analyse
     const researchers = agents.filter(a => ['researcher', 'analyst', 'critic'].includes(a.role));
     const writers = agents.filter(a => ['writer', 'coder', 'reviewer'].includes(a.role));
@@ -353,6 +356,7 @@ class AgentOrchestrator {
           content: routingDecision.directAnswer,
           cost: 0,
           tokens: 0,
+          simulated: true, // Cache hits are considered simulated (no real LLM call)
         };
       }
 
@@ -376,12 +380,12 @@ class AgentOrchestrator {
             execute: async () => {
               // Use the real AI router for LLM calls
               const { createAIRouter } = await import('./ai-router');
-// @ts-ignore
+              // @ts-expect-error — createAIRouter has implicit any return type (no .d.ts shipped)
               const aiRouter = createAIRouter();
               const response = await aiRouter.chat([
                 { role: 'system', content: agent.systemPrompt || `Tu es un agent ${agent.role} spécialisé.` },
                 { role: 'user', content: optimizedPrompt },
-// @ts-ignore
+                // @ts-expect-error — aiRouter.chat options shape is inferred from runtime; no .d.ts
               ], { model: routingDecision.model });
 
               return {

@@ -127,7 +127,15 @@ class QueryOptimizer {
       return [this.calculateStats(query, metrics)];
     }
 
-    const allStats = [];
+    const allStats: Array<{
+      query: string;
+      executionCount: number;
+      avgDuration: number;
+      maxDuration: number;
+      minDuration: number;
+      totalRows: number;
+      cacheHits: number;
+    }> = [];
     this.queryMetrics.forEach((metrics, q) => {
       allStats.push(this.calculateStats(q, metrics));
     });

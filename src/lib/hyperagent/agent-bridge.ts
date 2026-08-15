@@ -8,11 +8,17 @@
 
 import { createLogger } from '@/lib/logger';
 import { hyperAgentOrchestrator } from './hyperagent-orchestrator';
-import { smartRouter } from './smart-router';
-import { contextCompressor } from './context-compressor';
-import { parallelExecutor } from './parallel-executor';
-import { embeddingCache } from './embedding-cache';
-import { responseEnhancer } from './response-enhancer';
+import { getSmartRouter } from './smart-router';
+import { getContextCompressor } from './context-compressor';
+import { getParallelExecutor } from './parallel-executor';
+import { getEmbeddingCache } from './embedding-cache';
+import { getResponseEnhancer } from './response-enhancer';
+
+const smartRouter = getSmartRouter();
+const contextCompressor = getContextCompressor();
+const parallelExecutor = getParallelExecutor();
+const embeddingCache = getEmbeddingCache();
+const responseEnhancer = getResponseEnhancer();
 
 const log = createLogger('agent-bridge');
 
@@ -45,7 +51,7 @@ export class AgentBridge {
       performanceThreshold: 1000, // 1 second
       ...config,
     };
-    log.info('agent_bridge_initialized', this.config);
+    log.info('agent_bridge_initialized', { ...this.config });
   }
 
   /**
@@ -111,8 +117,19 @@ export class AgentBridge {
   private async fallbackToTraditional(request: any) {
     log.info('using_traditional_orchestrator');
     // Import and use the traditional agent orchestrator
-    const { agentOrchestrator } = await import('./agent-orchestrator');
-    return agentOrchestrator.runSuite(request);
+    const { orchestrator: agentOrchestrator } = await import('../agent-orchestrator');
+    // The traditional orchestrator's runSuite signature differs from the bridge's request shape;
+    // normalize the call so we don't crash during fallback.
+    const req = request as { suiteId?: string; userId?: string; goal?: string; agents?: unknown[] };
+    if (!req.suiteId || !req.userId || !req.goal) {
+      throw new Error('Cannot fallback: missing required suite fields');
+    }
+    return agentOrchestrator.runSuite({
+      suiteId: req.suiteId,
+      userId: req.userId,
+      goal: req.goal,
+      agents: (req.agents as never[]) ?? [],
+    });
   }
 
   /**
@@ -153,8 +170,8 @@ export class AgentBridge {
   /**
    * Clear cache and reset metrics
    */
-  reset() {
-    embeddingCache.clear();
+  async reset() {
+    await embeddingCache.clear();
     this.metrics = {
       hyperagentRequests: 0,
       fallbackRequests: 0,

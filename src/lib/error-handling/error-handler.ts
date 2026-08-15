@@ -22,6 +22,7 @@ export interface ErrorContext {
   method?: string;
   timestamp?: number;
   tags?: Record<string, string>;
+  retryAfter?: string;
 }
 
 export class AppError extends Error {

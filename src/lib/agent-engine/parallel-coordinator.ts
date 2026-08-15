@@ -42,7 +42,7 @@ export interface TaskNode {
   durationMs?: number;
 }
 
-type TaskErrorType =
+export type TaskErrorType =
   | 'circuit_breaker_open'
   | 'agent_not_found'
   | 'db_error'
@@ -209,7 +209,7 @@ export class ParallelCoordinator {
     } catch (err) {
       if (err instanceof PlanValidationError) {
         errors.push({ taskId: 'plan', error: err.message, type: 'invalid_plan', recoverable: false });
-        return this.buildResult(plan, {}, startTime, 0, 0, 0, 0, 0, [], errors, warnings, false, false);
+        return this.buildResult(plan, {}, startTime, 0, 0, 0, 0, 0, 0, [], errors, warnings, false, false);
       }
       throw err;
     }
