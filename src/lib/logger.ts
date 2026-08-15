@@ -362,6 +362,19 @@ import pino from 'pino';
 
 const level = process.env.LOG_LEVEL || 'info';
 
+// Détection du contexte de build Next.js — pendant "Collecting page data",
+// Next.js évalue les routes à la compilation avec NODE_ENV=production, ce qui
+// déclencherait la résolution du transport pino-loki (non installé en dev).
+// On désactive donc le transport si on détecte le build Next.js.
+const isNextBuildPhase =
+  process.env.NEXT_BUILD === '1' ||
+  process.env.NEXT_PHASE === 'phase-production-build';
+
+const enableLokiTransport =
+  process.env.NODE_ENV === 'production' &&
+  !isNextBuildPhase &&
+  !!process.env.LOKI_HOST;  // Ne configurer que si LOKI_HOST est réellement défini
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const logger: any = pino({
   level,
@@ -369,17 +382,20 @@ export const logger: any = pino({
     level: (label) => ({ level: label }),
   },
   timestamp: pino.stdTimeFunctions.isoTime,
-  // En production, on peut ajouter un transport pour Loki
-  ...(process.env.NODE_ENV === 'production' && {
-    transport: {
-      target: 'pino-loki',
-      options: {
-        host: process.env.LOKI_HOST || 'http://loki:3100',
-        labels: { app: 'gen3ia' },
-        batching: true,
-      },
-    },
-  }),
+  // En production runtime (pas pendant le build), on ajoute un transport pour Loki.
+  // Note: pino-loki doit être installé en prod (bun add pino-loki) si LOKI_HOST est défini.
+  ...(enableLokiTransport
+    ? {
+        transport: {
+          target: 'pino-loki',
+          options: {
+            host: process.env.LOKI_HOST || 'http://loki:3100',
+            labels: { app: 'gen3ia' },
+            batching: true,
+          },
+        },
+      }
+    : {}),
 });
 
 export default logger;

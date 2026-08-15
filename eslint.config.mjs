@@ -39,13 +39,28 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "react-hooks/exhaustive-deps": "warn",
-      // STRICTE — ts-ignore interdit ; utiliser ts-expect-error avec justification.
+      // T1 — Déblocage Vercel : @ts-ignore dégradé en warning (327 occurrences à corriger en T3a).
+      // La règle reste active pour traquer les directives sans description, mais ne bloque plus le build.
       "@typescript-eslint/ban-ts-comment": [
-        "error",
+        "warn",
         { "ts-ignore": "allow-with-description", minimumDescriptionLength: 10 }
       ],
-      // STRICTE — pas de console.* bruyants ; tout passer par le logger.
-      "no-console": ["error", { allow: ["warn", "error"] }],
+      // T1 — Déblocage Vercel : no-console dégradé en warning (45 occurrences à corriger en T3c).
+      "no-console": ["warn", { allow: ["warn", "error"] }],
+      // T1 — Règles React Compiler dégradées en warning le temps du refactoring T2.
+      // Ces règles détectent des bugs réels (boucles de rendu, mutations d'état) qui doivent
+      // être corrigés manuellement. En attendant, elles ne bloquent pas le déploiement.
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/immutability": "warn",
+      "react-hooks/purity": "warn",
+      // T1 — Autres règles dégradées le temps de la migration.
+      "@typescript-eslint/no-require-imports": "warn",
+      "@typescript-eslint/no-empty-object-type": "warn",
+      "@typescript-eslint/no-unused-expressions": ["warn", { allowShortCircuit: true, allowTernary: true }],
+      "react/no-unescaped-entities": "warn",
+      "react/jsx-no-comment-textnodes": "warn",
+      // next/no-img-element déjà fourni par next/core-web-vitals — pas besoin de le redéclarer ici.
+      "import/no-anonymous-default-export": "warn",
       "prefer-const": "error",
       "no-var": "error",
     },

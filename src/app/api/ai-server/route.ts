@@ -54,14 +54,10 @@ const getHandler = withAuth(async (request: NextRequest, ctx: { params?: RoutePa
 // POST /api/ai-server — Action LLM (analyze/process/diagnose) : couteuse en tokens → QUOTA obligatoire
 const postHandler = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   const action = request.nextUrl.searchParams.get('action');
-  let resolvedAction: string;
-  let input: unknown;
-  let model: string | undefined;
-
   const body = await request.json().catch(() => ({}));
-  resolvedAction = action || (body as { action?: string }).action as string;
-  input = body.input;
-  model = body.model;
+  const resolvedAction: string = action || (body as { action?: string }).action as string;
+  const input: unknown = body.input;
+  const model: string | undefined = body.model;
 
   if (!resolvedAction) return NextResponse.json({ error: 'Action requise (analyze, process, diagnose)' }, { status: 400 });
   if (!input) return NextResponse.json({ error: 'Input requis' }, { status: 400 });
