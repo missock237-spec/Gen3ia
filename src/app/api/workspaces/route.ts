@@ -1,43 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { createWorkspace, listUserWorkspaces } from '@/lib/collaboration/workspace-manager';
+import { db } from '@/lib/db';
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
 
-export async function GET(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
 
+
+export const dynamic = "force-dynamic";
+export async function GET(r: NextRequest) {
   try {
-    const workspaces = await listUserWorkspaces(auth.userId);
-    return secureResponse(NextResponse.json(workspaces), request);
-  } catch {
-    const res = NextResponse.json({ error: 'Failed to list workspaces' }, { status: 500 });
-    return secureResponse(res, request);
-  }
+    const a = r.headers.get('authorization');
+    if (!a?.startsWith('Bearer ')) return NextResponse.json({ error: 'Auth' }, { status: 401 });
+    const { verify } = await import('jsonwebtoken');
+    const d = verify(a.slice(7), process.env.AUTH_SECRET || 's') as any;
+    const memberships = await db.workspaceMember.findMany({ where: { userId: d.userId }, include: { workspace: true } });
+    return NextResponse.json(memberships.map(m => ({ ...m.workspace, role: m.role, memberId: m.id })));
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }
-
-export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
+export async function POST(r: NextRequest) {
   try {
-    const body = await request.json();
-    const { name, description, icon, settings } = body;
-
-    if (!name) {
-      return secureResponse(NextResponse.json({ error: 'Name is required' }, { status: 400 }), request);
-    }
-
-    const workspace = await createWorkspace(auth.userId, { name, description, icon, settings });
-    return secureResponse(NextResponse.json(workspace, { status: 201 }), request);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to create workspace';
-    const res = NextResponse.json({ error: message }, { status: 500 });
-    return secureResponse(res, request);
-  }
+    const b = await r.json();
+    const { name, slug, description, userId } = b;
+    if (!name || !slug || !userId) return NextResponse.json({ error: 'name, slug et userId requis' }, { status: 400 });
+    const w = await db.workspace.create({ data: { name, slug, description } });
+    await db.workspaceMember.create({ data: { workspaceId: w.id, userId, role: 'owner' } });
+    return NextResponse.json(w, { status: 201 });
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }

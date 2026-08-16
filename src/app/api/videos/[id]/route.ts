@@ -1,46 +1,18 @@
-/**
- * GET    /api/videos/[id] — Get a specific video generation
- * DELETE /api/videos/[id] — Delete a video generation
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity } from '@/lib/security';
-import { getVideoGeneration, deleteVideoGeneration } from '@/lib/video-generator';
+import { db } from '@/lib/db';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
 
+
+
+
+export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await params;
-    const video = await getVideoGeneration(id, auth.userId);
-    if (!video) {
-      return NextResponse.json({ error: 'Video not found' }, { status: 404 });
-    }
+    const video = await db.videoGeneration.findUnique({
+      where: { id: (await params).id },
+      select: { id: true, prompt: true, model: true, status: true, videoUrl: true, costUsd: true, durationSeconds: true, width: true, height: true, createdAt: true, metadata: true },
+    });
+    if (!video) return NextResponse.json({ error: 'Vidéo non trouvée' }, { status: 404 });
     return NextResponse.json(video);
-  } catch {
-    return NextResponse.json({ error: 'Failed to get video' }, { status: 500 });
-  }
-}
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-  try {
-    const { id } = await params;
-    const deleted = await deleteVideoGeneration(id, auth.userId);
-    if (!deleted) {
-      return NextResponse.json({ error: 'Video not found' }, { status: 404 });
-    }
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: 'Failed to delete video' }, { status: 500 });
-  }
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }

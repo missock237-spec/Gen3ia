@@ -105,7 +105,11 @@ export function useStreamingChat(
 
   /**
    * Handle a stream event and update state accordingly
+   * Note: uses a ref to break the recursion cycle (batch handler calls itself),
+   * which satisfies react-hooks/immutability.
    */
+  const handleStreamEventRef = useRef<((event: StreamEvent) => void) | null>(null);
+
   const handleStreamEvent = useCallback((event: StreamEvent) => {
     switch (event.type) {
       case 'token': {
@@ -168,7 +172,8 @@ export function useStreamingChat(
         const events = event.data.events as Array<{ type: string; data: Record<string, unknown> }> | undefined;
         if (events && Array.isArray(events)) {
           for (const subEvent of events) {
-            handleStreamEvent({ type: subEvent.type, data: subEvent.data });
+            // Use ref to break recursion cycle (react-hooks/immutability)
+            handleStreamEventRef.current?.({ type: subEvent.type, data: subEvent.data });
           }
         }
         break;
@@ -191,6 +196,11 @@ export function useStreamingChat(
       }
     }
   }, [streamingContent]);
+
+  // Keep the ref in sync so the batch handler can recurse without TDZ issue.
+  useEffect(() => {
+    handleStreamEventRef.current = handleStreamEvent;
+  }, [handleStreamEvent]);
 
   /**
    * Send a message and stream the response
