@@ -1,108 +1,102 @@
+// ============================================================
+// Guardrails API — Regles de securite pour les agents
+// GET: lister les guardrails
+// POST: creer un guardrail
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
+
+
+
+
+export const dynamic = "force-dynamic";
+const log = createLogger('guardrails');
+
+const VALID_TYPES = ['content_filter', 'rate_limit', 'permission', 'cost_limit', 'time_restriction', 'action_block', 'custom'];
+const VALID_SEVERITIES = ['info', 'warning', 'critical', 'block'];
 
 export async function GET(request: NextRequest) {
+  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
+  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+
   try {
-    const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-    const userId = auth.userId;
-
     const guardrails = await db.guardrail.findMany({
-      where: { userId },
+      where: { userId: auth.userId },
       orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        description: true,
+        rules: true,
+        severity: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
-    return secureResponse(NextResponse.json(guardrails), request);
-  } catch {
-    return secureResponse(
-      NextResponse.json({ error: 'Erreur serveur' }, { status: 500 }),
-      request
-    );
+    const parsed = guardrails.map(g => ({
+      ...g,
+      rules: typeof g.rules === 'string' ? JSON.parse(g.rules) : g.rules,
+    }));
+
+    return NextResponse.json({ success: true, data: parsed });
+  } catch (error) {
+    log.error('guardrails_fetch_error', { error: String(error) });
+    return NextResponse.json({ error: 'Erreur de chargement' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
+  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
 
+  try {
     const body = await request.json();
     const { name, type, description, rules, severity } = body;
-    const userId = auth.userId;
 
-    if (!name || !type) {
-      return secureResponse(
-        NextResponse.json({ error: 'Nom et type requis' }, { status: 400 }),
-        request
-      );
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return NextResponse.json({ error: 'Nom requis' }, { status: 400 });
     }
 
-    // Input length validation
-    if (name.length > 100) {
-      return secureResponse(
-        NextResponse.json({ error: 'Name must be at most 100 characters' }, { status: 400 }),
-        request
-      );
+    if (!type || !VALID_TYPES.includes(type)) {
+      return NextResponse.json({
+        error: `Type invalide. Types valides: ${VALID_TYPES.join(', ')}`,
+      }, { status: 400 });
     }
 
-    if (description && description.length > 1000) {
-      return secureResponse(
-        NextResponse.json({ error: 'Description must be at most 1000 characters' }, { status: 400 }),
-        request
-      );
-    }
+    const validSeverity = severity && VALID_SEVERITIES.includes(severity) ? severity : 'warning';
 
-    // Validate guardrail type
-    const VALID_TYPES = ['content_filter', 'rate_limit', 'permission', 'custom'];
-    if (!VALID_TYPES.includes(type)) {
-      return secureResponse(
-        NextResponse.json({ error: `Type invalide. Valeurs autorisées: ${VALID_TYPES.join(', ')}` }, { status: 400 }),
-        request
-      );
-    }
-
-    // Validate severity
-    const VALID_SEVERITIES = ['info', 'warning', 'critical', 'blocking'];
-    if (severity && !VALID_SEVERITIES.includes(severity)) {
-      return secureResponse(
-        NextResponse.json({ error: `Sévérité invalide. Valeurs autorisées: ${VALID_SEVERITIES.join(', ')}` }, { status: 400 }),
-        request
-      );
+    let parsedRules: Record<string, unknown> = {};
+    if (rules) {
+      try {
+        parsedRules = typeof rules === 'string' ? JSON.parse(rules) : rules;
+      } catch {
+        return NextResponse.json({ error: 'Rules doit etre un JSON valide' }, { status: 400 });
+      }
     }
 
     const guardrail = await db.guardrail.create({
       data: {
-        name,
+        name: name.trim(),
         type,
         description: description || '',
-        rules: rules ? JSON.stringify(rules) : '{}',
-        severity: severity || 'warning',
-        userId,
+        rules: JSON.stringify(parsedRules),
+        severity: validSeverity,
+        userId: auth.userId,
       },
     });
 
-    await db.activityLog.create({
-      data: {
-        action: 'Garde-fou créé',
-        details: JSON.stringify({ guardrailName: name, type }),
-        category: 'guardrail',
-        userId,
-      },
-    });
+    log.info('guardrail_created', { id: guardrail.id, name: guardrail.name, type });
 
-    return secureResponse(NextResponse.json(guardrail, { status: 201 }), request);
-  } catch {
-    return secureResponse(
-      NextResponse.json({ error: 'Erreur lors de la création' }, { status: 500 }),
-      request
-    );
+    return NextResponse.json({ success: true, data: guardrail }, { status: 201 });
+  } catch (error) {
+    log.error('guardrail_create_error', { error: String(error) });
+    return NextResponse.json({ error: 'Erreur de creation' }, { status: 500 });
   }
 }
