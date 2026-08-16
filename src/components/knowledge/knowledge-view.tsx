@@ -12,7 +12,7 @@ export function KnowledgeView() {
     try { const r = await fetch('/api/knowledge', { headers: { Authorization: `Bearer ${t}` } }); if (r.ok) setItems(await r.json()); } catch {}
     setLoading(false);
   };
-  useEffect(() => { fetchItems(); }, []);
+  useEffect(() => { let _cancelled = false; (async () => { if (!_cancelled) { try { await fetchItems(); } catch {} } })(); return () => { _cancelled = true; }; }, []);
   const addItem = async () => {
     if (!content.trim()) return;
     const t = localStorage.getItem('genova_token');

@@ -20,7 +20,7 @@ export async function GET() {
     });
 
     return NextResponse.json({ projects });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ project, message: 'Projet cree' }, { status: 201 });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
@@ -67,7 +67,7 @@ export async function DELETE(request: NextRequest) {
 
     await prisma.codeProject.delete({ where: { id } });
     return NextResponse.json({ message: 'Projet supprime' });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
@@ -94,7 +94,7 @@ export async function PATCH(request: NextRequest) {
 
     const updated = await prisma.codeProject.update({ where: { id }, data: updateData });
     return NextResponse.json({ project: updated });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }

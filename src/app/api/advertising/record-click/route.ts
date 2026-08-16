@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { impressionId, userId, adType } = await request.json();
+    const { impressionId, userId, _adType } = await request.json();
 
     // Validate required fields
     if (!impressionId) {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- test file uses dynamic require for modules that may not be installed */
 // ============================================================
 // Tests — Webhooks de paiement Chariow
 // (ex-SebPay : Chariow est désormais la passerelle unique)

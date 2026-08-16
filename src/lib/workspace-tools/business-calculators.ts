@@ -89,7 +89,7 @@ export class BusinessCalculators {
     const totalInterest = totalPaid - principal;
 
     // Tableau d'amortissement
-    const amortization = [];
+    const amortization: Array<{ month: number; payment: number; interest: number; principal: number; balance: number }> = [];
     let balance = principal;
     for (let m = 1; m <= Math.min(months, 12); m++) { // 12 premiers mois
       const interest = balance * monthlyRate;

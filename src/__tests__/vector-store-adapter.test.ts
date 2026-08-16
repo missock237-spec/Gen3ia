@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- test file uses dynamic require for modules that may not be installed */
 // ============================================================
 // Tests — Vector Store Adapter (SQLite + Qdrant)
 // Factory, upsert, search, delete, count

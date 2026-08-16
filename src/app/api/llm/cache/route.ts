@@ -15,7 +15,7 @@ export async function GET() {
       success: true,
       stats,
     });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { success: false, error: 'LLM cache non disponible' },
       { status: 500 }

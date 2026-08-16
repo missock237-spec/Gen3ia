@@ -284,6 +284,68 @@ interface AdPerformanceTracker {
 
 const performanceTrackers = new Map<string, AdPerformanceTracker>();
 
+// ------------------------------------------------------------
+// A/B test variant selection + in-memory stats tracking
+// ------------------------------------------------------------
+interface VariantStats { impressions: number; clicks: number; }
+const variantStats = new Map<string, Map<string, VariantStats>>();
+
+/**
+ * Picks an A/B test variant for the given campaign.
+ * Returns `{ variantId: '', textContent: '', ctaText: '' }` if the campaign
+ * has no variants configured.
+ */
+function selectVariant(
+  campaign: AdCampaign,
+): {
+  variantId: string;
+  textContent: string;
+  ctaText: string;
+} {
+  if (!campaign.variants || campaign.variants.length === 0) {
+    return {
+      variantId: '',
+      textContent: '',
+      ctaText: '',
+    };
+  }
+
+  const epsilon = 0.2;
+  let chosen: AdVariant;
+
+  if (Math.random() < epsilon) {
+    chosen =
+      campaign.variants[
+        Math.floor(Math.random() * campaign.variants.length)
+      ];
+  } else {
+    const cmap = variantStats.get(campaign.id);
+
+    chosen = campaign.variants.reduce((best, variant) => {
+      const bestStats = cmap?.get(best.id);
+      const variantStatsValue = cmap?.get(variant.id);
+
+      const bestCTR =
+        bestStats && bestStats.impressions > 0
+          ? bestStats.clicks / bestStats.impressions
+          : 0;
+
+      const variantCTR =
+        variantStatsValue && variantStatsValue.impressions > 0
+          ? variantStatsValue.clicks / variantStatsValue.impressions
+          : 0;
+
+      return variantCTR > bestCTR ? variant : best;
+    }, campaign.variants[0]);
+  }
+
+  return {
+    variantId: chosen.id,
+    textContent: chosen.textContent,
+    ctaText: chosen.ctaText,
+  };
+}
+
 function cleanupRecentImpressions() {
   const cutoff = Date.now() - 3600000;
   for (const [key, timestamps] of recentImpressions.entries()) {
@@ -1015,7 +1077,7 @@ export class AdEngine {
 
       return { targetKeywords, audienceSegment, optimalPlacement };
     } catch (err) {
-      log.error('Smart targeting failed', err);
+      log.error('Smart targeting failed', { error: err instanceof Error ? err.message : String(err) });
       return { targetKeywords: [], audienceSegment: 'general', optimalPlacement: 'bottom_bar' };
     }
   }
@@ -1053,7 +1115,7 @@ export class AdEngine {
         data: { viewDurationMs, updatedAt: new Date() },
       });
     } catch (err) {
-      log.error('Metrics tracking failed', err);
+      log.error('Metrics tracking failed', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -1097,7 +1159,7 @@ export class AdEngine {
       log.info('Campaigns auto-optimized', { optimized, total: campaigns.length });
       return { optimized, totalScanned: campaigns.length };
     } catch (err) {
-      log.error('Campaign optimization failed', err);
+      log.error('Campaign optimization failed', { error: err instanceof Error ? err.message : String(err) });
       return { optimized: 0, totalScanned: 0 };
     }
   }
@@ -1130,7 +1192,7 @@ export class AdEngine {
         predictedRevenue: impressions * 0.02,
       };
     } catch (err) {
-      log.error('Dashboard analytics failed', err);
+      log.error('Dashboard analytics failed', { error: err instanceof Error ? err.message : String(err) });
       return { impressions: 0, clicks: 0, clickThrough: '0', topCampaigns: [], predictedRevenue: 0 };
     }
   }

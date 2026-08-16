@@ -49,7 +49,11 @@ export function AdPreferencesPanel() {
   }, []);
 
   useEffect(() => {
-    load();
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) try { await load(); } catch {}
+    })();
+    return () => { cancelled = true; };
   }, [load]);
 
   const setAdsEnabled = useCallback(

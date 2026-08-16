@@ -285,10 +285,10 @@ export class FallbackManager {
     } = options;
 
     let lastError: string = '';
-    let originalProvider = providers[0]?.provider || 'unknown';
+    const originalProvider = providers[0]?.provider || 'unknown';
     let usedProvider = originalProvider;
-    let retries = 0;
-    let partialResult: T | null = null;
+    const retries = 0;
+    const partialResult: T | null = null;
 
     // Filter out unavailable providers (circuit breaker)
     const availableProviders = enableCircuitBreaker

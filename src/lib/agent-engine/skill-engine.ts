@@ -35,7 +35,7 @@ export interface Skill {
     systemPrompt?: string;
     tools?: string[];
     modelPreferences?: string[];
-    parameters?: Record<string, any>;
+    parameters?: Record<string, unknown>;
     hooks?: string[];
   };
   // Compatibilite
@@ -73,7 +73,7 @@ export interface AILoop {
     tools: string[];
     promptTemplate: string;
     validationRules?: string[];
-    outputSchema?: Record<string, any>;
+    outputSchema?: Record<string, unknown>;
   };
   tags: string[];
   installCount: number;
@@ -98,7 +98,7 @@ export interface Customization {
   price: number;
   isFree: boolean;
   isOfficial: boolean;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   preview?: string;
   tags: string[];
   installCount: number;
@@ -206,28 +206,28 @@ export class SkillEngine {
   /**
    * Lister les competences installees sur un agent
    */
-  async getAgentSkills(agentId: string): Promise<any[]> {
+  async getAgentSkills(agentId: string): Promise<unknown[]> {
     return db.agentSkill.findMany({ where: { agentId }, include: { skill: true }, orderBy: { createdAt: 'desc' } });
   }
 
   /**
    * Lister les boucles installees sur un agent
    */
-  async getAgentLoops(agentId: string): Promise<any[]> {
+  async getAgentLoops(agentId: string): Promise<unknown[]> {
     return db.agentLoop.findMany({ where: { agentId }, include: { loop: true }, orderBy: { createdAt: 'desc' } });
   }
 
   /**
    * Lister les personnalisations d'un utilisateur
    */
-  async getUserCustomizations(userId: string): Promise<any[]> {
+  async getUserCustomizations(userId: string): Promise<unknown[]> {
     return db.userCustomization.findMany({ where: { userId }, include: { customization: true }, orderBy: { createdAt: 'desc' } });
   }
 
   /**
    * Creer une nouvelle competence
    */
-  async createSkill(data: Partial<Skill> & { name: string; category: SkillCategory }): Promise<any> {
+  async createSkill(data: Partial<Skill> & { name: string; category: SkillCategory }): Promise<unknown> {
     return db.skill.create({
       data: {
         name: data.name, slug: data.slug || data.name.toLowerCase().replace(/\s+/g, '-'),
@@ -245,7 +245,7 @@ export class SkillEngine {
   /**
    * Creer une nouvelle boucle IA
    */
-  async createLoop(data: Partial<AILoop> & { name: string }): Promise<any> {
+  async createLoop(data: Partial<AILoop> & { name: string }): Promise<unknown> {
     return db.aILoop.create({
       data: {
         name: data.name, slug: data.slug || data.name.toLowerCase().replace(/\s+/g, '-'),

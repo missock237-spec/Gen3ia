@@ -123,7 +123,7 @@ export class MeetingNotesProcessor {
       return { sentence: s, score };
     });
 
-    return scored.sort((a, b) => b.score - a.score).slice(0, 3).sort((a, b) => 0).map(s => s.sentence).join('. ') + '.';
+    return scored.sort((a, b) => b.score - a.score).slice(0, 3).sort((_a, _b) => 0).map(s => s.sentence).join('. ') + '.';
   }
 
   private extractDecisions(notes: string): Array<{ decision: string; context?: string }> {

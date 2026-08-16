@@ -61,7 +61,7 @@ class ABTestingEngine {
     versionA: string,
     versionB: string,
     options: {
-      name: string;
+      name?: string;
       description?: string;
       splitRatio?: [number, number];
     } = {},
@@ -72,7 +72,7 @@ class ABTestingEngine {
     const test: ABTest = {
       id: testId,
       automationId,
-      name: options.name,
+      name: options.name || `A/B test ${testId}`,
       description: options.description,
       versionA,
       versionB,

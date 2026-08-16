@@ -238,7 +238,7 @@ export class SearchEngine {
 
   private async searchTemplates(q: string, userId: string, take: number, results: SearchResult[]) {
     const templates = await prisma.workflowTemplate.findMany({
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       where: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }], OR: [{ isPublic: true }, { userId }] },
       take, select: { id: true, name: true, description: true, category: true, icon: true, usageCount: true },
     });

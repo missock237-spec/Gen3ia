@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Helper pour creer des requetes Next.js factices
-function createRequest({ method = 'GET', url = 'http://localhost:3000/api/agents', body, headers = {}, cookies = {} }) {
+function createRequest({ method = 'GET', url = 'http://localhost:3000/api/agents', body, headers = {}, _cookies = {} }) {
   const req = new Request(url, {
     method,
     headers: { 'Content-Type': 'application/json', ...headers },

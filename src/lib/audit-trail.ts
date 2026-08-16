@@ -61,7 +61,7 @@ export async function recordAudit(entry: AuditEntry): Promise<void> {
       },
     }).catch(() => {
       // Table might not exist, fallback to log
-      log.info('audit', entry);
+      log.info('audit', { ...entry });
     });
   } catch {
     log.warn('Failed to record audit entry', { action: entry.action });

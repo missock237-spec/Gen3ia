@@ -100,11 +100,11 @@ async function executeInSandbox(code: string, language: string, input?: string):
     }
 
     // Try isolated-vm for true sandbox isolation
-    let logs: string[] = [];
+    const logs: string[] = [];
     try {
-      const ivm = await import('isolated-vm');
+      const ivm = await import('isolated-vm') as any;
       const isolate = new ivm.Isolate({ memoryLimit: 128 }); // 128MB max
-      const context = isolate.createContextSync();
+      const context = await isolate.createContext();
 
       // Inject console.log into the isolate
       const logFn = new ivm.Reference(function(...args: any[]) {

@@ -24,12 +24,14 @@ export function AnalyticsView() {
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     fetch(`/api/analytics?period=${period}`)
       .then((r) => r.json())
-      .then((d) => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [period]);
 
   if (loading) {
@@ -58,7 +60,7 @@ export function AnalyticsView() {
             <BarChart3 className="h-6 w-6 text-primary" />
             Analytiques
           </h1>
-          <p className="text-muted-foreground">Statistiques et métriques d'utilisation</p>
+          <p className="text-muted-foreground">Statistiques et métriques d&apos;utilisation</p>
         </div>
         <div className="flex gap-1 bg-muted rounded-lg p-1">
           {(['7d', '30d', '90d'] as const).map((p) => (

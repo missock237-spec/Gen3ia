@@ -50,8 +50,11 @@ class HuggingFaceSTT {
    */
   async transcribe(audioBuffer: Buffer | Uint8Array, options: STTOptions = {}): Promise<STTResult> {
     try {
-      const blob = new Blob([audioBuffer], { type: 'audio/wav' });
-      const file = new File([blob], 'audio.wav', { type: 'audio/wav' });
+      // Normalize Buffer/Uint8Array to a plain Uint8Array then pass its ArrayBuffer
+      // as a valid BlobPart (Buffer is a Uint8Array subclass that TS lib rejects as BlobPart).
+      const bytes = new Uint8Array(audioBuffer.length);
+      bytes.set(audioBuffer as Uint8Array);
+      const file = new File([bytes.buffer], 'audio.wav', { type: 'audio/wav' });
 
       // Use Whisper for transcription
       const result = await this.client.automaticSpeechRecognition({

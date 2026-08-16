@@ -1,13 +1,15 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter_Tight, JetBrains_Mono } from 'next/font/google';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { siteConfig } from '@/lib/seo/config';
 import { ErrorBoundary, ErrorProvider } from '@/components/error-boundary';
 
-const geistSans = Inter_Tight({ variable: '--font-geist-sans', subsets: ['latin'] });
-const geistMono = JetBrains_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+// geist package provides the font variables directly
+const geistSans = GeistSans;
+const geistMono = GeistMono;
 
 const siteUrl = siteConfig.url;
 const siteName = siteConfig.name;

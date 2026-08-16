@@ -117,8 +117,14 @@ export function AgentCostDashboard({ userId }: AgentCostDashboardProps) {
   }, [userId, period]);
 
   useEffect(() => {
-    setLoading(true);
-    fetchCostData();
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) {
+        setLoading(true);
+        try { await fetchCostData(); } catch {}
+      }
+    })();
+    return () => { cancelled = true; };
   }, [fetchCostData]);
 
   const handleRefresh = () => {

@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       status: 200,
       headers: { 'Content-Type': 'text/xml; charset=utf-8' },
     });
-  } catch (error) {
+  } catch (_error) {
     return generateTwiML('Désolé, une erreur est survenue. Nous vous rappelons rapidement.', true);
   }
 }

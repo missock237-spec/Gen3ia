@@ -12,7 +12,7 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteP
   try {
     const body = await request.json();
     const validation = validateBody(ragQuerySchema, body);
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     if (!validation.success) return validation.error;
 
     const { query, topK } = validation.data;

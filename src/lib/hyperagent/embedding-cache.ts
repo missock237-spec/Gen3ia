@@ -366,6 +366,28 @@ export class EmbeddingCache {
         : '0',
     };
   }
+
+  /**
+   * Clear both L1 (in-memory) and L2 (Redis) caches and reset metrics.
+   */
+  async clear(): Promise<void> {
+    this.l1.clear();
+    // L2 clear: best-effort — clear embedding keys from Redis via cache manager
+    try {
+      await cache.clear();
+    } catch {
+      // Redis unavailable or no keys, ignore
+    }
+    this.metrics = {
+      totalLookups: 0,
+      l1Hits: 0,
+      l2Hits: 0,
+      misses: 0,
+      apiCallsSaved: 0,
+      totalLookupTimeMs: 0,
+      cacheWarmingCount: 0,
+    };
+  }
 }
 
 // Singleton

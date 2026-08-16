@@ -397,6 +397,7 @@ export function cancelChunkUpload(uploadId: string): void {
 // Export par défaut
 // ============================================================
 
+// eslint-disable-next-line import/no-anonymous-default-export
 export default {
   uploadFile,
   uploadBuffer,

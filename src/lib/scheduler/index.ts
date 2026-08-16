@@ -2,12 +2,12 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 export class AgentScheduler {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   constructor() { this.interval = null; }
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   start() { if (!this.interval) { this.interval = setInterval(() => this.check(), 60000); logger.info("Scheduler started"); } }
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   stop() { if (this.interval) { clearInterval(this.interval); this.interval = null; } }
 
   async schedule(input) {

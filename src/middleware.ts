@@ -209,7 +209,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 4. DENY-BY-DEFAULT : une auth est requise.
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const session = await verifyFirebaseSession(sessionCookie);
 

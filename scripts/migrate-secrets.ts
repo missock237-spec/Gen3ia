@@ -83,6 +83,7 @@ async function migrateUserResources() {
 }
 
 async function main() {
+  // eslint-disable-next-line no-console
   console.log(
     DRY_RUN
       ? 'Starting secret migration in DRY_RUN mode...'
@@ -92,20 +93,28 @@ async function main() {
   const social = await migrateSocialAccounts()
   const resources = await migrateUserResources()
 
+  // eslint-disable-next-line no-console
   console.log('')
+  // eslint-disable-next-line no-console
   console.log('Migration summary:')
+  // eslint-disable-next-line no-console
   console.log('------------------')
+  // eslint-disable-next-line no-console
   console.log(
     `SocialAccount     total=${social.total} updated=${social.updated} skipped=${social.skipped}`
   )
+  // eslint-disable-next-line no-console
   console.log(
     `UserResource      total=${resources.total} updated=${resources.updated} skipped=${resources.skipped}`
   )
+  // eslint-disable-next-line no-console
   console.log('')
 
   if (DRY_RUN) {
+    // eslint-disable-next-line no-console
     console.log('No database changes were written.')
   } else {
+    // eslint-disable-next-line no-console
     console.log('Secret migration completed successfully.')
   }
 }

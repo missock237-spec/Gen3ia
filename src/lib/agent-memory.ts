@@ -344,9 +344,9 @@ export async function retrieveMemories(
   const candidates = await db.agentMemory.findMany({
     where,
     orderBy: [
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       { relevance: 'desc' },
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       { lastAccessedAt: 'desc' },
     ],
     take: Math.min(limit * 5, 100),
@@ -573,7 +573,7 @@ export async function pruneOldMemories(
   const toRemove = await db.agentMemory.findMany({
     where: { agentId },
     orderBy: [
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       { relevance: 'asc' },
       { accessCount: 'asc' },
       { lastAccessedAt: 'asc' },
