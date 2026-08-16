@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
-import {
-  addNode,
-  addEdge,
-  queryGraph,
-  getRelevantContext,
-  getGraphStats,
-  deleteNode,
-  deleteEdge,
-  type MemoryNodeType,
-} from '@/lib/memory/user-memory-graph';
+import { addNode, addEdge, queryGraph, getRelevantContext, getGraphStats, deleteNode, deleteEdge } from '@/lib/memory/user-memory-graph';
 
-const VALID_NODE_TYPES: MemoryNodeType[] = [
-  'preference', 'project', 'habit', 'style', 'contact', 'topic', 'general',
-];
 
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -43,17 +35,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Default: query graph
-    const rawType = searchParams.get('type') || undefined;
-    // Validate type against known values — avoid `as any`
-    const type: MemoryNodeType | undefined =
-      rawType && VALID_NODE_TYPES.includes(rawType as MemoryNodeType)
-        ? (rawType as MemoryNodeType)
-        : undefined;
-
+    const type = searchParams.get('type') || undefined;
     const labelContains = searchParams.get('label') || undefined;
     const limit = parseInt(searchParams.get('limit') || '50');
 
-    const graph = await queryGraph(auth.userId, { type, labelContains, limit });
+    const graph = await queryGraph(auth.userId, { type: type as any, labelContains, limit });
     const res = NextResponse.json(graph);
     return secureResponse(res, request);
   } catch {
