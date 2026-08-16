@@ -97,6 +97,13 @@ function cleanFile(filePath) {
     });
   }
 
+  // 4. Remove ORPHAN conflict markers (lines that start with <<<<<<<, =======, >>>>>>>)
+  //    These remain after step 3 if a block was partial/incomplete.
+  content = content.replace(/^[ \t]*(<{7}|={7}|>{7})[^\n]*$/gm, (m) => {
+    conflicts++;
+    return '';
+  });
+
   // Clean up multiple blank lines that may result from removing standalone lines
   content = content.replace(/\n{3,}/g, '\n\n');
 
