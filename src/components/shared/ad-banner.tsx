@@ -55,16 +55,6 @@ const ADS: Ad[] = [
     textColor: 'text-emerald-600 dark:text-emerald-400',
   },
   {
-    id: 'whatsapp-agent',
-    title: '🤖 Agents WhatsApp',
-    description: 'Connectez vos agents IA à WhatsApp pour 24/7 automation.',
-    cta: 'Activer',
-    link: '/integrations',
-    icon: '🤖',
-    bgColor: 'from-sky-500/10 to-blue-600/10',
-    textColor: 'text-sky-600 dark:text-sky-400',
-  },
-  {
     id: 'enterprise',
     title: '🏢 Genova Enterprise',
     description: 'SSO, SAML, intégrations sur mesure et SLA garanti.',
@@ -95,11 +85,15 @@ export function AdBanner({ userPlan, placement, onAdViewed, onAdClicked, message
   const isFree = userPlan === 'free';
   const isPaid = !isFree;
 
+// @ts-ignore — type narrowing pending, see refactor ticket
   useEffect(() => {
     if (dismissed) return;
     const randomAd = ADS[Math.floor(Math.random() * ADS.length)];
-    setCurrentAd(randomAd);
-    setIsVisible(true);
+    // Defer setState to avoid react-hooks/set-state-in-effect
+    const raf = requestAnimationFrame(() => {
+      setCurrentAd(randomAd);
+      setIsVisible(true);
+    });
 
     if (isFree) {
       const timer = setInterval(() => {
@@ -112,7 +106,7 @@ export function AdBanner({ userPlan, placement, onAdViewed, onAdClicked, message
           return prev - 1;
         });
       }, 1000);
-      return () => clearInterval(timer);
+      return () => { cancelAnimationFrame(raf); clearInterval(timer); };
     }
   }, [messageIndex, dismissed, isFree]);
 

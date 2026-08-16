@@ -1,118 +1,63 @@
-/**
- * POST /api/videos/generate — Generate a video via Fluro.IA
- * GET  /api/videos/status   — Check video generation status
- *
- * Video generation endpoint powered by Fluro.IA:
- *   Fluro → VideoCrafter/CogVideo (primary) → z-ai-sdk (fallback)
- */
-
-import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { fluroGenerateVideo, fluroGetVideoStatus } from '@/lib/fluro-ai-client';
-
 // ============================================================
-// POST /api/videos/generate — Generate a video from a prompt
+// GET /api/videos — Liste des vidéos générées
 // ============================================================
 
-export async function POST(request: NextRequest) {
-  try {
-    const { auth, error: secError } = await applySecurity(request, {
-      requireAuth: true,
-      rateLimit: { limit: 5, windowMs: 60 * 1000 }, // 5 req/min for video gen
-    });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-    const body = await request.json();
-    const { prompt, model, duration, fps, resolution, seed } = body;
 
-    // Validate prompt
-    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-      return secureResponse(
-        NextResponse.json({ error: 'Prompt is required' }, { status: 400 }),
-        request,
-      );
-    }
 
-    if (prompt.length > 2000) {
-      return secureResponse(
-        NextResponse.json({ error: 'Prompt must be at most 2000 characters' }, { status: 400 }),
-        request,
-      );
-    }
 
-    // Validate model if provided
-    if (model && !['cogvideo', 'videocrafter'].includes(model)) {
-      return secureResponse(
-        NextResponse.json({ error: 'Invalid model. Available: cogvideo, videocrafter' }, { status: 400 }),
-        request,
-      );
-    }
 
-    // Generate the video via Fluro
-    const result = await fluroGenerateVideo({
-      prompt,
-      model: model || 'cogvideo',
-      duration: duration || 4,
-      fps: fps || 8,
-      resolution: resolution || '480x480',
-      seed,
-    });
+export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get("userId");
+  const page = parseInt(searchParams.get("page") ?? "1");
+  const limit = parseInt(searchParams.get("limit") ?? "20");
 
-    return secureResponse(
-      NextResponse.json({
-        success: true,
-        data: result,
-      }, { status: 201 }),
-      request,
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to generate video';
-
-    if (message.includes('Rate limit')) {
-      return secureResponse(
-        NextResponse.json({ error: message }, { status: 429 }),
-        request,
-      );
-    }
-
-    return secureResponse(
-      NextResponse.json({ error: message }, { status: 500 }),
-      request,
-    );
+  if (!userId) {
+    return NextResponse.json({ error: "Paramètre userId requis" }, { status: 400 });
   }
+
+  const skip = (page - 1) * limit;
+
+  const [videos, total] = await Promise.all([
+    prisma.videoGeneration.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+      select: {
+        id: true, prompt: true, model: true, status: true,
+        videoUrl: true, costUsd: true, durationSeconds: true,
+        width: true, height: true, createdAt: true,
+      },
+    }),
+    prisma.videoGeneration.count({ where: { userId } }),
+  ]);
+
+  return NextResponse.json({
+    videos,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 }
 
-// ============================================================
-// GET /api/videos/status?taskId=xxx — Check video generation status
-// ============================================================
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { userId, prompt, model, negativePrompt, numFrames, width, height } = body;
 
-export async function GET(request: NextRequest) {
-  try {
-    const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-    const taskId = request.nextUrl.searchParams.get('taskId');
-
-    if (!taskId) {
-      return secureResponse(
-        NextResponse.json({ error: 'taskId parameter is required' }, { status: 400 }),
-        request,
-      );
-    }
-
-    const result = await fluroGetVideoStatus(taskId);
-
-    return secureResponse(
-      NextResponse.json({
-        success: true,
-        data: result,
-      }),
-      request,
-    );
-  } catch {
-    return secureResponse(
-      NextResponse.json({ error: 'Failed to check video status' }, { status: 500 }),
-      request,
-    );
+  if (!userId || !prompt) {
+    return NextResponse.json({ error: "Champs requis: userId, prompt" }, { status: 400 });
   }
+
+  // Rediriger vers le service dédié
+  const { videoGenerator } = await import("@/lib/video-generator");
+  const result = await videoGenerator.generate({ userId, prompt, model, negativePrompt, numFrames, width, height });
+
+  if (!result.success) {
+    return NextResponse.json({ error: result.error }, { status: 502 });
+  }
+
+  return NextResponse.json({ success: true, videoUrl: result.videoUrl, generationId: result.generationId });
 }

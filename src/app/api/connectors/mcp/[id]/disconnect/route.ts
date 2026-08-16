@@ -7,6 +7,11 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { getMCPClientManager } from '@/lib/connectors/mcp-client';
 import { db } from '@/lib/db';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -28,7 +33,7 @@ export async function POST(
 
     const res = NextResponse.json({ success: true, data: { id, status: 'disconnected' } });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Disconnect failed' }, { status: 500 });
     return secureResponse(res, request);
   }

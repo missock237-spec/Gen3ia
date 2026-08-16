@@ -1,0 +1,142 @@
+{
+  "title": "Gen3ia - Files BullMQ & Workers",
+  "uid": "gen3ia-bullmq-queue",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["gen3ia", "bullmq", "queue", "workers"],
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "title": "Tâches en file d'attente",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "description": "Nombre de tâches en attente dans BullMQ",
+      "targets": [{ "expr": "gen3ia_executions_by_status{status=\"pending\"} or gen3ia_executions_total * 0", "legendFormat": "En attente" }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      }
+    },
+    {
+      "title": "Tâches en cours",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "description": "Tâches en cours d'exécution",
+      "targets": [{
+        "expr": "gen3ia_executions_by_status{status=\"running\"} or gen3ia_terminal_sessions_total",
+        "legendFormat": "En cours"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 25 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Tâches complétées (cumul)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "targets": [{
+        "expr": "gen3ia_executions_by_status{status=\"completed\"} or gen3ia_executions_total",
+        "legendFormat": "Complétées"
+      }]
+    },
+    {
+      "title": "Tâches échouées (cumul)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "targets": [{
+        "expr": "gen3ia_failed_executions_total",
+        "legendFormat": "Échouées"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Distribution des statuts (jobs)",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 4 },
+      "targets": [{ "expr": "gen3ia_executions_by_status", "legendFormat": "{{status}}" }],
+      "options": {
+        "pieType": "donut",
+        "legend": { "displayMode": "table", "placement": "right" },
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Temps d'exécution moyen (ms)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 4 },
+      "targets": [{
+        "expr": "gen3ia_avg_execution_time_ms",
+        "legendFormat": "Temps moyen"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 10000 },
+              { "color": "red", "value": 30000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Débit de traitement (jobs/min)",
+      "type": "graph",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "rate(gen3ia_executions_total[15m])",
+        "legendFormat": "jobs/min"
+      }],
+      "fieldConfig": { "defaults": { "unit": "jobs/min" } }
+    },
+    {
+      "title": "Taux d'échec (%) (24h)",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 12 },
+      "targets": [{
+        "expr": "(gen3ia_failed_executions_total / gen3ia_executions_total) * 100",
+        "legendFormat": "% échec"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 15 }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

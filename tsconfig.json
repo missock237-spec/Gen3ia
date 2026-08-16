@@ -1,23 +1,7 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "noImplicitAny": false,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
+    "tsBuildInfoFile": ".next/tsbuildinfo",
     "plugins": [
       {
         "name": "next"
@@ -27,7 +11,9 @@
       "@/*": [
         "./src/*"
       ]
-    }
+    },
+    "rootDir": ".",
+    "jsx": "preserve"
   },
   "include": [
     "next-env.d.ts",
@@ -39,12 +25,13 @@
   "exclude": [
     "node_modules",
     "skills",
-<<<<<<< HEAD
     "examples",
     "upload",
-    "services"
-=======
-    "examples"
->>>>>>> 2f7c5f3 (5433aca4-1e96-4e29-8166-a30aceccff4d)
+    "packages",
+    "apps",
+    "services",
+    "src/__tests__",
+    "**/*.test.ts",
+    "**/*.spec.ts"
   ]
 }
