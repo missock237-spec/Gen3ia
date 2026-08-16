@@ -1,56 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { getWhatsAppRouter } from '@/lib/whatsapp-router';
+import { whatsapp } from '@/lib/whatsapp-engine';
+import { createLogger } from '@/lib/logger';
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const logger = createLogger('whatsapp-status-api');
 
 /**
  * GET /api/whatsapp/status
- *
- * Returns current WhatsApp connection status:
- * - Which provider is active (baileys or official)
- * - Baileys QR code if not yet authenticated
- * - Connection state and last activity
+ * Retourne le statut global d'intégration du canal WhatsApp Business API Meta.
+ * 
+ * Permet aux marchands, administrateurs et au tableau de bord DevOps de Gen3ia :
+ * 1. De vérifier la présence des jetons d'accès Meta (WHATSAPP_TOKEN, PHONE_NUMBER_ID, etc.).
+ * 2. De vérifier la disponibilité du quota de messages (Rate Limiting de 80 msgs/min).
+ * 3. De garantir la santé opérationnelle du canal de vente principal au Cameroun.
  */
-export async function GET(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, {
-    requireAuth: true,
-  });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
+export async function GET(_request: NextRequest) {
   try {
-    const router = getWhatsAppRouter();
-    const status = router.getConnectionStatus();
+    const status = whatsapp.getStatus();
 
-    const res = NextResponse.json({
-      provider: status.activeProvider,
-      fallbackMode: status.fallbackMode,
-      baileys: {
-        state: status.baileysState,
-        qrRequired: status.baileysQrRequired,
-        qrCode: status.baileysQrCode,
-        lastActivity: status.lastActivity,
-      },
-      official: {
-        available: status.officialApiAvailable,
-      },
-      consecutiveBaileysFailures: status.consecutiveBaileysFailures,
-      fallbackRetryAt: status.fallbackRetryAt,
+    logger.info('Consultation du statut WhatsApp Business API', {
+      configured: status.configured,
+      phoneNumberId: status.phoneNumberId,
     });
 
-    return secureResponse(res, request);
-  } catch (error) {
-    const res = NextResponse.json(
+    return NextResponse.json({
+      success: true,
+      configured: status.configured,
+      connected: status.configured, // Est considéré connecté lorsque le Token et l'ID de numéro sont renseignés
+      phoneNumberId: status.phoneNumberId || null,
+      businessId: status.businessId || null,
+      hasVerifyToken: status.hasVerifyToken,
+      rateLimit: status.rateLimit,
+      environment: process.env.NODE_ENV || 'development',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.error('Erreur lors de la récupération du statut WhatsApp', { error: err });
+    return NextResponse.json(
       {
-        error: 'Failed to get WhatsApp status',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        success: false,
+        error: err instanceof Error ? err.message : 'Erreur interne du serveur',
       },
       { status: 500 }
     );
-    return secureResponse(res, request);
   }
 }
