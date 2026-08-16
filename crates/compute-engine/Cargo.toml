@@ -1,0 +1,46 @@
+[package]
+name = "compute-engine"
+version.workspace = true
+edition.workspace = true
+description = "Gen3ia - Noyau de calcul parallele Rust/WebGPU"
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "compute_engine"
+
+[dependencies]
+napi = { workspace = true }
+napi-derive = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+# WebGPU / Compute
+wgpu = "24"
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+encase = "0.10"
+futures = "0.3"
+
+# Mathematiques
+nalgebra = "0.33"
+
+# Parallele
+rayon = "1.10"
+crossbeam = "0.8"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3

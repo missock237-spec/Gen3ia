@@ -1,20 +1,23 @@
 /**
  * POST /api/ai-server/process — Full integration pipeline
- *
- * Accepts an open-source project's files and runs the complete pipeline:
- * Analyze → Generate → Register → Verify → Activate
- *
- * This is the main endpoint for auto-integrating a new open-source project.
+ * SECURITE: withAuth() + quota (opération LLM lourde)
+ * Note: userId provient du token authentifié, jamais du body (prévient l'IDOR)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { processProject, type CodeFile } from '@/lib/ai-integration-server';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-export async function POST(request: NextRequest) {
+
+
+
+
+export const dynamic = "force-dynamic";
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
 
-    const { projectName, repository, readmeContent, files, autoActivate, userId } = body as {
+    const { projectName, repository, readmeContent, files, autoActivate } = body as {
       projectName?: string;
       repository?: string;
       readmeContent?: string;
@@ -24,7 +27,7 @@ export async function POST(request: NextRequest) {
         language?: CodeFile['language'];
       }>;
       autoActivate?: boolean;
-      userId?: string;
+      userId?: string; // IGNORÉ — vient du token, pas du body
     };
 
     if (!projectName) {
@@ -41,7 +44,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate total file size
     const totalSize = files.reduce((sum: number, f: { content: string }) => sum + f.content.length, 0);
     if (totalSize > 10 * 1024 * 1024) {
       return NextResponse.json(
@@ -63,13 +65,14 @@ export async function POST(request: NextRequest) {
       language: f.language || 'unknown',
     }));
 
+    // userId authentifie (token) — NE PAS utiliser body.userId
     const result = await processProject({
       files: codeFiles,
       projectName,
       repository,
       readmeContent,
       autoActivate: autoActivate ?? false,
-      userId,
+      userId: auth.userId,
     });
 
     const statusCode = result.success ? 200 : 422;
@@ -124,4 +127,9 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 5, windowMs: 60000 },
+  quota: true,
+});
