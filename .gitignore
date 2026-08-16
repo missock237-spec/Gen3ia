@@ -1,108 +1,44 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
 
-# =============================================
-# SECURITY — Never commit these files!
-# =============================================
+# Build
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
 
-# Environment variables (ALL variants)
+# ============================================================
+# Env — SECURITE CRITIQUE : ne jamais versionner des secrets
+# ============================================================
+# Fichiers de travail locaux
 .env
-.env.*
 .env.local
 .env.development
+.env.development.local
 .env.test
-.env.production
+.env.test.local
 .env.staging
+.env.staging.local
+.env.*.local
+
+# Fichiers production avec secrets réels (toujours ignorer)
+.env.production.local
+.env.production.secret
+
+# Templates versionnés (contiennent uniquement des placeholders)
+# Si vous souhaitez aussi les ignorer, décommentez :
+# .env.production
+# .env.production.validated
+
+# Patterns génériques
+*.env
+!*.env.example
 !.env.example
-
-# Secrets and credentials
-*.pem
-*.key
-*.p12
-*.pfx
-*.jks
-*.keystore
-credentials.json
-service-account.json
-secrets.json
-.secrets
-
-# =============================================
-# Dependencies
-# =============================================
-node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# =============================================
-# Testing
-# =============================================
-/coverage
-.nyc_output
-
-# =============================================
-# Next.js
-# =============================================
-/.next/
-/out/
-
-# =============================================
-# Production
-# =============================================
-/build
-
-# =============================================
-# Database
-# =============================================
-*.db
-*.sqlite
-*.sqlite3
-db/
-prisma/migrations/
-
-# =============================================
-# Misc
-# =============================================
-.DS_Store
-Thumbs.db
-
-# Debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# Vercel
-.vercel
-
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
-
-# Local dev files
-local-*
-.claude
-.z-ai-config
-*.log
-dev.log
-dev.out.log
-server.log
-
-# Test artifacts
-test
-prompt
-
-# Skills directory
-/skills/
-
-# Uploads and temp files
-uploads/
-tmp/
-temp/
+docker-compose.*.env
+docker-compose.*.env.local
 
 # IDE
 .vscode/
@@ -111,24 +47,64 @@ temp/
 *.swo
 *~
 
-# Docker volumes
-docker-data/
+# OS
+.DS_Store
+Thumbs.db
 
-# Services source code (sub-projects - build separately)
-services/comfyui/
-services/speechbrain/
-services/video/
-services/ruflo/
-services/baileys/
+# Logs
+*.log
+dev.log
+server.log
+npm-debug.log*
 
-# Generated/Downloaded files
-download/
+# Runtime
+*.pid
+*.seed
+*.pid.lock
 
-# Uploaded open-source project files
-upload/
-data/
-agent-ctx/
-.next/
+# Cache
+.cache/
+.eslintcache
+.next/cache/
 
-# Package locks (use bun.lock only)
-package-lock.json
+# Tests
+coverage/
+.nyc_output/
+
+# Temp / fichiers de travail (ne pas versionner)
+tmp/
+temp/
+test-*
+generate_*
+keep-*
+start-*
+run-*
+worklog.*
+worklog.md
+schema_backup.*
+test-write.*
+test-api.*
+test-autonomous.*
+test-connectivity.*
+test-whatsapp.*
+fix_package.*
+CI_FIX.md
+FIX_REPORT.md
+WORKFLOWS_FIX.md
+SECURITY_FIXES.md
+
+# Prisma
+prisma/migrations/
+!prisma/migrations/migration_lock.toml
+
+# Rust
+target/
+conversations/
+.agents/.env
+.npm/
+__pycache__/
+blobs/
+.vercel
+
+# Turborepo
+.turbo

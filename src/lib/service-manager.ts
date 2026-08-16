@@ -5,6 +5,21 @@
  * of the Next.js server. Provides health monitoring, auto-restart with
  * exponential backoff, graceful shutdown, dependency-ordered startup,
  * and an event-driven API for the rest of the application.
+ *
+ * Architecture:
+ *   - Singleton pattern (one instance per process)
+ *   - EventEmitter for real-time status updates
+ *   - Periodic health checks via HTTP
+ *   - Dependency-aware startup ordering (topological sort)
+ *   - Graceful shutdown with SIGTERM → SIGKILL escalation
+ *   - Structured logging via the centralized logger
+ *   - Restart budget per service with exponential backoff + jitter
+ *
+ * Usage:
+ *   import { getServiceManager } from '@/lib/service-manager';
+ *   const sm = getServiceManager();
+ *   await sm.startAll();
+ *   sm.on('service:status', (evt) => { ... });
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -18,15 +33,17 @@ import { createLogger } from '@/lib/logger';
 // Types
 // ============================================================
 
+/** Possible states a managed service can be in */
 export type ServiceStatus =
-  | 'stopped'
-  | 'starting'
-  | 'running'
-  | 'degraded'
-  | 'stopping'
-  | 'crashed'
-  | 'failed';
+  | 'stopped'      // Not running, not attempted
+  | 'starting'     // Spawned but not yet confirmed healthy
+  | 'running'      // Process alive AND health check passing
+  | 'degraded'     // Process alive but health check failing
+  | 'stopping'     // Graceful shutdown in progress
+  | 'crashed'      // Process exited unexpectedly
+  | 'failed';      // Exhausted restart budget; requires manual intervention
 
+/** Event map emitted by the ServiceManager */
 export interface ServiceManagerEvents {
   'service:status': (event: ServiceStatusEvent) => void;
   'service:health': (event: ServiceHealthEvent) => void;
@@ -60,31 +77,55 @@ export interface ServiceLogEvent {
   timestamp: Date;
 }
 
+/** Static definition of a service to manage */
 export interface ServiceDefinition {
+  /** Unique identifier (kebab-case) */
   id: string;
+  /** Human-readable name */
   name: string;
+  /** Command to execute (resolved against PATH or absolute) */
   command: string;
+  /** Arguments passed to the command */
   args: string[];
+  /** Working directory for the child process */
   cwd: string;
+  /** Port the service listens on */
   port: number;
+  /** HTTP path for health checks (GET) */
   healthPath: string;
+  /** Additional environment variables */
   env?: Record<string, string>;
+  /** IDs of services that must be running before this one starts */
   dependsOn?: string[];
+  /** Whether to auto-restart on unexpected exit */
   autoRestart: boolean;
+  /** Maximum restart attempts within the restart window */
   maxRestarts: number;
+  /** Window in ms within which maxRestarts is counted */
   restartWindowMs: number;
+  /** Base delay in ms for exponential backoff on restart */
   restartDelayMs: number;
+  /** Maximum backoff delay in ms */
   maxRestartDelayMs: number;
+  /** Grace period in ms after spawn before first health check */
   startupGraceMs: number;
+  /** Health check interval in ms */
   healthCheckIntervalMs: number;
+  /** Health check request timeout in ms */
   healthCheckTimeoutMs: number;
+  /** Time in ms to wait for graceful SIGTERM before SIGKILL */
   shutdownTimeoutMs: number;
+  /** Stagger delay in ms between sequential service starts */
   startStaggerMs: number;
+  /** Optional category for grouping */
   category?: string;
+  /** Optional description */
   description?: string;
+  /** Optional icon name for UI */
   icon?: string;
 }
 
+/** Runtime state of a managed service */
 export interface ServiceRuntime {
   definition: ServiceDefinition;
   process: ChildProcess | null;
@@ -99,9 +140,11 @@ export interface ServiceRuntime {
   lastExitSignal: string | null;
   lastError: string | null;
   uptimeMs: number;
+  /** Backoff state */
   currentBackoffMs: number;
 }
 
+/** Summary snapshot of all services for API responses */
 export interface ServiceManagerSnapshot {
   services: ServiceSummary[];
   totalServices: number;
@@ -151,19 +194,19 @@ const DEFAULT_SERVICE_OPTIONS: Pick<
 > = {
   autoRestart: true,
   maxRestarts: 10,
-  restartWindowMs: 10 * 60 * 1000,
-  restartDelayMs: 2000,
-  maxRestartDelayMs: 60_000,
-  startupGraceMs: 5000,
-  healthCheckIntervalMs: 15_000,
-  healthCheckTimeoutMs: 5000,
-  shutdownTimeoutMs: 10_000,
-  startStaggerMs: 2000,
+  restartWindowMs: 10 * 60 * 1000,   // 10 minutes
+  restartDelayMs: 2000,                // 2 seconds base
+  maxRestartDelayMs: 60_000,           // 1 minute cap
+  startupGraceMs: 5000,                // 5 seconds before first health check
+  healthCheckIntervalMs: 15_000,       // 15 seconds between checks
+  healthCheckTimeoutMs: 5000,          // 5 second health check timeout
+  shutdownTimeoutMs: 10_000,           // 10 second SIGTERM → SIGKILL
+  startStaggerMs: 2000,                // 2 second stagger between starts
   dependsOn: [],
 };
 
 // ============================================================
-// Service Registry
+// Service Registry — All Genova microservices
 // ============================================================
 
 const SERVICE_REGISTRY: ServiceDefinition[] = [
@@ -183,22 +226,7 @@ const SERVICE_REGISTRY: ServiceDefinition[] = [
     startupGraceMs: 4000,
     maxRestarts: 5,
   },
-  {
-    ...DEFAULT_SERVICE_OPTIONS,
-    id: 'baileys',
-    name: 'Baileys WhatsApp',
-    description: 'WhatsApp Web API for messaging and call automation',
-    category: 'communication',
-    icon: 'MessageCircle',
-    command: 'node',
-    args: ['server.js'],
-    cwd: path.join(BASE_DIR, 'services', 'baileys'),
-    port: 8186,
-    healthPath: '/health',
-    dependsOn: [],
-    startupGraceMs: 6000,
-    maxRestarts: 10,
-  },
+
   {
     ...DEFAULT_SERVICE_OPTIONS,
     id: 'ruflo',
@@ -277,18 +305,9 @@ export class ServiceManager extends EventEmitter {
   private _isInitialized = false;
   private globalHealthTimer: ReturnType<typeof setInterval> | null = null;
 
-  // Singleton
-  static #instance: ServiceManager | null = null;
-
-  static getInstance(): ServiceManager {
-    if (!ServiceManager.#instance) {
-      ServiceManager.#instance = new ServiceManager();
-    }
-    return ServiceManager.#instance;
-  }
-
   constructor() {
     super();
+    // Ensure log directory exists
     try {
       fs.mkdirSync(LOG_DIR, { recursive: true });
     } catch {
@@ -297,417 +316,710 @@ export class ServiceManager extends EventEmitter {
   }
 
   // ----------------------------------------------------------
-  // Initialization
+  // Public API
   // ----------------------------------------------------------
 
-  initialize(): void {
-    if (this._isInitialized) return;
-    this._isInitialized = true;
+  /** Get the singleton ServiceManager instance */
+  static #instance: ServiceManager | null = null;
 
-    for (const def of SERVICE_REGISTRY) {
-      this.runtimes.set(def.id, this.createRuntime(def));
+  /**
+   * Not used directly — prefer `getServiceManager()` which returns the singleton.
+   * Kept as a class for type-checking and testability.
+   */
+
+  /** Initialize and start all services in dependency order */
+  async startAll(): Promise<void> {
+    if (this._isInitialized) {
+      log.warn('ServiceManager already initialized; skipping startAll()');
+      return;
     }
+    this._isInitialized = true;
+    log.info('Starting Genova Service Manager', { serviceCount: SERVICE_REGISTRY.length });
+
+    // Initialize runtimes
+    for (const def of SERVICE_REGISTRY) {
+      this.runtimes.set(def.id, {
+        definition: def,
+        process: null,
+        status: 'stopped',
+        pid: undefined,
+        startedAt: null,
+        lastHealthCheckAt: null,
+        lastHealthyAt: null,
+        restartCount: 0,
+        restartTimestamps: [],
+        lastExitCode: null,
+        lastExitSignal: null,
+        lastError: null,
+        uptimeMs: 0,
+        currentBackoffMs: def.restartDelayMs,
+      });
+    }
+
+    // Topological sort for dependency ordering
+    const startOrder = this.resolveStartOrder();
+
+    for (const serviceId of startOrder) {
+      if (this._isShuttingDown) break;
+
+      const runtime = this.runtimes.get(serviceId)!;
+
+      // Check if already running (e.g., started externally)
+      const alreadyHealthy = await this.checkHealth(runtime.definition);
+      if (alreadyHealthy.healthy) {
+        log.info(`[${serviceId}] Already running and healthy on port ${runtime.definition.port}`);
+        this.setStatus(runtime, 'running');
+        this.startHealthMonitoring(serviceId);
+        continue;
+      }
+
+      await this.startService(serviceId);
+
+      // Stagger between service starts
+      const stagger = runtime.definition.startStaggerMs;
+      if (stagger > 0) {
+        await this.sleep(stagger);
+      }
+    }
+
+    // Start global health monitoring
+    this.startGlobalHealthMonitoring();
 
     // Register process signal handlers for graceful shutdown
-    const shutdown = () => this.stopAll().catch(() => process.exit(1)).finally(() => process.exit(0));
-    process.once('SIGTERM', shutdown);
-    process.once('SIGINT', shutdown);
+    this.registerSignalHandlers();
 
-    log.info('ServiceManager initialized', { serviceCount: this.runtimes.size });
-  }
-
-  private createRuntime(definition: ServiceDefinition): ServiceRuntime {
-    return {
-      definition,
-      process: null,
-      status: 'stopped',
-      pid: undefined,
-      startedAt: null,
-      lastHealthCheckAt: null,
-      lastHealthyAt: null,
-      restartCount: 0,
-      restartTimestamps: [],
-      lastExitCode: null,
-      lastExitSignal: null,
-      lastError: null,
-      uptimeMs: 0,
-      currentBackoffMs: definition.restartDelayMs,
-    };
-  }
-
-  // ----------------------------------------------------------
-  // Start / Stop — All Services
-  // ----------------------------------------------------------
-
-  async startAll(): Promise<void> {
-    this.initialize();
-    const ordered = this.topologicalSort();
-    log.info('Starting all services', { order: ordered.map((r) => r.definition.id) });
-
-    for (const runtime of ordered) {
-      if (this._isShuttingDown) break;
-      await this.startService(runtime.definition.id);
-      await this.sleep(runtime.definition.startStaggerMs);
-    }
-
-    this.emit('manager:ready');
     log.info('All services started');
+    this.emit('manager:ready');
   }
 
-  async stopAll(): Promise<void> {
-    this._isShuttingDown = true;
-    log.info('Stopping all services');
-
-    if (this.globalHealthTimer) {
-      clearInterval(this.globalHealthTimer);
-      this.globalHealthTimer = null;
-    }
-
-    const reversed = [...this.runtimes.values()].reverse();
-    await Promise.all(reversed.map((r) => this.stopService(r.definition.id)));
-
-    this.emit('manager:shutdown');
-    log.info('All services stopped');
-  }
-
-  // ----------------------------------------------------------
-  // Start / Stop — Individual Service
-  // ----------------------------------------------------------
-
-  async startService(id: string): Promise<boolean> {
-    const runtime = this.runtimes.get(id);
+  /** Start a single service by ID */
+  async startService(serviceId: string): Promise<boolean> {
+    const runtime = this.runtimes.get(serviceId);
     if (!runtime) {
-      log.warn('Unknown service', { id });
+      log.error(`Unknown service: ${serviceId}`);
       return false;
     }
 
     if (runtime.status === 'running' || runtime.status === 'starting') {
-      log.debug('Service already running or starting', { id });
+      log.warn(`[${serviceId}] Already in state: ${runtime.status}`);
       return true;
     }
 
-    // Wait for dependencies
-    for (const depId of runtime.definition.dependsOn ?? []) {
-      const dep = this.runtimes.get(depId);
-      if (dep && dep.status !== 'running') {
-        log.info('Waiting for dependency', { id, depId });
-        const started = await this.startService(depId);
-        if (!started) {
-          log.error('Dependency failed to start', { id, depId });
-          this.setStatus(runtime, 'failed', `Dependency ${depId} failed`);
-          return false;
-        }
+    // Check dependencies
+    const deps = runtime.definition.dependsOn || [];
+    for (const depId of deps) {
+      const depRuntime = this.runtimes.get(depId);
+      if (!depRuntime || (depRuntime.status !== 'running' && depRuntime.status !== 'degraded')) {
+        log.error(`[${serviceId}] Dependency not running: ${depId} (status: ${depRuntime?.status || 'unknown'})`);
+        this.setStatus(runtime, 'failed', `Dependency ${depId} not available`);
+        return false;
       }
     }
 
-    this.setStatus(runtime, 'starting');
-    const def = runtime.definition;
-
-    log.info('Starting service', { id, command: def.command, args: def.args });
-
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      ...def.env,
-      PORT: String(def.port),
-    };
-
-    let stdoutLog: fs.WriteStream | null = null;
-    let stderrLog: fs.WriteStream | null = null;
-
-    try {
-      stdoutLog = fs.createWriteStream(path.join(LOG_DIR, `${id}.stdout.log`), { flags: 'a' });
-      stderrLog = fs.createWriteStream(path.join(LOG_DIR, `${id}.stderr.log`), { flags: 'a' });
-    } catch {
-      // Log file creation failure is non-fatal
-    }
-
-    const child = spawn(def.command, def.args, {
-      cwd: def.cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
-    });
-
-    runtime.process = child;
-    runtime.pid = child.pid;
-    runtime.startedAt = new Date();
-
-    child.stdout?.on('data', (data: Buffer) => {
-      const str = data.toString();
-      stdoutLog?.write(str);
-      this.emit('service:log', { serviceId: id, stream: 'stdout', data: str, timestamp: new Date() });
-    });
-
-    child.stderr?.on('data', (data: Buffer) => {
-      const str = data.toString();
-      stderrLog?.write(str);
-      this.emit('service:log', { serviceId: id, stream: 'stderr', data: str, timestamp: new Date() });
-    });
-
-    child.on('exit', (code, signal) => {
-      stdoutLog?.end();
-      stderrLog?.end();
-      runtime.lastExitCode = code;
-      runtime.lastExitSignal = signal;
-      runtime.process = null;
-      runtime.pid = undefined;
-
-      if (this._isShuttingDown || runtime.status === 'stopping') {
-        this.setStatus(runtime, 'stopped');
-        return;
-      }
-
-      log.warn('Service exited unexpectedly', { id, code, signal });
-      this.setStatus(runtime, 'crashed', `Exit code ${code ?? signal}`);
-
-      if (def.autoRestart) {
-        this.scheduleRestart(runtime);
-      } else {
-        this.setStatus(runtime, 'failed');
-      }
-    });
-
-    child.on('error', (err) => {
-      runtime.lastError = err.message;
-      log.error('Service process error', { id, error: err.message });
-      this.setStatus(runtime, 'crashed', err.message);
-      if (def.autoRestart && !this._isShuttingDown) {
-        this.scheduleRestart(runtime);
-      }
-    });
-
-    // Wait for startup grace period then begin health checks
-    const graceTimer = setTimeout(() => {
-      this.startupGraceTimers.delete(id);
-      this.startHealthChecks(runtime);
-    }, def.startupGraceMs);
-    this.startupGraceTimers.set(id, graceTimer);
-
-    return true;
+    return this.spawnProcess(runtime);
   }
 
-  async stopService(id: string, force = false): Promise<void> {
-    const runtime = this.runtimes.get(id);
-    if (!runtime || !runtime.process) return;
-
-    this.clearTimers(id);
-    this.setStatus(runtime, 'stopping');
-
-    const child = runtime.process;
-    log.info('Stopping service', { id, force });
-
-    // SIGTERM first
-    try { child.kill('SIGTERM'); } catch { /* process may already be dead */ }
-
-    // SIGKILL escalation if needed
-    const killTimer = setTimeout(() => {
-      if (runtime.process) {
-        log.warn('Service did not stop gracefully, sending SIGKILL', { id });
-        try { child.kill('SIGKILL'); } catch { /* ignore */ }
-      }
-    }, force ? 0 : runtime.definition.shutdownTimeoutMs);
-    this.shutdownTimeouts.set(id, killTimer);
-
-    await new Promise<void>((resolve) => {
-      const onExit = () => {
-        clearTimeout(killTimer);
-        this.shutdownTimeouts.delete(id);
-        resolve();
-      };
-      if (!child.pid || child.exitCode !== null) {
-        resolve();
-      } else {
-        child.once('exit', onExit);
-      }
-    });
-
-    this.setStatus(runtime, 'stopped');
-    log.info('Service stopped', { id });
-  }
-
-  async restartService(id: string): Promise<boolean> {
-    await this.stopService(id);
-    return this.startService(id);
-  }
-
-  // ----------------------------------------------------------
-  // Health Checks
-  // ----------------------------------------------------------
-
-  private startHealthChecks(runtime: ServiceRuntime): void {
-    const id = runtime.definition.id;
-    this.clearHealthTimer(id);
-
-    const timer = setInterval(async () => {
-      await this.checkHealth(runtime);
-    }, runtime.definition.healthCheckIntervalMs);
-
-    this.healthCheckTimers.set(id, timer);
-
-    // Run one check immediately
-    this.checkHealth(runtime).catch(() => { /* handled inside */ });
-  }
-
-  private async checkHealth(runtime: ServiceRuntime): Promise<boolean> {
-    const id = runtime.definition.id;
-    const def = runtime.definition;
-    const start = Date.now();
-
-    runtime.lastHealthCheckAt = new Date();
-
-    if (!runtime.process || runtime.status === 'stopped' || runtime.status === 'stopping') {
+  /** Stop a single service by ID */
+  async stopService(serviceId: string): Promise<boolean> {
+    const runtime = this.runtimes.get(serviceId);
+    if (!runtime) {
+      log.error(`Unknown service: ${serviceId}`);
       return false;
     }
 
-    return new Promise<boolean>((resolve) => {
-      const timeoutHandle = setTimeout(() => {
-        req.destroy();
-        const responseTimeMs = Date.now() - start;
-        const prevStatus = runtime.status;
-        runtime.status = 'degraded';
-        this.emit('service:health', {
-          serviceId: id,
-          healthy: false,
-          responseTimeMs,
-          timestamp: new Date(),
-          error: 'Health check timed out',
+    if (!runtime.process || runtime.status === 'stopped') {
+      log.warn(`[${serviceId}] Not running`);
+      return true;
+    }
+
+    return this.gracefulStop(runtime);
+  }
+
+  /** Restart a single service by ID */
+  async restartService(serviceId: string): Promise<boolean> {
+    log.info(`[${serviceId}] Restart requested`);
+    await this.stopService(serviceId);
+    // Brief pause to let the port free
+    await this.sleep(1000);
+    // Reset restart budget
+    const runtime = this.runtimes.get(serviceId);
+    if (runtime) {
+      runtime.restartCount = 0;
+      runtime.restartTimestamps = [];
+      runtime.currentBackoffMs = runtime.definition.restartDelayMs;
+      runtime.lastError = null;
+    }
+    return this.startService(serviceId);
+  }
+
+  /** Gracefully shut down all services */
+  async shutdown(): Promise<void> {
+    if (this._isShuttingDown) return;
+    this._isShuttingDown = true;
+
+    log.info('Shutting down all services...');
+    this.emit('manager:shutdown');
+
+    // Clear all timers
+    this.clearAllTimers();
+
+    // Stop services in reverse dependency order
+    const stopOrder = this.resolveStartOrder().reverse();
+
+    const stopPromises = stopOrder.map(async (serviceId) => {
+      try {
+        await this.stopService(serviceId);
+      } catch (err) {
+        log.error(`[${serviceId}] Error during shutdown`, {
+          error: err instanceof Error ? err.message : String(err),
         });
-        if (prevStatus === 'running') {
-          this.setStatus(runtime, 'degraded', 'Health check timed out');
+      }
+    });
+
+    await Promise.allSettled(stopPromises);
+    log.info('All services shut down');
+  }
+
+  /** Get the current status of a specific service */
+  getStatus(serviceId: string): ServiceSummary | null {
+    const runtime = this.runtimes.get(serviceId);
+    if (!runtime) return null;
+    return this.runtimeToSummary(runtime);
+  }
+
+  /** Get a snapshot of all services */
+  getSnapshot(): ServiceManagerSnapshot {
+    const services = Array.from(this.runtimes.values()).map((r) =>
+      this.runtimeToSummary(r)
+    );
+
+    return {
+      services,
+      totalServices: services.length,
+      healthyCount: services.filter((s) => s.status === 'running').length,
+      degradedCount: services.filter((s) => s.status === 'degraded').length,
+      stoppedCount: services.filter(
+        (s) => s.status === 'stopped' || s.status === 'crashed'
+      ).length,
+      failedCount: services.filter((s) => s.status === 'failed').length,
+      timestamp: new Date(),
+    };
+  }
+
+  /** Get all service definitions */
+  getDefinitions(): ServiceDefinition[] {
+    return SERVICE_REGISTRY;
+  }
+
+  /** Get runtime details for a service (more detailed than summary) */
+  getRuntime(serviceId: string): ServiceRuntime | undefined {
+    return this.runtimes.get(serviceId);
+  }
+
+  /** Check if a specific service is healthy right now */
+  async checkServiceHealth(serviceId: string): Promise<ServiceHealthEvent> {
+    const runtime = this.runtimes.get(serviceId);
+    if (!runtime) {
+      return {
+        serviceId,
+        healthy: false,
+        responseTimeMs: 0,
+        timestamp: new Date(),
+        error: 'Unknown service',
+      };
+    }
+    return this.checkHealth(runtime.definition);
+  }
+
+  /** Get service logs from the log file */
+  getServiceLogs(serviceId: string, lines: number = 100): string[] {
+    const logFile = path.join(LOG_DIR, `${serviceId}.log`);
+    try {
+      if (!fs.existsSync(logFile)) return [];
+      const content = fs.readFileSync(logFile, 'utf-8');
+      const allLines = content.split('\n').filter(Boolean);
+      return allLines.slice(-lines);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Check if the manager is shutting down */
+  get isShuttingDown(): boolean {
+    return this._isShuttingDown;
+  }
+
+  /** Check if the manager has been initialized */
+  get isInitialized(): boolean {
+    return this._isInitialized;
+  }
+
+  // ----------------------------------------------------------
+  // Private — Process Management
+  // ----------------------------------------------------------
+
+  private spawnProcess(runtime: ServiceRuntime): boolean {
+    const def = runtime.definition;
+
+    try {
+      // Open log file descriptors
+      const logFd = this.openLogStream(def.id, 'stdout');
+      const errFd = this.openLogStream(def.id, 'stderr');
+
+      // Build environment
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        PORT: String(def.port),
+        ...(def.env || {}),
+      };
+
+      // Spawn child process
+      const childProcess: ChildProcess = spawn(def.command, def.args, {
+        cwd: def.cwd,
+        env,
+        stdio: ['ignore', logFd, errFd],
+        detached: false,
+      });
+
+      runtime.process = childProcess;
+      runtime.pid = childProcess.pid;
+      runtime.startedAt = new Date();
+      runtime.lastError = null;
+      runtime.lastExitCode = null;
+      runtime.lastExitSignal = null;
+
+      this.setStatus(runtime, 'starting');
+
+      log.info(`[${def.id}] Spawned process`, {
+        pid: childProcess.pid,
+        port: def.port,
+        command: def.command,
+        args: def.args.join(' '),
+      });
+
+      // Handle process events
+      childProcess.on('exit', (code, signal) => {
+        this.handleProcessExit(runtime, code, signal);
+      });
+
+      childProcess.on('error', (err) => {
+        this.handleProcessError(runtime, err);
+      });
+
+      // Schedule the first health check after the grace period
+      const graceTimer = setTimeout(() => {
+        this.startHealthMonitoring(def.id);
+        this.startupGraceTimers.delete(def.id);
+      }, def.startupGraceMs);
+
+      this.startupGraceTimers.set(def.id, graceTimer);
+
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`[${def.id}] Failed to spawn process`, { error: message });
+      runtime.lastError = message;
+      this.setStatus(runtime, 'failed', message);
+      return false;
+    }
+  }
+
+  private async gracefulStop(runtime: ServiceRuntime): Promise<boolean> {
+    const def = runtime.definition;
+    const proc = runtime.process;
+
+    if (!proc || runtime.status === 'stopped') {
+      return true;
+    }
+
+    this.setStatus(runtime, 'stopping');
+    this.stopHealthMonitoring(def.id);
+
+    // Clear any pending restart
+    const restartTimer = this.restartTimers.get(def.id);
+    if (restartTimer) {
+      clearTimeout(restartTimer);
+      this.restartTimers.delete(def.id);
+    }
+
+    // Clear grace period timer
+    const graceTimer = this.startupGraceTimers.get(def.id);
+    if (graceTimer) {
+      clearTimeout(graceTimer);
+      this.startupGraceTimers.delete(def.id);
+    }
+
+    return new Promise<boolean>((resolve) => {
+      let resolved = false;
+
+      const finish = (success: boolean) => {
+        if (resolved) return;
+        resolved = true;
+        const timeout = this.shutdownTimeouts.get(def.id);
+        if (timeout) {
+          clearTimeout(timeout);
+          this.shutdownTimeouts.delete(def.id);
         }
-        resolve(false);
-      }, def.healthCheckTimeoutMs);
+        runtime.process = null;
+        runtime.pid = undefined;
+        runtime.uptimeMs = runtime.startedAt
+          ? Date.now() - runtime.startedAt.getTime()
+          : 0;
+        this.setStatus(runtime, 'stopped');
+        resolve(success);
+      };
 
-      const req = http.get(
-        { hostname: 'localhost', port: def.port, path: def.healthPath, timeout: def.healthCheckTimeoutMs },
-        (res) => {
-          clearTimeout(timeoutHandle);
-          const responseTimeMs = Date.now() - start;
-          const healthy = res.statusCode !== undefined && res.statusCode >= 200 && res.statusCode < 400;
-
-          res.resume(); // drain response body
-
-          runtime.lastHealthCheckAt = new Date();
-          if (healthy) runtime.lastHealthyAt = new Date();
-
-          this.emit('service:health', {
-            serviceId: id,
-            healthy,
-            responseTimeMs,
-            timestamp: new Date(),
-          });
-
-          if (healthy && runtime.status !== 'running') {
-            this.setStatus(runtime, 'running');
-          } else if (!healthy && runtime.status === 'running') {
-            this.setStatus(runtime, 'degraded', `Health check returned ${res.statusCode}`);
+      // Set a hard kill timeout
+      const killTimer = setTimeout(() => {
+        if (!proc.killed && proc.pid) {
+          log.warn(`[${def.id}] SIGKILL after timeout`, { pid: proc.pid });
+          try {
+            proc.kill('SIGKILL');
+          } catch {
+            // Process may have already exited
           }
+        }
+        finish(true);
+      }, def.shutdownTimeoutMs);
 
-          resolve(healthy);
+      this.shutdownTimeouts.set(def.id, killTimer);
+
+      // Handle graceful exit
+      proc.once('exit', () => {
+        log.info(`[${def.id}] Process exited during graceful stop`);
+        finish(true);
+      });
+
+      // Send SIGTERM
+      try {
+        proc.kill('SIGTERM');
+        log.info(`[${def.id}] Sent SIGTERM`, { pid: proc.pid });
+      } catch {
+        // Process may have already exited
+        finish(true);
+      }
+    });
+  }
+
+  private handleProcessExit(
+    runtime: ServiceRuntime,
+    code: number | null,
+    signal: string | null
+  ): void {
+    const def = runtime.definition;
+
+    runtime.lastExitCode = code;
+    runtime.lastExitSignal = signal;
+    runtime.process = null;
+    runtime.pid = undefined;
+    runtime.uptimeMs = runtime.startedAt
+      ? Date.now() - runtime.startedAt.getTime()
+      : 0;
+
+    this.stopHealthMonitoring(def.id);
+
+    const exitInfo = { code, signal, uptimeMs: runtime.uptimeMs };
+    log.warn(`[${def.id}] Process exited`, exitInfo);
+
+    // If we're shutting down, just mark as stopped
+    if (this._isShuttingDown || runtime.status === 'stopping') {
+      this.setStatus(runtime, 'stopped');
+      return;
+    }
+
+    // Unexpected exit — attempt auto-restart
+    if (def.autoRestart) {
+      this.setStatus(runtime, 'crashed', `Exited with code=${code} signal=${signal}`);
+      this.scheduleRestart(runtime);
+    } else {
+      this.setStatus(runtime, 'crashed', `Exited with code=${code} signal=${signal}`);
+    }
+  }
+
+  private handleProcessError(runtime: ServiceRuntime, err: Error): void {
+    const def = runtime.definition;
+    log.error(`[${def.id}] Process error`, { error: err.message });
+    runtime.lastError = err.message;
+
+    this.emit('service:status', {
+      serviceId: def.id,
+      previousStatus: runtime.status,
+      newStatus: runtime.status,
+      timestamp: new Date(),
+      details: err.message,
+    });
+  }
+
+  // ----------------------------------------------------------
+  // Private — Auto-Restart with Exponential Backoff + Jitter
+  // ----------------------------------------------------------
+
+  private scheduleRestart(runtime: ServiceRuntime): void {
+    const def = runtime.definition;
+    const now = new Date();
+
+    // Prune timestamps outside the restart window
+    runtime.restartTimestamps = runtime.restartTimestamps.filter(
+      (ts) => now.getTime() - ts.getTime() < def.restartWindowMs
+    );
+
+    // Check if we've exceeded the restart budget
+    if (runtime.restartTimestamps.length >= def.maxRestarts) {
+      log.error(`[${def.id}] Restart budget exhausted`, {
+        restarts: runtime.restartTimestamps.length,
+        maxRestarts: def.maxRestarts,
+        windowMs: def.restartWindowMs,
+      });
+      this.setStatus(runtime, 'failed', 'Restart budget exhausted');
+      return;
+    }
+
+    // Calculate backoff with jitter
+    const jitter = Math.random() * 0.3 * runtime.currentBackoffMs;
+    const delay = Math.min(runtime.currentBackoffMs + jitter, def.maxRestartDelayMs);
+
+    runtime.restartCount++;
+    runtime.restartTimestamps.push(now);
+
+    // Increase backoff for next time (exponential)
+    runtime.currentBackoffMs = Math.min(
+      runtime.currentBackoffMs * 2,
+      def.maxRestartDelayMs
+    );
+
+    log.info(`[${def.id}] Scheduling restart`, {
+      attempt: runtime.restartCount,
+      maxRestarts: def.maxRestarts,
+      delayMs: Math.round(delay),
+      backoffMs: runtime.currentBackoffMs,
+    });
+
+    // Clear any existing restart timer
+    const existingTimer = this.restartTimers.get(def.id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(async () => {
+      this.restartTimers.delete(def.id);
+      if (this._isShuttingDown) return;
+
+      log.info(`[${def.id}] Executing scheduled restart`);
+      const success = await this.startService(def.id);
+      if (!success) {
+        log.error(`[${def.id}] Scheduled restart failed`);
+      }
+    }, delay);
+
+    this.restartTimers.set(def.id, timer);
+  }
+
+  // ----------------------------------------------------------
+  // Private — Health Monitoring
+  // ----------------------------------------------------------
+
+  private startHealthMonitoring(serviceId: string): void {
+    // Don't start duplicate timers
+    if (this.healthCheckTimers.has(serviceId)) return;
+
+    const runtime = this.runtimes.get(serviceId);
+    if (!runtime) return;
+
+    const interval = runtime.definition.healthCheckIntervalMs;
+
+    // Perform an immediate check
+    this.performHealthCheck(serviceId);
+
+    // Schedule periodic checks
+    const timer = setInterval(() => {
+      this.performHealthCheck(serviceId);
+    }, interval);
+
+    this.healthCheckTimers.set(serviceId, timer);
+  }
+
+  private stopHealthMonitoring(serviceId: string): void {
+    const timer = this.healthCheckTimers.get(serviceId);
+    if (timer) {
+      clearInterval(timer);
+      this.healthCheckTimers.delete(serviceId);
+    }
+  }
+
+  private async performHealthCheck(serviceId: string): Promise<void> {
+    const runtime = this.runtimes.get(serviceId);
+    if (!runtime || !runtime.process) return;
+
+    const result = await this.checkHealth(runtime.definition);
+
+    runtime.lastHealthCheckAt = new Date();
+
+    if (result.healthy) {
+      runtime.lastHealthyAt = new Date();
+      // Reset backoff on successful health check
+      runtime.currentBackoffMs = runtime.definition.restartDelayMs;
+
+      if (runtime.status === 'starting' || runtime.status === 'degraded') {
+        this.setStatus(runtime, 'running');
+      }
+    } else {
+      // Only transition to degraded if we were previously running or starting
+      if (runtime.status === 'running' || runtime.status === 'starting') {
+        this.setStatus(runtime, 'degraded', result.error || 'Health check failed');
+      }
+    }
+
+    this.emit('service:health', result);
+  }
+
+  private checkHealth(def: ServiceDefinition): Promise<ServiceHealthEvent> {
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+
+      const request = http.get(
+        `http://localhost:${def.port}${def.healthPath}`,
+        { timeout: def.healthCheckTimeoutMs },
+        (res) => {
+          let body = '';
+          res.on('data', (chunk: Buffer) => {
+            body += chunk;
+          });
+          res.on('end', () => {
+            const responseTime = Date.now() - startTime;
+            let data: unknown = body;
+
+            try {
+              data = JSON.parse(body);
+            } catch {
+              // Non-JSON response is fine (e.g., n8n returns plain text)
+            }
+
+            const healthy = res.statusCode !== undefined &&
+              res.statusCode >= 200 &&
+              res.statusCode < 400;
+
+            resolve({
+              serviceId: def.id,
+              healthy,
+              responseTimeMs: responseTime,
+              timestamp: new Date(),
+              data,
+            });
+          });
         }
       );
 
-      req.on('error', (err) => {
-        clearTimeout(timeoutHandle);
-        const responseTimeMs = Date.now() - start;
-        this.emit('service:health', {
-          serviceId: id,
+      request.on('error', (err) => {
+        resolve({
+          serviceId: def.id,
           healthy: false,
-          responseTimeMs,
+          responseTimeMs: Date.now() - startTime,
           timestamp: new Date(),
           error: err.message,
         });
-        if (runtime.status === 'running') {
-          this.setStatus(runtime, 'degraded', err.message);
-        }
-        resolve(false);
+      });
+
+      request.on('timeout', () => {
+        request.destroy();
+        resolve({
+          serviceId: def.id,
+          healthy: false,
+          responseTimeMs: Date.now() - startTime,
+          timestamp: new Date(),
+          error: 'Health check timeout',
+        });
       });
     });
   }
 
-  // ----------------------------------------------------------
-  // Restart Scheduling
-  // ----------------------------------------------------------
+  private startGlobalHealthMonitoring(): void {
+    // Periodic sweep to catch services that are unhealthy but not being monitored
+    if (this.globalHealthTimer) return;
 
-  private scheduleRestart(runtime: ServiceRuntime): void {
-    const id = runtime.definition.id;
-    const def = runtime.definition;
-    const now = Date.now();
-
-    // Prune old restart timestamps outside the window
-    runtime.restartTimestamps = runtime.restartTimestamps.filter(
-      (ts) => now - ts.getTime() < def.restartWindowMs
-    );
-
-    if (runtime.restartTimestamps.length >= def.maxRestarts) {
-      log.error('Service exceeded max restarts, marking failed', { id });
-      this.setStatus(runtime, 'failed', 'Max restart budget exhausted');
-      return;
-    }
-
-    const backoff = Math.min(runtime.currentBackoffMs, def.maxRestartDelayMs);
-    const jitter = Math.random() * 500;
-    const delay = backoff + jitter;
-
-    // Exponential backoff for next attempt
-    runtime.currentBackoffMs = Math.min(runtime.currentBackoffMs * 2, def.maxRestartDelayMs);
-
-    log.info('Scheduling service restart', { id, delayMs: Math.round(delay), restartCount: runtime.restartCount + 1 });
-
-    const timer = setTimeout(async () => {
-      this.restartTimers.delete(id);
+    this.globalHealthTimer = setInterval(() => {
       if (this._isShuttingDown) return;
 
-      runtime.restartCount++;
-      runtime.restartTimestamps.push(new Date());
+      for (const [serviceId, runtime] of this.runtimes) {
+        if (
+          runtime.status === 'degraded' &&
+          !this.healthCheckTimers.has(serviceId)
+        ) {
+          this.startHealthMonitoring(serviceId);
+        }
 
-      await this.startService(id);
-    }, delay);
-
-    this.restartTimers.set(id, timer);
+        // Check for zombie processes (process reference but no PID)
+        if (runtime.process && !runtime.process.pid && runtime.status !== 'stopping') {
+          log.warn(`[${serviceId}] Zombie process detected; cleaning up`);
+          runtime.process = null;
+          runtime.pid = undefined;
+          this.setStatus(runtime, 'crashed', 'Zombie process');
+          if (runtime.definition.autoRestart) {
+            this.scheduleRestart(runtime);
+          }
+        }
+      }
+    }, 30_000);
   }
 
   // ----------------------------------------------------------
-  // Topology
+  // Private — Dependency Resolution
   // ----------------------------------------------------------
 
-  private topologicalSort(): ServiceRuntime[] {
-    const runtimes = [...this.runtimes.values()];
+  /**
+   * Topological sort of services based on their `dependsOn` field.
+   * Services with no dependencies come first.
+   * Throws if a circular dependency is detected.
+   */
+  private resolveStartOrder(): string[] {
     const visited = new Set<string>();
-    const result: ServiceRuntime[] = [];
+    const visiting = new Set<string>();
+    const result: string[] = [];
 
-    const visit = (runtime: ServiceRuntime) => {
-      if (visited.has(runtime.definition.id)) return;
-      visited.add(runtime.definition.id);
-      for (const depId of runtime.definition.dependsOn ?? []) {
-        const dep = this.runtimes.get(depId);
-        if (dep) visit(dep);
+    const visit = (id: string) => {
+      if (visited.has(id)) return;
+      if (visiting.has(id)) {
+        throw new Error(`Circular dependency detected involving service: ${id}`);
       }
-      result.push(runtime);
+
+      visiting.add(id);
+
+      const runtime = this.runtimes.get(id);
+      if (runtime) {
+        const deps = runtime.definition.dependsOn || [];
+        for (const depId of deps) {
+          visit(depId);
+        }
+      }
+
+      visiting.delete(id);
+      visited.add(id);
+      result.push(id);
     };
 
-    for (const r of runtimes) visit(r);
+    for (const def of SERVICE_REGISTRY) {
+      visit(def.id);
+    }
+
     return result;
   }
 
   // ----------------------------------------------------------
-  // State Helpers
+  // Private — Utility
   // ----------------------------------------------------------
 
-  private setStatus(runtime: ServiceRuntime, newStatus: ServiceStatus, details?: string): void {
+  private setStatus(
+    runtime: ServiceRuntime,
+    newStatus: ServiceStatus,
+    details?: string
+  ): void {
     const previousStatus = runtime.status;
     if (previousStatus === newStatus) return;
 
     runtime.status = newStatus;
 
-    if (newStatus === 'running' && runtime.startedAt) {
-      // Reset backoff on successful start
-      runtime.currentBackoffMs = runtime.definition.restartDelayMs;
-    }
-
-    if (runtime.startedAt && newStatus === 'stopped') {
-      runtime.uptimeMs = Date.now() - runtime.startedAt.getTime();
-    }
+    log.info(`[${runtime.definition.id}] Status: ${previousStatus} → ${newStatus}`, {
+      details: details || '',
+    });
 
     this.emit('service:status', {
       serviceId: runtime.definition.id,
@@ -716,94 +1028,115 @@ export class ServiceManager extends EventEmitter {
       timestamp: new Date(),
       details,
     });
-
-    log.info('Service status changed', {
-      id: runtime.definition.id,
-      previousStatus,
-      newStatus,
-      details,
-    });
   }
 
-  private clearTimers(id: string): void {
-    this.clearHealthTimer(id);
+  private openLogStream(serviceId: string, stream: 'stdout' | 'stderr'): number {
+    const filename =
+      stream === 'stdout'
+        ? `${serviceId}.log`
+        : `${serviceId}-error.log`;
+    const filePath = path.join(LOG_DIR, filename);
 
-    const restartTimer = this.restartTimers.get(id);
-    if (restartTimer) { clearTimeout(restartTimer); this.restartTimers.delete(id); }
-
-    const graceTimer = this.startupGraceTimers.get(id);
-    if (graceTimer) { clearTimeout(graceTimer); this.startupGraceTimers.delete(id); }
-
-    const shutdownTimer = this.shutdownTimeouts.get(id);
-    if (shutdownTimer) { clearTimeout(shutdownTimer); this.shutdownTimeouts.delete(id); }
+    try {
+      // Ensure directory exists
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      return fs.openSync(filePath, 'a');
+    } catch {
+      // Fallback to /dev/null if we can't open the log file
+      return fs.openSync('/dev/null', 'w');
+    }
   }
 
-  private clearHealthTimer(id: string): void {
-    const timer = this.healthCheckTimers.get(id);
-    if (timer) { clearInterval(timer); this.healthCheckTimers.delete(id); }
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((r) => setTimeout(r, ms));
-  }
-
-  // ----------------------------------------------------------
-  // Public API
-  // ----------------------------------------------------------
-
-  getRuntime(id: string): ServiceRuntime | undefined {
-    return this.runtimes.get(id);
-  }
-
-  getAllRuntimes(): ServiceRuntime[] {
-    return [...this.runtimes.values()];
-  }
-
-  getSnapshot(): ServiceManagerSnapshot {
-    const services: ServiceSummary[] = [...this.runtimes.values()].map((r) => ({
-      id: r.definition.id,
-      name: r.definition.name,
-      status: r.status,
-      pid: r.pid,
-      port: r.definition.port,
-      uptimeMs: r.startedAt && r.status === 'running'
-        ? Date.now() - r.startedAt.getTime()
-        : r.uptimeMs,
-      restartCount: r.restartCount,
-      lastHealthCheckAt: r.lastHealthCheckAt,
-      lastHealthyAt: r.lastHealthyAt,
-      lastError: r.lastError,
-      category: r.definition.category,
-      description: r.definition.description,
-      icon: r.definition.icon,
-    }));
-
-    const healthyCount = services.filter((s) => s.status === 'running').length;
-    const degradedCount = services.filter((s) => s.status === 'degraded').length;
-    const stoppedCount = services.filter((s) => s.status === 'stopped' || s.status === 'crashed').length;
-    const failedCount = services.filter((s) => s.status === 'failed').length;
-
+  private runtimeToSummary(runtime: ServiceRuntime): ServiceSummary {
+    const def = runtime.definition;
     return {
-      services,
-      totalServices: services.length,
-      healthyCount,
-      degradedCount,
-      stoppedCount,
-      failedCount,
-      timestamp: new Date(),
+      id: def.id,
+      name: def.name,
+      status: runtime.status,
+      pid: runtime.pid,
+      port: def.port,
+      uptimeMs: runtime.startedAt ? Date.now() - runtime.startedAt.getTime() : 0,
+      restartCount: runtime.restartCount,
+      lastHealthCheckAt: runtime.lastHealthCheckAt,
+      lastHealthyAt: runtime.lastHealthyAt,
+      lastError: runtime.lastError,
+      category: def.category,
+      description: def.description,
+      icon: def.icon,
     };
   }
 
-  isReady(): boolean {
-    return [...this.runtimes.values()].some((r) => r.status === 'running');
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private clearAllTimers(): void {
+    for (const timer of this.healthCheckTimers.values()) {
+      clearInterval(timer);
+    }
+    this.healthCheckTimers.clear();
+
+    for (const timer of this.restartTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.restartTimers.clear();
+
+    for (const timer of this.shutdownTimeouts.values()) {
+      clearTimeout(timer);
+    }
+    this.shutdownTimeouts.clear();
+
+    for (const timer of this.startupGraceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.startupGraceTimers.clear();
+
+    if (this.globalHealthTimer) {
+      clearInterval(this.globalHealthTimer);
+      this.globalHealthTimer = null;
+    }
+  }
+
+  private registerSignalHandlers(): void {
+    // Only register once
+    if ((ServiceManager as any)._signalsRegistered) return;
+    (ServiceManager as any)._signalsRegistered = true;
+
+    const handler = async (signal: string) => {
+      log.info(`Received ${signal}; initiating graceful shutdown`);
+      await this.shutdown();
+      process.exit(0);
+    };
+
+    process.on('SIGTERM', () => handler('SIGTERM'));
+    process.on('SIGINT', () => handler('SIGINT'));
   }
 }
 
 // ============================================================
-// Module-level accessor
+// Singleton Accessor
 // ============================================================
 
-/** Get or create the global ServiceManager singleton */
+let instance: ServiceManager | null = null;
+
+/**
+ * Get the global ServiceManager singleton.
+ * Creates it on first call; returns the same instance thereafter.
+ */
 export function getServiceManager(): ServiceManager {
-  return ServiceManager.getInstance();
+  if (!instance) {
+    instance = new ServiceManager();
+  }
+  return instance;
+}
+
+/**
+ * Reset the singleton (for testing only).
+ * Must call `shutdown()` first in production scenarios.
+ */
+export function resetServiceManager(): void {
+  instance = null;
 }

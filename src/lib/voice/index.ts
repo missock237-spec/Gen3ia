@@ -10,18 +10,43 @@
  *   - AI Calls (phone call automation)
  */
 
-// Re-export all modules
+// Re-export all modules (BUGFIX: exports resynchronisés avec les
+// implémentations réelles — TextToSpeechEngine et VoiceAgent n'existaient pas)
 export { SpeechToTextEngine, type STTResult, type STTOptions } from './stt';
-export { TextToSpeechEngine, type TTSResult, type TTSOptions } from './tts';
-export { VoiceAgent, type VoiceAgentConfig, type VoiceAgentSession } from './voice-agent';
+export { synthesizeSpeech, getAvailableVoices, type TTSResult, type TTSOptions } from './tts';
+export {
+  VoiceAgentEngine,
+  getVoiceAgentEngine,
+  type VoiceAgentConfig,
+  type CallState,
+  type CallAction,
+  type TranscriptEntry,
+  type CallStatus,
+  type CallDirection,
+} from './voice-agent';
 export { VoiceMemorySystem, type VoiceMemoryEntry } from './voice-memory';
 export { AICallSystem, type AICallConfig, type AICallSession } from './ai-calls';
 
 import { SpeechToTextEngine } from './stt';
-import { TextToSpeechEngine } from './tts';
-import { VoiceAgent } from './voice-agent';
+import { synthesizeSpeech, type TTSOptions, type TTSResult } from './tts';
+import { VoiceAgentEngine, getVoiceAgentEngine } from './voice-agent';
 import { VoiceMemorySystem } from './voice-memory';
 import { AICallSystem } from './ai-calls';
+
+// ---------------------------------------------------------------------------
+// Compatibilité : ancienne API TextToSpeechEngine (classe) par-dessus synthesizeSpeech
+// ---------------------------------------------------------------------------
+export class TextToSpeechEngine {
+  private userId: string;
+
+  constructor(userId: string) {
+    this.userId = userId;
+  }
+
+  async synthesize(options: TTSOptions): Promise<TTSResult> {
+    return synthesizeSpeech(options);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Factory functions
@@ -42,17 +67,19 @@ export function createTTSEngine(userId: string): TextToSpeechEngine {
 }
 
 /**
- * Create a VoiceAgent for a user
+ * Create (or get the singleton) VoiceAgentEngine — l'engine vocal gère
+ * les appels Twilio ; le paramètre userId est accepté par compatibilité.
  */
-export function createVoiceAgent(userId: string): VoiceAgent {
-  return new VoiceAgent(userId);
+export function createVoiceAgent(_userId?: string): VoiceAgentEngine {
+  return getVoiceAgentEngine();
 }
 
 /**
- * Create a VoiceMemorySystem for a user
+ * Create a VoiceMemorySystem (userId est passé par compatibilité,
+ * les méthodes prennent le userId en argument).
  */
-export function createVoiceMemory(userId: string): VoiceMemorySystem {
-  return new VoiceMemorySystem(userId);
+export function createVoiceMemory(_userId?: string): VoiceMemorySystem {
+  return new VoiceMemorySystem();
 }
 
 /**
@@ -81,27 +108,24 @@ export function getVoiceSystemStatus(): VoiceSystemStatus {
   const sttProviders: string[] = [];
   if (process.env.GROQ_API_KEY) sttProviders.push('groq');
   if (process.env.OPENAI_API_KEY) sttProviders.push('openai');
-  sttProviders.push('z-ai-sdk'); // Always available as fallback
 
   const ttsProviders: string[] = [];
   if (process.env.OPENAI_API_KEY) ttsProviders.push('openai');
-  ttsProviders.push('z-ai-sdk'); // Always available as fallback
+  if (process.env.ELEVENLABS_API_KEY) ttsProviders.push('elevenlabs');
+  if (process.env.HUGGINGFACE_TOKEN) ttsProviders.push('huggingface');
 
   const callProviders: string[] = [];
   if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
     callProviders.push('twilio');
   }
-  if (process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_API_TOKEN) {
-    callProviders.push('whatsapp');
-  }
 
   return {
     stt: {
-      available: true,
+      available: sttProviders.length > 0,
       providers: sttProviders,
     },
     tts: {
-      available: true,
+      available: ttsProviders.length > 0,
       providers: ttsProviders,
     },
     agent: { available: true },

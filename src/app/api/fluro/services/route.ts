@@ -9,7 +9,6 @@
  *   - Ollama (chat/text inference)
  *   - ComfyUI (image generation)
  *   - VideoCrafter (video generation)
- *   - Baileys (WhatsApp integration)
  *   - SpeechBrain (speech recognition)
  */
 
@@ -20,6 +19,11 @@ import { checkComfyUIHealth } from '@/lib/comfyui-client';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createLogger } from '@/lib/logger';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('fluro-services');
 
 // ---------------------------------------------------------------------------
@@ -159,53 +163,6 @@ async function checkVideoService(): Promise<ServiceStatus> {
   }
 }
 
-async function checkBaileysService(): Promise<ServiceStatus> {
-  const start = Date.now();
-  const url = process.env.BAILEYS_API_URL || 'http://localhost:8186';
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${url}/health`, { signal: controller.signal });
-    clearTimeout(timer);
-
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        id: 'baileys',
-        name: 'Baileys (WhatsApp)',
-        status: data.connection === 'connected' ? 'online' : data.connection === 'connecting' ? 'starting' : 'offline',
-        url,
-        port: 8186,
-        responseTimeMs: Date.now() - start,
-        metadata: {
-          connection: data.connection,
-          phoneNumber: data.phoneNumber,
-          uptime: data.uptime,
-        },
-      };
-    }
-    return {
-      id: 'baileys',
-      name: 'Baileys (WhatsApp)',
-      status: 'offline',
-      url,
-      port: 8186,
-      responseTimeMs: Date.now() - start,
-      error: `HTTP ${res.status}`,
-    };
-  } catch (error) {
-    return {
-      id: 'baileys',
-      name: 'Baileys (WhatsApp)',
-      status: 'offline',
-      url,
-      port: 8186,
-      responseTimeMs: Date.now() - start,
-      error: error instanceof Error ? error.message : 'Unreachable',
-    };
-  }
-}
-
 async function checkSpeechBrainService(): Promise<ServiceStatus> {
   const start = Date.now();
   const url = process.env.SPEECHBRAIN_API_URL || 'http://localhost:8187';
@@ -243,16 +200,15 @@ async function checkSpeechBrainService(): Promise<ServiceStatus> {
 
 export async function GET() {
   try {
-    const [ollama, comfyui, video, baileys, speechbrain, fluroHealth] = await Promise.all([
+    const [ollama, comfyui, video, speechbrain, fluroHealth] = await Promise.all([
       checkOllamaService(),
       checkComfyUIService(),
       checkVideoService(),
-      checkBaileysService(),
       checkSpeechBrainService(),
       checkFluroHealth().catch(() => null),
     ]);
 
-    const services = [ollama, comfyui, video, baileys, speechbrain];
+    const services = [ollama, comfyui, video, speechbrain];
     const onlineCount = services.filter((s) => s.status === 'online').length;
 
     return NextResponse.json({
@@ -323,7 +279,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validServices = ['ollama', 'comfyui', 'video', 'baileys', 'speechbrain'];
+    const validServices = ['ollama', 'comfyui', 'video', 'speechbrain'];
     if (!validServices.includes(serviceId)) {
       return NextResponse.json(
         { success: false, error: `Invalid service. Valid: ${validServices.join(', ')}` },
@@ -348,11 +304,6 @@ export async function POST(request: NextRequest) {
         start: 'cd /tmp/my-project/services/video-api && nohup python3 server.py --port 8189 > /tmp/video-server.log 2>&1 &',
         stop: 'pkill -f "server.py.*8189" || true',
         restart: 'pkill -f "server.py.*8189" || true; sleep 2; cd /tmp/my-project/services/video-api && nohup python3 server.py --port 8189 > /tmp/video-server.log 2>&1 &',
-      },
-      baileys: {
-        start: 'pm2 start /home/z/my-project/services/baileys/server.js --name baileys-whatsapp',
-        stop: 'pm2 stop baileys-whatsapp',
-        restart: 'pm2 restart baileys-whatsapp',
       },
       speechbrain: {
         start: 'nohup python3 /tmp/my-project/services/speechbrain_api_server.py --port 8187 > /tmp/speechbrain-server.log 2>&1 &',
