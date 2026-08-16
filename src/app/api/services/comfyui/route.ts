@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getComfyUIClient } from '@/lib/comfyui-client';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const { auth, error: secError } = await applySecurity(request, {
     requireAuth: true,

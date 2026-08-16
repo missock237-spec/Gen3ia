@@ -1,26 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { applySecurity, secureResponse } from '@/lib/security'
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { applySecurity, secureResponse } from '@/lib/security';
 import {
+
   getDecryptedUserResource,
   updateSecureUserResource,
-} from '@/lib/secure-user-resource'
+} from '@/lib/secure-user-resource';
 
+
+
+
+export const dynamic = "force-dynamic";
 function parseConfig(config: string) {
   try {
-    return JSON.parse(config)
+    return JSON.parse(config);
   } catch {
-    return {}
+    return {};
   }
 }
 
 export async function OPTIONS(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: _params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await applySecurity(request)
-  if (error) return error
-  return new NextResponse(null, { status: 204 })
+  const { error } = await applySecurity(request);
+  if (error) return error;
+  return new NextResponse(null, { status: 204 });
 }
 
 export async function PUT(
@@ -29,26 +34,21 @@ export async function PUT(
 ) {
   const { auth, error: secError } = await applySecurity(request, {
     requireAuth: true,
-  })
-
-  if (secError || !auth) {
-    return (
-      secError || NextResponse.json({ error: 'Auth required' }, { status: 401 })
-    )
-  }
+  });
+  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
 
   try {
-    const { id } = await params
-    const body = await request.json()
+    const { id } = await params;
+    const body = await request.json();
 
-    const resource = await getDecryptedUserResource(id, auth.userId)
+    const resource = await getDecryptedUserResource(id, auth.userId);
 
     if (!resource) {
       const res = NextResponse.json(
         { error: 'Resource not found' },
         { status: 404 }
-      )
-      return secureResponse(res, request)
+      );
+      return secureResponse(res, request);
     }
 
     if (
@@ -58,8 +58,8 @@ export async function PUT(
       const res = NextResponse.json(
         { error: 'Name must be a string at most 100 characters' },
         { status: 400 }
-      )
-      return secureResponse(res, request)
+      );
+      return secureResponse(res, request);
     }
 
     if (
@@ -71,8 +71,8 @@ export async function PUT(
       const res = NextResponse.json(
         { error: 'API key too long (max 5000 characters)' },
         { status: 400 }
-      )
-      return secureResponse(res, request)
+      );
+      return secureResponse(res, request);
     }
 
     if (
@@ -84,8 +84,8 @@ export async function PUT(
       const res = NextResponse.json(
         { error: 'Endpoint too long (max 500 characters)' },
         { status: 400 }
-      )
-      return secureResponse(res, request)
+      );
+      return secureResponse(res, request);
     }
 
     const updated = await updateSecureUserResource(id, auth.userId, {
@@ -99,7 +99,7 @@ export async function PUT(
       ...(body.apiKey !== undefined && { apiKey: body.apiKey }),
       ...(body.endpoint !== undefined && { endpoint: body.endpoint }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
-    })
+    });
 
     const res = NextResponse.json({
       id: updated.id,
@@ -111,15 +111,15 @@ export async function PUT(
       isActive: updated.isActive,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
-    })
+    });
 
-    return secureResponse(res, request)
+    return secureResponse(res, request);
   } catch {
     const res = NextResponse.json(
       { error: 'Failed to update resource' },
       { status: 500 }
-    )
-    return secureResponse(res, request)
+    );
+    return secureResponse(res, request);
   }
 }
 
@@ -129,30 +129,25 @@ export async function DELETE(
 ) {
   const { auth, error: secError } = await applySecurity(request, {
     requireAuth: true,
-  })
-
-  if (secError || !auth) {
-    return (
-      secError || NextResponse.json({ error: 'Auth required' }, { status: 401 })
-    )
-  }
+  });
+  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
 
   try {
-    const { id } = await params
+    const { id } = await params;
 
-    const resource = await getDecryptedUserResource(id, auth.userId)
+    const resource = await getDecryptedUserResource(id, auth.userId);
 
     if (!resource) {
       const res = NextResponse.json(
         { error: 'Resource not found' },
         { status: 404 }
-      )
-      return secureResponse(res, request)
+      );
+      return secureResponse(res, request);
     }
 
     await db.userResource.delete({
       where: { id },
-    })
+    });
 
     await db.activityLog.create({
       data: {
@@ -161,15 +156,15 @@ export async function DELETE(
         category: 'resource',
         userId: auth.userId,
       },
-    })
+    });
 
-    const res = NextResponse.json({ success: true })
-    return secureResponse(res, request)
+    const res = NextResponse.json({ success: true });
+    return secureResponse(res, request);
   } catch {
     const res = NextResponse.json(
       { error: 'Failed to delete resource' },
       { status: 500 }
-    )
-    return secureResponse(res, request)
+    );
+    return secureResponse(res, request);
   }
 }
