@@ -14,6 +14,11 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { createLogger } from '@/lib/logger';
 import { getServiceManager } from '@/lib/service-manager';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api:services:health');
 
 // ============================================================
