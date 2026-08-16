@@ -93,6 +93,7 @@ const nextConfig = {
     'sqlite3',
     'canvas',
     'sharp',
+    'argon2',
   ],
 
   webpack: (config) => {

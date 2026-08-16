@@ -1,182 +1,124 @@
-import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
-import { ThemeProvider } from "@/components/theme-provider";
-import { SchemaOrg } from "@/components/seo/schema-org";
+import type { Metadata, Viewport } from 'next';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
+import './globals.css';
+import { ThemeProvider } from 'next-themes';
+import { Toaster } from 'sonner';
+import { siteConfig } from '@/lib/seo/config';
+import { ErrorBoundary, ErrorProvider } from '@/components/error-boundary';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+// geist package provides the font variables directly
+const geistSans = GeistSans;
+const geistMono = GeistMono;
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const siteUrl = siteConfig.url;
+const siteName = siteConfig.name;
+const title = "gen3ia - Système d'exploitation pour agents IA";
+const description = siteConfig.description;
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#0a0a0a" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0A0A0B' },
   ],
-  width: "device-width",
+  colorScheme: 'dark light',
+  width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
 };
 
 export const metadata: Metadata = {
-  title: {
-    default: "Genova AI — Agent Operating System & SaaS Freemium",
-    template: "%s | Genova AI",
-  },
-  description: "Genova AI est un système d'exploitation pour agents IA open source (MIT). SaaS Freemium avec Next.js, Prisma, PostgreSQL. Créez, gérez et déployez des agents AI autonomes.",
-  keywords: [
-    "Genova AI", "Genova", "AI Agent", "Agent Operating System",
-    "IA agents autonomes", "AI SaaS", "Freemium", "Open Source", "MIT",
-    "Next.js AI", "Prisma AI", "AI platform", "agent IA",
-    "WhatsApp AI", "AI Router", "ReAct Loop", "AI workflow",
-    "GPT alternative", "IA open source", "self-hosted AI",
-    "AI agent platform", "autonomous agents", "AI orchestration",
-  ],
-  authors: [
-    { name: "Genova AI Team", url: "https://github.com/missock237-spec/Genova" },
-    { name: "Love Rose" },
-  ],
-  creator: "Love Rose",
-  publisher: "Genova AI",
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-    },
-  },
-  openGraph: {
-    type: "website",
-    locale: "fr_FR",
-    alternateLocale: "en_US",
-    siteName: "Genova AI",
-    title: "Genova AI — Agent Operating System Open Source",
-    description: "Système d'exploitation pour agents AI. 100% open source (MIT). SaaS Freemium avec 58 API endpoints, pipeline WhatsApp, AI Router.",
-    url: "https://missock237-spec.github.io/Genova/",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "Genova AI - Agent Operating System",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@genova_ai",
-    creator: "@missock237",
-    title: "Genova AI — Agent Operating System",
-    description: "Système d'exploitation pour agents AI open source. SaaS Freemium.",
-    images: ["/og-image.png"],
-  },
+  metadataBase: new URL(siteUrl),
+  title: { default: title, template: `%s | ${siteName}` },
+  description,
+  keywords: ['Gen3ia', 'IA', 'agents IA', 'automatisation', 'SaaS', 'AI Operating System',
+    'agent autonome', 'ReAct', 'Cameroun', 'Afrique', 'AI agents', 'voice AI',
+    'AI automation platform', 'LLM', 'GPT', 'Claude', 'verifiable autonomy',
+    'proof of correctness', 'agents neuro-symboliques'],
+  authors: [{ name: siteConfig.author, url: siteUrl }],
+  creator: siteConfig.author,
+  publisher: siteConfig.author,
+  applicationName: siteName,
+  generator: 'Next.js',
+  referrer: 'origin-when-cross-origin',
+  category: 'technology',
+  classification: 'AI Agent Platform',
   icons: {
     icon: [
-      { url: "/favicon-genova.png", sizes: "32x32", type: "image/png" },
-      { url: "/icon.svg", sizes: "any", type: "image/svg+xml" },
+      { url: '/favicon-gen3ia.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
     ],
-    apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
-    ],
+    apple: [{ url: '/favicon-gen3ia.png', sizes: '180x180', type: 'image/png' }],
+    other: [{ rel: 'mask-icon', url: '/icon.svg', color: '#00F5FF' }],
   },
-  manifest: "/site.webmanifest",
-  category: "technology",
-  classification: "AI Platform / Agent Operating System",
-  referrer: "origin-when-cross-origin",
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    title: siteName,
+    statusBarStyle: 'black-translucent',
+    startupImage: `${siteUrl}/favicon-gen3ia.png`,
+  },
+  openGraph: {
+    type: 'website', locale: siteConfig.locale, alternateLocale: siteConfig.alternateLocale,
+    url: siteUrl, siteName, title, description,
+    countryName: 'Cameroun',
+    emails: ['contact@gen3ia.online'],
+    images: [{ url: `${siteUrl}/og-image.png`, width: 1200, height: 630, alt: siteName }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    site: siteConfig.twitterHandle,
+    creator: siteConfig.twitterHandle,
+    title, description,
+    images: [`${siteUrl}/og-image.png`],
+  },
+  robots: {
+    index: true, follow: true,
+    googleBot: { index: true, follow: true, 'max-video-preview': -1, 'max-image-preview': 'large', 'max-snippet': -1 },
+  },
+  alternates: {
+    canonical: siteUrl,
+    languages: { 'fr-FR': siteUrl, 'en-US': `${siteUrl}/en`, 'ar-SA': `${siteUrl}/ar` },
+  },
+  formatDetection: { telephone: true, date: true, address: true, email: true, url: true },
   other: {
-    "application-name": "Genova AI",
-    "apple-mobile-web-app-title": "Genova AI",
-    "apple-mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-status-bar-style": "black",
-    "msapplication-TileColor": "#0a0a0a",
-    "msapplication-config": "/browserconfig.xml",
+    'mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-status-bar-style': 'black-translucent',
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr" suppressHydrationWarning>
       <head>
-        {/* Balises SEO critiques */}
-        <link rel="canonical" href="https://missock237-spec.github.io/Genova/" />
-        <meta name="geo.region" content="CM" />
-        <meta name="geo.placename" content="Cameroon" />
-        
-        {/* Google / Search Console */}
-        <meta name="google-site-verification" content="" />
-        
-        {/* Schema.org JSON-LD */}
+        <link rel="me" href={siteConfig.githubUrl} />
+        <link rel="author" href={`${siteUrl}/about`} />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#0A0A0B" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+          <ErrorProvider>
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </ErrorProvider>
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
         <script
-          type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "SoftwareApplication",
-              "name": "Genova AI",
-              "applicationCategory": "AI Platform",
-              "operatingSystem": "Web, Linux, macOS, Windows",
-              "description": "Système d\u2019exploitation pour agents AI. Open source (MIT). SaaS Freemium avec agents autonomes, pipeline WhatsApp, AI Router, ReAct Loop.",
-              "url": "https://missock237-spec.github.io/Genova/",
-              "author": {
-                "@type": "Person",
-                "name": "Love Rose",
-                "url": "https://github.com/missock237-spec",
-              },
-              "offers": {
-                "@type": "Offer",
-                "price": "0",
-                "priceCurrency": "USD",
-                "description": "Open source (MIT) - Gratuit. SaaS Freemium à partir de 9$/mois.",
-              },
-              "screenshot": "https://missock237-spec.github.io/Genova/og-image.png",
-              "softwareVersion": "1.0.0",
-              "license": "https://opensource.org/licenses/MIT",
-              "keywords": "AI, agents, SaaS, open source, Next.js, Prisma, AI agents",
-              "programmingLanguage": ["TypeScript", "JavaScript", "Python"],
-              "applicationSuite": "Genova AI Operating System",
-              "featureList": [
-                "AI Agents autonomes (ReAct Loop)",
-                "AI Router intelligent",
-                "Pipeline WhatsApp (Baileys)",
-                "Mémoire persistante (RAG + Vector DB)",
-                "Marketplace d'agents et templates",
-                "Génération d'images et vidéos",
-                "Voix & Multimodal (ASR, TTS, VLM)",
-                "Guardrails & Sécurité",
-                "58 endpoints API REST",
-                "Clés API pour intégration",
-                "Connexion MCP (Cursor, Claude Desktop)",
-                "Terminal de code intégré",
-                "Publicités récompensées",
-                "Paiements Stripe",
-              ],
-            }),
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                  navigator.serviceWorker.register('/sw.js').catch(() => {});
+                });
+              }
+            `,
           }}
         />
-      </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
-      >
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          {children}
-          <Toaster />
-          <SchemaOrg />
-        </ThemeProvider>
       </body>
     </html>
   );
