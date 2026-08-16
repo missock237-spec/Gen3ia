@@ -12,7 +12,7 @@ import { withAuth, type RouteParams } from '@/lib/with-auth';
 
 
 export const dynamic = "force-dynamic";
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
+export const POST = withAuth(async (request: NextRequest, _ctx: { params?: RouteParams }, _auth) => {
   try {
     const body = await request.json();
 

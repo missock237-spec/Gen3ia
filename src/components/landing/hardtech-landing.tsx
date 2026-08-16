@@ -244,13 +244,13 @@ function BentoGrid() {
           ))}
         </div>
         <p className="mt-4 hardtech-data text-[0.72rem] text-muted-foreground">
-          Routing adaptatif context-aware · bascule à chaud en cas de dégradation d'un fournisseur.
+          Routing adaptatif context-aware · bascule à chaud en cas de dégradation d&apos;un fournisseur.
         </p>
       </div>
 
       {/* Moteur Rust */}
       <div className="bento-card rounded-lg p-5">
-        <div className="hardtech-tag hardtech-tag-amber">Moteur d'exécution</div>
+        <div className="hardtech-tag hardtech-tag-amber">Moteur d&apos;exécution</div>
         <div className="mt-4 flex items-center gap-3">
           <Circuit className="h-10 w-10 text-[#00F5FF]" />
           <div>
@@ -279,7 +279,7 @@ function BentoGrid() {
 
       {/* Heatmap incertitude */}
       <div className="bento-card rounded-lg p-5">
-        <div className="hardtech-tag hardtech-tag-amber">Cartographie d'incertitude</div>
+        <div className="hardtech-tag hardtech-tag-amber">Cartographie d&apos;incertitude</div>
         <div className="mt-3"><UncertaintyHeatmap /></div>
       </div>
     </div>
@@ -303,15 +303,15 @@ function PanicInterrupt() {
               Reprenez la main. <span className="hardtech-glow">À tout moment.</span>
             </h3>
             <p className="mt-2 text-muted-foreground max-w-xl">
-              Chaque boucle d'agent expose un interrupteur d'arrêt d'urgence. Toute action humainement
-              sensible est mise en attente d'arbitrage — jamais exécutée dans le vide.
+              Chaque boucle d&apos;agent expose un interrupteur d&apos;arrêt d&apos;urgence. Toute action humainement
+              sensible est mise en attente d&apos;arbitrage — jamais exécutée dans le vide.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 onClick={() => { setArmed(true); setReleased(false); }}
                 className="panic-release rounded-md px-4 py-2 text-sm font-medium"
               >
-                ⏻ Armer l'interrupteur
+                ⏻ Armer l&apos;interrupteur
               </button>
               <button
                 onClick={() => { setReleased(true); setArmed(false); }}
@@ -324,7 +324,7 @@ function PanicInterrupt() {
               {released ? (
                 <span className="text-emerald-400">✓ interrupteur relâché — les agents reprennent leur exécution.</span>
               ) : armed ? (
-                <span className="text-[#FFB800]">■ arrêt d'urgence armé — toutes les boucles sont suspendues.</span>
+                <span className="text-[#FFB800]">■ arrêt d&apos;urgence armé — toutes les boucles sont suspendues.</span>
               ) : (
                 <span className="text-muted-foreground">état : veille — aucune intervention requise.</span>
               )}
@@ -396,20 +396,20 @@ export default function HardTechLanding() {
               <span className="hardtech-tag hardtech-tag-amber">Modèle 2026</span>
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
-              Le système d'exploitation
+              Le système d&apos;exploitation
               <br />
               pour agents IA <span className="hardtech-glow">prouvés.</span>
             </h1>
             <p className="mt-5 text-lg text-muted-foreground max-w-xl">
               Pas des résultats aveugles. Une autonomie <span className="text-[#00F5FF]">vérifiable</span> :
-              chaque action est accompagnée de sa preuve de logique, de son hash et de sa marge d'incertitude.
+              chaque action est accompagnée de sa preuve de logique, de son hash et de sa marge d&apos;incertitude.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/register" className="px-6 py-3 rounded-md bg-[#00F5FF] text-[#001416] font-medium hover:bg-[#33f7ff] transition-all shadow-[0_0_30px_rgba(0,245,255,0.25)]">
                 Créer un compte →
               </Link>
               <a href="#architecture" className="px-6 py-3 rounded-md border border-[#1C1E22] text-foreground hover:border-[#00F5FF]/50 hover:text-[#00F5FF] transition-colors">
-                Voir l'architecture
+                Voir l&apos;architecture
               </a>
             </div>
             <div className="mt-8 flex items-center gap-3 hardtech-data text-[0.7rem] text-muted-foreground">
@@ -460,11 +460,11 @@ export default function HardTechLanding() {
           <div>
             <div className="hardtech-tag">Verifiable Autonomy</div>
             <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight">
-              L'UI ne cache plus rien. <span className="hardtech-glow">Elle prouve.</span>
+              L&apos;UI ne cache plus rien. <span className="hardtech-glow">Elle prouve.</span>
             </h2>
             <p className="mt-4 text-muted-foreground max-w-xl">
               Visualisez le cheminement exact de chaque décision : inférence neurale → vérification
-              symbolique → check de sécurité Rust. Chaque étape expose un hash de preuve et sa marge d'incertitude.
+              symbolique → check de sécurité Rust. Chaque étape expose un hash de preuve et sa marge d&apos;incertitude.
             </p>
             <div className="mt-8 space-y-4">
               {[
@@ -502,7 +502,7 @@ export default function HardTechLanding() {
         <div className="mb-10 max-w-2xl">
           <div className="hardtech-tag hardtech-tag-amber">Panic Interrupt</div>
           <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight">
-            L'autonomie, oui. <span className="text-[#FFB800]">L'autorité, toujours la vôtre.</span>
+            L&apos;autonomie, oui. <span className="text-[#FFB800]">L&apos;autorité, toujours la vôtre.</span>
           </h2>
         </div>
         <PanicInterrupt />

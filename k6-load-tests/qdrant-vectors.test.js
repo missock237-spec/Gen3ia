@@ -25,7 +25,7 @@ export const options = {
 const searchErrorRate = new Rate('vector_search_errors');
 const searchDuration = new Trend('vector_search_duration');
 
-export default function () {
+export default function _default() {
   group('Vector Search - RAG Retrieval', () => {
     const queries = [
       'Quelle est la capitale du Cameroun ?',

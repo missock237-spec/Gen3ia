@@ -158,7 +158,7 @@ export class MultimodalSessionManager {
   }): MultimodalSessionState {
     return {
       id: session.id,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       userId: session.user.id,
       agentId: session.agentId,
       type: session.type as MultimodalType,

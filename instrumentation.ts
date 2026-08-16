@@ -7,6 +7,7 @@ export async function register() {
     try {
       const { validateEnv } = await import('@/lib/env-validation');
       const env = validateEnv();
+      // eslint-disable-next-line no-console
       console.info(
         `[env-check] OK — NODE_ENV=${env.NODE_ENV}, ` +
           `reste de caches configurés: REDIS=${env.REDIS_URL ? 'oui' : 'non'}, ` +
@@ -27,6 +28,7 @@ export async function register() {
       const { initTracing } = await import('@/lib/tracing');
       initTracing();
       
+      // eslint-disable-next-line no-console
       console.log('[Instrumentation] ✓ Application initialized successfully');
     } catch (e) {
       console.error('[Instrumentation] CRITICAL ERROR:', e);

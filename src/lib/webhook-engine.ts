@@ -187,7 +187,7 @@ export class WebhookEngine {
   /**
    * Execute un webhook direct (sans config)
    */
-  async executeDirect(payload: WebhookPayload, userId: string) {
+  async executeDirect(payload: WebhookPayload, _userId: string) {
     const result = await this.send(payload);
 
     // Logger meme sans config

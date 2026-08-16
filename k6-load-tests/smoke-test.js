@@ -17,7 +17,7 @@ export const options = {
   },
 };
 
-export default function () {
+export default function _default() {
   group('1. Plans API', () => {
     const r = http.get(`${BASE_URL}/api/payments/plans`);
     check(r, {

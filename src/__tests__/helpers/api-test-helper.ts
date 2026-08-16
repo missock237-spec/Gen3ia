@@ -88,6 +88,6 @@ export function expectSuccess(data: any): void {
 /**
  * Verifie qu'une reponse est une erreur
  */
-export function expectError(data: any, status?: number): void {
+export function expectError(data: any, _status?: number): void {
   expect(data).toHaveProperty('error');
 }

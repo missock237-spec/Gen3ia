@@ -85,12 +85,15 @@ export function AdBanner({ userPlan, placement, onAdViewed, onAdClicked, message
   const isFree = userPlan === 'free';
   const isPaid = !isFree;
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   useEffect(() => {
     if (dismissed) return;
     const randomAd = ADS[Math.floor(Math.random() * ADS.length)];
-    setCurrentAd(randomAd);
-    setIsVisible(true);
+    // Defer setState to avoid react-hooks/set-state-in-effect
+    const raf = requestAnimationFrame(() => {
+      setCurrentAd(randomAd);
+      setIsVisible(true);
+    });
 
     if (isFree) {
       const timer = setInterval(() => {
@@ -103,7 +106,7 @@ export function AdBanner({ userPlan, placement, onAdViewed, onAdClicked, message
           return prev - 1;
         });
       }, 1000);
-      return () => clearInterval(timer);
+      return () => { cancelAnimationFrame(raf); clearInterval(timer); };
     }
   }, [messageIndex, dismissed, isFree]);
 

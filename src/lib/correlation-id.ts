@@ -238,7 +238,7 @@ export function withCorrelation<T>(
         return result;
       } catch (error) {
         correlationManager.endSpan(spanId, "error", { error: String(error) });
-        correlationManager.markError(error);
+        correlationManager.markError(error instanceof Error ? error : String(error));
         correlationManager.end();
         throw error;
       }

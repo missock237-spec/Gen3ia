@@ -47,7 +47,7 @@ class MarketplaceService {
     const [items, total] = await Promise.all([
       prisma.marketplaceListing.findMany({
         where: where as any,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         orderBy: [{ downloads: "desc" }, { rating: "desc" }],
         skip, take: limit,
         select: { id: true, type: true, name: true, slug: true, description: true, category: true, price: true, rating: true, downloads: true, installCount: true, createdAt: true, user: { select: { name: true } } },

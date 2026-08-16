@@ -90,7 +90,7 @@ async function thinkStep(context: ExecutionContext, toolRegistry: ToolRegistry):
       const duration = Date.now() - startTime;
       let parsed: { thought: string; action: string; actionInput: Record<string, unknown>; isFinal: boolean; confidence: number };
       try {
-        let content = result.content.trim().replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+        const content = result.content.trim().replace(/```json?\n?/g, '').replace(/```/g, '').trim();
         parsed = JSON.parse(content);
       } catch {
         parsed = { thought: result.content, action: 'respond', actionInput: { message: result.content }, isFinal: true, confidence: 0.5 };
@@ -161,7 +161,7 @@ async function reflectStep(context: ExecutionContext, toolRegistry: ToolRegistry
       const result = await chatCompletion([{ role: 'system', content: reflectPrompt }, { role: 'user', content: 'Evalue.' }], 'reasoning');
       let parsed: { progressScore: number; qualityScore: number; reflection: string; recommendation: string; needsRetry?: boolean };
       try {
-        let content = result.content.trim().replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+        const content = result.content.trim().replace(/```json?\n?/g, '').replace(/```/g, '').trim();
         parsed = JSON.parse(content);
       } catch { parsed = { progressScore: 0.5, qualityScore: 0.5, reflection: 'Evaluation', recommendation: 'continuer' }; }
       const reflectionStep: ExecutionStep = { id: generateStepId(), type: 'reflection', content: limitString(parsed.reflection, 2000), timestamp: new Date().toISOString(), duration: Date.now() - startTime, reflectionScore: parsed.progressScore, confidence: 0.5, needsRetry: parsed.needsRetry || false };
@@ -375,7 +375,7 @@ async function createExecutionPlan(context: ExecutionContext): Promise<Execution
     ], 'orchestration');
     let parsed: { steps: Array<{ description: string; toolHint?: string; dependsOn?: string[] }> };
     try {
-      let content = result.content.trim().replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+      const content = result.content.trim().replace(/```json?\n?/g, '').replace(/```/g, '').trim();
       parsed = JSON.parse(content);
     } catch { parsed = { steps: [{ description: 'Analyser la demande' }, { description: 'Executer' }, { description: 'Presenter les resultats' }] }; }
     return { steps: parsed.steps.slice(0, 5).map((step, i) => ({ id: `plan_step_${i}`, description: step.description, status: 'pending' as const, dependsOn: step.dependsOn, toolHint: step.toolHint })), currentStepIndex: 0, adaptiveHistory: [] };

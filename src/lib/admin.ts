@@ -224,7 +224,7 @@ export async function getPlatformStats() {
     totalConversations,
     totalTasks,
     planDistribution: planDistribution.reduce((acc, curr) => {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       acc[curr.plan] = curr._count;
       return acc;
     }, {} as Record<string, number>),

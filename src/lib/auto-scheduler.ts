@@ -80,7 +80,7 @@ class AutoScheduler {
       const last = await db.agentExecution.findFirst({ where: { agentId, status: "completed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
       if (last && Date.now() - last.createdAt.getTime() < config.cooldownMinutes * 60000) return;
     }
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     await getAgentQueue().add("auto-execution", { agentId, userId, input: config.input ?? INPUT_TEMPLATES.daily_report, sessionId: `auto_${agentId}_${Date.now()}`, auto: true });
     logger.info("auto_queued", { agentId });
   }

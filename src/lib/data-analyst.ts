@@ -74,7 +74,7 @@ export class DataAnalystEngine {
   /**
    * NL2SQL: Convertit une question en langage naturel en requete
    */
-  async nl2sql(question: string, schemaInfo: string): Promise<{ query: string; explanation: string; queryType: string }> {
+  async nl2sql(question: string, _schemaInfo: string): Promise<{ query: string; explanation: string; queryType: string }> {
     const q = question.toLowerCase();
 
     if (q.includes('count') || q.includes('combien') || q.includes('nombre de')) {

@@ -30,9 +30,9 @@ export interface WorkflowVersion {
 }
 
 export interface VersionDiff {
-  added: any[];
-  removed: any[];
-  modified: any[];
+  added: unknown[];
+  removed: unknown[];
+  modified: unknown[];
   summary: string;
 }
 
@@ -94,7 +94,7 @@ class VersioningEngine {
   /**
    * List all versions of a workflow
    */
-  async listVersions(workflowId: string, limit: number = 50): Promise<WorkflowVersion[]> {
+  async listVersions(workflowId: string, _limit: number = 50): Promise<WorkflowVersion[]> {
     // This would query the database in production
     // For now, returning mock structure
     return [];
@@ -103,7 +103,7 @@ class VersioningEngine {
   /**
    * Get specific version
    */
-  async getVersion(workflowId: string, versionNumber: string): Promise<WorkflowVersion | null> {
+  async getVersion(_workflowId: string, _versionNumber: string): Promise<WorkflowVersion | null> {
     // This would query the database
     return null;
   }
@@ -262,7 +262,7 @@ class VersioningEngine {
     baseVersion: string,
     otherVersion: string,
     userId: string,
-  ): Promise<{ merged: WorkflowCanvas; conflicts: any[] }> {
+  ): Promise<{ merged: WorkflowCanvas; conflicts: unknown[] }> {
     const base = await this.getVersion(workflowId, baseVersion);
     const other = await this.getVersion(workflowId, otherVersion);
 
@@ -270,7 +270,7 @@ class VersioningEngine {
       throw new Error('One or both versions not found');
     }
 
-    const conflicts: any[] = [];
+    const conflicts: unknown[] = [];
     const merged = { ...base.canvas };
 
     // Simple merge: take blocks from both, flag conflicts
@@ -310,7 +310,7 @@ class VersioningEngine {
   /**
    * Get version by tag
    */
-  async getVersionByTag(workflowId: string, tag: string): Promise<WorkflowVersion | null> {
+  async getVersionByTag(_workflowId: string, _tag: string): Promise<WorkflowVersion | null> {
     // Query by tag
     return null;
   }

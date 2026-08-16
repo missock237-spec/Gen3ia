@@ -128,7 +128,7 @@ export class CreatorPayoutService {
       });
 
       log.info('payout_processed', { payoutId, success: result.success });
-    } catch (error) {
+    } catch (_error) {
       await prisma.creatorPayout.update({
         where: { id: payoutId },
         data: { status: 'failed' },

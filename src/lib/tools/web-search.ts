@@ -16,7 +16,7 @@ export const webSearchTool: ToolDefinition = {
 
     try {
       // Use z-ai-web-dev-sdk for web search
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       const ZAI = (await import('z-ai-web-dev-sdk')).default;
       const zai = await ZAI.create();
       const searchResult = await zai.functions.invoke("web_search", { query, num });

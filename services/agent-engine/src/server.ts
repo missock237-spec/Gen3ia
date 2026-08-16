@@ -174,6 +174,7 @@ app.post("/checkpoint", async (c) => {
 // Port
 const port = parseInt(process.env.PORT ?? "4000");
 
+// eslint-disable-next-line import/no-anonymous-default-export
 export default {
   port,
   fetch: app.fetch,

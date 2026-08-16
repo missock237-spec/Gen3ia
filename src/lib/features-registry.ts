@@ -10,7 +10,7 @@
 // Ce registre alimente GET /api/health/features (public).
 // ============================================================
 
-export type FeatureStatus = 'prod' | 'beta' | 'mock' | 'disabled';
+export type FeatureStatus = 'prod' | 'beta' | 'mock' | 'disabled' | 'active';
 
 export interface Feature {
   id: string;

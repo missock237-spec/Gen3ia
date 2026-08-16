@@ -88,10 +88,10 @@ export async function getUserFeedback(
 
   try {
     const all = await db.feedback.findMany({ where: {} });
-    return (all as Record<string, unknown>[])
+    return (all as unknown as FeedbackRecord[])
       .filter(f => f.userId === userId)
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime())
-      .slice(offset, offset + limit) as FeedbackRecord[];
+      .slice(offset, offset + limit);
   } catch {
     return [];
   }
@@ -107,14 +107,14 @@ export async function getAllFeedback(
 
   try {
     const all = await db.feedback.findMany({ where: {} });
-    let filtered = all as Record<string, unknown>[];
+    let filtered = all as unknown as FeedbackRecord[];
 
     if (status) filtered = filtered.filter(f => f.status === status);
     if (type) filtered = filtered.filter(f => f.type === type);
 
     return filtered
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime())
-      .slice(0, limit) as FeedbackRecord[];
+      .slice(0, limit);
   } catch {
     return [];
   }

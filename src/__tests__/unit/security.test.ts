@@ -140,7 +140,7 @@ describe('Security Systems - Production Tests', () => {
     });
 
     it('should require valid API key for all requests', () => {
-      const { apiKey } = apiSignatureVerifier.generateAPIKey();
+      const { _apiKey } = apiSignatureVerifier.generateAPIKey();
       const invalidVerification = apiSignatureVerifier.verifySignature(
         {
           body: {},

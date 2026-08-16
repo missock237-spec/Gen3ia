@@ -14,7 +14,7 @@ import { applySecurity } from '@/lib/security';
 export const dynamic = "force-dynamic";
 const log = createLogger('image-status');
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
   if (secError || !auth) {
     return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
   try {
     const generation = await db.imageGeneration.findUnique({
-      where: { id: params.id },
+      where: { id: (await params).id },
       select: {
         id: true,
         status: true,

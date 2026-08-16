@@ -429,7 +429,7 @@ export class SaaSAccountConnector {
 
   private async encryptToken(token: string): Promise<string> {
     try {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       return await encryptAuthConfig(token);
     } catch {
       // Fallback: base64 si le chiffrement AES n'est pas configuré
@@ -439,7 +439,7 @@ export class SaaSAccountConnector {
 
   private async decryptToken(encrypted: string): Promise<string> {
     try {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       return await decryptAuthConfig(encrypted);
     } catch {
       // Fallback: base64

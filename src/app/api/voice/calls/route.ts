@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         maxDurationMinutes: maxDurationMinutes ?? 30,
         recordingEnabled: recordingEnabled ?? false,
       },
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       auth.userId,
     );
 

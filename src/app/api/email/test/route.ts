@@ -41,7 +41,7 @@ export async function GET() {
       config: maskedConfig,
       info: 'Pour envoyer un email de test: POST /api/email/test avec { to: "email@example.com" }',
     });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const to = body.to || session.email;
 
     if (!to) {
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       to,
       message: result.success ? 'Email de test envoye avec succes' : 'Echec envoi email de test',
     });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }

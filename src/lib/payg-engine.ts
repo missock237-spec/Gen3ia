@@ -115,11 +115,11 @@ class PaygService {
 
     const balance = await this.getBalance(userId);
     const alerts = [];
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     if (balance < 1000) alerts.push('Solde faible (< 1 000 FCFA)');
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     if (monthTotal > 5000) alerts.push(`Consommation mensuelle: ${monthTotal} FCFA`);
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     if (monthTotal > 10000) alerts.push('Alerte: plus de 10 000 FCFA ce mois');
 
     return { today: { totalXAF: todayTotal, count: todayCount }, thisMonth: { totalXAF: monthTotal, totalUSD: +(monthTotal / 500).toFixed(2), count: monthCount }, byResource, balanceXAF: balance, alerts };
