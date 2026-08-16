@@ -1,0 +1,38 @@
+# ============================================================
+# Notification post-déploiement — envoie un webhook quand
+# Vercel termine un déploiement de production
+# ============================================================
+name: Notify Deploy
+
+on:
+  deployment_status:
+    states: [success, failure]
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  notify:
+    name: Notify Deploy Status
+    runs-on: ubuntu-latest
+    if: github.event.deployment_status.state == 'success' || github.event.deployment_status.state == 'failure'
+    steps:
+      - name: Send notification
+        run: |
+          STATE="${{ github.event.deployment_status.state }}"
+          URL="${{ github.event.deployment_status.target_url }}"
+          ENV="${{ github.event.deployment.environment }}"
+          
+          echo "Deploy status: $STATE"
+          echo "URL: $URL"
+          echo "Environment: $ENV"
+          
+          # Webhook optionnel vers Discord/Slack
+          if [ -n "${{ secrets.DEPLOY_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"content\": \"🚀 Gen3ia deploy ($ENV): **$STATE**\nURL: $URL\"
+              }"
+          fi
