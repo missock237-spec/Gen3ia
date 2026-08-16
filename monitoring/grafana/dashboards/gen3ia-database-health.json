@@ -1,0 +1,76 @@
+{
+  "title": "Gen3ia - Santé Base de Données",
+  "uid": "gen3ia-database-health",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["gen3ia", "database", "postgres"],
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "title": "Utilisateurs enregistrés",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "targets": [{ "expr": "gen3ia_users_total", "legendFormat": "Utilisateurs" }]
+    },
+    {
+      "title": "Abonnements actifs",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "targets": [{ "expr": "gen3ia_active_subscriptions_total", "legendFormat": "Abonnements" }]
+    },
+    {
+      "title": "Total exécutions",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "targets": [{ "expr": "gen3ia_executions_total", "legendFormat": "Exécutions" }]
+    },
+    {
+      "title": "Sessions terminal",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "targets": [{ "expr": "gen3ia_terminal_sessions_total", "legendFormat": "Sessions" }]
+    },
+    {
+      "title": "Évolution des utilisateurs",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 4 },
+      "targets": [{ "expr": "gen3ia_users_total", "legendFormat": "Utilisateurs" }]
+    },
+    {
+      "title": "Évolution des exécutions",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 4 },
+      "targets": [{ "expr": "rate(gen3ia_executions_total[1d])", "legendFormat": "exec/jour" }]
+    },
+    {
+      "title": "Métriques système",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 12 },
+      "description": "Vue d'ensemble des métriques clés",
+      "targets": [
+        { "expr": "gen3ia_users_total", "legendFormat": "Utilisateurs" },
+        { "expr": "gen3ia_active_agents_total", "legendFormat": "Agents actifs" },
+        { "expr": "gen3ia_active_subscriptions_total", "legendFormat": "Abonnements" },
+        { "expr": "gen3ia_executions_total", "legendFormat": "Exécutions" },
+        { "expr": "gen3ia_credits_used_total", "legendFormat": "Crédits utilisés" },
+        { "expr": "gen3ia_api_keys_total", "legendFormat": "Clés API" },
+        { "expr": "gen3ia_webhooks_total", "legendFormat": "Webhooks" },
+        { "expr": "gen3ia_workflows_total", "legendFormat": "Workflows" },
+        { "expr": "gen3ia_conversations_total", "legendFormat": "Conversations" }
+      ],
+      "transformations": [{
+        "id": "organize",
+        "options": {
+          "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true},
+          "renameByName": {"Value": "Valeur"}
+        }
+      }]
+    },
+    {
+      "title": "Uptime du service",
+      "type": "graph",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 12 },
+      "targets": [{ "expr": "gen3ia_uptime_seconds", "legendFormat": "Uptime (s)" }]
+    }
+  ]
+}
