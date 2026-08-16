@@ -1,0 +1,66 @@
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1m
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+    compress:
+      compress: {}
+    auth:
+      basicAuth:
+        users:
+          - "admin:$2y$10$ChangeMePleaseStaging"
+  routers:
+    gen3ia-app:
+      rule: "Host(`${STAGING_DOMAIN:-localhost}`)"
+      entryPoints:
+        - websecure
+      service: gen3ia
+      middlewares:
+        - secure-headers
+        - rate-limit
+        - compress
+      tls:
+        certResolver: staging
+    gen3ia-api:
+      rule: "Host(`${STAGING_DOMAIN:-localhost}`) && PathPrefix(`/api/`)"
+      entryPoints:
+        - websecure
+      service: gen3ia
+      middlewares:
+        - secure-headers
+        - rate-limit
+      tls:
+        certResolver: staging
+  services:
+    gen3ia:
+      loadBalancer:
+        servers:
+          - url: "http://app:3000"
+          - url: "http://app-2:3001"
+        healthCheck:
+          path: /api/health
+          interval: 30s
+          timeout: 5s
+        sticky:
+          cookie:
+            name: gen3ia_staging
+            httpOnly: true
+            secure: true
+            sameSite: strict
