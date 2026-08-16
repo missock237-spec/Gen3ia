@@ -1,7 +1,7 @@
 /**
  * Credit System — AI Usage Credit Tracking & Management
  *
- * Track AI usage credits (tokens, images, videos, voice, code execution).
+ * Track AI usage credits (tokens, images, videos, voice).
  * Credit packages: free (100), pro (5000), enterprise (unlimited).
  */
 
@@ -15,21 +15,19 @@ const log = createLogger('credits');
 // ---------------------------------------------------------------------------
 
 export type CreditType = 'purchase' | 'usage' | 'refund' | 'bonus' | 'adjustment';
-export type ResourceType = 'agent_run' | 'image_gen' | 'video_gen' | 'voice' | 'token' | 'credit_purchase' | 'plan_upgrade' | 'report_gen' | 'code_execution' | 'ad_reward';
+export type ResourceType = 'agent_run' | 'image_gen' | 'video_gen' | 'voice' | 'token' | 'credit_purchase' | 'plan_upgrade' | 'report_gen';
 
 export interface CreditCheckResult {
   hasCredits: boolean;
   balance: number;
   required: number;
   shortfall?: number;
-  allowed?: boolean;
-  remaining?: number;
 }
 
 export interface DeductCreditsInput {
   userId: string;
   amount: number;
-  resourceType: string;
+  resourceType: ResourceType;
   resourceId?: string;
   description?: string;
   metadata?: Record<string, unknown>;
@@ -39,7 +37,7 @@ export interface AddCreditsInput {
   userId: string;
   amount: number;
   type: CreditType;
-  resourceType: string;
+  resourceType: ResourceType;
   resourceId?: string;
   description?: string;
   metadata?: Record<string, unknown>;
@@ -59,32 +57,33 @@ export interface UsageHistoryEntry {
 // Credit Costs per Resource Type
 // ---------------------------------------------------------------------------
 
-export const CREDIT_COSTS: Record<string, number> = {
-  agent_run: 5,
-  image_gen: 10,
-  video_gen: 50,
-  voice: 3,
-  token: 1,
-  credit_purchase: 0,
-  plan_upgrade: 0,
-  report_gen: 2,
-  code_execution: 1,    // 1 credit per code execution
-  ad_reward: 0,
+export const CREDIT_COSTS: Record<ResourceType, number> = {
+  agent_run: 5,        // 5 credits per agent run
+  image_gen: 10,       // 10 credits per image
+  video_gen: 50,       // 50 credits per video
+  voice: 3,            // 3 credits per voice operation
+  token: 1,            // 1 credit per 1K tokens
+  credit_purchase: 0,  // No cost (adding credits)
+  plan_upgrade: 0,     // No cost (bonus credits)
+  report_gen: 2,       // 2 credits per report
 };
 
-// ===================================================================
-// Updated checkCredits to return allowed/remaining
-// ===================================================================
+// ---------------------------------------------------------------------------
+// Core Methods
+// ---------------------------------------------------------------------------
 
+/**
+ * Check if user has enough credits
+ */
 export async function checkCredits(
   userId: string,
-  requiredCredits: number,
-  resourceType?: string
-): Promise<CreditCheckResult & { allowed: boolean; remaining: number }> {
+  requiredCredits: number
+): Promise<CreditCheckResult> {
   const balance = await getCreditBalance(userId);
 
   if (balance === -1) {
-    return { hasCredits: true, balance: -1, required: requiredCredits, allowed: true, remaining: -1 };
+    // Unlimited credits
+    return { hasCredits: true, balance: -1, required: requiredCredits };
   }
 
   const hasCredits = balance >= requiredCredits;
@@ -92,12 +91,13 @@ export async function checkCredits(
     hasCredits,
     balance,
     required: requiredCredits,
-    allowed: hasCredits,
-    remaining: hasCredits ? balance - requiredCredits : 0,
     shortfall: hasCredits ? undefined : requiredCredits - balance,
   };
 }
 
+/**
+ * Deduct credits from user's balance
+ */
 export async function deductCredits(input: DeductCreditsInput): Promise<{
   success: boolean;
   newBalance: number;
@@ -105,6 +105,7 @@ export async function deductCredits(input: DeductCreditsInput): Promise<{
 }> {
   const balance = await getCreditBalance(input.userId);
 
+  // Unlimited credits — always succeed
   if (balance === -1) {
     const transaction = await db.creditTransaction.create({
       data: {
@@ -118,9 +119,11 @@ export async function deductCredits(input: DeductCreditsInput): Promise<{
         metadata: JSON.stringify(input.metadata || {}),
       },
     });
+
     return { success: true, newBalance: -1, transactionId: transaction.id };
   }
 
+  // Check if enough credits
   if (balance < input.amount) {
     log.warn('Insufficient credits', {
       userId: input.userId,
@@ -128,10 +131,12 @@ export async function deductCredits(input: DeductCreditsInput): Promise<{
       required: input.amount,
       resourceType: input.resourceType,
     });
+
     return { success: false, newBalance: balance, transactionId: '' };
   }
 
   const newBalance = balance - input.amount;
+
   const transaction = await db.creditTransaction.create({
     data: {
       userId: input.userId,
@@ -155,6 +160,9 @@ export async function deductCredits(input: DeductCreditsInput): Promise<{
   return { success: true, newBalance, transactionId: transaction.id };
 }
 
+/**
+ * Add credits to user's balance
+ */
 export async function addCredits(input: AddCreditsInput): Promise<{
   newBalance: number;
   transactionId: string;
@@ -175,56 +183,77 @@ export async function addCredits(input: AddCreditsInput): Promise<{
     },
   });
 
-  log.info('Credits added', { userId: input.userId, amount: input.amount, newBalance, type: input.type });
+  log.info('Credits added', {
+    userId: input.userId,
+    amount: input.amount,
+    newBalance,
+    type: input.type,
+  });
+
   return { newBalance, transactionId: transaction.id };
 }
 
+/**
+ * Get current credit balance for a user
+ * Returns -1 for unlimited plans
+ */
 export async function getCreditBalance(userId: string): Promise<number> {
+  // Check subscription for unlimited plans
   const subscription = await db.subscription.findFirst({
-    where: { userId, status: 'active' },
-    select: { plan: true },
+    where: [
+      { field: 'userId', op: '==', value: userId },
+      { field: 'status', op: '==', value: 'active' },
+    ],
+    select: ['plan'],
   });
 
   if (subscription?.plan === 'enterprise') {
-    return -1;
+    return -1; // Unlimited
   }
 
+  // Get the latest transaction balance
   const latestTransaction = await db.creditTransaction.findFirst({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    select: { balance: true },
+    where: [{ field: 'userId', op: '==', value: userId }],
+    orderBy: [{ field: 'createdAt', direction: 'desc' }],
+    select: ['balance'],
   });
 
-  return latestTransaction?.balance ?? 0;
+  return (latestTransaction?.balance as number) ?? 0;
 }
 
+/**
+ * Get usage history for a user
+ */
 export async function getUsageHistory(
   userId: string,
   options?: {
     type?: CreditType;
-    resourceType?: string;
+    resourceType?: ResourceType;
     limit?: number;
     offset?: number;
     startDate?: Date;
     endDate?: Date;
   }
-): Promise<{ entries: UsageHistoryEntry[]; total: number }> {
-  const where: Record<string, unknown> = { userId };
-  if (options?.type) where.type = options.type;
-  if (options?.resourceType) where.resourceType = options.resourceType;
-  if (options?.startDate || options?.endDate) {
-    where.createdAt = {
-      ...(options.startDate ? { gte: options.startDate } : {}),
-      ...(options.endDate ? { lte: options.endDate } : {}),
-    };
-  }
+): Promise<{
+  entries: UsageHistoryEntry[];
+  total: number;
+}> {
+  // La façade Firestore attend un tableau de FirestoreWhereOp[]
+  const where: Array<{ field: string; op: '==' | '>=' | '<='; value: unknown }> = [
+    { field: 'userId', op: '==', value: userId },
+  ];
+
+  if (options?.type) where.push({ field: 'type', op: '==', value: options.type });
+  if (options?.resourceType) where.push({ field: 'resourceType', op: '==', value: options.resourceType });
+  if (options?.startDate) where.push({ field: 'createdAt', op: '>=', value: options.startDate });
+  if (options?.endDate) where.push({ field: 'createdAt', op: '<=', value: options.endDate });
 
   const [entries, total] = await Promise.all([
     db.creditTransaction.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
-      take: options?.limit || 50,
-      skip: options?.offset || 0,
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      limit: options?.limit || 50,
+      offset: options?.offset || 0,
     }),
     db.creditTransaction.count({ where }),
   ]);
@@ -232,24 +261,30 @@ export async function getUsageHistory(
   return {
     entries: entries.map((e) => ({
       id: e.id,
-      amount: e.amount,
-      balance: e.balance,
-      type: e.type,
-      resourceType: e.resourceType,
-      description: e.description,
-      createdAt: e.createdAt.toISOString(),
+      amount: e.amount as number,
+      balance: e.balance as number,
+      type: e.type as string,
+      resourceType: e.resourceType as string,
+      description: e.description as string,
+      createdAt: (e.createdAt as Date).toISOString(),
     })),
     total,
   };
 }
 
+/**
+ * Initialize credits for a new user (free plan)
+ */
 export async function initializeUserCredits(userId: string): Promise<void> {
-  const existing = await db.creditTransaction.findFirst({ where: { userId } });
-  if (existing) return;
+  const existing = await db.creditTransaction.findFirst({
+    where: [{ field: 'userId', op: '==', value: userId }],
+  });
+
+  if (existing) return; // Already initialized
 
   await addCredits({
     userId,
-    amount: 100,
+    amount: 100, // Free tier: 100 credits
     type: 'bonus',
     resourceType: 'plan_upgrade',
     description: 'Welcome bonus: 100 free credits',
@@ -259,22 +294,44 @@ export async function initializeUserCredits(userId: string): Promise<void> {
   log.info('User credits initialized', { userId });
 }
 
+/**
+ * Purchase credits package
+ */
 export async function purchaseCredits(
   userId: string,
   packageId: string
-): Promise<{ checkoutUrl: string; sessionId: string }> {
+): Promise<{
+  checkoutUrl: string;
+  sessionId: string;
+}> {
   const { CREDIT_PACKAGES } = await import('./plans');
   const pkg = CREDIT_PACKAGES.find((p) => p.id === packageId);
-  if (!pkg) throw new Error(`Invalid credit package: ${packageId}`);
 
+  if (!pkg) {
+    throw new Error(`Invalid credit package: ${packageId}`);
+  }
+
+  // Create a Stripe checkout session for one-time payment
   const { createCheckoutSession } = await import('./stripe-client');
+
   const result = await createCheckoutSession({
     userId,
+// @ts-ignore — type narrowing pending, see refactor ticket
     priceId: pkg.stripePriceId,
     planId: 'credit_purchase',
     mode: 'payment',
   });
 
-  log.info('Credit purchase initiated', { userId, packageId, credits: pkg.credits, price: pkg.price });
-  return { checkoutUrl: result.url, sessionId: result.sessionId };
+  // Store the credit amount in the session metadata (handled by stripe-client)
+  log.info('Credit purchase initiated', {
+    userId,
+    packageId,
+    credits: pkg.credits,
+    price: pkg.price,
+  });
+
+  return {
+    checkoutUrl: result.url,
+    sessionId: result.sessionId,
+  };
 }
