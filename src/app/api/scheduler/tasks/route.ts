@@ -8,6 +8,11 @@ import { scheduleTask, getUpcomingTasks, type AgentAction } from '@/lib/schedule
 import { createMonitor } from '@/lib/scheduler/web-monitor';
 import { scheduleReport } from '@/lib/scheduler/auto-reporter';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS() {
   const response = new NextResponse(null, { status: 204 });
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -114,7 +119,7 @@ export async function POST(request: NextRequest) {
         break;
       }
       case 'auto_report': {
-        const { reportType, frequency, deliveryMethods, email, whatsappNumber, customPrompt } = payload || {};
+        const { reportType, frequency, deliveryMethods, email, customPrompt } = payload || {};
         if (!reportType || !frequency) {
           return secureResponse(
             NextResponse.json(
@@ -131,7 +136,6 @@ export async function POST(request: NextRequest) {
           frequency,
           deliveryMethods: deliveryMethods || ['dashboard'],
           email,
-          whatsappNumber,
           agentId,
           customPrompt,
         });
