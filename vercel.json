@@ -2,7 +2,7 @@
   "name": "gen3ia",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "next build",
+  "buildCommand": "npm run build",
   "installCommand": "npm install --legacy-peer-deps",
   "outputDirectory": ".next",
   "regions": [
@@ -23,9 +23,6 @@
     }
   ],
   "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "develop": true
-    }
+    "deploymentEnabled": true
   }
 }
