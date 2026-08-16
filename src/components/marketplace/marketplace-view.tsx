@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { MarketplaceTab, MarketplaceItem, InstalledItem, CreatorForm, ItemType } from './types';
 
-export function MarketplaceView({ _userId }: { userId: string }) {
+export function MarketplaceView({ userId }: { userId: string }) {
   const [activeTab, setActiveTab] = useState<MarketplaceTab>('loops');
   const [items, setItems] = useState<Record<ItemType, MarketplaceItem[]>>({ skill: [], loop: [], customization: [] });
   const [installed, setInstalled] = useState<InstalledItem[]>([]);

@@ -136,7 +136,7 @@ async function callEdgeTTS(text: string, _language: string): Promise<TTSResult> 
 }
 
 export async function synthesizeSpeech(options: TTSOptions): Promise<TTSResult> {
-  const { text, voice, speed = 1.0, _pitch = 1.0, language = 'en-US', provider } = options;
+  const { text, voice, speed = 1.0, pitch = 1.0, language = 'en-US', provider } = options;
 
   if (!text || text.length === 0) {
     throw new Error('Le texte à synthétiser est vide');

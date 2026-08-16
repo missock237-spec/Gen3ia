@@ -11,8 +11,8 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
   Play, Terminal, Monitor, Clock, Code, FileCode,
-  Loader2, Save, FolderOpen, Plus, _Download, Share2, File,
-  Files, X, AlertCircle, Menu, _ChevronDown,
+  Loader2, Save, FolderOpen, Plus, Download, Share2, File,
+  Files, X, AlertCircle, Menu, ChevronDown,
 } from 'lucide-react';
 
 interface CodeFile { name: string; content: string; language: string; }
