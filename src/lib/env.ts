@@ -1,13 +1,47 @@
-function requiredEnv(name: string): string {
-  const value = process.env[name]
+import { z } from 'zod';
 
-  if (!value || value.trim() === '') {
-    throw new Error(`${name} is required`)
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL est requis'),
+  AUTH_SECRET: z.string().min(32, 'AUTH_SECRET doit faire au moins 32 caracteres'),
+  REDIS_URL: z.string().optional(),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  HUGGINGFACE_API_KEY: z.string().optional(),
+
+  EMAIL_FROM: z.string().email().default('noreply@genova.ai'),
+});
+
+export type Env = z.infer<typeof envSchema>;
+
+let _env: Env | null = null;
+
+export function getEnv(): Env {
+  if (_env) return _env;
+  const result = envSchema.safeParse(process.env);
+  if (!result.success) {
+    console.warn('Variables d\'environnement invalides:');
+    for (const issue of result.error.issues) {
+      console.warn(`  - ${issue.path.join('.')}: ${issue.message}`);
+    }
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Variables d\'environnement invalides');
+    }
+    _env = {
+      NODE_ENV: 'development',
+      NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+      LOG_LEVEL: 'debug',
+      DATABASE_URL: process.env.DATABASE_URL || 'postgresql://localhost:5432/genova',
+      AUTH_SECRET: process.env.AUTH_SECRET || 'dev-secret-key-32-characters-minimum!!',
+    } as Env;
+    return _env;
   }
-
-  return value
+  _env = result.data;
+  return _env;
 }
 
-export const env = {
-  DATABASE_URL: requiredEnv('DATABASE_URL'),
-}
+export const env = getEnv();
