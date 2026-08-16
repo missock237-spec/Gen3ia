@@ -1,397 +1,173 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { apiFetch } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { WorkflowCard } from './workflow-card';
-import { WorkflowBuilder } from './workflow-builder';
-import { WorkflowExecution } from './workflow-execution';
-import { EmptyState } from '@/components/shared/empty-state';
-import { Plus, GitBranch, Loader2, Trash2, Play } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect, useCallback } from 'react';
+import { GitBranch, Plus, Play, Settings, Users, Loader2, Trash2, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
-interface Agent {
-  id: string;
-  name: string;
-  type: string;
-  status: string;
-}
-
-interface WorkflowData {
+interface Workflow {
   id: string;
   name: string;
   description: string;
-  status: string;
-  steps: string;
-  trigger: string;
-  _count?: { tasks: number };
-  createdAt: string;
+  status: 'active' | 'draft' | 'paused' | 'completed';
+  stepCount: number;
   updatedAt: string;
-  tasks?: Array<{
-    id: string;
-    title: string;
-    status: string;
-    priority: string;
-    agent?: { name: string; type: string } | null;
-  }>;
+  agentIds?: string[];
 }
 
 export function CoordinationView() {
-  const { toast } = useToast();
-  const [workflows, setWorkflows] = useState<WorkflowData[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [viewWorkflow, setViewWorkflow] = useState<WorkflowData | null>(null);
-  const [activeTab, setActiveTab] = useState('list');
-
-  // Create form
-  const [form, setForm] = useState({
-    name: '',
-    description: '',
-    steps: [{ title: '', description: '', agentId: '', priority: 'medium' }] as Array<{ title: string; description: string; agentId: string; priority: string }>,
-  });
+  const [error, setError] = useState<string | null>(null);
+  const [executingId, setExecutingId] = useState<string | null>(null);
 
   const loadWorkflows = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const data = await apiFetch<WorkflowData[]>('/api/workflows');
-      setWorkflows(data);
-    } catch (error) {
-      console.error('Failed to load workflows:', error);
+      const res = await fetch('/api/workflows');
+      if (!res.ok) throw new Error(`Erreur ${res.status}`);
+      const data = await res.json();
+      setWorkflows(Array.isArray(data) ? data : data?.workflows || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur de chargement');
+      setWorkflows([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const loadAgents = useCallback(async () => {
-    try {
-      const data = await apiFetch<Agent[]>('/api/agents');
-      setAgents(data);
-    } catch (error) {
-      console.error('Failed to load agents:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadWorkflows();
-    loadAgents();
-  }, [loadWorkflows, loadAgents]);
-
-  const addStep = () => {
-    setForm((prev) => ({
-      ...prev,
-      steps: [...prev.steps, { title: '', description: '', agentId: '', priority: 'medium' }],
-    }));
-  };
-
-  const removeStep = (index: number) => {
-    setForm((prev) => ({
-      ...prev,
-      steps: prev.steps.filter((_, i) => i !== index),
-    }));
-  };
-
-  const updateStep = (index: number, field: string, value: string) => {
-    setForm((prev) => ({
-      ...prev,
-      steps: prev.steps.map((s, i) => (i === index ? { ...s, [field]: value } : s)),
-    }));
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name) {
-      toast({ title: 'Erreur', description: 'Nom du workflow requis', variant: 'destructive' });
-      return;
-    }
-
-    try {
-      await apiFetch('/api/workflows', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: form.name,
-          description: form.description,
-          steps: form.steps,
-          trigger: { type: 'manual' },
-        }),
-      });
-
-      toast({ title: 'Workflow créé', description: `${form.name} a été créé avec succès` });
-      setCreateOpen(false);
-      setForm({ name: '', description: '', steps: [{ title: '', description: '', agentId: '', priority: 'medium' }] });
-      loadWorkflows();
-    } catch {
-      toast({ title: 'Erreur', description: 'Erreur serveur', variant: 'destructive' });
-    }
-  };
+  useEffect(() => { let _cancelled = false; (async () => { if (!_cancelled) { try { await loadWorkflows(); } catch {} } })(); return () => { _cancelled = true; }; }, [loadWorkflows]);
 
   const handleExecute = async (id: string) => {
+    setExecutingId(id);
     try {
-      await apiFetch(`/api/workflows/${id}/execute`, { method: 'POST' });
-      toast({ title: 'Workflow exécuté', description: 'Les tâches ont été créées' });
-      loadWorkflows();
-    } catch {
-      toast({ title: 'Erreur', description: 'Erreur lors de l\'exécution', variant: 'destructive' });
-    }
+      const res = await fetch(`/api/workflows/${id}/execute`, { method: 'POST' });
+      if (res.ok) {
+        setWorkflows(prev => prev.map(w => w.id === id ? { ...w, status: 'active' as const } : w));
+      }
+    } catch {}
+    finally { setExecutingId(null); }
   };
 
-  const handleDelete = async () => {
-    if (!deleteId) return;
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer ce workflow définitivement ?')) return;
     try {
-      await apiFetch(`/api/workflows/${deleteId}`, { method: 'DELETE' });
-      setWorkflows((prev) => prev.filter((w) => w.id !== deleteId));
-      toast({ title: 'Workflow supprimé' });
-    } catch {
-      toast({ title: 'Erreur', description: 'Erreur lors de la suppression', variant: 'destructive' });
-    } finally {
-      setDeleteId(null);
-    }
+      await fetch(`/api/workflows/${id}`, { method: 'DELETE' });
+      setWorkflows(prev => prev.filter(w => w.id !== id));
+    } catch {}
   };
 
-  const handleView = async (workflow: WorkflowData) => {
-    try {
-      const data = await apiFetch<WorkflowData>(`/api/workflows/${workflow.id}`);
-      setViewWorkflow(data);
-    } catch {
-      toast({ title: 'Erreur', description: 'Erreur lors du chargement', variant: 'destructive' });
-    }
+  const statusConfig: Record<string, { label: string; class: string }> = {
+    active: { label: 'Actif', class: 'bg-green-500/10 text-green-500' },
+    draft: { label: 'Brouillon', class: 'bg-muted text-muted-foreground' },
+    paused: { label: 'En pause', class: 'bg-yellow-500/10 text-yellow-500' },
+    completed: { label: 'Terminé', class: 'bg-blue-500/10 text-blue-500' },
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <GitBranch className="h-5 w-5 text-primary" />
-            Coordination multi-agents
-          </h2>
-          <p className="text-sm text-muted-foreground">{workflows.length} workflow(s) configuré(s)</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <GitBranch className="h-6 w-6 text-primary" />
+            Coordination
+          </h1>
+          <p className="text-muted-foreground">Workflows multi-agents — Orchestrez vos agents IA</p>
         </div>
-        <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+        <button className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium">
           <Plus className="h-4 w-4" />
           Nouveau workflow
-        </Button>
+        </button>
       </div>
 
-      {viewWorkflow ? (
-        <div className="space-y-4">
-          <Button variant="outline" onClick={() => setViewWorkflow(null)}>
-            ← Retour aux workflows
-          </Button>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList>
-              <TabsTrigger value="list">Vue d&apos;ensemble</TabsTrigger>
-              <TabsTrigger value="builder">Constructeur</TabsTrigger>
-              <TabsTrigger value="execution">Exécution</TabsTrigger>
-            </TabsList>
-            <TabsContent value="list" className="mt-4">
-              <Card className="border-border/50 p-4">
-                <h3 className="font-semibold mb-2">{viewWorkflow.name}</h3>
-                <p className="text-sm text-muted-foreground mb-3">{viewWorkflow.description}</p>
-                <div className="flex gap-2">
-                  <Badge variant="outline">{viewWorkflow.status}</Badge>
-                  <Button size="sm" className="gap-1" onClick={() => handleExecute(viewWorkflow.id)}>
-                    <Play className="h-3 w-3" /> Exécuter
-                  </Button>
-                </div>
-              </Card>
-            </TabsContent>
-            <TabsContent value="builder" className="mt-4">
-              <WorkflowBuilder
-                steps={(() => { try { return JSON.parse(viewWorkflow.steps || '[]'); } catch { return []; } })()}
-                workflowName={viewWorkflow.name}
-                workflowStatus={viewWorkflow.status}
-              />
-            </TabsContent>
-            <TabsContent value="execution" className="mt-4">
-              <WorkflowExecution
-                workflowName={viewWorkflow.name}
-                tasks={viewWorkflow.tasks || []}
-              />
-            </TabsContent>
-          </Tabs>
-        </div>
-      ) : workflows.length === 0 ? (
-        <EmptyState
-          icon={GitBranch}
-          title="Aucun workflow"
-          description="Créez des workflows pour coordonner vos agents IA dans des processus automatisés"
-          actionLabel="Créer un workflow"
-          onAction={() => setCreateOpen(true)}
-        />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {workflows.map((workflow) => (
-            <WorkflowCard
-              key={workflow.id}
-              workflow={workflow}
-              onExecute={handleExecute}
-              onDelete={setDeleteId}
-              onView={handleView}
-            />
-          ))}
-        </div>
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
-      {/* Create Workflow Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Créer un workflow</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nom du workflow</Label>
-              <Input
-                placeholder="Ex: Campagne de prospection"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                placeholder="Décrivez l'objectif du workflow..."
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={2}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Étapes</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addStep}>
-                  <Plus className="h-3 w-3 mr-1" /> Ajouter
-                </Button>
-              </div>
-
-              {form.steps.map((step, i) => (
-                <div key={i} className="p-3 rounded-lg border border-border/50 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-primary">Étape {i + 1}</span>
-                    {form.steps.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => removeStep(i)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    )}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : workflows.length === 0 ? (
+        <div className="text-center py-16 bg-card rounded-xl border border-border">
+          <GitBranch className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">Aucun workflow</h3>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-6">
+            Créez votre premier workflow multi-agents pour automatiser vos processus
+          </p>
+          <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium transition-colors">
+            <Plus className="h-4 w-4 inline mr-1" />
+            Créer un workflow
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {workflows.map((wf) => {
+            const status = statusConfig[wf.status] || statusConfig.draft;
+            return (
+              <div
+                key={wf.id}
+                className="bg-card rounded-xl border border-border p-5 hover:shadow-md hover:border-primary/20 transition-all group"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <GitBranch className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold truncate">{wf.name}</h3>
+                      <p className="text-xs text-muted-foreground">{wf.stepCount} étape{'é'}{wf.stepCount > 1 ? 's' : ''}</p>
+                    </div>
                   </div>
-                  <Input
-                    placeholder="Titre de l'étape"
-                    value={step.title}
-                    onChange={(e) => updateStep(i, 'title', e.target.value)}
-                  />
-                  <Input
-                    placeholder="Description (optionnel)"
-                    value={step.description}
-                    onChange={(e) => updateStep(i, 'description', e.target.value)}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Select
-                      value={step.agentId}
-                      onValueChange={(value) => updateStep(i, 'agentId', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Agent" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {agents.map((agent) => (
-                          <SelectItem key={agent.id} value={agent.id}>
-                            {agent.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={step.priority}
-                      onValueChange={(value) => updateStep(i, 'priority', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Basse</SelectItem>
-                        <SelectItem value="medium">Moyenne</SelectItem>
-                        <SelectItem value="high">Haute</SelectItem>
-                        <SelectItem value="critical">Critique</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${status.class}`}>
+                    {status.label}
+                  </span>
                 </div>
-              ))}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
-                Annuler
-              </Button>
-              <Button type="submit">Créer le workflow</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer ce workflow ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Cette action est irréversible. Toutes les tâches associées seront supprimées.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                  {wf.description || 'Aucune description'}
+                </p>
+                <div className="flex items-center justify-between pt-3 border-t border-border">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleExecute(wf.id)}
+                      disabled={executingId === wf.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-sm hover:bg-primary/20 transition-colors disabled:opacity-50"
+                    >
+                      {executingId === wf.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Play className="h-3 w-3" />
+                      )}
+                      Exécuter
+                    </button>
+                    <button className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground transition-colors" title="Paramètres">
+                      <Settings className="h-4 w-4" />
+                    </button>
+                    <button className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground transition-colors" title="Agents">
+                      <Users className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(wf.id)}
+                    className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
+                    title="Supprimer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mt-2 text-[10px] text-muted-foreground">
+                  Mis à jour le {new Date(wf.updatedAt).toLocaleDateString('fr-FR', {
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -8,6 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getAccessKeyManager } from '@/lib/connectors/access-key-manager';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -28,7 +33,7 @@ export async function GET(
 
     const res = NextResponse.json({ success: true, data: key });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Failed to fetch access key' }, { status: 500 });
     return secureResponse(res, request);
   }

@@ -1,35 +1,28 @@
 /**
  * API Route: /api/multimodal/screen
  * POST: Process a screen capture frame
+ * SECURITE: withAuth() + quota (traitement de frames = vision coûteuse)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
 import { createScreenShareHandler } from '@/lib/multimodal/screen-share';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
+
+
 
 // Cache handlers per user for frame comparison
+
+
+export const dynamic = "force-dynamic";
 const handlers = new Map<string, ReturnType<typeof createScreenShareHandler>>();
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
-
-export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, {
-    requireAuth: true,
-    rateLimit: { limit: 30, windowMs: 60000 },
-  });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
-    const { imageData, width, height, windowTitle, sessionId } = body;
+    const { imageData, width, height, windowTitle, _sessionId } = body;
 
     if (!imageData) {
-      const res = NextResponse.json({ error: 'Screen frame data is required' }, { status: 400 });
-      return secureResponse(res, request);
+      return NextResponse.json({ error: 'Screen frame data is required' }, { status: 400 });
     }
 
     // Get or create handler for this user
@@ -47,11 +40,14 @@ export async function POST(request: NextRequest) {
       windowTitle: windowTitle || undefined,
     });
 
-    const res = NextResponse.json({ result });
-    return secureResponse(res, request);
+    return NextResponse.json({ result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Screen frame processing failed';
-    const res = NextResponse.json({ error: message }, { status: 500 });
-    return secureResponse(res, request);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 30, windowMs: 60000 },
+  quota: true, // Le traitement de frames ecran consomme des tokens de vision LLM
+});

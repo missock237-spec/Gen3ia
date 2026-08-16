@@ -1,8 +1,20 @@
+/**
+ * Purchase System — Marketplace purchases
+ *
+ * Business rules:
+ * - Seller chooses the price
+ * - Platform commission = 25%
+ * - Seller revenue = 75%
+ * - Free listings are allowed when price = 0
+ * - Paid listings are completed after Stripe webhook confirmation
+ */
+
 import { db } from '@/lib/db'
 import Stripe from 'stripe'
-import { createLogger } from '@/lib/logger'
 
-const log = createLogger('marketplace-purchase-system')
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface PurchaseOptions {
   listingId: string
@@ -17,11 +29,6 @@ export interface PurchaseResult {
   currency: string
   status: string
   metadata: Record<string, unknown>
-  stripeSessionId?: string | null
-  stripePaymentIntentId?: string | null
-  sellerRevenue?: number
-  platformCommission?: number
-  transferStatus?: string
   createdAt: Date
   listing?: {
     name: string
@@ -36,6 +43,10 @@ export interface MarketplaceCheckoutResult {
   checkoutUrl?: string
   sessionId?: string
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function safeParse<T>(json: string, fallback: T): T {
   try {
@@ -53,13 +64,15 @@ function toStripeAmount(value: number): number {
   return Math.round(value * 100)
 }
 
-// Fixed: removed invalid `typescript: true` option — not a valid Stripe SDK option
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set')
   }
-  return new Stripe(key)
+
+  return new Stripe(key, {
+    typescript: true,
+  })
 }
 
 function getAppUrl(): string {
@@ -87,7 +100,10 @@ async function getOrCreateStripeCustomerForMarketplace(userId: string): Promise<
 
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { email: true, name: true },
+    select: {
+      email: true,
+      name: true,
+    },
   })
 
   if (!user) {
@@ -119,6 +135,10 @@ async function getListingOrThrow(listingId: string) {
   return listing
 }
 
+// ---------------------------------------------------------------------------
+// Core: Create marketplace checkout / claim
+// ---------------------------------------------------------------------------
+
 export async function purchaseListing(
   options: PurchaseOptions
 ): Promise<MarketplaceCheckoutResult> {
@@ -131,7 +151,12 @@ export async function purchaseListing(
   }
 
   const existingPurchase = await db.marketplacePurchase.findUnique({
-    where: { userId_listingId: { listingId, userId } },
+    where: {
+      userId_listingId: {
+        listingId,
+        userId,
+      },
+    },
   })
 
   if (existingPurchase) {
@@ -145,11 +170,6 @@ export async function purchaseListing(
         currency: existingPurchase.currency,
         status: existingPurchase.status,
         metadata: safeParse<Record<string, unknown>>(existingPurchase.metadata, {}),
-        stripeSessionId: existingPurchase.stripeSessionId,
-        stripePaymentIntentId: existingPurchase.stripePaymentIntentId,
-        sellerRevenue: existingPurchase.sellerRevenue,
-        platformCommission: existingPurchase.platformCommission,
-        transferStatus: existingPurchase.transferStatus,
         createdAt: existingPurchase.createdAt,
         listing: {
           name: listing.name,
@@ -164,10 +184,15 @@ export async function purchaseListing(
   const platformCommission = roundMoney(salePrice * 0.25)
   const sellerRevenue = roundMoney(salePrice - platformCommission)
 
+  // Free claim
   if (salePrice <= 0) {
-    const metadata: Record<string, unknown> = {
+    const metadata = {
       type: 'free',
+      commissionRate: 0.25,
+      sellerRate: 0.75,
       sellerUserId: listing.userId,
+      sellerRevenue,
+      platformCommission,
       claimedAt: new Date().toISOString(),
     }
 
@@ -179,9 +204,6 @@ export async function purchaseListing(
         currency: listing.currency,
         status: 'completed',
         metadata: JSON.stringify(metadata),
-        sellerRevenue: 0,
-        platformCommission: 0,
-        transferStatus: 'not_applicable',
       },
     })
 
@@ -203,11 +225,6 @@ export async function purchaseListing(
         currency: purchase.currency,
         status: purchase.status,
         metadata,
-        stripeSessionId: purchase.stripeSessionId,
-        stripePaymentIntentId: purchase.stripePaymentIntentId,
-        sellerRevenue: purchase.sellerRevenue,
-        platformCommission: purchase.platformCommission,
-        transferStatus: purchase.transferStatus,
         createdAt: purchase.createdAt,
         listing: {
           name: listing.name,
@@ -218,22 +235,18 @@ export async function purchaseListing(
     }
   }
 
+  // Paid checkout
   const stripe = getStripe()
   const customerId = await getOrCreateStripeCustomerForMarketplace(userId)
 
+  // Récupérer le compte Stripe Connect du vendeur
   const seller = await db.user.findUnique({
     where: { id: listing.userId },
-    select: {
-      stripeConnectAccountId: true,
-      stripeConnectOnboarded: true,
-      stripeConnectChargesEnabled: true,
-    },
+    select: { stripeConnectAccountId: true, stripeConnectOnboarded: true },
   })
 
   const hasConnectedSeller = !!(
-    seller?.stripeConnectAccountId &&
-    seller.stripeConnectOnboarded &&
-    seller.stripeConnectChargesEnabled
+    seller?.stripeConnectAccountId && seller.stripeConnectOnboarded
   )
 
   const session = await stripe.checkout.sessions.create({
@@ -253,6 +266,9 @@ export async function purchaseListing(
         quantity: 1,
       },
     ],
+    // Destination charge : Stripe route automatiquement 75% vers le vendeur
+    // et garde 25% (application_fee_amount) sur le compte plateforme.
+    // Ne s'applique que si le vendeur a terminé l'onboarding Connect.
     ...(hasConnectedSeller
       ? {
           payment_intent_data: {
@@ -274,15 +290,10 @@ export async function purchaseListing(
       currency: listing.currency,
       platformCommission: String(platformCommission),
       sellerRevenue: String(sellerRevenue),
+      commissionRate: '0.25',
+      sellerRate: '0.75',
       sellerConnected: String(hasConnectedSeller),
     },
-  })
-
-  log.info('Marketplace checkout session created', {
-    listingId,
-    userId,
-    sessionId: session.id,
-    hasConnectedSeller,
   })
 
   return {
@@ -292,10 +303,16 @@ export async function purchaseListing(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Core: Finalize Stripe marketplace purchase from webhook
+// ---------------------------------------------------------------------------
+
 export async function finalizeMarketplaceStripePurchase(
   session: Stripe.Checkout.Session
 ): Promise<void> {
-  if (session.metadata?.type !== 'marketplace_purchase') return
+  if (session.metadata?.type !== 'marketplace_purchase') {
+    return
+  }
 
   const listingId = session.metadata.listingId
   const userId = session.metadata.buyerUserId
@@ -308,10 +325,17 @@ export async function finalizeMarketplaceStripePurchase(
   const listing = await getListingOrThrow(listingId)
 
   const existingPurchase = await db.marketplacePurchase.findUnique({
-    where: { userId_listingId: { listingId, userId } },
+    where: {
+      userId_listingId: {
+        listingId,
+        userId,
+      },
+    },
   })
 
-  if (existingPurchase) return
+  if (existingPurchase) {
+    return
+  }
 
   const salePrice = roundMoney(Number(session.metadata.listingPrice || listing.price || 0))
   const platformCommission = roundMoney(
@@ -320,17 +344,18 @@ export async function finalizeMarketplaceStripePurchase(
   const sellerRevenue = roundMoney(
     Number(session.metadata.sellerRevenue || salePrice - platformCommission)
   )
+
   const sellerConnected = session.metadata?.sellerConnected === 'true'
 
-  const stripePaymentIntentId =
-    typeof session.payment_intent === 'string'
-      ? session.payment_intent
-      : session.payment_intent?.id || null
-
-  const metadata: Record<string, unknown> = {
+  const metadata = {
     type: 'paid',
     stripeSessionId: session.id,
-    stripePaymentIntentId,
+    stripePaymentIntentId:
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id || null,
+    commissionRate: 0.25,
+    sellerRate: 0.75,
     sellerUserId,
     sellerRevenue,
     platformCommission,
@@ -346,10 +371,10 @@ export async function finalizeMarketplaceStripePurchase(
       currency: listing.currency,
       status: 'completed',
       metadata: JSON.stringify(metadata),
-      stripeSessionId: session.id,
-      stripePaymentIntentId,
       sellerRevenue,
       platformCommission,
+      // 'transferred' = Stripe a routé les fonds au vendeur via destination charge
+      // 'platform_held' = vendeur pas encore onboardé, fonds restent sur la plateforme
       transferStatus: sellerConnected ? 'transferred' : 'platform_held',
     },
   })
@@ -361,20 +386,22 @@ export async function finalizeMarketplaceStripePurchase(
       installCount: { increment: 1 },
     },
   })
-
-  log.info('Marketplace purchase finalized', {
-    listingId,
-    userId,
-    stripeSessionId: session.id,
-    stripePaymentIntentId,
-    sellerConnected,
-  })
 }
 
-export async function verifyAccess(userId: string, listingId: string): Promise<boolean> {
+// ---------------------------------------------------------------------------
+// Core: Verify Access
+// ---------------------------------------------------------------------------
+
+export async function verifyAccess(
+  userId: string,
+  listingId: string
+): Promise<boolean> {
   const listing = await db.marketplaceListing.findUnique({
     where: { id: listingId },
-    select: { userId: true, status: true },
+    select: {
+      userId: true,
+      status: true,
+    },
   })
 
   if (!listing) return false
@@ -382,17 +409,33 @@ export async function verifyAccess(userId: string, listingId: string): Promise<b
   if (listing.userId === userId) return true
 
   const purchase = await db.marketplacePurchase.findUnique({
-    where: { userId_listingId: { listingId, userId } },
-    select: { status: true },
+    where: {
+      userId_listingId: {
+        listingId,
+        userId,
+      },
+    },
+    select: {
+      status: true,
+    },
   })
 
   return !!purchase && purchase.status === 'completed'
 }
 
+// ---------------------------------------------------------------------------
+// Core: Get Purchase History
+// ---------------------------------------------------------------------------
+
 export async function getPurchaseHistory(
   userId: string,
   options: { page?: number; limit?: number } = {}
-): Promise<{ purchases: PurchaseResult[]; total: number; page: number; totalPages: number }> {
+): Promise<{
+  purchases: PurchaseResult[]
+  total: number
+  page: number
+  totalPages: number
+}> {
   const page = Math.max(1, options.page || 1)
   const limit = Math.min(100, Math.max(1, options.limit || 20))
 
@@ -404,11 +447,17 @@ export async function getPurchaseHistory(
       take: limit,
       include: {
         listing: {
-          select: { name: true, type: true, config: true },
+          select: {
+            name: true,
+            type: true,
+            config: true,
+          },
         },
       },
     }),
-    db.marketplacePurchase.count({ where: { userId } }),
+    db.marketplacePurchase.count({
+      where: { userId },
+    }),
   ])
 
   return {
@@ -420,19 +469,12 @@ export async function getPurchaseHistory(
       currency: p.currency,
       status: p.status,
       metadata: safeParse<Record<string, unknown>>(p.metadata, {}),
-      stripeSessionId: p.stripeSessionId,
-      stripePaymentIntentId: p.stripePaymentIntentId,
-      sellerRevenue: p.sellerRevenue,
-      platformCommission: p.platformCommission,
-      transferStatus: p.transferStatus,
       createdAt: p.createdAt,
-      listing: p.listing
-        ? {
-            name: p.listing.name,
-            type: p.listing.type,
-            config: safeParse<Record<string, unknown>>(p.listing.config, {}),
-          }
-        : undefined,
+      listing: {
+        name: p.listing.name,
+        type: p.listing.type,
+        config: safeParse<Record<string, unknown>>(p.listing.config, {}),
+      },
     })),
     total,
     page,
