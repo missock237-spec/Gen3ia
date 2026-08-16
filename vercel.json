@@ -1,10 +1,28 @@
 {
-  "buildCommand": "bun x prisma generate && bun run build",
-  "installCommand": "bun install",
+  "name": "gen3ia",
+  "version": 2,
   "framework": "nextjs",
-  "regions": ["iad1"],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "AUTH_SECRET": "@auth_secret"
+  "buildCommand": "next build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "outputDirectory": ".next",
+  "regions": [
+    "fra1"
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "github": {
+    "silent": false,
+    "autoJobCancelation": true,
+    "autoAlias": true,
+    "deployComments": true
+  },
+  "crons": [
+    {
+      "path": "/api/cron/refresh-tokens",
+      "schedule": "0 0 * * *"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": true
   }
 }
