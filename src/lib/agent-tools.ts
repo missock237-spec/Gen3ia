@@ -12,7 +12,7 @@ export interface AgentTool {
 export const AGENT_TOOLS: AgentTool[] = [
   // Communication tools
   { id: 'email', name: 'Email', description: 'Envoyer et recevoir des emails', icon: 'Mail', category: 'communication', applicableAgentTypes: ['sales', 'support', 'marketing', 'rh'] },
-  { id: 'whatsapp', name: 'WhatsApp', description: 'Envoyer des messages WhatsApp', icon: 'MessageCircle', category: 'communication', applicableAgentTypes: ['sales', 'support', 'marketing'] },
+
   { id: 'sms', name: 'SMS', description: 'Envoyer des SMS', icon: 'Smartphone', category: 'communication', applicableAgentTypes: ['sales', 'support'] },
   { id: 'calendar', name: 'Calendrier', description: 'Gérer les rendez-vous et événements', icon: 'Calendar', category: 'communication', applicableAgentTypes: ['sales', 'rh', 'support'] },
 

@@ -7,7 +7,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createWebcamProcessor } from '@/lib/multimodal/webcam-processor';
 
+
+
 // Cache processors per user for state tracking
+
+
+export const dynamic = "force-dynamic";
 const processors = new Map<string, ReturnType<typeof createWebcamProcessor>>();
 
 export async function OPTIONS(request: NextRequest) {
