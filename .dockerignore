@@ -1,19 +1,25 @@
+# ============================================================
+# Gen3ia — Fichier ignoré par Docker
+# ============================================================
+
 node_modules
 .next
 .git
 .gitignore
+*.md
 .env
 .env.local
 .env.*.local
-*.md
-.DS_Store
-.next
+**/*.test.ts
+**/*.spec.ts
+**/__tests__/
 coverage
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.gitkeep
-.editorconfig
-.prettierrc
-.eslintrc
-bun.lock
+.next/
+dev.log
+*.log
+.vercel
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store

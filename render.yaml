@@ -1,0 +1,19 @@
+# ============================================================
+# Gen3ia — Document d'architecture de déploiement
+#
+# ⚠️ Ce fichier était nommé render.yaml mais ne décrit PAS Render.
+# La cible de déploiement est détaillée dans docs/DEPLOYMENT.md.
+# Ne pas se fier à render.yaml pour un déploiement Render.
+# ============================================================
+
+# CIBLE DE DEPLOIEMENT (source de vérité : voir docs/DEPLOYMENT.md)
+#
+# 1. APPLICATION WEB (Next.js)      -> Vercel          (vercel.json)
+# 2. WORKER BullMQ (tâches async)   -> Docker/volprix  (Dockerfile.worker)
+# 3. Postgres                        -> Neon/Supabase
+# 4. Redis                           -> Upstash/Redis Cloud
+# 5. Vectoriel (Qdrant, optionnel)   -> Qdrant Cloud / Docker
+#
+# Pour un déploiement autonome VPS (sans Vercel) :
+#   - Docker Compose (docker-compose*.yml) : app + worker + postgres + redis + qdrant
+#   - Caddyfile pour TLS/proxy inverse

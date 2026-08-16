@@ -1,67 +1,68 @@
 # ============================================================
-# Dockerfile — Genova AI Production Build
-# Multi-stage : build → production
+# Gen3ia - Dockerfile de production (Monorepo)
+# Build context: racine du monorepo
+# Gestionnaire de paquets : bun (voir bun.lock)
+# Inclut la compilation du module Rust agent-safety (napi-rs)
 # ============================================================
 
-# ---- Stage 1 : Build ----
-FROM node:20-alpine AS builder
+# ===== STAGE 0 : Rust builder =====
+FROM rust:1.85-slim AS rust-builder
+WORKDIR /build
 
-# Installer les dépendances de build
-RUN apk add --no-cache python3 make g++ curl openssl
+# Installer les dépendances système pour napi-rs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev ca-certificates && \
+    apt-get clean
 
+COPY Cargo.toml Cargo.lock* ./
+COPY crates/agent-safety ./crates/agent-safety
+
+# Build en release
+RUN cargo build --release
+
+# ===== STAGE 1 : Build Node/bun =====
+FROM oven/bun:1.3-alpine AS base
+RUN apk add --no-cache libc6-compat
+
+FROM base AS builder
 WORKDIR /app
 
-# Copier les fichiers de dépendances
-COPY package.json bun.lock ./
-COPY prisma ./prisma/
+COPY package.json bun.lock turbo.json ./
+RUN bun install --frozen-lockfile
 
-# Installer les dépendances
-RUN npm ci
-
-# Générer le client Prisma
-RUN npx prisma generate
-
-# Copier le code source
 COPY . .
 
-# Build l'application Next.js
-RUN npm run build
+# Copier le module Rust compilé depuis le stage 0
+COPY --from=rust-builder /build/target/release/libagent_safety.so ./crates/agent-safety/agent_safety.node
+COPY --from=rust-builder /build/target/release/libagent_safety.so ./packages/agent-safety/agent_safety.node
 
-# ---- Stage 2 : Production ----
-FROM node:20-alpine AS production
+# Build avec Turborepo
+RUN bun run build
 
-RUN apk add --no-cache curl openssl ca-certificates tzdata
-
-# Créer un utilisateur non-root
-RUN addgroup -S genova && adduser -S genova -G genova
-
+# ===== STAGE 2 : Production =====
+FROM base AS runner
 WORKDIR /app
 
-# Copier le build depuis l'étape 1
-COPY --from=builder /app/.next/standalone ./standalone
-COPY --from=builder /app/.next/static ./standalone/.next/static
-COPY --from=builder /app/public ./standalone/public
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-
-# Copier les scripts utiles
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/scripts ./scripts
-
-# Créer les dossiers nécessaires
-RUN mkdir -p /app/data /app/public/uploads && chown -R genova:genova /app
-
-# Variables d'environnement par défaut
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
 
-USER genova
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copier les fichiers nécessaires depuis le build
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Copier le module Rust compilé
+COPY --from=builder /app/crates/agent-safety/agent_safety.node ./crates/agent-safety/agent_safety.node
+COPY --from=builder /app/packages/agent-safety/agent_safety.node ./packages/agent-safety/agent_safety.node
+
+# Copier les scripts de validation
+COPY --from=builder /app/instrumentation.ts ./instrumentation.ts
+
+USER nextjs
 
 EXPOSE 3000
 
-# Santé du conteneur
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
-  CMD curl -f http://localhost:3000/api/ai/health || exit 1
-
-CMD ["node", "standalone/server.js"]
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"

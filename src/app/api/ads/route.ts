@@ -1,112 +1,177 @@
-/**
- * Ads API — GET: Get eligible ad, POST: Claim reward
- */
+// API Ads — Moteur publicitaire (link-only, plan-aware)
+// ------------------------------------------------------------
+// Endpoints:
+//   GET  /api/ads?scope=decide            -> decide which ad to serve
+//   GET  /api/ads?scope=stats             -> user ad stats
+//   GET  /api/ads?scope=preferences       -> user ad preferences (plan-aware)
+//   GET  /api/ads?scope=campaigns         -> admin: list campaigns
+//   GET  /api/ads?scope=campaign-stats&campaignId=...  -> admin: campaign stats
+//   POST /api/ads?action=impression       -> record an impression
+//   POST /api/ads?action=click            -> record a click
+//   POST /api/ads?action=set-ads-enabled  -> toggle ads (paid only; free rejected)
+//   POST /api/ads?action=set-rewarded     -> toggle rewards (paid only; free rejected)
+//   POST /api/ads?action=sync-rewards     -> batch sync (internal)
+// ------------------------------------------------------------
 
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { getEligibleAd, recordAdViewAndReward, getUserAdStats } from '@/lib/ads/engine';
-import { getAdsForPlacement, AD_UNITS, getMaxDailyCreditsFromAds } from '@/lib/ads/ad-units';
+import { prisma } from '@/lib/prisma';
+import { applySecurity } from '@/lib/security';
+import { getAdEngine, type AdPlacement } from '@/lib/advertising/ad-engine';
 
-export async function OPTIONS() {
-  const response = new NextResponse(null, { status: 204 });
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  return response;
+export const dynamic = 'force-dynamic';
+const adEngine = getAdEngine();
+
+function authId(auth: { id?: string; userId?: string } | null): string {
+  if (!auth) return '';
+  return auth.id || auth.userId || '';
 }
 
-/**
- * GET /api/ads?placement=sidebar
- */
 export async function GET(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, {
-    requireAuth: true,
-    rateLimit: { limit: 60, windowMs: 60000 },
-  });
-
-  if (error) return error;
-  if (!auth) return secureResponse(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), request);
-
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
-    const { searchParams } = new URL(request.url);
-    const placement = searchParams.get('placement') || 'sidebar';
-    const includeStats = searchParams.get('stats') === 'true';
+    const url = new URL(request.url);
+    const scope = url.searchParams.get('scope') || 'decide';
+    const userId = authId(auth);
 
-    const { ad, eligibility } = await getEligibleAd(auth.userId, placement);
-    const allPlacements = ['sidebar', 'banner_top', 'banner_bottom', 'modal', 'dashboard_widget', 'footer'];
-    const placementsWithAds = allPlacements
-      .map((p) => ({ placement: p, available: getAdsForPlacement(p).length > 0 }))
-      .filter((p) => p.available);
-
-    const result: Record<string, unknown> = {
-      ad: ad ? {
-        id: ad.id, name: ad.name, format: ad.format, width: ad.width, height: ad.height,
-        rewardCredits: ad.rewardCredits, imageUrl: ad.imageUrl, targetUrl: ad.targetUrl,
-        alt: ad.alt, placement: ad.placement,
-      } : null,
-      eligibility,
-      placements: placementsWithAds.map((p) => p.placement),
-    };
-
-    if (includeStats) {
-      const stats = await getUserAdStats(auth.userId);
-      result.stats = stats;
-      result.maxDailyCredits = getMaxDailyCreditsFromAds();
+    switch (scope) {
+      case 'decide': {
+        const sessionId = url.searchParams.get('sessionId') || userId;
+        const placement = (url.searchParams.get('placement') as AdPlacement | null) || undefined;
+        const keywords = url.searchParams.get('keywords')?.split(',').filter(Boolean);
+        const country = url.searchParams.get('country') || undefined;
+        const decision = await adEngine.decideAd(userId, sessionId, undefined, {
+          placement,
+          keywords: keywords?.length ? keywords : undefined,
+          country: country || undefined,
+        });
+        return NextResponse.json({ success: true, decision });
+      }
+      case 'stats': {
+        const stats = await adEngine.getUserAdStats(userId);
+        return NextResponse.json({ success: true, stats });
+      }
+      case 'preferences': {
+        const prefs = await adEngine.getUserAdPreferences(userId);
+        return NextResponse.json({ success: true, preferences: prefs });
+      }
+      case 'campaigns': {
+        if (auth.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+        const campaigns = await prisma.adCampaign.findMany({ orderBy: { createdAt: 'desc' } });
+        return NextResponse.json({ success: true, campaigns });
+      }
+      case 'campaign-stats': {
+        const campaignId = url.searchParams.get('campaignId');
+        if (!campaignId) return NextResponse.json({ error: 'campaignId requis' }, { status: 400 });
+        const stats = await adEngine.getCampaignStats(campaignId);
+        return NextResponse.json({ success: true, stats });
+      }
+      default:
+        return NextResponse.json({ error: 'Scope inconnu' }, { status: 400 });
     }
-
-    return secureResponse(NextResponse.json(result), request);
   } catch (err) {
-    return secureResponse(
-      NextResponse.json({ error: 'Failed to fetch ad', details: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 }),
-      request
-    );
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
 
-/**
- * POST /api/ads
- */
 export async function POST(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, {
-    requireAuth: true,
-    rateLimit: { limit: 30, windowMs: 60000 },
-  });
-
-  if (error) return error;
-  if (!auth) return secureResponse(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), request);
-
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   try {
     const body = await request.json();
-    const { adUnitId } = body;
+    const url = new URL(request.url);
+    const action = url.searchParams.get('action') || 'impression';
+    const userId = authId(auth);
 
-    if (!adUnitId) {
-      return secureResponse(NextResponse.json({ error: 'Missing required field: adUnitId' }, { status: 400 }), request);
+    switch (action) {
+      case 'impression': {
+        if (!body.campaignId) return NextResponse.json({ error: 'campaignId requis' }, { status: 400 });
+        const result = await adEngine.recordImpression(
+          userId,
+          String(body.campaignId),
+          (body.adType as 'unrewarded' | 'rewarded') || 'unrewarded',
+          String(body.sessionId || userId),
+          body.conversationId ? String(body.conversationId) : undefined
+        );
+        return NextResponse.json({ success: true, impression: result });
+      }
+      case 'click': {
+        if (!body.impressionId) return NextResponse.json({ error: 'impressionId requis' }, { status: 400 });
+        const result = await adEngine.recordClick(String(body.impressionId));
+        return NextResponse.json({ success: true, click: result });
+      }
+      case 'set-ads-enabled': {
+        if (typeof body.enabled !== 'boolean') {
+          return NextResponse.json({ error: 'enabled requis (boolean)' }, { status: 400 });
+        }
+        try {
+          await adEngine.setAdsEnabled(userId, body.enabled);
+          return NextResponse.json({ success: true });
+        } catch (err) {
+          const msg = String((err as Error).message || err);
+          if (msg === 'FREE_PLAN_CANNOT_DISABLE_ADS') {
+            return NextResponse.json(
+              { error: 'Le plan gratuit ne permet pas de désactiver les publicités.' },
+              { status: 403 }
+            );
+          }
+          throw err;
+        }
+      }
+      case 'set-rewarded': {
+        if (typeof body.enabled !== 'boolean') {
+          return NextResponse.json({ error: 'enabled requis (boolean)' }, { status: 400 });
+        }
+        try {
+          await adEngine.setRewardedAdsEnabled(userId, body.enabled);
+          return NextResponse.json({ success: true });
+        } catch (err) {
+          const msg = String((err as Error).message || err);
+          if (msg === 'FREE_PLAN_CANNOT_EARN_REWARDS') {
+            return NextResponse.json(
+              { error: 'Le plan gratuit ne permet pas de cumuler des récompenses.' },
+              { status: 403 }
+            );
+          }
+          if (msg === 'REWARDS_REQUIRE_ADS_ENABLED') {
+            return NextResponse.json(
+              { error: 'Les récompenses nécessitent que les publicités soient activées.' },
+              { status: 409 }
+            );
+          }
+          throw err;
+        }
+      }
+      case 'sync-rewards': {
+        const { events } = body;
+        if (!events || !Array.isArray(events)) {
+          return NextResponse.json({ error: 'events requis (array)' }, { status: 400 });
+        }
+        const results = await Promise.allSettled(
+          events.map((e: { adId?: string; type?: string; credits?: number }) =>
+            prisma.adImpression.create({
+              data: {
+                campaignId: String(e.adId),
+                userId,
+                sessionId: userId,
+                adType: e.type === 'click' ? 'rewarded' : 'unrewarded',
+                viewDurationMs: 0,
+                wasClicked: e.type === 'click',
+                rewardCredited: true,
+                rewardAmount: Number(e.credits || 0),
+              },
+            })
+          )
+        );
+        return NextResponse.json({
+          success: true,
+          synced: results.filter(r => r.status === 'fulfilled').length,
+        });
+      }
+      default:
+        return NextResponse.json({ error: 'Action inconnue' }, { status: 400 });
     }
-
-    const adUnit = AD_UNITS.find((ad) => ad.id === adUnitId);
-    if (!adUnit) {
-      return secureResponse(NextResponse.json({ error: 'Invalid ad unit' }, { status: 400 }), request);
-    }
-    if (adUnit.status !== 'active') {
-      return secureResponse(NextResponse.json({ error: 'This ad is no longer active' }, { status: 400 }), request);
-    }
-
-    const result = await recordAdViewAndReward(auth.userId, adUnit);
-
-    if (!result.success) {
-      return secureResponse(NextResponse.json(result, { status: 429 }), request);
-    }
-
-    return secureResponse(
-      NextResponse.json({
-        success: true, creditsAwarded: result.creditsAwarded,
-        totalToday: result.totalToday, dailyLimit: result.dailyLimit, message: result.message,
-      }),
-      request
-    );
   } catch (err) {
-    return secureResponse(
-      NextResponse.json({ error: 'Failed to process ad reward', details: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 }),
-      request
-    );
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
