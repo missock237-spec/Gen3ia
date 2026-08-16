@@ -1,17 +1,28 @@
 {
-  "buildCommand": "bun x prisma generate && bun run build",
-  "installCommand": "bun install --frozen-lockfile",
+  "name": "gen3ia",
+  "version": 2,
   "framework": "nextjs",
-  "regions": ["iad1"],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "REDIS_URL": "@redis_url",
-    "AUTH_SALT": "@auth_salt",
-    "JWT_SECRET": "@jwt_secret",
-    "SESSION_SECRET": "@session_secret",
-    "VAULT_MASTER_KEY": "@vault_master_key",
-    "STRIPE_SECRET_KEY": "@stripe_secret_key",
-    "STRIPE_WEBHOOK_SECRET": "@stripe_webhook_secret",
-    "NEXT_PUBLIC_APP_URL": "@next_public_app_url"
+  "buildCommand": "next build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "outputDirectory": ".next",
+  "regions": [
+    "fra1"
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "github": {
+    "silent": false,
+    "autoJobCancelation": true,
+    "autoAlias": true,
+    "deployComments": true
+  },
+  "crons": [
+    {
+      "path": "/api/cron/refresh-tokens",
+      "schedule": "0 0 * * *"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": true
   }
 }
