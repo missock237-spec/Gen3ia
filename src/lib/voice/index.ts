@@ -70,7 +70,7 @@ export function createTTSEngine(userId: string): TextToSpeechEngine {
  * Create (or get the singleton) VoiceAgentEngine — l'engine vocal gère
  * les appels Twilio ; le paramètre userId est accepté par compatibilité.
  */
-export function createVoiceAgent(userId?: string): VoiceAgentEngine {
+export function createVoiceAgent(_userId?: string): VoiceAgentEngine {
   return getVoiceAgentEngine();
 }
 
@@ -78,7 +78,7 @@ export function createVoiceAgent(userId?: string): VoiceAgentEngine {
  * Create a VoiceMemorySystem (userId est passé par compatibilité,
  * les méthodes prennent le userId en argument).
  */
-export function createVoiceMemory(userId?: string): VoiceMemorySystem {
+export function createVoiceMemory(_userId?: string): VoiceMemorySystem {
   return new VoiceMemorySystem();
 }
 

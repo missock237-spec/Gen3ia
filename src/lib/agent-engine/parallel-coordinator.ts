@@ -538,7 +538,7 @@ export class ParallelCoordinator {
           'Tâche terminée';
         node.steps = steps;
         return result;
-      }, (attempt, error, delay) => {
+      }, (attempt, _error, _delay) => {
         node.status = 'retrying';
         if (onProgress) onProgress({ taskId: node.taskId, status: `retry ${attempt}` });
         if (onRetry) onRetry();

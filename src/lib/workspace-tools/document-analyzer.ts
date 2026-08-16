@@ -98,7 +98,7 @@ export class DocumentAnalyzer {
     return points.slice(0, 10);
   }
 
-  private extractActionItems(content: string, language: string): Array<{ task: string; priority: 'high' | 'medium' | 'low'; assignee?: string; dueDate?: string }> {
+  private extractActionItems(content: string, _language: string): Array<{ task: string; priority: 'high' | 'medium' | 'low'; assignee?: string; dueDate?: string }> {
     const items: Array<{ task: string; priority: 'high' | 'medium' | 'low'; assignee?: string; dueDate?: string }> = [];
 
     // Patterns d'action: "il faut", "à faire", "TODO", "must", "need to", "should"

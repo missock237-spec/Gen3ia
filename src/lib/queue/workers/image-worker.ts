@@ -243,7 +243,7 @@ async function generateViaSDK(
 ): Promise<SDKResult> {
   await onProgress(20);
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   const { default: ZAI } = await import('z-ai-web-dev-sdk');
   const client = await ZAI.create();
 

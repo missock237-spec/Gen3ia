@@ -96,7 +96,7 @@ export default function DevelopersPage() {
                 Connectez vos agents depuis Cursor, Claude Desktop, Windsurf, ou tout client MCP.
               </p>
               <div className="bg-muted rounded-lg p-4 font-mono text-sm">
-                <p className="text-muted-foreground mb-2">// Configuration Cursor / Claude Desktop</p>
+                <p className="text-muted-foreground mb-2">{/*  Configuration Cursor / Claude Desktop */}</p>
                 <code>{`{
   "mcpServers": {
     "gen3ia": {

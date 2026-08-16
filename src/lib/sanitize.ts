@@ -229,4 +229,5 @@ export function sanitizePrompt(input: string): string {
   return s;
 }
 
+// eslint-disable-next-line import/no-anonymous-default-export
 export default { sanitizeHtml, sanitizeUrl, sanitizeForDb, sanitizeFilename, sanitizeModelPath, escapeShellArg, sanitizePrompt };

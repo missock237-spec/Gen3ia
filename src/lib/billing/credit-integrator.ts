@@ -110,7 +110,7 @@ async function getSessionSpent(userId: string): Promise<number> {
     _sum: { amount: true },
   });
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   return Math.abs(result._sum.amount || 0);
 }
 
@@ -207,7 +207,7 @@ export async function selectOptimalProvider(
     return {
       provider: 'openai',
       model: 'gpt-4o-mini',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       estimatedCost: engine.calculateLlmCost('openai', 'gpt-4o-mini', 100, 50),
       reason: 'Fallback par défaut',
       latency: 'balanced',
@@ -224,7 +224,7 @@ export async function selectOptimalProvider(
   return {
     provider: bestProvider,
     model: bestModel,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     estimatedCost,
     reason: bestReason,
     latency,

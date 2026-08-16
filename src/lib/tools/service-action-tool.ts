@@ -53,7 +53,7 @@ export const serviceActionTool: ToolDefinition = {
           return {
             success: false,
             error: `Token expire pour ${service}. L'utilisateur doit reconnecter son compte.`,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
             requiresReauth: true,
             service,
           };

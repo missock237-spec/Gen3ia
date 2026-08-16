@@ -104,7 +104,7 @@ const initialEdges: Edge[] = [
 ];
 
 export function AgentFlow() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [nodes, _setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const onConnect = useCallback((params: any) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
 

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 // ============================================================
 // Gen3ia — Auth shim (compatibilité)
 // ============================================================
@@ -73,11 +74,11 @@ export async function verifyPassword(_hash: string, _password: string): Promise<
  * ex: tokens d'invitation, tokens API). Conservé car non spécifique à l'auth.
  */
 export function generateSessionToken(): string {
-  return require('node:crypto').randomBytes(48).toString('hex');
+  return randomBytes(48).toString('hex');
 }
 
 export function generateResetToken(): string {
-  return require('node:crypto').randomBytes(32).toString('hex');
+  return randomBytes(32).toString('hex');
 }
 
 export async function hashToken(token: string): Promise<string> {

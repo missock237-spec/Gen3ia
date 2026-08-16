@@ -26,8 +26,8 @@ try {
     return { safe: !r.detected, score: r.score, reason: (r.patterns || []).join(', ') || 'clean' };
   };
 } catch {
-  checkPromptInjection = (input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
-  checkJailbreak = (input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
+  checkPromptInjection = (_input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
+  checkJailbreak = (_input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
 }
 
 

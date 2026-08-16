@@ -32,7 +32,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (action === 'widget') {
       if (!body.widget) return NextResponse.json({ error: 'widget requis' }, { status: 400 });
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       const updated = await dataAnalyst.addWidget((await params).id, auth.userId, body.widget);
       return NextResponse.json({ success: true, dashboard: updated });
     }

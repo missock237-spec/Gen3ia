@@ -268,8 +268,8 @@ class QueryOptimizer {
   generateReport(): {
     totalQueries: number;
     avgLatency: number;
-    slowestQueries: Array<any>;
-    n1Patterns: Array<any>;
+    slowestQueries: Array<unknown>;
+    n1Patterns: Array<unknown>;
     cacheHitRate: number;
   } {
     const stats = this.getQueryStats();

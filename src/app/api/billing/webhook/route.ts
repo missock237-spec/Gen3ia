@@ -58,7 +58,7 @@ async function triggerAffiliateBonus(userId: string, plan: string) {
 // Creer/Mettre a jour l'abonnement
 // ============================================================
 
-async function updateSubscription(userId: string, plan: string, metadata?: any) {
+async function updateSubscription(userId: string, plan: string, _metadata?: any) {
   await prisma.subscription.upsert({
     where: { userId },
     create: { userId, plan, status: 'active', provider: 'chariow', startDate: new Date() },

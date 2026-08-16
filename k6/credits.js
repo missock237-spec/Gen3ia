@@ -16,7 +16,7 @@ export const options = {
 
 const API_KEY = __ENV.K6_API_KEY;
 
-export default function () {
+export default function _default() {
   const payload = JSON.stringify({ userId: "load-user", amount: 10 });
   const res = http.post(`${baseUrl}/api/credits/issue`, payload, {
     headers: baseHeaders(API_KEY),

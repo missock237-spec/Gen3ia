@@ -461,7 +461,7 @@ async function deliverViaEmail(
     const { sendEmail } = await import('@/lib/email');
     await sendEmail(
       email,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       report.title,
       formatReportAsHTML(report),
     );

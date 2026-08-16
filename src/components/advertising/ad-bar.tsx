@@ -60,11 +60,6 @@ export function AdBar({ sessionId, conversationId, placement = 'bottom_bar', onA
   const [impressionId, setImpressionId] = useState<string | null>(null);
   const [pendingReward, setPendingReward] = useState(0);
 
-  useEffect(() => {
-    loadPreferences();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const fetchAd = useCallback(
     async (adType: 'unrewarded' | 'rewarded') => {
       try {
@@ -133,6 +128,10 @@ export function AdBar({ sessionId, conversationId, placement = 'bottom_bar', onA
       setLoading(false);
     }
   }, [fetchAd]);
+
+  useEffect(() => {
+    void loadPreferences();
+  }, [loadPreferences]);
 
   const handleClick = useCallback(async () => {
     if (!impressionId) return;

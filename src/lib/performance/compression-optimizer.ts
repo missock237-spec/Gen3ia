@@ -69,7 +69,7 @@ class CompressionOptimizer {
     encoding: string;
     stats: CompressionResult;
   }> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       zlib.gzip(data, { level: 6 }, (err, compressed) => {
         if (err) {
           log.warn('gzip_compression_failed', { error: err.message });

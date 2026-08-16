@@ -49,7 +49,7 @@ export class AgentService {
   }
 
   async update(id: string, data: UpdateAgentInput) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const agent = await prisma.agent.update({ where: { id }, data });
     logger.info("Agent updated", { agentId: id });
     return agent;

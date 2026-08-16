@@ -164,7 +164,7 @@ describe('ReAct Loop — Extended (Think -> Act -> Observe)', () => {
   // ============================================================
   describe('Etat 3 — Observing (supervision et arret)', () => {
     it('arrete apres avoir atteint le nombre max d iterations', async () => {
-      const { SupervisorAgent } = await import('@/lib/agent/supervisor');
+      const { _SupervisorAgent } = await import('@/lib/agent/supervisor');
       // @ts-ignore: import du module reel
       const SupervisorAgentReal = (await vi.importActual('@/lib/agent/supervisor')).SupervisorAgent;
       const s = new SupervisorAgentReal();
@@ -182,8 +182,8 @@ describe('ReAct Loop — Extended (Think -> Act -> Observe)', () => {
     });
 
     it('detecte une boucle infinie (3x meme action)', async () => {
-      const { SupervisorAgent } = await import('@/lib/agent/supervisor');
-      // @ts-ignore
+      const { _SupervisorAgent } = await import('@/lib/agent/supervisor');
+      // @ts-ignore — type narrowing pending, see refactor ticket
       const SupervisorAgentReal = (await vi.importActual('@/lib/agent/supervisor')).SupervisorAgent;
       const s = new SupervisorAgentReal();
       s.startTask('test');
@@ -200,7 +200,7 @@ describe('ReAct Loop — Extended (Think -> Act -> Observe)', () => {
     });
 
     it('limite le cout total a 5$ maximum', async () => {
-      // @ts-ignore
+      // @ts-ignore — type narrowing pending, see refactor ticket
       const { SupervisorAgent: SupervisorAgentReal } = await vi.importActual('@/lib/agent/supervisor');
       const s = new SupervisorAgentReal();
       s.startTask('test');
@@ -218,7 +218,7 @@ describe('ReAct Loop — Extended (Think -> Act -> Observe)', () => {
     });
 
     it('suit le progres avec getProgress()', async () => {
-      // @ts-ignore
+      // @ts-ignore — type narrowing pending, see refactor ticket
       const { SupervisorAgent: SupervisorAgentReal } = await vi.importActual('@/lib/agent/supervisor');
       const s = new SupervisorAgentReal();
       s.startTask('Analyse de marche');

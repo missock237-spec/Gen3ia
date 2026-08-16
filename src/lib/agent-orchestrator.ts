@@ -244,8 +244,8 @@ class AgentOrchestrator {
    * Hybrid: Recherche parallèle puis rédaction/révision séquentielle
    */
   private async runHybrid(
-    executionId: string, agents: AgentConfig[], goal: string, context?: string,
-    maxRounds?: number, onProgress?: (msg: any) => void
+    executionId: string, agents: AgentConfig[], goal: string, _context?: string,
+    maxRounds?: number, _onProgress?: (msg: any) => void
   ) {
     let anySimulated = false;
     // Phase 1: Parallèle pour les rôles de recherche/analyse

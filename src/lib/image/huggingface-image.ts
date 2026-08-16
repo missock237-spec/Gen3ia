@@ -268,7 +268,7 @@ class HuggingFaceImage {
         width = dataView.getUint32(16, false);
         height = dataView.getUint32(20, false);
       }
-    } catch (error) {
+    } catch (_error) {
       console.warn('[Image] Could not parse dimensions, using defaults');
     }
 

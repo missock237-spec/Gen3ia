@@ -6,16 +6,19 @@ const execAsync = promisify(exec);
 
 async function deploy() {
   try {
+    // eslint-disable-next-line no-console
     console.log('📦 Déploiement des règles Firestore...');
     await execAsync('npx firebase-tools deploy --only firestore:rules', {
       env: { ...process.env, FIREBASE_TOKEN: process.env.FIREBASE_TOKEN },
     });
 
+    // eslint-disable-next-line no-console
     console.log('📦 Déploiement des règles Storage...');
     await execAsync('npx firebase-tools deploy --only storage:rules', {
       env: { ...process.env, FIREBASE_TOKEN: process.env.FIREBASE_TOKEN },
     });
 
+    // eslint-disable-next-line no-console
     console.log('✅ Règles déployées avec succès.');
   } catch (error) {
     console.error('❌ Erreur lors du déploiement:', error);
