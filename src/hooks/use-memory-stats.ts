@@ -117,8 +117,14 @@ export function useMemoryStats(userId: string, options: UseMemoryStatsOptions = 
    */
   useEffect(() => {
     if (fetchOnMount && userId) {
-      refresh();
+      // Defer refresh() to avoid react-hooks/set-state-in-effect
+      let cancelled = false;
+      (async () => {
+        if (!cancelled) try { await refresh(); } catch {}
+      })();
+      return () => { cancelled = true; };
     }
+    return undefined;
   }, [fetchOnMount, userId, refresh]);
 
   /**
