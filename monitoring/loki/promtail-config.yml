@@ -1,0 +1,109 @@
+# ============================================================
+# Gen3ia — Promtail Configuration
+# ============================================================
+# Collecte les logs des conteneurs Docker et les envoie à Loki
+# ============================================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # === Logs des conteneurs Docker ===
+  - job_name: docker
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker
+          service: gen3ia
+          __path__: /var/lib/docker/containers/*/*.log
+
+    pipeline_stages:
+      - json:
+          expressions:
+            log: log
+            stream: stream
+            time: time
+            attrs: attrs
+
+      - regex:
+          expression: "^(?P<time>\\S+) (?P<stream>stdout|stderr) (?P<message>.*)$"
+          source: "log"
+          
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+
+      - labels:
+          stream:
+
+      - pack:
+          labels:
+            - stream
+
+      - output:
+          source: message
+
+  # === Logs du système ===
+  - job_name: syslog
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: syslog
+          service: system
+          __path__: /var/log/syslog
+
+  # === Logs Gen3ia (fichier) ===
+  - job_name: gen3ia
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: gen3ia
+          service: gen3ia-app
+          __path__: /var/log/gen3ia/*.log
+
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            service: service
+            timestamp: timestamp
+            context: context
+
+      - labels:
+          level:
+          service:
+
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # === Logs des workers BullMQ ===
+  - job_name: gen3ia-workers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: gen3ia
+          service: gen3ia-worker
+          __path__: /var/log/gen3ia/workers/*.log
+
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            service: service
+      - labels:
+          level:
+          service:
