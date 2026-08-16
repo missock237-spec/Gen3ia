@@ -5,6 +5,11 @@ import { createAIRouter } from '@/lib/ai-router';
 import { getMemoryContext, learnFromInteraction } from '@/lib/agent-memory';
 import { checkTokenLimit } from '@/lib/usage-limits';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -24,7 +29,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { message, context } = body;
+    const { message, context, conversationId, _taskType = 'quick_chat' } = body;
 
     if (!message) {
       return new Response(JSON.stringify({ error: 'Message is required' }), {
@@ -51,7 +56,14 @@ export async function POST(
 
     const agent = await db.agent.findUnique({
       where: { id },
-      include: { permissions: true },
+      include: {
+        permissions: true,
+        conversations: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          include: { messages: { orderBy: { createdAt: 'asc' }, take: 20 } },
+        },
+      },
     });
 
     if (!agent || agent.userId !== auth.userId) {
@@ -123,8 +135,6 @@ Available tools/permissions:
 - browse_web: Navigate and interact with web pages
 - social_post: Post on social media platforms
 - social_youtube, social_facebook, social_instagram, social_tiktok, social_linkedin: Platform-specific posting
-- whatsapp_message: Send WhatsApp messages
-- whatsapp_call: Make WhatsApp calls
 - use_api: Use external APIs
 - use_cpu: Use CPU resources
 - use_mvp: Use MVP resources
@@ -148,6 +158,20 @@ Respond concisely and helpfully. If you need to perform an action, describe what
         content: message,
       },
     ];
+
+    // Save user message
+    let convId = conversationId;
+    if (!convId) {
+      const conv = await db.conversation.create({
+        data: {
+          title: message.substring(0, 50),
+          type: 'agent_chat',
+          agentId: agent.id,
+          userId: agent.userId,
+        },
+      });
+      convId = conv.id;
+    }
 
     // Create SSE stream using AI router's chatStream
     const encoder = new TextEncoder();
@@ -202,12 +226,16 @@ Respond concisely and helpfully. If you need to perform an action, describe what
     if (allowedOrigin) {
       streamHeaders['Access-Control-Allow-Origin'] = allowedOrigin;
     }
+    if (convId) {
+      streamHeaders['X-Conversation-Id'] = convId;
+    }
 
     return new Response(stream, {
       headers: streamHeaders,
     });
-  } catch {
-    return new Response(JSON.stringify({ error: 'Failed to process chat' }), {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to process chat';
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
