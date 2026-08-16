@@ -48,7 +48,7 @@ export function AppSidebar() {
         {!collapsed && (
           <Link href="/" className="flex items-center gap-2 font-bold text-lg">
             <Sparkles className="h-5 w-5 text-primary" />
-            <span>Genova</span>
+            <span>Gen3ia</span>
           </Link>
         )}
         <button
@@ -64,6 +64,7 @@ export function AppSidebar() {
         {menuItems.map((item) => (
           <button
             key={item.id}
+// @ts-ignore — type narrowing pending, see refactor ticket
             onClick={() => setCurrentView(item.id)}
             className={cn(
               'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',

@@ -1,36 +1,21 @@
 {
-  "name": "Genova AI - Agent Operating System",
-  "short_name": "Genova AI",
-  "description": "Plateforme SaaS de création et gestion d'agents IA",
+  "name": "Gen3ia",
+  "short_name": "Gen3ia",
+  "description": "AI Agent OS for Africa",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#7c3aed",
+  "background_color": "#0a0a0a",
+  "theme_color": "#6366f1",
   "orientation": "portrait-primary",
+  "categories": ["productivity", "business"],
   "icons": [
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
-  "categories": ["productivity", "artificial-intelligence", "business"],
-  "lang": "fr-FR",
-  "dir": "ltr",
-  "scope": "/",
-  "prefer_related_applications": false,
-  "related_applications": []
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/dashboard", "short_name": "Dashboard" },
+    { "name": "Agents", "url": "/agents", "short_name": "Agents" },
+    { "name": "Billing", "url": "/billing", "short_name": "Billing" }
+  ],
+  "_comment_pwa_africa": "PWA essentiel pour l'Afrique : internet instable, data chère. Offline-first."
 }

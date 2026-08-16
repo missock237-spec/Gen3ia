@@ -1,42 +1,40 @@
 # Changelog
 
-## [0.7.0] - 2026-07-26
-### Systeme de Relais Multi-Provider avec Tracking de Quotas
+## [0.9.0] — 2026-07-28 — Session Monorepo & Terminal v2
 
-#### Relay System
-- 5 chaines de relais : reasoning, voice, image, video, audio
-- Tracking quotas daily + monthly avec persistance DB
-- Cache memoire avec flush periodique (30s) vers DB
-- Selection auto du provider : priorite, quota restant, cout
-- Fallback automatique en cascade
+### 🚀 Nouvelles fonctionnalités
+- **Terminal v2.1** : Exécution bash réelle, auto-complétion TAB, historique ↑/↓, sudo protégé (#96, #99, #100, #101)
+- **Éditeur de fichiers inline** : edit, read, delete dans le terminal (#100)
+- **WebSocket hook** : `useTerminalWS` avec reconnexion automatique (#101)
+- **Mode PWA** : Service Worker v2 offline-first, cache partitionné (#104)
+- **Docker** : Dockerfile multi-stage, docker-compose avec postgres/redis/traefik (#102)
+- **CI/CD Release** : Pipeline tests + coverage 80% + auto-tag GitHub Release (#107)
+- **Monorepo** : Structure `packages/`, `apps/`, `tsconfig.base.json` (#105)
 
-#### Chaines
-- **Reasoning**: Groq (free) -> OpenRouter (free) -> OpenAI -> Anthropic
-- **Voice**: HuggingFace (free) -> ElevenLabs
-- **Image**: HuggingFace (free) -> OpenAI DALL-E
-- **Video**: HuggingFace (free) -> OpenAI
-- **Audio**: HuggingFace MusicGen (free) -> OpenAI TTS
+### 📝 Documentation
+- README complet avec badges, terminal docs, Docker (#102)
+- ARCHITECTURE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
 
-#### Relay Integrator
-- chat(), synthesizeSpeech(), generateImage(), generateVideo(), generateAudio()
-- getRelayReport() pour le monitoring des quotas
+### 🧪 Tests
+- 46 tests (auth, agent, rate-limit, terminal, ReAct loop, crédits, autocomplete)
+- Coverage seuil 80% configuré dans vitest.config.ts (#106)
+- Tests ReAct : validation, execution, mémoire, erreurs (#106)
+- Tests crédits : déduction, plans, vérification (#106)
 
-### Fichiers
-- src/lib/relay/relay-system.ts (16.9 KB)
-- src/lib/relay/relay-integrator.ts (13.7 KB)
-- prisma/migrations/00006_add_relay_usage.sql
+### 🏷️ Renommage
+- Projet entièrement renommé **Genova → Gen3ia** (30+ fichiers, 0 références restantes)
+- PRs : #93, #94, #95, #96, #97, #103, #104
 
-## [0.6.2] - 2026-07-26
-### Integration Compute V2 - Voice Memory + Replit
+### 🐛 Corrections
+- Settings-view complète avec 6 onglets (#93)
+- Mise à jour email.ts (noreply@gen3ia.ai, footer, sujets) (#103)
+- Nettoyage des fichiers temporaires (ci.yml, deploy.yml, test-force-push...) (#105)
+- Correction test setup.ts (genova_test → gen3ia_test) (#107)
 
-## [0.6.1] - 2026-07-26
-### Integration Compute V2 - Embeddings + Agent Safety
+## [0.8.0] — 2026-07-20
 
-## [0.6.0] - 2026-07-26
-### Compute Engine V2 - Cache LRU + Pipeline + Predictor
-
-## [0.5.1] - 2026-07-26
-### Audit securite
-
-## [0.5.0] - 2026-07-26
-### Multi-Tenant, Agent Repl.IT, Playground API
+- Version initiale Gen3ia
+- Agents IA avec boucle ReAct
+- Authentication Google/GitHub
+- Dashboard avec métriques
+- Paiements Mobile Money (SebPay)

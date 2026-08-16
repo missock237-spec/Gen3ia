@@ -1,109 +1,74 @@
-// ============================================================
-// PAYMENT RETRY — Système de rattrapage intelligent
-// ============================================================
+// Payment Retry — Relance des paiements echoues via SubPay
 
-import { prisma } from "@/lib/prisma";
-import { logger } from "@/lib/logger";
+import { createLogger } from '@/lib/logger';
+import { db } from '@/lib/db';
+import { subpay } from '@/lib/payment/subpay';
 
-export interface PaymentRetryConfig {
-  maxRetries: number;
-  baseDelayMs: number;
-  backoffMultiplier: number;
-}
+const log = createLogger('payment-retry');
 
-const DEFAULT_CONFIG: PaymentRetryConfig = {
-  maxRetries: 5,
-  baseDelayMs: 60_000, // 1 minute
-  backoffMultiplier: 2, // Exponentiel: 1min, 2min, 4min, 8min, 16min
-};
+const MAX_RETRIES = 5;
+const BASE_DELAY_MS = 60_000;
+const BACKOFF_MULTIPLIER = 4;
+const RETRYABLE_STATUSES = ['failed', 'pending'];
+const NON_RETRYABLE_ERRORS = ['card_declined', 'expired_card', 'insufficient_balance', 'invalid_phone'];
 
-export async function scheduleRetry(
-  userId: string,
-  amount: number,
-  metadata: Record<string, unknown>,
-  config: Partial<PaymentRetryConfig> = {}
-): Promise<void> {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
+export class PaymentRetryManager {
+  private processing = new Set<string>();
 
-  await prisma.creditTransaction.create({
-    data: {
-      userId,
-      amount: 0,
-      balance: 0,
-      type: "payment_retry",
-      description: `Paiement de ${amount}€ planifié (max ${cfg.maxRetries} tentatives)`,
-      metadata: JSON.stringify({
-        retryCount: 0,
-        maxRetries: cfg.maxRetries,
-        amount,
-        originalMetadata: metadata,
-        nextRetryAt: new Date(Date.now() + cfg.baseDelayMs).toISOString(),
-      }),
-      resourceType: "payment_retry",
-    },
-  });
-
-  logger.info("payment_retry_scheduled", {
-    userId,
-    amount,
-    maxRetries: cfg.maxRetries,
-    nextRetryIn: `${cfg.baseDelayMs}ms`,
-  });
-}
-
-export async function processPendingRetries(): Promise<number> {
-  const pending = await prisma.creditTransaction.findMany({
-    where: {
-      type: "payment_retry",
-      description: { contains: "planifié" },
-    },
-  });
-
-  let processedCount = 0;
-
-  for (const entry of pending) {
+  async processFailedPayments() {
+    let processed = 0, succeeded = 0, failed = 0;
     try {
-      const metadata = JSON.parse(entry.metadata ?? "{}");
-      const nextRetryAt = new Date(metadata.nextRetryAt);
-
-      if (nextRetryAt > new Date()) continue;
-
-      logger.info("payment_retry_processing", { userId: entry.userId, retryCount: metadata.retryCount });
-
-      // TODO: Appeler le provider de paiement ici
-      // const result = await paymentProvider.charge(metadata.amount, metadata.originalMetadata);
-
-      const newRetryCount = (metadata.retryCount ?? 0) + 1;
-
-      if (newRetryCount >= metadata.maxRetries) {
-        await prisma.creditTransaction.update({
-          where: { id: entry.id },
-          data: {
-            description: `Paiement échoué après ${newRetryCount} tentatives`,
-            metadata: JSON.stringify({ ...metadata, finalStatus: "failed" }),
-          },
-        });
-        logger.warn("payment_retry_max_reached", { userId: entry.userId, retries: newRetryCount });
-      } else {
-        const nextDelay = DEFAULT_CONFIG.baseDelayMs * Math.pow(DEFAULT_CONFIG.backoffMultiplier, newRetryCount);
-        await prisma.creditTransaction.update({
-          where: { id: entry.id },
-          data: {
-            metadata: JSON.stringify({
-              ...metadata,
-              retryCount: newRetryCount,
-              lastAttemptAt: new Date().toISOString(),
-              nextRetryAt: new Date(Date.now() + nextDelay).toISOString(),
-            }),
-          },
-        });
+      const pendingInvoices = await db.invoice.findMany({
+        where: { status: { in: RETRYABLE_STATUSES }, retryCount: { lt: MAX_RETRIES }, nextRetryAt: { lte: new Date() } },
+        orderBy: { nextRetryAt: 'asc' }, take: 20,
+        include: { user: { select: { id: true, email: true, credits: true } } },
+      });
+      for (const invoice of pendingInvoices) {
+        if (this.processing.has(invoice.id)) continue;
+        this.processing.add(invoice.id); processed++;
+        try {
+          const result = await this.retryWithSubPay(invoice);
+          if (result.success) {
+            await db.invoice.update({ where: { id: invoice.id }, data: { status: 'paid', retryCount: { increment: 1 }, paidAt: new Date(), transactionId: result.transactionId, nextRetryAt: null } });
+            if (invoice.user) await db.user.update({ where: { id: invoice.user.id }, data: { credits: { increment: invoice.amount * 100 } } });
+            succeeded++;
+          } else {
+            const rc = invoice.retryCount + 1;
+            const retry = rc < MAX_RETRIES && !this.isNonRetryable(result.error || '');
+            const delay = retry ? BASE_DELAY_MS * Math.pow(BACKOFF_MULTIPLIER, rc - 1) : null;
+            await db.invoice.update({ where: { id: invoice.id }, data: { retryCount: rc, lastRetryError: result.error?.slice(0, 500), nextRetryAt: delay ? new Date(Date.now() + delay) : null, status: retry ? 'pending' : 'failed' } });
+            failed++;
+          }
+        } catch (_e) { failed++; } finally { this.processing.delete(invoice.id); }
       }
+    } catch (_e) {}
+    return { processed, succeeded, failed };
+  }
 
-      processedCount++;
+  private async retryWithSubPay(invoice: any) {
+    if (!subpay.isConfigured()) return { success: false, error: 'SubPay non configure' };
+    try {
+      const result = await subpay.initiatePayment({
+        amount: invoice.amount, currency: 'XAF', provider: 'mtn',
+        phone: invoice.user?.phone || '', reference: `retry_${invoice.id}_${Date.now()}`,
+        description: 'Relance paiement', metadata: { invoiceId: invoice.id },
+      });
+      if (result.status === 'completed') return { success: true, transactionId: result.id };
+      return { success: false, error: 'Statut: ' + result.status };
     } catch (error) {
-      logger.error("payment_retry_error", { entryId: entry.id, error: String(error) });
+      return { success: false, error: error instanceof Error ? error.message : 'Erreur SubPay' };
     }
   }
 
-  return processedCount;
+  private isNonRetryable(error: string) {
+    return NON_RETRYABLE_ERRORS.some(e => error.toLowerCase().includes(e));
+  }
+
+  async scheduleRetry(invoiceId: string, delayMs = BASE_DELAY_MS) {
+    await db.invoice.update({ where: { id: invoiceId }, data: { nextRetryAt: new Date(Date.now() + delayMs), status: 'pending' } });
+  }
+
+  getActiveRetries() { return this.processing.size; }
 }
+
+export const paymentRetry = new PaymentRetryManager();

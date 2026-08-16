@@ -2,30 +2,304 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Genova AI API",
-    "version": "1.0.0",
-    "description": "API REST de Genova — Système d'exploitation pour agents IA"
+    "version": "2.0.0",
+    "description": "API REST de Genova — Systeme d'exploitation pour agents IA. Authentification via Bearer token ou X-API-Key.",
+    "contact": {
+      "name": "Genova Support",
+      "url": "https://genova.ai/support"
+    }
   },
   "servers": [
-    { "url": "https://missock237-spec.github.io/Genova", "description": "Production" },
-    { "url": "http://localhost:3000", "description": "Développement local" }
+    { "url": "https://genova.ai", "description": "Production" },
+    { "url": "http://localhost:3000", "description": "Developpement local" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "details": { "type": "string" }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string", "maxLength": 100 },
+          "type": { "type": "string", "enum": ["sales","support","marketing","research","rh","accounting","custom","social_media","browser"] },
+          "description": { "type": "string", "maxLength": 1000 },
+          "status": { "type": "string", "enum": ["active","inactive"] },
+          "config": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ApiKeyResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "key": { "type": "string", "description": "Cle API brute (retournee 1 fois)" },
+          "prefix": { "type": "string" },
+          "name": { "type": "string" },
+          "scopes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "security": [
+    { "BearerAuth": [] },
+    { "ApiKeyAuth": [] }
   ],
   "paths": {
     "/api/health": {
       "get": {
-        "summary": "Vérification de santé",
-        "tags": ["Système"],
+        "summary": "Verification de sante du service",
+        "tags": ["Systeme"],
+        "security": [],
         "responses": {
           "200": {
-            "description": "Statut du service",
+            "description": "Service OK",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "enum": ["healthy", "degraded", "down"] },
+                    "status": { "type": "string", "enum": ["healthy","degraded","unhealthy"] },
                     "version": { "type": "string" },
                     "uptime": { "type": "integer" },
-                    "timestamp": { "type": "string", "format": "date-time" }
+                    "timestamp": { "type": "string", "format": "date-time" },
+                    "components": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "status": { "type": "string" },
+                          "latency": { "type": "number" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": { "description": "Service degrade" }
+        }
+      }
+    },
+    "/api/keys": {
+      "get": {
+        "summary": "Lister les cles API",
+        "tags": ["Cles API"],
+        "responses": {
+          "200": { "description": "Liste des cles", "content": { "application/json": { "schema": { "type": "object", "properties": { "keys": { "type": "array", "items": { "$ref": "#/components/schemas/ApiKeyResponse" } } } } } } },
+          "401": { "description": "Non authentifie" }
+        }
+      },
+      "post": {
+        "summary": "Creer une cle API",
+        "tags": ["Cles API"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "description": "Nom de la cle" },
+                  "scopes": { "type": "array", "items": { "type": "string", "enum": ["agents:read","agents:write","agents:execute","voice:call","messages:send","billing:read","admin:read"] } },
+                  "expiresInDays": { "type": "integer", "description": "Expiration en jours" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Cle creee", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyResponse" } } } }
+        }
+      },
+      "delete": {
+        "summary": "Revoquer une cle API",
+        "tags": ["Cles API"],
+        "parameters": [
+          { "name": "id", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Cle revoluee" }
+        }
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "summary": "Lister tous les agents",
+        "tags": ["Agents"],
+        "responses": {
+          "200": { "description": "Liste des agents" },
+          "401": { "description": "Non authentifie" }
+        }
+      },
+      "post": {
+        "summary": "Creer un agent",
+        "tags": ["Agents"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name","type"],
+                "properties": {
+                  "name": { "type": "string", "maxLength": 100 },
+                  "type": { "type": "string", "enum": ["sales","support","marketing","research","rh","accounting","custom","social_media","browser"] },
+                  "description": { "type": "string", "maxLength": 1000 },
+                  "config": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Agent cree avec permissions par defaut" },
+          "403": { "description": "Limite d'agents atteinte" }
+        }
+      }
+    },
+    "/api/agents/run": {
+      "post": {
+        "summary": "Executer un agent (ReAct Loop)",
+        "tags": ["Agents"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["agentId","input"],
+                "properties": {
+                  "agentId": { "type": "string" },
+                  "input": { "type": "string", "maxLength": 5000 },
+                  "sessionId": { "type": "string" },
+                  "resume": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Execution terminee avec steps, thoughts, totalCost" },
+          "402": { "description": "Credits insuffisants" },
+          "429": { "description": "Trop de requetes" }
+        }
+      }
+    },
+    "/api/agents/stream": {
+      "post": {
+        "summary": "Streaming SSE de la reponse IA",
+        "tags": ["Agents"],
+        "responses": {
+          "200": { "description": "Flux SSE avec tokens en temps reel" }
+        }
+      }
+    },
+    "/api/agents/swarm": {
+      "post": {
+        "summary": "Orchestration multi-agents (Swarm)",
+        "tags": ["Agents"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["task","agentIds","userId"],
+                "properties": {
+                  "task": { "type": "string" },
+                  "agentIds": { "type": "array", "items": { "type": "string" } },
+                  "userId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Resultats du swarm" }
+        }
+      }
+    },
+    "/api/agents/roles": {
+      "get": {
+        "summary": "Lister les permissions d'un agent",
+        "tags": ["Agents"],
+        "parameters": [
+          { "name": "agentId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Permissions de l'agent" }
+        }
+      },
+      "patch": {
+        "summary": "Modifier une permission",
+        "tags": ["Agents"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["agentId","permission"],
+                "properties": {
+                  "agentId": { "type": "string" },
+                  "permission": { "type": "string" },
+                  "granted": { "type": "boolean" },
+                  "requiresApproval": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Permission mise a jour" }
+        }
+      }
+    },
+    "/api/agents/auto": {
+      "get": {
+        "summary": "Lister les agents avec config auto",
+        "tags": ["Agents"]
+      },
+      "post": {
+        "summary": "Configurer l'auto-execution",
+        "tags": ["Agents"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["agentId","autoExecute"],
+                "properties": {
+                  "agentId": { "type": "string" },
+                  "autoExecute": {
+                    "type": "object",
+                    "properties": {
+                      "trigger": { "type": "string", "enum": ["schedule","event","webhook","instant"] },
+                      "schedule": { "type": "string", "enum": ["every_minute","every_5_minutes","every_15_minutes","every_hour","every_6_hours","every_day","every_week"] },
+                      "input": { "type": "string" },
+                      "isActive": { "type": "boolean" }
+                    }
                   }
                 }
               }
@@ -34,74 +308,381 @@
         }
       }
     },
-    "/api/agents": {
-      "get": {
-        "summary": "Liste tous les agents",
-        "tags": ["Agents"],
-        "responses": {
-          "200": { "description": "Liste des agents" },
-          "401": { "description": "Non authentifié" }
-        }
-      },
+    "/api/images/generate": {
       "post": {
-        "summary": "Crée un nouvel agent",
-        "tags": ["Agents"],
+        "summary": "Generer une image via HF",
+        "tags": ["Generation"],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "type"],
+                "required": ["prompt"],
                 "properties": {
-                  "name": { "type": "string" },
-                  "type": { "type": "string" },
-                  "description": { "type": "string" },
-                  "config": { "type": "string" }
+                  "prompt": { "type": "string", "maxLength": 2000 },
+                  "model": { "type": "string", "enum": ["flux","sdxl","sd3","animagine"], "default": "flux" },
+                  "negativePrompt": { "type": "string" },
+                  "width": { "type": "integer", "default": 1024 },
+                  "height": { "type": "integer", "default": 1024 }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Agent créé" }
+          "200": { "description": "Generation lancee", "content": { "application/json": { "schema": { "type": "object", "properties": { "generationId": { "type": "string" }, "status": { "type": "string" }, "model": { "type": "string" }, "cost": { "type": "integer" } } } } } },
+          "402": { "description": "Credits insuffisants" }
         }
+      }
+    },
+    "/api/images/{id}": {
+      "get": {
+        "summary": "Poller le statut d'une generation",
+        "tags": ["Generation"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Statut de la generation" },
+          "404": { "description": "Generation introuvable" }
+        }
+      }
+    },
+    "/api/audio/generate": {
+      "post": {
+        "summary": "Generer un audio TTS via HF",
+        "tags": ["Generation"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["userId","text"],
+                "properties": {
+                  "userId": { "type": "string" },
+                  "text": { "type": "string" },
+                  "model": { "type": "string", "enum": ["mms-tts","bark"], "default": "mms-tts" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Audio genere", "content": { "application/json": { "schema": { "type": "object", "properties": { "audioUrl": { "type": "string" }, "generationId": { "type": "string" } } } } } }
+        }
+      }
+    },
+    "/api/billing": {
+      "get": {
+        "summary": "Informations de facturation",
+        "tags": ["Billing"],
+        "responses": {
+          "200": { "description": "Abonnement, factures, credits, utilisation" }
+        }
+      }
+    },
+    "/api/mcp-server": {
+      "post": {
+        "summary": "Endpoint MCP (JSON-RPC 2.0)",
+        "tags": ["MCP"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jsonrpc": { "type": "string", "example": "2.0" },
+                  "id": { "type": "integer", "example": 1 },
+                  "method": { "type": "string", "example": "tools/list" },
+                  "params": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Reponse JSON-RPC" }
+        }
+      }
+    },
+    "/api/ai/chat": {
+      "post": {
+        "summary": "Chat avec l'assistant IA",
+        "tags": ["IA"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message"],
+                "properties": {
+                  "message": { "type": "string", "maxLength": 5000 },
+                  "history": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": { "type": "string", "enum": ["user","assistant"] },
+                        "content": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Reponse de l'assistant" }
+        }
+      }
+    },
+    "/api/ai/orchestrate": {
+      "post": {
+        "summary": "Orchestrer une commande en plan d'action",
+        "tags": ["IA"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["command"],
+                "properties": {
+                  "command": { "type": "string", "maxLength": 5000 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Plan d'action genere" }
+        }
+      }
+    },
+    "/api/ai-server": {
+      "get": {
+        "summary": "Sante et statut du serveur IA",
+        "tags": ["IA"]
+      },
+      "post": {
+        "summary": "Analyse, process ou diagnose",
+        "tags": ["IA"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["action","input"],
+                "properties": {
+                  "action": { "type": "string", "enum": ["analyze","process","diagnose"] },
+                  "input": { "type": "string" },
+                  "model": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/guardrails": {
+      "get": {
+        "summary": "Lister les regles de securite",
+        "tags": ["Securite"],
+        "responses": {
+          "200": { "description": "Regles de securite" }
+        }
+      },
+      "post": {
+        "summary": "Creer une regle de securite",
+        "tags": ["Securite"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name","type"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string", "enum": ["content_filter","rate_limit","permission","cost_limit","time_restriction","action_block","custom"] },
+                  "description": { "type": "string" },
+                  "rules": { "type": "string" },
+                  "severity": { "type": "string", "enum": ["info","warning","critical","block"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Regle creee" }
+        }
+      }
+    },
+    "/api/connectors/mcp": {
+      "get": {
+        "summary": "Lister les connecteurs MCP",
+        "tags": ["Connecteurs"]
+      },
+      "post": {
+        "summary": "Creer un connecteur MCP",
+        "tags": ["Connecteurs"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name","serverUrl"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "serverUrl": { "type": "string", "format": "uri" },
+                  "transportType": { "type": "string", "enum": ["sse","streamable-http"], "default": "sse" },
+                  "authType": { "type": "string", "enum": ["none","bearer","api_key","oauth2","basic"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorizations": {
+      "get": {
+        "summary": "Lister les authorisations OAuth",
+        "tags": ["Authorisations"]
+      },
+      "post": {
+        "summary": "Connecter un service externe",
+        "tags": ["Authorisations"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["service","accessToken","accountId","accountName"],
+                "properties": {
+                  "service": { "type": "string" },
+                  "accessToken": { "type": "string" },
+                  "accountId": { "type": "string" },
+                  "accountName": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Deconnecter un service",
+        "tags": ["Authorisations"],
+        "parameters": [
+          { "name": "service", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "accountId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ]
+      }
+    },
+    "/api/marketplace": {
+      "get": {
+        "summary": "Lister les annonces publiques",
+        "tags": ["Marketplace"],
+        "parameters": [
+          { "name": "type", "in": "query", "schema": { "type": "string" } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ]
+      },
+      "post": {
+        "summary": "Creer une annonce",
+        "tags": ["Marketplace"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name","description"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 3 },
+                  "description": { "type": "string", "minLength": 10 },
+                  "type": { "type": "string", "enum": ["agent","tool","workflow","template","prompt","integration"] },
+                  "price": { "type": "number" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals": {
+      "get": {
+        "summary": "Lister les demandes d'approbation",
+        "tags": ["Workflow"]
+      },
+      "post": {
+        "summary": "Approuver/refuser une demande",
+        "tags": ["Workflow"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["requestId","action"],
+                "properties": {
+                  "requestId": { "type": "string" },
+                  "action": { "type": "string", "enum": ["approve","deny"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/advertising": {
+      "get": {
+        "summary": "Publicites et preferences",
+        "tags": ["Publicite"],
+        "parameters": [
+          { "name": "action", "in": "query", "schema": { "type": "string", "enum": ["decide","preferences","stats"] } }
+        ]
+      },
+      "post": {
+        "summary": "Enregistrer impression/click",
+        "tags": ["Publicite"]
       }
     },
     "/api/export": {
       "get": {
-        "summary": "Export des données",
+        "summary": "Export des donnees",
         "tags": ["Export"],
         "parameters": [
-          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["agents", "executions", "users", "workflows"] } },
-          { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["csv", "json"] } }
-        ],
-        "responses": {
-          "200": { "description": "Fichier exporté" }
-        }
-      }
-    },
-    "/api/monitoring/dashboard": {
-      "get": {
-        "summary": "Métriques du dashboard",
-        "tags": ["Monitoring"],
-        "responses": {
-          "200": { "description": "Métriques en temps réel" }
-        }
-      }
-    },
-    "/api/admin/audit": {
-      "get": {
-        "summary": "Consulter l'audit trail",
-        "tags": ["Admin"],
-        "parameters": [
-          { "name": "page", "in": "query", "schema": { "type": "integer" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer" } },
-          { "name": "action", "in": "query", "schema": { "type": "string" } },
-          { "name": "severity", "in": "query", "schema": { "type": "string" } }
-        ],
-        "responses": { "200": { "description": "Entrées d'audit" } }
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["agents","executions","users","workflows"] } },
+          { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["csv","json"] } }
+        ]
       }
     }
-  }
+  },
+  "tags": [
+    { "name": "Systeme", "description": "Sante et monitoring" },
+    { "name": "Cles API", "description": "Gestion des cles API" },
+    { "name": "Agents", "description": "Creation, execution et gestion des agents" },
+    { "name": "Generation", "description": "Generation d'images et d'audio" },
+    { "name": "IA", "description": "Chat et orchestration IA" },
+    { "name": "MCP", "description": "Model Context Protocol" },
+    { "name": "Connecteurs", "description": "Connecteurs MCP externes" },
+    { "name": "Authorisations", "description": "Connexions aux services externes" },
+    { "name": "Marketplace", "description": "Annonces d'agents et d'outils" },
+    { "name": "Billing", "description": "Facturation et credits" },
+    { "name": "Webhooks", "description": "Webhooks entrants" },
+    { "name": "Workflow", "description": "Approbations et workflows" },
+    { "name": "Securite", "description": "Guardrails et regles" },
+    { "name": "Publicite", "description": "Campagnes et publicites" },
+    { "name": "Export", "description": "Export de donnees" }
+  ]
 }

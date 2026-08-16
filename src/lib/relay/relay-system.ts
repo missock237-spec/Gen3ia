@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 
 const log = createLogger('relay-system');
 
-enum RelayProvider {
+export enum RelayProvider {
   GROQ = 'groq',
   OPENROUTER = 'openrouter',
   OPENAI = 'openai',
@@ -12,7 +12,7 @@ enum RelayProvider {
   ELEVENLABS = 'elevenlabs',
 }
 
-enum RelayModality {
+export enum RelayModality {
   REASONING = 'reasoning',
   VOICE = 'voice',
   IMAGE = 'image',

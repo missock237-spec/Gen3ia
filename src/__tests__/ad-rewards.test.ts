@@ -63,7 +63,7 @@ describe('Ad Rewards System', () => {
   });
 
   it('should persist balance across operations', async () => {
-    const { awardAdReward, getCreditBalance } = await import('@/lib/ad-rewards');
+    const { _awardAdReward, getCreditBalance } = await import('@/lib/ad-rewards');
 
     // Simuler en modifiant le timestamp pour bypasser le cooldown
     const now = Date.now();

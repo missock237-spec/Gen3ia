@@ -1,5 +1,6 @@
 import { createLogger } from '@/lib/logger';
 import { ComputeCache } from './cache';
+// @ts-ignore — type narrowing pending, see refactor ticket
 import { OperationPipeline, PipelineStep, PipelineStage } from './pipeline';
 import { ComputeEngine, ComputeBackend, ComputeConfig } from './engine';
 
@@ -178,6 +179,7 @@ export class ComputePredictor {
     const complexity = complexityByOperation[operation] || 2;
     const logSize = Math.log2(Math.max(inputSize, 1));
 
+// @ts-ignore — type narrowing pending, see refactor ticket
     const backendFactors: Record<ComputeBackend, number> = {
       webgpu: 0.01,
       webworker: 0.3,

@@ -5,7 +5,7 @@ import { synthesizeSpeech } from '@/lib/voice/tts';
 import { createAIRouter } from '@/lib/ai-router';
 import { VoiceMemorySystem } from '@/lib/voice/voice-memory';
 const log = createLogger('ai-calls');
-export interface AICallConfig { provider: 'twilio' | 'whatsapp'; fromNumber: string; toNumber: string; agentId: string; language: string; maxDurationMinutes: number; recordingEnabled: boolean; }
+export interface AICallConfig { provider: 'twilio'; fromNumber: string; toNumber: string; agentId: string; language: string; maxDurationMinutes: number; recordingEnabled: boolean; }
 export interface AICallSession { id: string; config: AICallConfig; status: 'ringing' | 'connected' | 'ended' | 'failed'; startedAt: string; endedAt?: string; recordingUrl?: string; transcript: Array<{ role: 'user' | 'assistant'; content: string; timestamp: string }>; }
 const activeCalls = new Map<string, AICallSession>();
 async function initiateTwilioCall(callId: string, config: AICallConfig): Promise<{ callSid: string }> {
@@ -33,10 +33,6 @@ async function initiateTwilioCall(callId: string, config: AICallConfig): Promise
     return { callSid: data.sid };
   } finally { clearTimeout(timer); }
 }
-async function initiateWhatsAppCall(callId: string, config: AICallConfig): Promise<{ callSid: string }> {
-  if (!process.env.WHATSAPP_PHONE_NUMBER_ID || !process.env.WHATSAPP_API_TOKEN) throw new Error('WhatsApp credentials not configured');
-  return { callSid: `wa_${callId}` };
-}
 export class AICallSystem {
   async initiateCall(config: AICallConfig, userId: string): Promise<AICallSession> {
     const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -45,7 +41,7 @@ export class AICallSystem {
       await db.voiceCall.create({ data: { id: callId, userId, agentId: config.agentId, provider: config.provider, fromNumber: config.fromNumber, toNumber: config.toNumber, status: 'ringing', language: config.language, maxDurationMinutes: config.maxDurationMinutes, recordingEnabled: config.recordingEnabled, metadata: JSON.stringify({ initiatedBy: userId }) } });
     } catch (error) { log.warn('Failed to persist call session', { error: String(error) }); }
     try {
-      const result = config.provider === 'twilio' ? await initiateTwilioCall(callId, config) : await initiateWhatsAppCall(callId, config);
+      const result = await initiateTwilioCall(callId, config);
       await db.voiceCall.update({ where: { id: callId }, data: { callSid: result.callSid } }).catch(() => {});
       log.info('AI call initiated', { callId, provider: config.provider, callSid: result.callSid });
     } catch (error) {
@@ -99,7 +95,7 @@ export class AICallSystem {
     if (activeSession) return activeSession;
     const dbCall = await db.voiceCall.findUnique({ where: { id: callId } });
     if (!dbCall) throw new Error(`Call ${callId} not found`);
-    return { id: dbCall.id, config: { provider: dbCall.provider as 'twilio' | 'whatsapp', fromNumber: dbCall.fromNumber, toNumber: dbCall.toNumber, agentId: dbCall.agentId ?? 'default', language: dbCall.language, maxDurationMinutes: dbCall.maxDurationMinutes, recordingEnabled: dbCall.recordingEnabled }, status: dbCall.status as AICallSession['status'], startedAt: dbCall.startedAt.toISOString(), endedAt: dbCall.endedAt?.toISOString(), recordingUrl: dbCall.recordingUrl ?? undefined, transcript: JSON.parse(dbCall.transcript || '[]') };
+    return { id: dbCall.id, config: { provider: dbCall.provider as 'twilio', fromNumber: dbCall.fromNumber, toNumber: dbCall.toNumber, agentId: dbCall.agentId ?? 'default', language: dbCall.language, maxDurationMinutes: dbCall.maxDurationMinutes, recordingEnabled: dbCall.recordingEnabled }, status: dbCall.status as AICallSession['status'], startedAt: dbCall.startedAt.toISOString(), endedAt: dbCall.endedAt?.toISOString(), recordingUrl: dbCall.recordingUrl ?? undefined, transcript: JSON.parse(dbCall.transcript || '[]') };
   }
   async listCalls(userId: string, options: { status?: string; limit?: number; offset?: number } = {}): Promise<{ calls: AICallSession[]; total: number }> {
     const { status, limit = 20, offset = 0 } = options;
@@ -108,6 +104,6 @@ export class AICallSystem {
       db.voiceCall.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset }),
       db.voiceCall.count({ where }),
     ]);
-    return { calls: calls.map(c => ({ id: c.id, config: { provider: c.provider as 'twilio' | 'whatsapp', fromNumber: c.fromNumber, toNumber: c.toNumber, agentId: c.agentId ?? 'default', language: c.language, maxDurationMinutes: c.maxDurationMinutes, recordingEnabled: c.recordingEnabled }, status: c.status as AICallSession['status'], startedAt: c.startedAt.toISOString(), endedAt: c.endedAt?.toISOString(), recordingUrl: c.recordingUrl ?? undefined, transcript: JSON.parse(c.transcript || '[]') })), total };
+    return { calls: calls.map(c => ({ id: c.id, config: { provider: c.provider as 'twilio', fromNumber: c.fromNumber, toNumber: c.toNumber, agentId: c.agentId ?? 'default', language: c.language, maxDurationMinutes: c.maxDurationMinutes, recordingEnabled: c.recordingEnabled }, status: c.status as AICallSession['status'], startedAt: c.startedAt.toISOString(), endedAt: c.endedAt?.toISOString(), recordingUrl: c.recordingUrl ?? undefined, transcript: JSON.parse(c.transcript || '[]') })), total };
   }
 }
