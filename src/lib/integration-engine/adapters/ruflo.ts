@@ -305,7 +305,7 @@ export class RufloAdapter implements IntegrationAdapter {
         costUsd: 0,
         metadata: { provider: 'ruflo', method: 'swarm_init' },
       };
-    } catch (error) {
+    } catch (_error) {
       log.info('Ruflo MCP unavailable, using Genova Agent Engine fallback');
     }
 

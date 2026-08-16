@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const AVAILABLE_PERMISSIONS = [
   'browse_web',
   'social_post',
@@ -10,8 +15,6 @@ const AVAILABLE_PERMISSIONS = [
   'social_instagram',
   'social_tiktok',
   'social_linkedin',
-  'whatsapp_message',
-  'whatsapp_call',
   'use_api',
   'use_cpu',
   'use_mvp',
@@ -19,7 +22,7 @@ const AVAILABLE_PERMISSIONS = [
 
 export async function OPTIONS(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: _params }: { params: Promise<{ id: string }> }
 ) {
   const { error } = await applySecurity(request);
   if (error) return error;

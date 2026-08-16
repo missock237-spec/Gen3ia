@@ -106,7 +106,7 @@ Parle en français.`,
   const plan: MultiAgentPlan = {
     id: `plan_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     objective,
-    agents: planData.tasks.map((task, index) => ({
+    agents: planData.tasks.map((task, _index) => ({
       agentId: task.agentId,
       role: task.role,
       task: task.task,

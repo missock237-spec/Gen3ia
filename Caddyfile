@@ -1,18 +1,29 @@
+# ============================================================
+# Caddyfile — Proxy inverse et TLS pour Genova AI
+# 
+# Installation: https://caddyserver.com/download
+# Usage: caddy run
+# ============================================================
+
 {
-  email {$ACME_EMAIL}
+  email {$ACME_EMAIL}        # Email pour Let's Encrypt
+  # Pour le développement local, décommenter :
+  # local_certs
 }
 
-{$APP_DOMAIN} {
+{$APP_DOMAIN} {              # Domaine de l'application (ex: genova.app)
   encode zstd gzip
 
   header {
+    # Sécurité
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Frame-Options "DENY"
     X-Content-Type-Options "nosniff"
     Referrer-Policy "strict-origin-when-cross-origin"
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    -Server
+    -Server                     # Cache le serveur
   }
 
-  reverse_proxy {$APP_UPSTREAM}
+  # Proxy vers Next.js (port par défaut 3000)
+  reverse_proxy {$APP_UPSTREAM:localhost:3000}
 }
