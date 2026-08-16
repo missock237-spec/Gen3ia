@@ -15,6 +15,7 @@
   },
   "scripts": {
     "dev": "turbo run dev",
+    "prebuild": "node scripts/prebuild.js",
     "build": "next build",
     "build:root": "next build",
     "build:packages": "turbo run build",
