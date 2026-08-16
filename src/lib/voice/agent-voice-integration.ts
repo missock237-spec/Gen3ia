@@ -173,7 +173,7 @@ export class AgentVoiceManager {
       return {
         agentId,
         text: responseText,
-        audio: ttsResult.audio,
+        audio: Buffer.from(ttsResult.audio),
         emotion: emotion || {
           emotion: 'neutral',
           confidence: 1,
@@ -393,7 +393,7 @@ export const AGENT_VOICE_PERSONALITIES = {
     description: 'Formal and authoritative',
   },
   supportive: {
-    emotion: 'calm',
+    emotion: 'neutral',
     speechRate: 0.9,
     pitch: 0.95,
     description: 'Soothing and patient',

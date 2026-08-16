@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (userId) { const user = await getUserById(userId); if (!user) return NextResponse.json({ error: 'Utilisateur non trouve' }, { status: 404 }); return NextResponse.json({ user }); }
     if (search) { const users = await searchUsers(search); return NextResponse.json({ users, total: users.length }); }
     return NextResponse.json(await getAllUsers(page, limit));
-  } catch (err) { return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 }); }
+  } catch (_err) { return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 }); }
 }
 
 export async function PATCH(request: NextRequest) {
@@ -50,5 +50,5 @@ export async function PATCH(request: NextRequest) {
       case 'delete': await deleteUser(userId); await logAdminAction(admin.userId, 'delete_user:' + userId, 'Supprime'); return NextResponse.json({ success: true });
       default: return NextResponse.json({ error: 'Action inconnue' }, { status: 400 });
     }
-  } catch (err) { return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 }); }
+  } catch (_err) { return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 }); }
 }

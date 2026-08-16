@@ -2,8 +2,8 @@
   "name": "gen3ia",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "bun run build",
-  "installCommand": "bun install --frozen-lockfile",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install --legacy-peer-deps",
   "outputDirectory": ".next",
   "regions": [
     "fra1"
@@ -19,13 +19,10 @@
   "crons": [
     {
       "path": "/api/cron/refresh-tokens",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 0 * * *"
     }
   ],
   "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "develop": true
-    }
+    "deploymentEnabled": true
   }
 }

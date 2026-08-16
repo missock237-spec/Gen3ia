@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     // Format category breakdown
     const categoryBreakdown: Record<string, number> = {};
     for (const item of knowledgeByCategory) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       categoryBreakdown[item.category] = item._count.category;
     }
 
@@ -120,13 +120,13 @@ export async function GET(request: NextRequest) {
       totalConversations,
       totalMessages,
       memoryUsageKB,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       totalAccessCount: agentMemoryStats._sum.accessCount || 0,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       averageRelevance: knowledgeStats._avg.relevance,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       maxRelevance: knowledgeStats._max.relevance,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       minRelevance: knowledgeStats._min.relevance,
       categoryBreakdown,
       recentKnowledge,

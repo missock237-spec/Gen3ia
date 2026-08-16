@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Loader2, Wifi, WifiOff, Zap, DollarSign, Coins, Phone, Timer, BrainCircuit } from 'lucide-react';
 import { createLogger } from '@/lib/logger';
 
@@ -38,6 +38,8 @@ export function LiveMetrics({ userId, refreshInterval = 5000 }: LiveMetricsProps
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const [eventCount, setEventCount] = useState(0);
+  // Ref to break self-reference cycle (connectSSE references itself via setTimeout).
+  const connectSSERef = useRef<(() => EventSource) | null>(null);
 
   const connectSSE = useCallback(() => {
     const eventSource = new EventSource(`/api/events?userId=${userId}`);
@@ -94,11 +96,16 @@ export function LiveMetrics({ userId, refreshInterval = 5000 }: LiveMetricsProps
     eventSource.onerror = () => {
       setConnected(false);
       log.warn('SSE déconnecté, reconnexion dans 5s');
-      setTimeout(connectSSE, 5000);
+      setTimeout(() => connectSSERef.current?.(), 5000);
     };
 
     return eventSource;
   }, [userId, eventCount]);
+
+  // Keep ref in sync for recursive setTimeout calls (must be in effect, not during render).
+  useEffect(() => {
+    connectSSERef.current = connectSSE;
+  }, [connectSSE]);
 
   useEffect(() => {
     const eventSource = connectSSE();

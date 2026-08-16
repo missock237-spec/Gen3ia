@@ -43,7 +43,7 @@ export default function AgentStudio() {
         { id: "a5", name: "Coord", role: "coordinator" } ], userId: "studio" }) });
       const d = await r.json();
       setLogs(p => [...p, "[Termine: " + (d.mission?.duration || "?") + "ms]"]);
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     } catch (e) { setLogs(p => [...p, "[Erreur: " + e.message + "]"]); }
     setIsRunning(false);
   };

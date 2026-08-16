@@ -33,7 +33,7 @@ export async function POST(
 
     const res = NextResponse.json({ success: true, data: { id, status: 'disconnected' } });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Disconnect failed' }, { status: 500 });
     return secureResponse(res, request);
   }

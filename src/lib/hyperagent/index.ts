@@ -537,7 +537,7 @@ export class HyperAgent {
     context: Array<{ role: string; content: string }>,
     userId?: string
   ): Promise<{ content: string; provider: string; model: string; tokensUsed: number; costUsd: number; fallbackUsed: boolean }> {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const router = createAIRouter(userId);
 
     const messages = [
@@ -549,7 +549,7 @@ export class HyperAgent {
       { role: 'user' as const, content: query },
     ];
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const response = await router.chat(messages, { model });
 
     return {

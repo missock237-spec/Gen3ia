@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { productId, amount, currency, phone } = body;
+    const { productId, amount, currency, _phone } = body;
 
     if (!productId || !amount) {
       return NextResponse.json({ error: 'productId et amount requis' }, { status: 400 });

@@ -188,7 +188,7 @@ class EventBus {
     for (const event of dlq) {
       try {
         await this.publish(event);
-      } catch (error) {
+      } catch (_error) {
         log.warn('dlq_replay_failed', { eventId: event.id.slice(0, 8) });
         this.deadLetterQueue.push(event);
       }

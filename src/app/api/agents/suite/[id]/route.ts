@@ -17,13 +17,13 @@ import { createLogger } from '@/lib/logger';
 export const dynamic = "force-dynamic";
 const log = createLogger('api-suite-detail');
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   try {
     const suite = await prisma.agentSuite.findFirst({
-      where: { id: params.id, userId: auth.userId },
+      where: { id: (await params).id, userId: auth.userId },
       include: {
         agents: {
           include: { agent: true },
@@ -52,13 +52,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   try {
     const suite = await prisma.agentSuite.findFirst({
-      where: { id: params.id, userId: auth.userId },
+      where: { id: (await params).id, userId: auth.userId },
       include: {
         agents: { include: { agent: true }, orderBy: { order: 'asc' } },
       },
@@ -106,20 +106,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   try {
     const suite = await prisma.agentSuite.findFirst({
-      where: { id: params.id, userId: auth.userId },
+      where: { id: (await params).id, userId: auth.userId },
     });
 
     if (!suite) {
       return NextResponse.json({ error: 'Suite introuvable' }, { status: 404 });
     }
 
-    await prisma.agentSuite.delete({ where: { id: params.id } });
+    await prisma.agentSuite.delete({ where: { id: (await params).id } });
 
     return NextResponse.json({ success: true, message: 'Suite supprimée' });
   } catch (err) {

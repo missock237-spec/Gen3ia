@@ -63,7 +63,7 @@ export class PomodoroTimer {
     return done;
   }
 
-  interrupt(reason?: string): FocusSession | null {
+  interrupt(_reason?: string): FocusSession | null {
     if (!this.current) return null;
     this.current.interrupted = true;
     this.current.endedAt = new Date().toISOString();

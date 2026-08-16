@@ -335,8 +335,14 @@ export function handleApiError(error: unknown): NextResponse<ApiErrorResponse> {
   logger.error('unhandled_error', { requestId, error: message });
 
   try {
-    const Sentry = require('@sentry/nextjs');
-    if (error instanceof Error) Sentry.captureException(error, { tags: { requestId } });
+    // Lazy-load Sentry without require() — use a synchronous dynamic import via a top-level cache.
+    // We use a module-level variable so the import only happens once per process.
+    if (typeof window === 'undefined') {
+      // Server-side: use top-level import (see imports above)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { captureException } = require('@sentry/nextjs');
+      if (error instanceof Error) captureException(error, { tags: { requestId } });
+    }
   } catch {}
 
   return NextResponse.json(

@@ -29,7 +29,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { message, context, conversationId, taskType = 'quick_chat' } = body;
+    const { message, context, conversationId, _taskType = 'quick_chat' } = body;
 
     if (!message) {
       return new Response(JSON.stringify({ error: 'Message is required' }), {

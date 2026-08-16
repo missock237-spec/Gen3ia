@@ -89,7 +89,7 @@ describe('JWT Service - Sécurité des tokens', () => {
     it('rejette un token expiré', async () => {
       const { verifyAccessToken } = await import('@/lib/auth/jwt');
       // Token avec exp dans le passé
-      const { SignJWT, base64url } = await import('jose');
+      const { SignJWT, _base64url } = await import('jose');
       const { createSecretKey } = await import('node:crypto');
       
       const secretKey = createSecretKey(new TextEncoder().encode(TEST_SECRET));

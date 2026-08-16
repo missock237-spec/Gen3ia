@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- test file uses dynamic require for modules that may not be installed */
 /**
  * Tests d'intégrité du système de simulation d'agents
  * Vérifie que les fallbacks simulés sont marqués explicitement

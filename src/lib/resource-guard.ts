@@ -158,4 +158,5 @@ export function limitString(input: string, maxLength: number = DEFAULT_MAX_STRIN
   return input.length <= maxLength ? input : input.slice(0, maxLength);
 }
 
+// eslint-disable-next-line import/no-anonymous-default-export
 export default { ResourceGuard, createResourceGuard, limitString };

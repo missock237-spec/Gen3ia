@@ -19,7 +19,7 @@ const handlers = new Map<string, ReturnType<typeof createScreenShareHandler>>();
 export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
-    const { imageData, width, height, windowTitle, sessionId } = body;
+    const { imageData, width, height, windowTitle, _sessionId } = body;
 
     if (!imageData) {
       return NextResponse.json({ error: 'Screen frame data is required' }, { status: 400 });

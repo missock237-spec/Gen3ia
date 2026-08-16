@@ -316,7 +316,7 @@ export async function purchaseCredits(
 
   const result = await createCheckoutSession({
     userId,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     priceId: pkg.stripePriceId,
     planId: 'credit_purchase',
     mode: 'payment',

@@ -216,7 +216,7 @@ export class AISecurityEngine {
         },
         _sum: { totalTokens: true },
       });
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       usedTokens = result._sum.totalTokens || 0;
     } catch (error) {
       log.error('Failed to query token usage', {
@@ -274,7 +274,7 @@ export class AISecurityEngine {
         },
         _sum: { costUsd: true },
       });
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       usedCost = result._sum.costUsd || 0;
     } catch (error) {
       log.error('Failed to query cost usage', {

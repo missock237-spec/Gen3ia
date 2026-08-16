@@ -45,7 +45,7 @@ export async function GET(
 
     const res = NextResponse.json({ success: true, data: parsed });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Failed to fetch connector' }, { status: 500 });
     return secureResponse(res, request);
   }
@@ -97,7 +97,7 @@ export async function PATCH(
       },
     });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json(
       { error: 'Failed to update connector' },
       { status: 500 }
@@ -145,7 +145,7 @@ export async function DELETE(
 
     const res = NextResponse.json({ success: true });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Failed to delete connector' }, { status: 500 });
     return secureResponse(res, request);
   }

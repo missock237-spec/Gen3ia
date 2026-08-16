@@ -235,7 +235,7 @@ export async function queryGraph(
 
   const nodes = await db.memoryNode.findMany({
     where,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     orderBy: [{ weight: 'desc' }, { updatedAt: 'desc' }],
     take: limit,
   });
@@ -277,7 +277,7 @@ export async function getRelevantContext(
   const queryLower = query.toLowerCase();
   const allNodes = await db.memoryNode.findMany({
     where: { userId, isActive: true },
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     orderBy: [{ weight: 'desc' }, { accessCount: 'desc' }],
   });
 

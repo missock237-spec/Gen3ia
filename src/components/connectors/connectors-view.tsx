@@ -11,7 +11,7 @@ export function ConnectorsView() {
     try { const r = await fetch('/api/connectors', { headers: { Authorization: `Bearer ${t}` } }); if (r.ok) setC(await r.json()); } catch {}
     setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { let _cancelled = false; (async () => { if (!_cancelled) { try { await load(); } catch {} } })(); return () => { _cancelled = true; }; }, []);
   const add = async () => {
     if (!n || !s || !k) return;
     const t = localStorage.getItem('genova_token');
