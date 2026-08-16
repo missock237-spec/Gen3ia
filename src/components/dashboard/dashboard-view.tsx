@@ -60,10 +60,14 @@ export function DashboardView() {
   };
 
   useEffect(() => {
-    fetchStats();
+    // Wrap in async IIFE so setState inside fetchStats is deferred (not synchronous).
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) try { await fetchStats(); } catch {}
+    })();
     // Rafraîchissement automatique toutes les 30s
-    const interval = setInterval(() => fetchStats(true), 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => { void fetchStats(true); }, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   const cards = [

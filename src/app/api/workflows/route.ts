@@ -1,54 +1,164 @@
+// ============================================================
+// Workflows API - CRUD + Versioning initial
+// SECURITE: applySecurity + ownership + rate limit Redis distribué
+// ============================================================
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { verify } from 'jsonwebtoken';
+import { prisma } from '@/lib/prisma';
+import { applySecurity } from '@/lib/security';
+import { workflowEngine, WorkflowCanvas } from '@/lib/workflow-engine';
+import { workflowVersioning } from '@/lib/workflow-versioning';
+import { createLogger } from '@/lib/logger';
+import { rateLimit } from '@/lib/rate-limiter';
 
-const JWT_SECRET = process.env.AUTH_SECRET;
 
-function getUser(req: NextRequest): { userId: string } | null {
-  try {
-    const a = req.headers.get('authorization');
-    if (!a?.startsWith('Bearer ') || !JWT_SECRET || JWT_SECRET.length < 32) return null;
-    return verify(a.slice(7), JWT_SECRET) as { userId: string };
-  } catch { return null; }
-}
+
+
+export const dynamic = "force-dynamic";
+const log = createLogger('api-workflows');
 
 export async function GET(request: NextRequest) {
-  const user = getUser(request);
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
+
   try {
-    const workflows = await db.workflow.findMany({
-      where: { userId: user.userId },
-      orderBy: { updatedAt: 'desc' },
-      take: 50,
+    // Facade Firestore : where/orderBy en tableaux, select en string[].
+    const workflows = await prisma.workflow.findMany({
+      where: [{ field: 'userId', op: '==', value: auth.userId }],
+      orderBy: [{ field: 'updatedAt', direction: 'desc' }],
+      select: ['id', 'name', 'description', 'trigger', 'status', 'updatedAt', 'createdAt', 'activeBranchId', 'currentVersionId'],
     });
-    // Parser les steps JSON
-    const parsed = workflows.map(w => ({
-      ...w,
-      steps: typeof w.steps === 'string' ? JSON.parse(w.steps) : w.steps,
-      stepCount: Array.isArray(w.steps) ? w.steps.length : (typeof w.steps === 'string' ? JSON.parse(w.steps).length : 0),
-    }));
-    return NextResponse.json(parsed);
-  } catch { return NextResponse.json({ error: 'Erreur de chargement' }, { status: 500 }); }
+    return NextResponse.json({ success: true, workflows });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const user = getUser(request);
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
+
   try {
-    const { name, description, steps, trigger } = await request.json();
-    if (!name || name.trim().length < 1) {
-      return NextResponse.json({ error: 'Nom requis' }, { status: 400 });
+    const body = await request.json();
+    const { name, description, trigger, template } = body;
+
+    if (!name) return NextResponse.json({ error: 'name requis' }, { status: 400 });
+
+    let steps: WorkflowCanvas = { blocks: [], edges: [] };
+
+    if (template) {
+      const tmpl = await prisma.workflowTemplate.findUnique({ where: { id: template } });
+      if (tmpl) {
+        steps = JSON.parse(tmpl.steps as string);
+        // increment() non supporté par la façade -> lecture + écriture explicite.
+        await prisma.workflowTemplate.update({
+          where: { id: template },
+          data: { usageCount: (Number(tmpl.usageCount) || 0) + 1 },
+        });
+      }
     }
-    const workflow = await db.workflow.create({
+
+    // Creer le workflow
+    const workflow = await prisma.workflow.create({
       data: {
-        name: name.trim(),
-        description: description || '',
-        steps: typeof steps === 'string' ? steps : JSON.stringify(steps || []),
+        name, description: description || '',
+        steps: JSON.stringify(steps),
         trigger: trigger || 'manual',
-        userId: user.userId,
-        status: 'draft',
+        userId: auth.userId,
       },
     });
-    return NextResponse.json(workflow, { status: 201 });
-  } catch { return NextResponse.json({ error: 'Erreur de création' }, { status: 500 }); }
+
+    // Initialiser versioning (branche main + v1)
+    await workflowVersioning.createWithInitialVersion(
+      workflow.id as string, auth.userId, steps, 'Version initiale'
+    );
+
+    log.info('workflow_created_with_versioning', { workflowId: workflow.id });
+
+    const fullWorkflow = await prisma.workflow.findUnique({
+      where: { id: workflow.id as string },
+    });
+
+    return NextResponse.json({ success: true, workflow: fullWorkflow });
+  } catch (err) {
+    log.error('workflow_create_error', { error: String(err) });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
+
+  try {
+    const body = await request.json();
+    const { id, name, description, steps, trigger, status } = body;
+
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
+
+    // Ownership check : le workflow doit appartenir à l'utilisateur
+    const workflow = await prisma.workflow.findFirst({
+      where: [
+        { field: 'id', op: '==', value: id },
+        { field: 'userId', op: '==', value: auth.userId },
+      ],
+    });
+    if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
+
+    const updated = await prisma.workflow.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(description !== undefined && { description }),
+        ...(steps !== undefined && { steps: JSON.stringify(steps) }),
+        ...(trigger !== undefined && { trigger }),
+        ...(status !== undefined && { status }),
+      },
+    });
+
+    if (body.test && steps) {
+      const result = await workflowEngine.execute(steps as WorkflowCanvas);
+      return NextResponse.json({ success: true, workflow: updated, test: result });
+    }
+
+    return NextResponse.json({ success: true, workflow: updated });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const { auth, error } = await applySecurity(request, { requireAuth: true });
+  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 });
+
+    // Ownership check
+    const workflow = await prisma.workflow.findFirst({
+      where: [
+        { field: 'id', op: '==', value: id },
+        { field: 'userId', op: '==', value: auth.userId },
+      ],
+    });
+    if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
+
+    await prisma.workflow.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }

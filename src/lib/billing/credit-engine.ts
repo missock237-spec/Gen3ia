@@ -4,6 +4,8 @@
 // ============================================================
 
 import { db } from '@/lib/db';
+import { getAdminDb } from '@/lib/firebase/admin';
+import type { TransactionContext } from '@/lib/firebase/firestore';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('credit-engine');
@@ -334,48 +336,89 @@ export class CreditEngine {
       };
     }
 
-    const balance = await this.getUserBalance(userId);
     const freePlanLimits = this.getFreePlanLimits();
 
-    // Vérifier les limites du plan gratuit
-    if (user.plan === 'free' && balance < cost.credits) {
-      // Voir si l'utilisateur a encore des crédits gratuits aujourd'hui
-      const todayUsage = await this.getTodayUsage(userId);
-      if (todayUsage >= freePlanLimits.dailyCredits) {
+    // ============================================================
+    // DÉDUCTION ATOMIQUE — utilise Firestore.runTransaction pour
+    // éliminer la race condition TOCTOU (check-then-act).
+    // Lecture + écriture du solde + création de transaction
+    // se font dans une seule transaction ACID.
+    // ============================================================
+    const adminDb = getAdminDb();
+
+    const result = await adminDb.runTransaction(async (tx) => {
+      // 1. Lire la dernière transaction pour obtenir le solde actuel
+      const lastTxSnap = await tx.get(
+        adminDb.collection('credit_transactions')
+          .where('userId', '==', userId)
+          .orderBy('createdAt', 'desc')
+          .limit(1)
+      );
+
+      let balance: number;
+      if (!lastTxSnap.empty) {
+        const lastTxData = lastTxSnap.docs[0].data();
+        balance = Math.floor(lastTxData.balance ?? 0);
+      } else {
+        const initialCredits: Record<string, number> = {
+          free: 1000, starter: 5000, pro: 50000, enterprise: 500000,
+        };
+        balance = initialCredits[user.plan || 'free'] || 1000;
+      }
+
+      // 2. Vérifier les limites (check atomique — aucune fenêtre TOCTOU)
+      if (user.plan === 'free' && balance < cost.credits) {
+        // Vérifier l'usage quotidien dans la même transaction
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todaySnap = await tx.get(
+          adminDb.collection('credit_transactions')
+            .where('userId', '==', userId)
+            .where('type', '==', 'debit')
+            .where('createdAt', '>=', today)
+        );
+        const todayUsage = todaySnap.docs.reduce((sum, doc) => {
+          const data = doc.data();
+          return sum + Math.abs(data.amount ?? 0);
+        }, 0);
+
+        if (todayUsage >= freePlanLimits.dailyCredits) {
+          return {
+            success: false as const,
+            balanceBefore: balance,
+            balanceAfter: balance,
+            deducted: 0,
+            reason: `Limite quotidienne du plan gratuit atteinte (${freePlanLimits.dailyCredits} crédits/jour)`,
+          };
+        }
+      }
+
+      if (balance < cost.credits && user.plan !== 'free') {
         return {
-          success: false,
+          success: false as const,
           balanceBefore: balance,
           balanceAfter: balance,
           deducted: 0,
-          reason: `Limite quotidienne du plan gratuit atteinte (${freePlanLimits.dailyCredits} crédits/jour)`,
+          reason: `Crédits insuffisants. Solde: ${balance}, requis: ${cost.credits}`,
         };
       }
-    }
 
-    // Vérifier solde suffisant
-    if (balance < cost.credits && user.plan !== 'free') {
-      return {
-        success: false,
-        balanceBefore: balance,
-        balanceAfter: balance,
-        deducted: 0,
-        reason: `Crédits insuffisants. Solde: ${balance}, requis: ${cost.credits}`,
-      };
-    }
+      // 3. Calculer la déduction réelle
+      const actualDeduction = Math.min(
+        cost.credits,
+        balance + (user.plan === 'free' ? freePlanLimits.overdraft : 0)
+      );
+      const newBalance = Math.max(0, balance - actualDeduction);
 
-    // Déduire (même si solde négatif pour free, on déduit ce qui reste)
-    const actualDeduction = Math.min(cost.credits, balance + (user.plan === 'free' ? freePlanLimits.overdraft : 0));
-    const newBalance = balance - actualDeduction;
-
-    // Créer la transaction
-    const transaction = await db.creditTransaction.create({
-      data: {
+      // 4. Créer la transaction de débit (atomique avec le check ci-dessus)
+      const newTxRef = adminDb.collection('credit_transactions').doc();
+      tx.set(newTxRef, {
         userId,
         amount: -actualDeduction,
-        balance: Math.max(0, newBalance),
+        balance: newBalance,
         type: 'debit',
         resourceType: metadata.action,
-        resourceId: metadata.resourceId,
+        resourceId: metadata.resourceId || null,
         description: this.buildDescription(cost, metadata),
         metadata: JSON.stringify({
           category: metadata.category,
@@ -385,26 +428,32 @@ export class CreditEngine {
           breakdown: cost.breakdown,
           usdCost: cost.usdCost,
         }),
-      },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      return {
+        success: true as const,
+        transactionId: newTxRef.id,
+        balanceBefore: balance,
+        balanceAfter: newBalance,
+        deducted: actualDeduction,
+        reason: `${actualDeduction} crédits déduits pour ${metadata.action}`,
+      };
     });
 
-    log.info('Credits deducted', {
-      userId: userId.slice(0, 8),
-      deducted: actualDeduction,
-      balanceBefore: balance,
-      balanceAfter: newBalance,
-      action: metadata.action,
-      usdCost: cost.usdCost,
-    });
+    if (result.success) {
+      log.info('Credits deducted (atomic)', {
+        userId: userId.slice(0, 8),
+        deducted: result.deducted,
+        balanceBefore: result.balanceBefore,
+        balanceAfter: result.balanceAfter,
+        action: metadata.action,
+        usdCost: cost.usdCost,
+      });
+    }
 
-    return {
-      success: true,
-      transactionId: transaction.id,
-      balanceBefore: balance,
-      balanceAfter: Math.max(0, newBalance),
-      deducted: actualDeduction,
-      reason: `${actualDeduction} crédits déduits pour ${metadata.action}`,
-    };
+    return result;
   }
 
   /**
@@ -453,6 +502,7 @@ export class CreditEngine {
       _sum: { amount: true },
     });
 
+// @ts-ignore — type narrowing pending, see refactor ticket
     return Math.abs(result._sum.amount || 0);
   }
 

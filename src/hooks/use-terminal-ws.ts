@@ -37,10 +37,12 @@ export function useTerminalWS(options: UseWSOptions) {
 
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [status, setStatus] = useState<WSStatus>("disconnected");
   const [lastMessage, setLastMessage] = useState<any>(null);
   const mountedRef = useRef(true);
+  // Ref to break self-reference cycle (connect references itself via setTimeout).
+  const connectRef = useRef<(() => void) | null>(null);
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
@@ -75,7 +77,7 @@ export function useTerminalWS(options: UseWSOptions) {
         // Reconnexion automatique
         if (mountedRef.current && retryRef.current < maxRetries) {
           retryRef.current++;
-          timerRef.current = setTimeout(connect, reconnectInterval);
+          timerRef.current = setTimeout(() => connectRef.current?.(), reconnectInterval);
         }
       };
 
@@ -83,14 +85,19 @@ export function useTerminalWS(options: UseWSOptions) {
         setStatus("error");
         onError?.(err);
       };
-    } catch (err) {
+    } catch (_err) {
       setStatus("error");
       if (mountedRef.current && retryRef.current < maxRetries) {
         retryRef.current++;
-        timerRef.current = setTimeout(connect, reconnectInterval);
+        timerRef.current = setTimeout(() => connectRef.current?.(), reconnectInterval);
       }
     }
   }, [url, onMessage, onOpen, onClose, onError, reconnectInterval, maxRetries]);
+
+  // Keep ref in sync for recursive setTimeout calls (must be in effect, not during render).
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const send = useCallback((data: any) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -109,7 +116,7 @@ export function useTerminalWS(options: UseWSOptions) {
 
   useEffect(() => {
     mountedRef.current = true;
-    connect();
+    const raf = requestAnimationFrame(() => connect()); return () => cancelAnimationFrame(raf);
     return () => {
       mountedRef.current = false;
       clearTimeout(timerRef.current);

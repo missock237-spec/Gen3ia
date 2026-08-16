@@ -1,29 +1,21 @@
-import { PrismaClient } from '@prisma/client';
+// ============================================================
+// Gen3ia — DB shim (compatibilité)
+// ============================================================
+//  Ce fichier préserve l'API historique `import { db, prisma } from '@/lib/db'`
+//  utilisée par ~50 API routes. Il délègue désormais vers Firestore.
+//
+//  Remplace :
+//    - src/lib/db.ts (Prisma)
+//    - src/lib/prisma.ts (Prisma singleton)
+//    - packages/core/src/db.ts (Prisma)
+//
+//  Backend : Firebase Admin SDK -> Cloud Firestore.
+// ============================================================
+import { dbExt } from '@/lib/firestore-extra';
 
-function resolveDatabaseUrl(): string {
-  const databaseUrl = process.env.DATABASE_URL || process.env.GEN3IA_DATABASE_URL || process.env.GENOVA_DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL must be set. Define DATABASE_URL or GEN3IA_DATABASE_URL in your environment.');
-  }
-  if (!databaseUrl.startsWith('postgresql://') && !databaseUrl.startsWith('postgres://')) {
-    throw new Error('DATABASE_URL must be a PostgreSQL connection string');
-  }
-  return databaseUrl;
-}
+export { Collections, FirestoreRepository } from '@/lib/firebase/firestore';
+export type { FirestoreWhereOp, FirestoreOrderBy, WhereInput, OrderByInput, SelectInput, IncludeInput, FindOptions, FindUniqueOptions, CreateOptions, UpdateOptions, DeleteOptions } from '@/lib/firebase/firestore';
 
-const databaseUrl = resolveDatabaseUrl();
-
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
-
-export const db =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    datasourceUrl: databaseUrl,
-    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  });
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = db;
-}
-
-export default db;
+export const db = dbExt;
+export const prisma = dbExt;
+export default dbExt;

@@ -9,6 +9,11 @@ import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('guardrails');
 
 const VALID_TYPES = ['content_filter', 'rate_limit', 'permission', 'cost_limit', 'time_restriction', 'action_block', 'custom'];

@@ -16,6 +16,7 @@ import DevelopersPage from './(dashboard)/developers/page';
 import { ThemeProvider } from 'next-themes';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import HardTechLanding from '@/components/landing/hardtech-landing';
 
 function AppContent() {
   const { isAuthenticated, isLoading, hydrate, validateSession, logout } = useAuthStore();
@@ -64,7 +65,12 @@ function AppContent() {
     );
   }
 
-  if (!isAuthenticated || isLoading) {
+  // Landing publique Hard-Tech Realism pour les visiteurs non authentifiés
+  if (!isAuthenticated && !isLoading) {
+    return <HardTechLanding />;
+  }
+
+  if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

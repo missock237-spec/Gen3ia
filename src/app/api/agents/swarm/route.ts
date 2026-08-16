@@ -1,13 +1,29 @@
+// POST /api/agents/swarm — Orchestration multi-agents (swarm)
+// SECURITE: withAuth() + correction IDOR (userId du token, pas du body) + quota
 import { NextRequest, NextResponse } from "next/server";
 import { swarmOrchestrator } from "@/lib/agent/swarm";
+import { withAuth, type RouteParams } from "@/lib/with-auth";
 
-export async function POST(request: NextRequest) {
+
+
+
+
+export const dynamic = "force-dynamic";
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
-    const { task, agentIds, userId } = await request.json();
-    if (!task || !agentIds || !userId) return NextResponse.json({ error: "task, agentIds et userId requis" }, { status: 400 });
-    const results = await swarmOrchestrator.orchestrate(task, agentIds, userId);
+    const { task, agentIds } = await request.json();
+    if (!task || !agentIds || !Array.isArray(agentIds) || agentIds.length === 0) {
+      return NextResponse.json({ error: "task et agentIds (non vide) requis" }, { status: 400 });
+    }
+    // SECURITY: userId vient du token, jamais du body
+    const results = await swarmOrchestrator.orchestrate(task, agentIds, auth.userId);
     return NextResponse.json({ results, status: swarmOrchestrator.getStatus() });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur" }, { status: 500 });
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 5, windowMs: 60000 },
+  quota: true,
+});
