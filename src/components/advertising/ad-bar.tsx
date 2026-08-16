@@ -29,6 +29,9 @@ interface AdDecision {
   pendingRewardPerClick: number;
   isFreePlan: boolean;
   canDisableAds: boolean;
+  variantId?: string;
+  variantText?: string;
+  variantCta?: string;
 }
 
 interface AdPreferences {
@@ -56,11 +59,6 @@ export function AdBar({ sessionId, conversationId, placement = 'bottom_bar', onA
   const [loading, setLoading] = useState(true);
   const [impressionId, setImpressionId] = useState<string | null>(null);
   const [pendingReward, setPendingReward] = useState(0);
-
-  useEffect(() => {
-    loadPreferences();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const fetchAd = useCallback(
     async (adType: 'unrewarded' | 'rewarded') => {
@@ -131,6 +129,10 @@ export function AdBar({ sessionId, conversationId, placement = 'bottom_bar', onA
     }
   }, [fetchAd]);
 
+  useEffect(() => {
+    void loadPreferences();
+  }, [loadPreferences]);
+
   const handleClick = useCallback(async () => {
     if (!impressionId) return;
     try {
@@ -192,7 +194,7 @@ export function AdBar({ sessionId, conversationId, placement = 'bottom_bar', onA
         Sponsorisé
       </span>
       <span style={{ flex: 1, minWidth: 0, color: 'var(--foreground, #111827)' }}>
-        {campaign.textContent || campaign.name}{' '}
+        {decision.variantText || campaign.textContent || campaign.name}{' '}
         <span style={{ color: 'var(--muted-foreground, #6b7280)' }}>— {campaign.advertiserName}</span>
       </span>
       <a
@@ -208,7 +210,7 @@ export function AdBar({ sessionId, conversationId, placement = 'bottom_bar', onA
           flexShrink: 0,
         }}
       >
-        {campaign.ctaText || 'En savoir plus'} →
+        {decision.variantCta || campaign.ctaText || 'En savoir plus'} →
       </a>
       {!isFreePlan && pendingReward > 0 && (
         <span

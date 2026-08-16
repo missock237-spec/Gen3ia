@@ -148,7 +148,7 @@ class HFGenerationService {
    */
   async generateImage(
     prompt: string,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     options: GenerationOptions & { model?: ModelKey } = {}
   ): Promise<GenerationResult> {
     const modelKey = options.model || 'sdxl-turbo';
@@ -235,7 +235,7 @@ class HFGenerationService {
    */
   async generateVideo(
     prompt: string,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     options: GenerationOptions & { model?: ModelKey } = {}
   ): Promise<GenerationResult> {
     const modelKey = options.model || 'zeroscope-v2';

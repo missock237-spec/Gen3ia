@@ -85,7 +85,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    let { name, type, description, config, avatar } = body;
+    let { name, description, config, avatar } = body;
+    const { type } = body;
 
     if (!name || !type) {
       const res = NextResponse.json(

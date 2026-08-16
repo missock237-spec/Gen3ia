@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     // Récupère l'utilisateur Firebase
     const user = await getUserByUid(
       (await (await import('@/lib/firebase/admin')).getAdminAuth().verifySessionCookie(
-        (await import('next/headers')).cookies().get('gen3ia_session')?.value || '',
+        ((await (await import('next/headers')).cookies()).get('gen3ia_session'))?.value || '',
         true,
       )).uid,
     );

@@ -1,6 +1,6 @@
 // Programme d'affiliation - Premium uniquement
 // Le parrain doit etre premium. Le bonus est verse quand le filleul achete un abonnement.
-import { createHash } from 'crypto';
+import { createHash, scryptSync } from 'crypto';
 import { prisma } from '@/lib/prisma';
 
 export interface AffiliateCode {
@@ -33,12 +33,12 @@ const REWARD_REFERRED = 250;
 const REFERRAL_EXPIRY_DAYS = 90; // 90 jours pour s'abonner
 
 export function generateReferralCode(userId: string): string {
-  const hash = createHash('sha256').update(userId + Date.now()).digest('hex');
+  const hash = scryptSync(userId + Date.now().toString(), 'gen3ia-salt', 32).toString('hex');
   const rawCode = hash.substring(0, CODE_LENGTH).toUpperCase();
   return `GVA-${rawCode}`;
 }
 
-export function createAffiliateCode(userId: string, name: string): AffiliateCode {
+export function createAffiliateCode(userId: string, _name: string): AffiliateCode {
   return {
     code: generateReferralCode(userId),
     userId,

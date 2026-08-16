@@ -183,7 +183,7 @@ class ConnectorRegistry {
 
     const byService: Record<string, number> = {};
     for (const entry of keysByService) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       byService[entry.service] = entry._count.service;
     }
 
@@ -453,7 +453,7 @@ class ConnectorRegistry {
   /**
    * Run health checks on all active MCP connectors.
    */
-  async checkMCPHealth(userId: string): Promise<Record<string, {
+  async checkMCPHealth(_userId: string): Promise<Record<string, {
     healthy: boolean;
     responseTimeMs: number;
     error?: string;

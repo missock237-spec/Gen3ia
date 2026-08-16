@@ -7,6 +7,7 @@ export async function register() {
     try {
       const { validateEnv } = await import('@/lib/env-validation');
       const env = validateEnv();
+      // eslint-disable-next-line no-console
       console.info(
         `[env-check] OK — NODE_ENV=${env.NODE_ENV}, ` +
           `reste de caches configurés: REDIS=${env.REDIS_URL ? 'oui' : 'non'}, ` +
@@ -19,10 +20,20 @@ export async function register() {
 
     // 2) Init du tracing (après validation réussie)
     try {
+      // 1. Validate all environment variables first
+      const { validateEnv } = await import('@/lib/env-validation');
+      validateEnv();
+      
+      // 2. Initialize tracing & monitoring
       const { initTracing } = await import('@/lib/tracing');
       initTracing();
+      
+      // eslint-disable-next-line no-console
+      console.log('[Instrumentation] ✓ Application initialized successfully');
     } catch (e) {
-      console.error('Instrumentation error:', e);
+      console.error('[Instrumentation] CRITICAL ERROR:', e);
+      // Fail fast - don't start the app if initialization fails
+      process.exit(1);
     }
   }
 }

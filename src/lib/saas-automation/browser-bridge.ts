@@ -20,6 +20,7 @@ import { createLogger } from '@/lib/logger';
 import { createBrowserAutomationEngine, type BrowserAction, type BrowserSession, type BrowserAutomationEngine } from '@/lib/browser/browser-automation';
 import { getSaaSAccountConnector } from './account-connector';
 import { prisma } from '@/lib/prisma';
+import crypto from 'node:crypto';
 
 const log = createLogger('browser-bridge');
 
@@ -211,7 +212,7 @@ export class BrowserBridge {
     }
 
     const bridgeSession: BrowserBridgeSession = {
-      id: `bridge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `bridge_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
       userId,
       saasAccountId,
       provider,
@@ -437,7 +438,7 @@ export class BrowserBridge {
     const session = this.bridgeSessions.get(sessionId);
     if (!session) return;
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const browserEngine = createBrowserAutomationEngine(session.user.id);
     await browserEngine.closeSession(session.browserSessionId);
     this.bridgeSessions.delete(sessionId);
@@ -480,7 +481,7 @@ export class BrowserBridge {
 
   private findSessionByAccount(userId: string, saasAccountId: string): BrowserBridgeSession | undefined {
     for (const session of this.bridgeSessions.values()) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       if (session.user.id === userId && session.saasAccountId === saasAccountId) {
         return session;
       }
@@ -509,7 +510,7 @@ export class BrowserBridge {
     // Injecter les cookies via JavaScript
     const cookiesToInject = Object.entries(sessionData)
       .filter(([key]) => cookieNames.some(cn => key.includes(cn.replace('*', ''))))
-      .map(([name, value]) => `document.cookie = "${name}=${value}; path=/; secure; samesite=none";`)
+      .map(([name, value]) => `document.cookie = "${String(name).replace(/[";\r\n]/g, "")}=${String(value).replace(/[";\r\n]/g, "")}; path=/; secure; samesite=none";`)
       .join('\n');
 
     if (cookiesToInject) {

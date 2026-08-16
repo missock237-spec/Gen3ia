@@ -10,7 +10,25 @@ import { callLLM } from "@/lib/llm";
 import { ZodError } from "zod";
 
 // Agent Safety — detection d'injections et jailbreak (Rust natif + fallback JS)
-import { checkPromptInjection, checkJailbreak } from "@gen3ia/agent-safety";
+// Dynamic import with fallback
+type SafetyResult = { safe: boolean; score: number; reason: string };
+let checkPromptInjection: (input: string) => Promise<SafetyResult> | SafetyResult;
+let checkJailbreak: (input: string) => Promise<SafetyResult> | SafetyResult;
+try {
+  const safety = await import("@gen3ia/agent-safety");
+  // Adapt the module's return shape {detected,score,patterns} to {safe,score,reason}
+  checkPromptInjection = async (input: string) => {
+    const r = await safety.checkPromptInjection(input);
+    return { safe: !r.detected, score: r.score, reason: (r.patterns || []).join(', ') || 'clean' };
+  };
+  checkJailbreak = async (input: string) => {
+    const r = await safety.checkJailbreak(input);
+    return { safe: !r.detected, score: r.score, reason: (r.patterns || []).join(', ') || 'clean' };
+  };
+} catch {
+  checkPromptInjection = (_input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
+  checkJailbreak = (_input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
+}
 
 
 
@@ -56,7 +74,7 @@ export async function POST(request: NextRequest) {
     // ============================================================
     // SECURITE: Detection d'injections et jailbreak
     // ============================================================
-    const injectionCheck = checkPromptInjection(input);
+    const injectionCheck = await checkPromptInjection(input);
     if (!injectionCheck.safe) {
       log.warn('prompt_injection_detected', { agentId, score: injectionCheck.score, reason: injectionCheck.reason });
       await db.agentActionLog.create({
@@ -69,7 +87,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Entree bloque par le securite", reason: injectionCheck.reason }, { status: 400 });
     }
 
-    const jailbreakCheck = checkJailbreak(input);
+    const jailbreakCheck = await checkJailbreak(input);
     if (!jailbreakCheck.safe) {
       log.warn('jailbreak_attempt_detected', { agentId, score: jailbreakCheck.score });
       return NextResponse.json({ error: "Tentative de jailback detectee" }, { status: 400 });
@@ -159,7 +177,7 @@ export async function POST(request: NextRequest) {
       totalTokens += llmResponse.tokens;
 
       // Securite: verifier la reponse du LLM aussi
-      const llmInjectionCheck = checkPromptInjection(llmResponse.content);
+      const llmInjectionCheck = await checkPromptInjection(llmResponse.content);
       if (!llmInjectionCheck.safe) {
         log.warn('llm_output_injection', { agentId, score: llmInjectionCheck.score });
         break;

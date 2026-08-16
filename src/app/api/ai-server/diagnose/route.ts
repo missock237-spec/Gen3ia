@@ -13,7 +13,7 @@ import { withAuth, type RouteParams } from '@/lib/with-auth';
 
 
 export const dynamic = "force-dynamic";
-export const GET = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
+export const GET = withAuth(async (_request: NextRequest, _ctx: { params?: RouteParams }, _auth) => {
   try {
     const report = await runDiagnostics();
     return NextResponse.json({ success: true, data: report });
@@ -30,7 +30,7 @@ export const GET = withAuth(async (request: NextRequest, ctx: { params?: RoutePa
 });
 
 // POST — Diagnostics avec options (admin only)
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
+export const POST = withAuth(async (request: NextRequest, _ctx: { params?: RouteParams }, _auth) => {
   try {
     const body = await request.json().catch(() => ({}));
     const { category } = body as { category?: string };

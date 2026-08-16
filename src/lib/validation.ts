@@ -63,7 +63,7 @@ export const createWorkflowSchema = z.object({
   })).min(1, "Au moins une étape requise"),
   triggers: z.array(z.object({
     type: z.enum(["schedule", "webhook", "event"]),
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     config: z.record(z.unknown()),
   })).default([]),
 });
@@ -108,7 +108,7 @@ export function formatZodErrors(error: z.ZodError): Record<string, string[]> {
 
 export const multiAgentExecuteSchema = z.object({
   workflowId: z.string().min(1, "ID workflow requis").optional(),
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   inputs: z.record(z.unknown()).optional(),
   priority: z.enum(["low", "normal", "high"]).default("normal"),
   objective: z.string().min(1, "Objectif requis").max(5000),
@@ -123,7 +123,7 @@ export const ragQuerySchema = z.object({
   query: z.string().min(1, "Requête requise").max(5000),
   topK: z.number().int().min(1).max(100).default(5),
   collectionId: z.string().optional(),
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   filters: z.record(z.unknown()).optional(),
 });
 

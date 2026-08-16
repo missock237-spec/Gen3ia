@@ -170,6 +170,8 @@ class Logger {
   /** Correlation ID courant (via correlationManager), sans import circulaire. */
   private getCorrelationId(): string | undefined {
     try {
+      // Lazy-load correlationManager to avoid circular dependency
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { correlationManager } = require('./correlation-id');
       return correlationManager.getCurrentId() ?? undefined;
     } catch {
@@ -202,6 +204,7 @@ class Logger {
 
   private captureSentry(message: string, level: LogLevel, context?: Record<string, unknown>): void {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Sentry = require('@sentry/nextjs');
       if (Sentry?.captureException) {
         const error = context?.error instanceof Error ? context.error : new Error(message);
@@ -250,6 +253,106 @@ class Logger {
     await loki.sendSync(entry);
   }
 
+  /**
+   * Log API request with performance metrics
+   */
+  logRequest(
+    method: string,
+    endpoint: string,
+    status: number,
+    duration: number,
+    userId?: string,
+    error?: Error,
+  ): void {
+    const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
+    this.log(level, `${method} ${endpoint} ${status}`, {
+      method,
+      endpoint,
+      status,
+      duration,
+      userId,
+      ...(error && { error: error.message, stack: error.stack }),
+    });
+  }
+
+  /**
+   * Log security event (for audit trail)
+   */
+  logSecurityEvent(
+    event: string,
+    severity: 'low' | 'medium' | 'high' | 'critical',
+    userId?: string,
+    context?: Record<string, unknown>,
+  ): void {
+    const level = severity === 'critical' ? 'error' : severity === 'high' ? 'warn' : 'info';
+    this.log(level, `[SECURITY] ${event}`, {
+      severity,
+      userId,
+      eventType: 'security',
+      ...context,
+    });
+  }
+
+  /**
+   * Log business event (for audit trail)
+   */
+  logBusinessEvent(
+    action: string,
+    actor: string,
+    resource: string,
+    details?: Record<string, unknown>,
+  ): void {
+    this.log('info', `[AUDIT] ${action}`, {
+      action,
+      actor,
+      resource,
+      eventType: 'audit',
+      ...details,
+    });
+  }
+
+  /**
+   * Log database operation
+   */
+  logDatabaseOp(
+    operation: string,
+    table: string,
+    duration: number,
+    rowsAffected?: number,
+    error?: Error,
+  ): void {
+    const level = error ? 'error' : duration > 1000 ? 'warn' : 'debug';
+    this.log(level, `DB ${operation} on ${table} [${duration}ms]`, {
+      operation,
+      table,
+      duration,
+      rowsAffected,
+      ...(error && { error: error.message }),
+    });
+  }
+
+  /**
+   * Log external API call
+   */
+  logExternalCall(
+    service: string,
+    endpoint: string,
+    method: string,
+    status: number,
+    duration: number,
+    error?: Error,
+  ): void {
+    const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'debug';
+    this.log(level, `External: ${service} ${method} ${endpoint} [${status}]`, {
+      service,
+      endpoint,
+      method,
+      status,
+      duration,
+      ...(error && { error: error.message }),
+    });
+  }
+
   child(service: string): Logger {
     return new Logger(service);
   }
@@ -262,6 +365,19 @@ import pino from 'pino';
 
 const level = process.env.LOG_LEVEL || 'info';
 
+// Détection du contexte de build Next.js — pendant "Collecting page data",
+// Next.js évalue les routes à la compilation avec NODE_ENV=production, ce qui
+// déclencherait la résolution du transport pino-loki (non installé en dev).
+// On désactive donc le transport si on détecte le build Next.js.
+const isNextBuildPhase =
+  process.env.NEXT_BUILD === '1' ||
+  process.env.NEXT_PHASE === 'phase-production-build';
+
+const enableLokiTransport =
+  process.env.NODE_ENV === 'production' &&
+  !isNextBuildPhase &&
+  !!process.env.LOKI_HOST;  // Ne configurer que si LOKI_HOST est réellement défini
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const logger: any = pino({
   level,
@@ -269,17 +385,20 @@ export const logger: any = pino({
     level: (label) => ({ level: label }),
   },
   timestamp: pino.stdTimeFunctions.isoTime,
-  // En production, on peut ajouter un transport pour Loki
-  ...(process.env.NODE_ENV === 'production' && {
-    transport: {
-      target: 'pino-loki',
-      options: {
-        host: process.env.LOKI_HOST || 'http://loki:3100',
-        labels: { app: 'gen3ia' },
-        batching: true,
-      },
-    },
-  }),
+  // En production runtime (pas pendant le build), on ajoute un transport pour Loki.
+  // Note: pino-loki doit être installé en prod (bun add pino-loki) si LOKI_HOST est défini.
+  ...(enableLokiTransport
+    ? {
+        transport: {
+          target: 'pino-loki',
+          options: {
+            host: process.env.LOKI_HOST || 'http://loki:3100',
+            labels: { app: 'gen3ia' },
+            batching: true,
+          },
+        },
+      }
+    : {}),
 });
 
 export default logger;

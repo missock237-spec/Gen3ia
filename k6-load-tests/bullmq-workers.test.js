@@ -19,7 +19,7 @@ export const options = {
 const queueErrorRate = new Rate('queue_errors');
 const queueDuration = new Trend('queue_enqueue_duration');
 
-export default function () {
+export default function _default() {
   group('BullMQ - Enqueue taches', () => {
     const tasks = ['agent.run','workflow.execute','memory.index','webhook.deliver','email.send'];
     const t = tasks[Math.floor(Math.random()*tasks.length)];

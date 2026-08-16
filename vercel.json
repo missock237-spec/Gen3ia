@@ -2,7 +2,7 @@
   "name": "gen3ia",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "next build",
+  "buildCommand": "npm run build",
   "installCommand": "npm install --legacy-peer-deps",
   "outputDirectory": ".next",
   "regions": [
@@ -12,12 +12,17 @@
   "trailingSlash": false,
   "github": {
     "silent": false,
-    "autoJobCancelation": true
+    "autoJobCancelation": true,
+    "autoAlias": true,
+    "deployComments": true
   },
   "crons": [
     {
       "path": "/api/cron/refresh-tokens",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 0 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": true
+  }
 }

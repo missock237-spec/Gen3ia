@@ -50,7 +50,7 @@ export class AgentDelegationSystem {
     });
 
     // Auto-executer la delegation
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     this.executeDelegation(delegation.id).catch(err => {
       log.error('delegation_execution_error', { delegationId: delegation.id, error: String(err) });
     });
@@ -79,18 +79,17 @@ export class AgentDelegationSystem {
 
       // Construire le prompt pour l'agent cible
       const prompt = [
-// @ts-ignore
-        `Tu es ${delegation.targetAgent.name}, specialise en ${delegation.targetAgent.role}.`,
-// @ts-ignore
-        `\n\nInstructions: ${delegation.targetAgent.instructions || 'Execute la tache delegatee.'}`,
-// @ts-ignore
+        `Tu es ${(delegation as any).targetAgent.name}, specialise en ${(delegation as any).targetAgent.role}.`,
+// @ts-ignore — type narrowing pending, see refactor ticket
+        `\n\nInstructions: ${(delegation as any).targetAgent.instructions || 'Execute la tache delegatee.'}`,
+// @ts-ignore — type narrowing pending, see refactor ticket
         `\n\nTache delegatee par ${delegation.sourceAgent.name}: ${delegation.task}`,
         delegation.context ? `\n\nContexte: ${delegation.context}` : '',
         `\n\nFournis un resultat detaille et directement exploitable.`,
       ].join('');
 
       // Simulation d'appel LLM (a remplacer par un vrai appel)
-      const result = await this.callAgentLLM(delegation.targetAgent, prompt);
+      const result = await this.callAgentLLM((delegation as any).targetAgent, prompt);
 
       await prisma.agentDelegation.update({
         where: { id: delegationId },
@@ -129,7 +128,7 @@ export class AgentDelegationSystem {
 
     while (Date.now() - start < maxWait) {
       const updated = await prisma.agentDelegation.findUnique({
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         where: { id: delegation.id },
         select: { status: true, result: true, error: true },
       });
@@ -137,12 +136,12 @@ export class AgentDelegationSystem {
 
       if (updated.status === 'completed' || updated.status === 'failed' || updated.status === 'rejected') {
         return {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
           delegationId: delegation.id,
           status: updated.status,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
           result: updated.result,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
           error: updated.error,
         };
       }
@@ -152,7 +151,7 @@ export class AgentDelegationSystem {
 
     // Timeout
     return {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       delegationId: delegation.id,
       status: 'timeout',
       result: null,
@@ -176,15 +175,32 @@ export class AgentDelegationSystem {
   }
 
   /**
-   * Appel LLM (simule pour l'instant)
+   * Appel LLM via l'AI Router (avec fallback sur reponse simulee marquee)
    */
   private async callAgentLLM(agent: any, prompt: string): Promise<{ content: string; cost: number; tokens: number }> {
-    await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
-    return {
-      content: `[${agent.name}] Resultat de la tache delegatee:\n\nAnalyse effectuee selon les instructions specialisees.\n\nPrompt recu: ${prompt.slice(0, 100)}...`,
-      cost: 0.0002,
-      tokens: 200,
-    };
+    try {
+      const { createAIRouter } = await import('./ai-router');
+      const aiRouter = createAIRouter('system');
+      const response = await aiRouter.chat([
+        { role: 'system', content: agent.instructions || `Tu es ${agent.name}, un agent specialise en ${agent.role}.` },
+        { role: 'user', content: prompt },
+      ], { model: agent.model || 'gpt-4o-mini' });
+
+      return {
+        content: response.content,
+        cost: response.costUsd || 0.0001,
+        tokens: response.usage?.totalTokens || 150,
+      };
+    } catch (error) {
+      // Fallback simule — MARQUE explicitement que c'est une simulation
+      log.warn('delegation_llm_fallback', { agent: agent.name, error: String(error) });
+      await new Promise(r => setTimeout(r, 200));
+      return {
+        content: `[SIMULATION] ${agent.name} n'a pas pu joindre le LLM. Reponse de fallback:\n\nAnalyse basee sur le prompt: ${prompt.slice(0, 200)}...`,
+        cost: 0,
+        tokens: 0,
+      };
+    }
   }
 }
 

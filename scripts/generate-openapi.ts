@@ -435,7 +435,9 @@ try {
   }
   
   fs.writeFileSync(OUTPUT, JSON.stringify(spec, null, 2), 'utf-8');
+  // eslint-disable-next-line no-console
   console.log(`✅ OpenAPI spec générée: ${OUTPUT}`);
+  // eslint-disable-next-line no-console
   console.log(`   Endpoints documentés: ${Object.keys(spec.paths).length}`);
 } catch (err) {
   console.error('❌ Erreur lors de la génération:', err);

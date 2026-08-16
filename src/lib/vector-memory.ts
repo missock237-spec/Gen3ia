@@ -163,7 +163,7 @@ class VectorMemoryStore {
     }
 
     // Recherche en mémoire avec filtres
-    let results = this.documents.filter((doc) => {
+    const results = this.documents.filter((doc) => {
       if (params.userId && doc.userId !== params.userId) return false;
       if (params.agentId && doc.agentId !== params.agentId) return false;
       return true;

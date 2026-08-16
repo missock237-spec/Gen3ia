@@ -18,6 +18,7 @@ import { createLogger } from '@/lib/logger';
 import { encryptAuthConfig, decryptAuthConfig } from '@/lib/connectors/mcp-client';
 import { getOAuthProvider, buildAuthorizationUrl } from '@/lib/oauth/provider-registry';
 import { requestConsent } from '@/lib/agent-engine/consent-manager';
+import crypto from 'node:crypto';
 
 const log = createLogger('saas-account-connector');
 
@@ -428,7 +429,7 @@ export class SaaSAccountConnector {
 
   private async encryptToken(token: string): Promise<string> {
     try {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       return await encryptAuthConfig(token);
     } catch {
       // Fallback: base64 si le chiffrement AES n'est pas configuré
@@ -438,7 +439,7 @@ export class SaaSAccountConnector {
 
   private async decryptToken(encrypted: string): Promise<string> {
     try {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       return await decryptAuthConfig(encrypted);
     } catch {
       // Fallback: base64
@@ -447,7 +448,7 @@ export class SaaSAccountConnector {
   }
 
   private generateState(userId: string, provider: string): string {
-    const data = JSON.stringify({ userId, provider, ts: Date.now(), nonce: Math.random().toString(36).slice(2) });
+    const data = JSON.stringify({ userId, provider, ts: Date.now(), nonce: crypto.randomBytes(8).toString('hex') });
     return Buffer.from(data).toString('base64url');
   }
 

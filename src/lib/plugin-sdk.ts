@@ -1,6 +1,7 @@
 // Plugin SDK communautaire
 import { prisma } from './prisma';
 import { createLogger } from './logger';
+import { validateUrl } from '@/lib/security/validate-url';
 const log = createLogger('plugin-sdk');
 
 export interface PluginSchema { inputs: PluginIO[]; outputs: PluginIO[]; config: PluginConfigField[]; }
@@ -35,7 +36,7 @@ export class PluginSDK {
 
       let result: any = { executed: true, plugin: plugin.name, inputs };
       if (plugin.type === 'connector') {
-        const url = ctx.config.url || inputs.url; if (!url) throw new Error('URL requise');
+        const url = ctx.config.url || inputs.url; if (!url) throw new Error('URL requise'); if (!validateUrl(url)) throw new Error('URL non valide (SSRF blocked)');
         const response = await fetch(url, { method: ctx.config.method || 'GET', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(ctx.config.timeout || 10000) });
         result = { status: response.status, ok: response.ok, data: await response.json().catch(() => null) };
       }

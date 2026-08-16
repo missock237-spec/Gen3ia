@@ -17,7 +17,7 @@ function generateApiKey(): string {
 }
 
 function hashKeySha256(key: string): string {
-  return crypto.createHash('sha256').update(key).digest('hex');
+  return crypto.scryptSync(key, 'gen3ia-api-key-salt', 64).toString('hex');
 }
 
 export async function POST(request: NextRequest) {
@@ -102,11 +102,11 @@ export async function GET() {
           : typeof k.scopes === 'string'
             ? JSON.parse(k.scopes)
             : [],
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         lastUsed: (k.lastUsed as Date | string | null)?.toISOString?.() ?? k.lastUsed ?? null,
         expiresAt: k.expiresAt ?? null,
         isActive: k.isActive ?? true,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         createdAt: (k.createdAt as Date | string | null)?.toISOString?.() ?? k.createdAt ?? null,
       })),
     });

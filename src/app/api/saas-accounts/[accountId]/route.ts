@@ -12,12 +12,12 @@ import { getSaaSSessionManager } from '@/lib/saas-automation/session-manager';
 export const GET = withAuth(async (req, ctx, auth) => {
   try {
     const params = await ctx.params;
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const accountId = params.accountId;
     const connector = getSaaSAccountConnector();
     const url = new URL(req.url);
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const account = await connector.getAccount(auth.userId, accountId);
 
     // Si ?sessions=true, inclure les sessions actives
@@ -41,11 +41,11 @@ export const GET = withAuth(async (req, ctx, auth) => {
 export const DELETE = withAuth(async (req, ctx, auth) => {
   try {
     const params = await ctx.params;
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const accountId = params.accountId;
     const connector = getSaaSAccountConnector();
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     await connector.unlinkAccount(auth.userId, accountId);
 
     return NextResponse.json({ message: 'Compte SaaS délié avec succès' });

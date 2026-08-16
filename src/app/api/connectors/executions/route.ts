@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const res = NextResponse.json({ success: true, data: result });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Failed to fetch executions' }, { status: 500 });
     return secureResponse(res, request);
   }

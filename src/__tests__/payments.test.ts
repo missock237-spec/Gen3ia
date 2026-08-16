@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- test file uses dynamic require for modules that may not be installed */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('jsonwebtoken', () => ({ verify: vi.fn(() => ({ userId: 'user_123' })) }));

@@ -1,37 +1,24 @@
-// API Notifications
+// GET /api/notifications — Récupérer les notifications non lues
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity } from '@/lib/security';
-import { notificationEngine } from '@/lib/notification-engine';
+import { getUnreadNotifications } from '@/lib/push-notifications';
+import { withRateLimit, RATE_LIMIT_PRESETS } from '@/lib/api-rate-limit';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
+async function handler(req: NextRequest): Promise<NextResponse> {
+  const cookie = req.cookies.get('gen3ia_session')?.value;
+  if (!cookie) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
-
-
-export const dynamic = "force-dynamic";
-export async function GET(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, { requireAuth: true });
-  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+  let userId: string;
   try {
-    const url = new URL(request.url);
-    const scope = url.searchParams.get('scope') || 'list';
-    switch (scope) {
-      case 'list': { const unreadOnly = url.searchParams.get('unread') === 'true'; const limit = parseInt(url.searchParams.get('limit') || '30'); const result = await notificationEngine.list(auth.userId, { unreadOnly, limit }); return NextResponse.json({ success: true, ...result }); }
-      case 'unread': { const count = await notificationEngine.getUnreadCount(auth.userId); return NextResponse.json({ success: true, count }); }
-      default: return NextResponse.json({ error: 'Scope inconnu' }, { status: 400 });
-    }
-  } catch (err) { return NextResponse.json({ error: String(err) }, { status: 500 }); }
+    userId = JSON.parse(Buffer.from(cookie, 'base64url').toString()).uid;
+  } catch {
+    return NextResponse.json({ error: 'Session invalide' }, { status: 401 });
+  }
+
+  const notifications = await getUnreadNotifications(userId);
+  return NextResponse.json({ notifications, unreadCount: notifications.length });
 }
 
-export async function POST(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, { requireAuth: true });
-  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
-  try {
-    const body = await request.json(); const url = new URL(request.url); const action = url.searchParams.get('action') || 'mark-read';
-    switch (action) {
-      case 'mark-read': { if (!body.id) return NextResponse.json({ error: 'id requis' }, { status: 400 }); await notificationEngine.markRead(body.id, auth.userId); return NextResponse.json({ success: true }); }
-      case 'mark-all-read': { await notificationEngine.markAllRead(auth.userId); return NextResponse.json({ success: true }); }
-      case 'delete': { if (!body.id) return NextResponse.json({ error: 'id requis' }, { status: 400 }); await notificationEngine.delete(body.id, auth.userId); return NextResponse.json({ success: true }); }
-      default: return NextResponse.json({ error: 'Action inconnue' }, { status: 400 });
-    }
-  } catch (err) { return NextResponse.json({ error: String(err) }, { status: 500 }); }
-}
+export const GET = withRateLimit(handler, RATE_LIMIT_PRESETS.default);

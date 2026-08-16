@@ -4,20 +4,30 @@
 //  Règle : TOUTE route /api/* est protégée SAUF celles
 //  explicitement listées comme publiques (route par route).
 //
-//  SECURITE :
+//  SÉCURITÉ :
 //  - Layer 1 (ce middleware) : exige UNE forme d'auth (session cookie
 //    Firebase OU présence x-api-key/bearer qui seront VALIDES en couche 2
 //    withAuth).
 //  - Les routes ADMIN exigent TOUJOURS le rôle 'admin' (custom claim
 //    Firebase Auth), jamais court-circuité par une api key non validée.
 //
-//  CSP durcie (nonce per-request) :
-//  - Un nonce unique est genère par requete et propage a Next.js via
-//    l'header de requete "x-nonce" (Next.js l'applique automatiquement a
+//  HEADERS DE SÉCURITÉ :
+//  - CSP durcie (nonce per-request) via src/lib/csp.ts
+//  - HSTS, COOP, COEP, CORP, Permissions-Policy, etc. via src/lib/security-headers.ts
+//  - Un nonce unique est généré par requête et propagé à Next.js via
+//    l'header de requête "x-nonce" (Next.js l'applique automatiquement à
 //    ses <script> inline).
-//  - En production, script-src n'autorise PLUS 'unsafe-inline'/'unsafe-eval'
-//    mais 'self' + nonce + CDNs de confiance, eliminant le vecteur XSS.
 // ============================================================
+import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
+import { generateCspNonce, buildCspHeader } from '@/lib/csp';
+import { getSecurityHeaders } from '@/lib/security-headers';
+import {
+  getApiVersion,
+  isVersionSupported,
+  getSunsetHeaderValue,
+  CURRENT_API_VERSION,
+  SUPPORTED_API_VERSIONS,
+} from '@/lib/api-version';
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
@@ -50,6 +60,7 @@ const PUBLIC_PATHS = [
   '/api/docs',
   '/api/docs/openapi.json',
   '/api/public/',
+  '/api/version',
 ];
 
 // Routes ADMIN : exigent TOUJOURS le rôle 'admin' (custom claim Firebase).
@@ -80,44 +91,7 @@ const SENSITIVE_RESOURCE_ROUTES = [
   '/api/browser/',
 ];
 
-// ---------- CSP durcie par nonce ----------
 const IS_PROD = process.env.NODE_ENV === 'production';
-
-/**
- * Genere un nonce CSP aleatoire (Edge-safe : Web Crypto + btoa).
- */
-function generateNonce(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin).replace(/=+$/, '');
-}
-
-/**
- * Construit la CSP. En production : 'unsafe-inline'/'unsafe-eval' ABSENTS
- * de script-src (remplacés par un nonce). En dev : on les autorise pour HMR.
- */
-function buildCsp(nonce: string): string {
-  const scriptSrc = IS_PROD
-    ? `script-src 'self' 'nonce-${nonce}' https://www.googletagmanager.com https://www.google-analytics.com https://*.jsdelivr.net`
-    : `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://*.jsdelivr.net`;
-
-  return [
-    "default-src 'self'",
-    scriptSrc,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https://*.githubusercontent.com https://*.googleusercontent.com https://cdn.huggingface.co https://www.google-analytics.com https://www.googletagmanager.com https://storage.googleapis.com",
-    "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io https://www.google-analytics.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://fcm.googleapis.com",
-    "frame-ancestors 'none'",
-    "frame-src 'none'",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "upgrade-insecure-requests",
-  ].join('; ');
-}
 
 function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(route.endsWith('/') ? route : route + '/');
@@ -147,23 +121,22 @@ async function verifyFirebaseSession(cookieValue: string | undefined): Promise<{
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // CSP par nonce : un nonce unique par requête, propagé à Next.js.
-  const nonce = generateNonce();
+  // --- Security headers + CSP (nonce per-request) ---
+  const nonce = generateCspNonce();
+  const csp = buildCspHeader(nonce);
+  const securityHeaders = getSecurityHeaders(IS_PROD);
+
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  response.headers.set('X-DNS-Prefetch-Control', 'off');
-  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
-  response.headers.set('Content-Security-Policy', buildCsp(nonce));
-  response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-  response.headers.set('x-nonce', nonce);
-  if (IS_PROD) {
-    response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+
+  // Appliquer tous les en-têtes de sécurité
+  for (const [key, value] of Object.entries(securityHeaders)) {
+    response.headers.set(key, value);
   }
+  response.headers.set('Content-Security-Policy', csp);
+  response.headers.set('x-nonce', nonce);
 
   // 1. Fichiers statiques
   if (pathname.startsWith('/_next') || pathname.startsWith('/favicon') ||
@@ -175,6 +148,32 @@ export async function middleware(request: NextRequest) {
   if (!pathname.startsWith('/api/')) {
     return response;
   }
+
+  // 2.a — Versioning API
+  const apiVersion = getApiVersion(request);
+
+  if (!isVersionSupported(apiVersion)) {
+    const errorRes = NextResponse.json(
+      {
+        error: `Unsupported API version: ${apiVersion}`,
+        supportedVersions: SUPPORTED_API_VERSIONS,
+        currentVersion: CURRENT_API_VERSION,
+      },
+      { status: 400, headers: response.headers }
+    );
+    errorRes.headers.set('X-API-Version', CURRENT_API_VERSION);
+    return errorRes;
+  }
+
+  requestHeaders.set('x-api-version', apiVersion);
+  response.headers.set('X-API-Version', apiVersion);
+
+  const sunsetHeader = getSunsetHeaderValue(apiVersion);
+  if (sunsetHeader) {
+    response.headers.set('Sunset', sunsetHeader);
+  }
+
+  const normalizedPathname = pathname.replace(/^\/api\/v\d+(?:\.\d+)?/, '/api');
 
   // 2.bis — P1 Rate limiting : protège toutes les routes /api (y compris
   // publiques comme /api/auth/login) contre l'abus / le brute-force.
@@ -205,12 +204,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // 3. Routes publiques (liste stricte)
-  if (PUBLIC_PATHS.some((p) => matchesRoute(pathname, p))) {
+  if (PUBLIC_PATHS.some((p) => matchesRoute(pathname, p) || matchesRoute(normalizedPathname, p))) {
     return response;
   }
 
   // 4. DENY-BY-DEFAULT : une auth est requise.
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const session = await verifyFirebaseSession(sessionCookie);
 
@@ -218,13 +217,23 @@ export async function middleware(request: NextRequest) {
   const hasBearer = request.headers.get('authorization')?.startsWith('Bearer ');
 
   if (!session && !apiKey && !hasBearer) {
-    return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
+    const unauthRes = NextResponse.json(
+      { error: 'Authentification requise' },
+      { status: 401, headers: response.headers }
+    );
+    unauthRes.headers.set('X-API-Version', apiVersion);
+    return unauthRes;
   }
 
   // 5. Routes ADMIN : le rôle vient UNIQUEMENT du custom claim Firebase.
-  if (ADMIN_ROUTES.some((p) => pathname.startsWith(p))) {
+  if (ADMIN_ROUTES.some((p) => pathname.startsWith(p) || normalizedPathname.startsWith(p))) {
     if (!session || session.role !== 'admin') {
-      return NextResponse.json({ error: 'Accès réservé aux administrateurs' }, { status: 403 });
+      const forbiddenRes = NextResponse.json(
+        { error: 'Accès réservé aux administrateurs' },
+        { status: 403, headers: response.headers }
+      );
+      forbiddenRes.headers.set('X-API-Version', apiVersion);
+      return forbiddenRes;
     }
   }
 

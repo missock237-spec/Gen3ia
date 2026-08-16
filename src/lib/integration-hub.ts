@@ -39,8 +39,8 @@ export interface IntegrationAction {
   name: string;
   description: string;
   provider: IntegrationProvider;
-  inputSchema: Record<string, any>;
-  outputSchema?: Record<string, any>;
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
   requiresAuth: boolean;
 }
 
@@ -61,8 +61,8 @@ export interface IntegrationConnection {
 
 export type IntegrationActionHandler = (
   connection: IntegrationConnection,
-  params: Record<string, any>
-) => Promise<Record<string, any>>;
+  params: Record<string, unknown>
+) => Promise<Record<string, unknown>>;
 
 // ============================================================
 // REGISTRY DES INTÉGRATIONS
@@ -116,7 +116,7 @@ export const INTEGRATIONS: IntegrationConfig[] = [
 // ACTIONS PAR INTÉGRATION
 // ============================================================
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
 export const INTEGRATION_ACTIONS: Record<IntegrationProvider, IntegrationAction[]> = {
   google_gmail: [
     { id: 'gmail_send', name: 'Envoyer email', description: 'Envoyer un email via Gmail', provider: 'google_gmail', inputSchema: { to: 'string', subject: 'string', body: 'string' }, requiresAuth: true },
@@ -212,8 +212,8 @@ class IntegrationHub {
   async executeAction(
     connection: IntegrationConnection,
     actionId: string,
-    params: Record<string, any>
-  ): Promise<Record<string, any>> {
+    params: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
     const handler = this.actionHandlers.get(actionId);
     if (!handler) {
       // Mode simulation — retourne un résultat simulé
@@ -227,6 +227,7 @@ class IntegrationHub {
       };
     }
 
+    if (typeof handler !== 'function') throw new Error('Invalid handler');
     return handler(connection, params);
   }
 

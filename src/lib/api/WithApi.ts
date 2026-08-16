@@ -27,7 +27,7 @@ export function withApi<TBody = unknown, TCtx = unknown>(
       // 1. Rate limit
       if (opts.rateLimit) {
         const ip = req.headers.get("x-forwarded-for") ?? "unknown";
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         const ok = await rateLimit(ip, opts.rateLimit);
         if (!ok) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
       }

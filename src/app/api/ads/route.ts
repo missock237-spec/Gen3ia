@@ -39,9 +39,11 @@ export async function GET(request: NextRequest) {
         const sessionId = url.searchParams.get('sessionId') || userId;
         const placement = (url.searchParams.get('placement') as AdPlacement | null) || undefined;
         const keywords = url.searchParams.get('keywords')?.split(',').filter(Boolean);
+        const country = url.searchParams.get('country') || undefined;
         const decision = await adEngine.decideAd(userId, sessionId, undefined, {
           placement,
           keywords: keywords?.length ? keywords : undefined,
+          country: country || undefined,
         });
         return NextResponse.json({ success: true, decision });
       }

@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       },
     });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Failed to fetch access keys' }, { status: 500 });
     return secureResponse(res, request);
   }

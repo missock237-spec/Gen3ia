@@ -68,11 +68,14 @@ async function callOpenAITTS(text: string, voice: string, speed: number): Promis
   }
 }
 
+import { validatePathSegment } from '@/lib/security/validate-url';
+
 async function callElevenLabsTTS(text: string, voice: string): Promise<TTSResult> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY not set');
 
-  const voiceId = voice || '21m00Tcm4TlvDq8ikWAM'; // Rachel (voix par défaut)
+  const voiceId = voice || '21m00Tcm4TlvDq8ikWAM';
+  if (!validatePathSegment(voiceId)) throw new Error('Invalid voice ID'); // Rachel (voix par défaut)
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
 
@@ -126,7 +129,7 @@ async function callHuggingFaceTTS(text: string): Promise<TTSResult> {
   };
 }
 
-async function callEdgeTTS(text: string, language: string): Promise<TTSResult> {
+async function callEdgeTTS(text: string, _language: string): Promise<TTSResult> {
   // Synthèse vocale via Web Speech API (côté client)
   // Sur le serveur, fallback vers HuggingFace
   return callHuggingFaceTTS(text);

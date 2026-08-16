@@ -394,7 +394,7 @@ openApiRegistry.register({
   bodySchema: z.object({
     eventType: z.string(),
     userId: z.string(),
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     data: z.record(z.any()),
   }),
   responseSchema: SuccessResponse,
@@ -557,7 +557,7 @@ openApiRegistry.register({
   }),
 });
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
 log.info('Routes OpenAPI enregistrées', { count: openApiRegistry.getRoutes().length });
 
 function log(message: string, context?: Record<string, unknown>) {

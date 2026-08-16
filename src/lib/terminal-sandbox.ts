@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -58,7 +58,8 @@ export function executeCommand(command: string): { output: string; success: bool
     if (args.includes('| bash') || args.includes('| sh') || args.includes('| /bin/sh') || args.includes('`') || args.includes('$(')) {
       return { output: 'Pipes vers shell bloques', success: false };
     }
-    const result = execSync(trimmed, { cwd: WORKSPACE, timeout: 3000, maxBuffer: 50 * 1024, encoding: 'utf-8', shell: '/bin/bash' });
+    const cmdParts = trimmed.split(/\s+/);
+    const result = execFileSync(cmdParts[0], cmdParts.slice(1), { cwd: WORKSPACE, timeout: 3000, maxBuffer: 50 * 1024, encoding: 'utf-8' });
     return { output: (result || '').substring(0, 5000), success: true };
   } catch (e: any) {
     return { output: 'Erreur: ' + (e.stderr?.substring(0, 2000) || e.message?.substring(0, 500) || 'Echec'), success: false };

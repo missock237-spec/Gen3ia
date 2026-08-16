@@ -71,7 +71,7 @@ export function MCPConnector() {
             <Info className="h-4 w-4" />
             <AlertDescription>
               Compatible avec <strong>Cursor</strong>, <strong>Claude Desktop</strong>, <strong>Windsurf</strong>, <strong>VS Code</strong> (via extension Continue) et tout client MCP.
-              Créez d&apos;abord une clé API dans l&apos;onglet "Clés API".
+              Créez d&apos;abord une clé API dans l&apos;onglet &quot;Clés API&quot;.
             </AlertDescription>
           </Alert>
 

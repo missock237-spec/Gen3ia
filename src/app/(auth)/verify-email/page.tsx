@@ -11,18 +11,19 @@ function VerifyEmailContent() {
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  // État dérivé : si pas de token, on est en erreur dès le premier render.
+  const derivedStatus = !token ? 'error' : status;
+  const derivedMessage = !token ? 'Token de vérification manquant' : message;
 
   useEffect(() => {
-    if (!token) {
-      setStatus('error');
-      setMessage('Token de vérification manquant');
-      return;
-    }
+    if (!token) return;  // état dérivé géré pendant le render
 
+    let cancelled = false;
     (async () => {
       try {
         const res = await fetch(`/api/auth/verify-email?token=${token}`);
         const data = await res.json();
+        if (cancelled) return;
 
         if (res.ok) {
           setStatus('success');
@@ -32,10 +33,12 @@ function VerifyEmailContent() {
           setMessage(data.error || 'La vérification a échoué');
         }
       } catch {
+        if (cancelled) return;
         setStatus('error');
         setMessage('Erreur de connexion');
       }
     })();
+    return () => { cancelled = true; };
   }, [token]);
 
   return (

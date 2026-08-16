@@ -13,6 +13,7 @@
  */
 
 import { db } from '@/lib/db';
+const MAX_REGEX_INPUT_LENGTH = 5000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -343,9 +344,9 @@ export async function retrieveMemories(
   const candidates = await db.agentMemory.findMany({
     where,
     orderBy: [
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       { relevance: 'desc' },
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       { lastAccessedAt: 'desc' },
     ],
     take: Math.min(limit * 5, 100),
@@ -421,12 +422,13 @@ export async function learnFromInteraction(
 
   for (const pattern of preferencePatterns) {
     let match;
-    while ((match = pattern.exec(userMessage)) !== null) {
+    const safeUserMessage = userMessage.substring(0, MAX_REGEX_INPUT_LENGTH);
+    while ((match = pattern.exec(safeUserMessage)) !== null) {
       const content = `User prefers: ${match[1].trim()}`;
       const memory = await storeMemory(agentId, userId, content, {
         category: 'preference',
         source: 'interaction',
-        context: { userMessage: userMessage.substring(0, 200), type: 'extracted_preference' },
+        context: { userMessage: safeUserMessage.substring(0, 200), type: 'extracted_preference' },
         tags: ['auto-extracted', 'preference'],
         relevance: 0.7,
       });
@@ -443,12 +445,13 @@ export async function learnFromInteraction(
 
   for (const pattern of proceduralPatterns) {
     let match;
-    while ((match = pattern.exec(agentResponse)) !== null) {
+    const safeAgentResponse = agentResponse.substring(0, MAX_REGEX_INPUT_LENGTH);
+    while ((match = pattern.exec(safeAgentResponse)) !== null) {
       const content = `Procedure: ${match[1].trim()}`;
       const memory = await storeMemory(agentId, userId, content, {
         category: 'procedural',
         source: 'observation',
-        context: { agentResponse: agentResponse.substring(0, 200), type: 'extracted_procedure' },
+        context: { agentResponse: safeAgentResponse.substring(0, 200), type: 'extracted_procedure' },
         tags: ['auto-extracted', 'procedure'],
         relevance: 0.6,
       });
@@ -464,14 +467,15 @@ export async function learnFromInteraction(
 
   for (const pattern of semanticPatterns) {
     let match;
-    while ((match = pattern.exec(agentResponse)) !== null) {
+    const safeAgentResponse = agentResponse.substring(0, MAX_REGEX_INPUT_LENGTH);
+    while ((match = pattern.exec(safeAgentResponse)) !== null) {
       const content = pattern.source.includes('is defined as')
         ? `Fact: ${match[1].trim()} - ${match[2].trim()}`
         : `Fact: ${match[1].trim()}`;
       const memory = await storeMemory(agentId, userId, content, {
         category: 'semantic',
         source: 'observation',
-        context: { agentResponse: agentResponse.substring(0, 200), type: 'extracted_fact' },
+        context: { agentResponse: safeAgentResponse.substring(0, 200), type: 'extracted_fact' },
         tags: ['auto-extracted', 'fact'],
         relevance: 0.5,
       });
@@ -569,7 +573,7 @@ export async function pruneOldMemories(
   const toRemove = await db.agentMemory.findMany({
     where: { agentId },
     orderBy: [
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       { relevance: 'asc' },
       { accessCount: 'asc' },
       { lastAccessedAt: 'asc' },

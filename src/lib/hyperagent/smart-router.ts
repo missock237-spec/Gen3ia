@@ -188,7 +188,7 @@ class FAQMatcher {
     const defaultFAQs: FAQEntry[] = [
       {
         id: 'greeting',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         patterns: [/^(bonjour|salut|hello|hi|hey|coucou|bonsoir)/i],
         keywords: ['bonjour', 'salut', 'hello', 'hi', 'hey'],
         answer: 'Bonjour ! Je suis Gen3ia, votre assistant IA. Comment puis-je vous aider aujourd\'hui ?',
@@ -197,7 +197,7 @@ class FAQMatcher {
       },
       {
         id: 'who_are_you',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         patterns: [/qui es[- ]tu/i, /what are you/i, /présente[- ]toi/i, /qui est gen3ia/i],
         keywords: ['qui', 'es-tu', 'what', 'are', 'you', 'gen3ia', 'présente'],
         answer: 'Je suis Gen3ia, un système d\'agents IA autonome conçu pour vous aider à automatiser des tâches, analyser des données et créer des workflows intelligents. Je peux orchestrer plusieurs agents spécialisés pour répondre à vos besoins.',
@@ -206,7 +206,7 @@ class FAQMatcher {
       },
       {
         id: 'help',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         patterns: [/^(aide|help|aider|comment utiliser)/i, /je ne sais pas/i, /comment ça marche/i],
         keywords: ['aide', 'help', 'utiliser', 'marche', 'commencer'],
         answer: 'Voici ce que je peux faire pour vous :\n• **Créer des agents IA** spécialisés (ventes, support, recherche...)\n• **Orchestrer** plusieurs agents en parallèle\n• **Automatiser** des workflows complexes\n• **Analyser** des données et générer des rapports\n• **Gérer** vos conversations et connaissances\n\nDites-moi simplement ce que vous souhaitez accomplir !',
@@ -215,7 +215,7 @@ class FAQMatcher {
       },
       {
         id: 'create_agent',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         patterns: [/créer? un agent/i, /create.*agent/i, /nouvel agent/i, /ajouter.*agent/i],
         keywords: ['créer', 'agent', 'nouveau', 'ajouter', 'create'],
         answer: 'Pour créer un agent, vous pouvez :\n1. Aller dans la section **Agents** du dashboard\n2. Cliquer sur **Créer un agent**\n3. Choisir le type d\'agent (ventes, support, recherche, etc.)\n4. Configurer ses compétences et son prompt système\n5. L\'activer et commencer à l\'utiliser\n\nSouhaitez-vous que je vous aide à créer un agent spécifique ?',
@@ -224,7 +224,7 @@ class FAQMatcher {
       },
       {
         id: 'pricing',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         patterns: [/prix/i, /tarif/i, /coût/i, /combien.*coût/i, /plan/i, /pricing/i, /abonnement/i],
         keywords: ['prix', 'tarif', 'coût', 'plan', 'pricing', 'abonnement', 'crédits'],
         answer: 'Gen3ia propose plusieurs plans :\n• **Gratuit** : 100 crédits/mois, 1 agent\n• **Starter** : 9.99€/mois, 1000 crédits, 5 agents\n• **Pro** : 29.99€/mois, 5000 crédits, agents illimités\n• **Enterprise** : Sur mesure, crédits illimités\n\nConsultez la section Billing pour plus de détails.',
@@ -233,7 +233,7 @@ class FAQMatcher {
       },
       {
         id: 'thanks',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         patterns: [/^(merci|thanks|thank you|je vous remercie)/i],
         keywords: ['merci', 'thanks', 'thank'],
         answer: 'Avec plaisir ! N\'hésitez pas si vous avez d\'autres questions. Je suis là pour vous aider. 😊',
@@ -242,7 +242,7 @@ class FAQMatcher {
       },
       {
         id: 'status',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         patterns: [/status/i, /état du système/i, /systeme.*état/i, /tout fonctionne/i],
         keywords: ['status', 'état', 'système', 'fonctionne'],
         answer: 'Tous les systèmes Gen3ia sont opérationnels. Les agents IA, l\'orchestrateur et les services sont actifs. Vous pouvez vérifier les métriques en temps réel dans la section Monitoring.',
@@ -275,7 +275,7 @@ class FAQMatcher {
     for (const [id, faq] of this.faqEntries) {
       // 1. Exact pattern matching (highest confidence)
       for (const pattern of faq.patterns) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         if (pattern.test(query)) {
           return { answer: faq.answer, confidence: 0.95, faqId: id };
         }

@@ -1,24 +1,75 @@
-// API Export de donnees
+// ============================================================
+// GET /api/export — Exporter les données utilisateur
+// ============================================================
+//  Query: ?format=json|csv&collections=agents,conversations,credits
+//  Headers: Cookie gen3ia_session (authentification)
+//  Response: fichier téléchargeable
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity } from '@/lib/security';
-import { exportEngine } from '@/lib/export-engine';
+import { exportUserData, type ExportCollection, type ExportFormat } from '@/lib/data-export';
+import { withRateLimit, RATE_LIMIT_PRESETS } from '@/lib/api-rate-limit';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-
-
-
-export const dynamic = "force-dynamic";
-export async function GET(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, { requireAuth: true });
-  if (error || !auth) return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
+async function handler(req: NextRequest): Promise<NextResponse> {
   try {
-    const url = new URL(request.url);
-    const scope = url.searchParams.get('scope') || 'stats';
-    switch (scope) {
-      case 'stats': { const stats = await exportEngine.getAccountStats(auth.userId); return NextResponse.json({ success: true, stats }); }
-      case 'export': { const entity = (url.searchParams.get('entity') || 'all') as any; const format = (url.searchParams.get('format') || 'json') as any; const result = await exportEngine.exportEntity(auth.userId, entity, format); return NextResponse.json({ success: true, ...result }); }
-      case 'download': { const entity = (url.searchParams.get('entity') || 'all') as any; const format = (url.searchParams.get('format') || 'json') as any; const result = await exportEngine.exportEntity(auth.userId, entity, format); if (format === 'csv') { const rows: any[] = []; for (const [key, items] of Object.entries(result.data)) { if (Array.isArray(items)) rows.push(...items.map((item: any) => ({ _type: key, ...item }))); } const csv = exportEngine.toCSV(rows); return new NextResponse(csv, { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=gen3ia-export.csv' } }); } return NextResponse.json(result.data, { headers: { 'Content-Disposition': 'attachment; filename=gen3ia-export.json' } }); }
-      default: return NextResponse.json({ error: 'Scope inconnu' }, { status: 400 });
+    // Extraire l'userId de la session
+    const sessionCookie = req.cookies.get('gen3ia_session')?.value;
+    if (!sessionCookie) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
-  } catch (err) { return NextResponse.json({ error: String(err) }, { status: 500 }); }
+
+    let userId: string;
+    try {
+      const decoded = JSON.parse(Buffer.from(sessionCookie, 'base64url').toString());
+      userId = decoded.uid;
+    } catch {
+      return NextResponse.json({ error: 'Session invalide' }, { status: 401 });
+    }
+
+    // Paramètres
+    const url = new URL(req.url);
+    const format = (url.searchParams.get('format') || 'json') as ExportFormat;
+    const collectionsParam = url.searchParams.get('collections') || 'agents,conversations,creditTransactions,executions,profile';
+
+    const validCollections: ExportCollection[] = ['agents', 'conversations', 'creditTransactions', 'executions', 'workflows', 'apiKeys', 'notifications', 'profile'];
+    const requestedCollections = collectionsParam.split(',')
+      .filter(c => validCollections.includes(c as ExportCollection)) as ExportCollection[];
+
+    if (!requestedCollections.length) {
+      return NextResponse.json({ error: 'Collections invalides' }, { status: 400 });
+    }
+
+    // Lancer l'export
+    const result = await exportUserData({
+      userId,
+      format,
+      collections: requestedCollections,
+    });
+
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 500 });
+    }
+
+    // Retourner comme fichier téléchargeable
+    const contentType = format === 'json' ? 'application/json' : 'text/csv';
+    const response = new NextResponse(result.data, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${result.filename}"`,
+        'X-Export-Collections': result.collections.join(','),
+        'X-Export-Records': String(result.totalRecords),
+      },
+    });
+
+    return response;
+  } catch (error) {
+    console.error('[export] error:', error);
+    return NextResponse.json({ error: "Erreur lors de l'export" }, { status: 500 });
+  }
 }
+
+export const GET = withRateLimit(handler, RATE_LIMIT_PRESETS.export);

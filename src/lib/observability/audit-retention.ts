@@ -13,8 +13,10 @@ export interface AuditEntry {
 }
 
 export function computeExpiry(ts: Date, category: AuditCategory): string {
-  const days = RETENTION[category].days;
-  return new Date(ts.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+  const months = Math.round(RETENTION[category].days / 30.44);
+  const result = new Date(ts);
+  result.setUTCMonth(result.getUTCMonth() + months);
+  return result.toISOString();
 }
 
 export function buildAuditEntry(input: Omit<AuditEntry, "id" | "expiresAt">, id?: string): AuditEntry {

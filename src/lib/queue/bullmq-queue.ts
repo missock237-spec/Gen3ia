@@ -592,7 +592,7 @@ export class BullMQQueue {
     }
   }
 
-  private async incrementRateLimit(queueName: QueueName, userId: string): Promise<void> {
+  private async incrementRateLimit(_queueName: QueueName, _userId: string): Promise<void> {
     // Already incremented in checkRateLimit via incr
   }
 

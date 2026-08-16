@@ -9,10 +9,9 @@ import { cn } from "@/lib/utils"
 function ResizablePanelGroup({
   className,
   ...props
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
 }: React.ComponentProps<typeof ResizablePrimitive.Group>) {
   return (
-// @ts-ignore
     <ResizablePrimitive.Group
       data-slot="resizable-panel-group"
       className={cn(
@@ -34,12 +33,11 @@ function ResizableHandle({
   withHandle,
   className,
   ...props
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
 }: React.ComponentProps<typeof ResizablePrimitive.Separator> & {
   withHandle?: boolean
 }) {
   return (
-// @ts-ignore
     <ResizablePrimitive.Separator
       data-slot="resizable-handle"
       className={cn(
@@ -53,7 +51,6 @@ function ResizableHandle({
           <GripVerticalIcon className="size-2.5" />
         </div>
       )}
-// @ts-ignore
     </ResizablePrimitive.Separator>
   )
 }

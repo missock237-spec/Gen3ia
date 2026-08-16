@@ -4,6 +4,7 @@
 // ============================================================
 import { prisma } from './prisma';
 import { createLogger } from './logger';
+import { validateUrl } from '@/lib/security/validate-url';
 
 const log = createLogger('webhook-engine');
 
@@ -72,6 +73,7 @@ export class WebhookEngine {
         // Timestamp pour anti-replay
         headers['X-Gen3ia-Timestamp'] = Math.floor(Date.now() / 1000).toString();
 
+        if (!validateUrl(payload.url)) throw new Error('Invalid webhook URL (SSRF blocked)');
         const response = await fetch(payload.url, {
           method: payload.method || 'POST',
           headers,
@@ -185,7 +187,7 @@ export class WebhookEngine {
   /**
    * Execute un webhook direct (sans config)
    */
-  async executeDirect(payload: WebhookPayload, userId: string) {
+  async executeDirect(payload: WebhookPayload, _userId: string) {
     const result = await this.send(payload);
 
     // Logger meme sans config

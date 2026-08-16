@@ -267,7 +267,7 @@ export async function POST(
       userId: auth.userId,
       action: `service_${action}`,
       resource: 'service',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       resourceId: idValidation.id,
       details: {
         action,

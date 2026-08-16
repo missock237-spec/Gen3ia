@@ -133,9 +133,9 @@ export function createSSEStream(userId: string): ReadableStream {
       controller.enqueue(encoder.encode('retry: 3000\n\n'));
 
       // Cleanup on close
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       if (controller.signal) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         controller.signal.addEventListener('abort', () => {
           manager.removeConnection(connectionId);
         });

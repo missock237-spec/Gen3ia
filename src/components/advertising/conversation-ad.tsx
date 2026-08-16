@@ -32,6 +32,8 @@ export interface ConversationAdDecision {
   campaign: ConversationAdCampaign | null;
   reason: string;
   placement?: string;
+  variantText?: string;
+  variantCta?: string;
   pendingRewardPerView: number;
   pendingRewardPerClick: number;
   isFreePlan: boolean;
@@ -180,7 +182,7 @@ export function ConversationAd({
         Sponsorisé
       </span>
       <span style={{ flex: 1, minWidth: 0, color: 'var(--foreground, #111827)' }}>
-        {campaign.textContent || campaign.name}{' '}
+        {decision?.variantText || campaign.textContent || campaign.name}{' '}
         <span style={{ color: 'var(--muted-foreground, #6b7280)' }}>— {campaign.advertiserName}</span>
       </span>
       <a
@@ -196,7 +198,7 @@ export function ConversationAd({
           flexShrink: 0,
         }}
       >
-        {campaign.ctaText || 'En savoir plus'} →
+        {decision?.variantCta || campaign.ctaText || 'En savoir plus'} →
       </a>
       {!isFreePlan && pendingReward > 0 && (
         <span

@@ -20,6 +20,7 @@
 
 import { getAdminMessaging } from './admin';
 import { db, Collections } from './firestore';
+import { maybeSendSmsForNotification } from '@/lib/sms-engine';
 
 // ============================================================
 // Types
@@ -165,16 +166,16 @@ export class NotificationEngine {
    * Enregistre un device token pour un utilisateur.
    */
   async registerDevice(userId: string, token: string, platform: 'web' | 'android' | 'ios' = 'web'): Promise<void> {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     await db.createWithId?.(Collections.users, {} as Record<string, unknown>);
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const devicesRef = (await import('firebase-admin/firestore')).collection(
       (await import('./admin')).getAdminDb(),
       'fcm_devices',
     );
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     await (await import('firebase-admin/firestore')).setDoc(
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       (await import('firebase-admin/firestore')).doc(devicesRef, token),
       {
         userId,
@@ -193,7 +194,7 @@ export class NotificationEngine {
   async unregisterDevice(token: string): Promise<void> {
     const firestore = (await import('firebase-admin/firestore'));
     const adminDb = (await import('./admin')).getAdminDb();
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     await firestore.deleteDoc(firestore.doc(adminDb, 'fcm_devices', token));
   }
 
@@ -203,9 +204,9 @@ export class NotificationEngine {
   async getUserDevices(userId: string): Promise<DeviceRegistration[]> {
     const firestore = (await import('firebase-admin/firestore'));
     const adminDb = (await import('./admin')).getAdminDb();
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const snap = await firestore.getDocs(
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       firestore.query(adminDb.collection('fcm_devices'), firestore.where('userId', '==', userId)),
     );
     return snap.docs.map((d) => d.data() as DeviceRegistration);

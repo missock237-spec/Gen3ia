@@ -47,7 +47,7 @@ export default function KeysPage() {
         <div className="text-center py-12 bg-gray-800/30 border border-gray-700/50 rounded-xl">
           <span className="text-4xl">🔑</span>
           <h3 className="text-white font-medium mt-3">Aucune clé API</h3>
-          <p className="text-gray-400 text-sm mt-1">Créez une clé pour utiliser l'API Gen3ia</p>
+          <p className="text-gray-400 text-sm mt-1">Créez une clé pour utiliser l&apos;API Gen3ia</p>
         </div>
       ) : (
         <div className="space-y-3">
