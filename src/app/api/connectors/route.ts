@@ -10,6 +10,11 @@ import { getMCPClientManager, encryptAuthConfig } from '@/lib/connectors/mcp-cli
 import { getAccessKeyManager } from '@/lib/connectors/access-key-manager';
 import { db } from '@/lib/db';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;

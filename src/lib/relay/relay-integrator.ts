@@ -48,7 +48,7 @@ interface AudioCallResult {
 }
 
 export class RelayIntegrator {
-  async chat(messages: Array<{ role: string; content: string }>, action: AIAction = AIAction.CHAT): Promise<AICallResult> {
+  async chat(messages: Array<{ role: string; content: string }>, _action: AIAction = AIAction.CHAT): Promise<AICallResult> {
     const relay = getRelaySystem();
     const result = await relay.executeWithRelay<AICallResult>(
       RelayModality.REASONING,
@@ -117,7 +117,7 @@ export class RelayIntegrator {
     return result.result;
   }
 
-  async synthesizeSpeech(text: string, language: string = 'en-US'): Promise<VoiceCallResult> {
+  async synthesizeSpeech(text: string, _language: string = 'en-US'): Promise<VoiceCallResult> {
     const relay = getRelaySystem();
     const result = await relay.executeWithRelay<VoiceCallResult>(
       RelayModality.VOICE,

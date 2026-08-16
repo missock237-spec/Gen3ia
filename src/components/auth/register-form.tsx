@@ -70,24 +70,37 @@ export function RegisterForm() {
     setSuccess('');
 
     try {
+      // 1. Sign-up via Firebase Client SDK -> crée le compte + obtient l'ID token
+      const { signUpWithEmail } = await import('@/lib/firebase/auth-client');
+      const authResult = await signUpWithEmail(form.email, form.password, form.name.trim());
+
+      // 2. Envoie l'ID token au serveur qui crée le profil Firestore + le session cookie
       await apiFetch('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({
+          idToken: authResult.idToken,
           name: form.name.trim(),
           email: form.email.toLowerCase().trim(),
-          password: form.password,
-          confirmPassword: form.confirm,
         }),
       });
 
-      setSuccess('Compte créé ! Vérifiez votre email pour activer votre compte.');
+      setSuccess('Compte créé ! Un email de vérification vous a été envoyé.');
       setForm({ name: '', email: '', password: '', confirm: '', terms: false });
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 429) {
-          setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
+        if (err.status === 429) setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
+        else setApiError(err.message || "Erreur lors de l'inscription");
+      } else if (err && typeof err === 'object' && 'code' in err) {
+        // Firebase Auth error
+        const code = (err as { code: string }).code;
+        if (code === 'auth/email-already-in-use') {
+          setApiError('Cet email est déjà utilisé');
+        } else if (code === 'auth/weak-password') {
+          setApiError('Mot de passe trop faible');
+        } else if (code === 'auth/invalid-email') {
+          setApiError('Email invalide');
         } else {
-          setApiError(err.message || "Erreur lors de l'inscription");
+          setApiError('Erreur lors de la création du compte');
         }
       } else {
         setApiError('Erreur réseau. Veuillez réessayer.');

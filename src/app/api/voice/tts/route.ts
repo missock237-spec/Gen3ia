@@ -10,6 +10,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createTTSEngine } from '@/lib/voice';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const MAX_TEXT_LENGTH = 4096;
 
 export async function OPTIONS(request: NextRequest) {

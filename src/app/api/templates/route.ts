@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AGENT_TEMPLATES, getTemplateById, getCategories, getTemplatesByCategory } from "@/lib/templates";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request) {
   const s = new URL(request.url).searchParams;
   const id = s.get("id");

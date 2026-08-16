@@ -226,22 +226,7 @@ const SERVICE_REGISTRY: ServiceDefinition[] = [
     startupGraceMs: 4000,
     maxRestarts: 5,
   },
-  {
-    ...DEFAULT_SERVICE_OPTIONS,
-    id: 'baileys',
-    name: 'Baileys WhatsApp',
-    description: 'WhatsApp Web API for messaging and call automation',
-    category: 'communication',
-    icon: 'MessageCircle',
-    command: 'node',
-    args: ['server.js'],
-    cwd: path.join(BASE_DIR, 'services', 'baileys'),
-    port: 8186,
-    healthPath: '/health',
-    dependsOn: [],
-    startupGraceMs: 6000,
-    maxRestarts: 10,
-  },
+
   {
     ...DEFAULT_SERVICE_OPTIONS,
     id: 'ruflo',

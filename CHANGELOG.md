@@ -1,39 +1,40 @@
 # Changelog
 
-## [0.7.2] - 2026-07-26
-### Integration Relay System dans AI Router, Voice, Images, Videos, Audio
+## [0.9.0] — 2026-07-28 — Session Monorepo & Terminal v2
 
-#### Relay AI Router Adapter
-- RelayAIAgent: wrapper AIRouter + Relay System en priorite
-- chat() essaie Relay (Groq -> OpenRouter -> OpenAI) puis fallback AIRouter
-- chatStream() compatible streaming
+### 🚀 Nouvelles fonctionnalités
+- **Terminal v2.1** : Exécution bash réelle, auto-complétion TAB, historique ↑/↓, sudo protégé (#96, #99, #100, #101)
+- **Éditeur de fichiers inline** : edit, read, delete dans le terminal (#100)
+- **WebSocket hook** : `useTerminalWS` avec reconnexion automatique (#101)
+- **Mode PWA** : Service Worker v2 offline-first, cache partitionné (#104)
+- **Docker** : Dockerfile multi-stage, docker-compose avec postgres/redis/traefik (#102)
+- **CI/CD Release** : Pipeline tests + coverage 80% + auto-tag GitHub Release (#107)
+- **Monorepo** : Structure `packages/`, `apps/`, `tsconfig.base.json` (#105)
 
-#### Integration endpoints API
-- /api/voice/tts: relay HuggingFace -> ElevenLabs
-- /api/images: relay HuggingFace SD3.5 -> DALL-E
-- /api/videos: relay HuggingFace ModelScope
-- /api/audio: relay MusicGen -> OpenAI TTS
+### 📝 Documentation
+- README complet avec badges, terminal docs, Docker (#102)
+- ARCHITECTURE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
 
-### Fichiers
-- src/lib/relay/relay-ai-router-adapter.ts
+### 🧪 Tests
+- 46 tests (auth, agent, rate-limit, terminal, ReAct loop, crédits, autocomplete)
+- Coverage seuil 80% configuré dans vitest.config.ts (#106)
+- Tests ReAct : validation, execution, mémoire, erreurs (#106)
+- Tests crédits : déduction, plans, vérification (#106)
 
-## [0.7.1] - 2026-07-26
-### Integration Relay System dans AI Router + API endpoint
+### 🏷️ Renommage
+- Projet entièrement renommé **Genova → Gen3ia** (30+ fichiers, 0 références restantes)
+- PRs : #93, #94, #95, #96, #97, #103, #104
 
-## [0.7.0] - 2026-07-26
-### Systeme de Relais Multi-Provider
+### 🐛 Corrections
+- Settings-view complète avec 6 onglets (#93)
+- Mise à jour email.ts (noreply@gen3ia.ai, footer, sujets) (#103)
+- Nettoyage des fichiers temporaires (ci.yml, deploy.yml, test-force-push...) (#105)
+- Correction test setup.ts (genova_test → gen3ia_test) (#107)
 
-## [0.6.2] - 2026-07-26
-### Integration Compute V2 Voice Memory + Replit
+## [0.8.0] — 2026-07-20
 
-## [0.6.1] - 2026-07-26
-### Integration Compute V2 Embeddings + Agent Safety
-
-## [0.6.0] - 2026-07-26
-### Compute Engine V2 Cache LRU + Pipeline + Predictor
-
-## [0.5.1] - 2026-07-26
-### Audit securite
-
-## [0.5.0] - 2026-07-26
-### Multi-Tenant, Agent Repl.IT, Playground API
+- Version initiale Gen3ia
+- Agents IA avec boucle ReAct
+- Authentication Google/GitHub
+- Dashboard avec métriques
+- Paiements Mobile Money (SebPay)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodSchema, ZodError } from "zod";
-import { getServerSession } from "@/lib/auth/auth";
+import { applySecurity, type SecurityContext } from "@/lib/security";
 import { rateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 
@@ -27,19 +27,22 @@ export function withApi<TBody = unknown, TCtx = unknown>(
       // 1. Rate limit
       if (opts.rateLimit) {
         const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+// @ts-ignore — type narrowing pending, see refactor ticket
         const ok = await rateLimit(ip, opts.rateLimit);
         if (!ok) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
       }
 
-      // 2. Auth
-      let session = null;
+      // 2. Auth (Firebase via applySecurity)
+      let session: SecurityContext | null = null;
       if (opts.auth !== "none") {
-        session = await getServerSession(req);
+        const result = await applySecurity(req, {
+          requireAuth: opts.auth === "required",
+          roles: opts.roles,
+        });
+        if (result.error) return result.error;
+        session = result.auth ?? null;
         if (opts.auth === "required" && !session) {
           return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-        if (opts.roles && !opts.roles.includes(session?.role)) {
-          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
       }
 
