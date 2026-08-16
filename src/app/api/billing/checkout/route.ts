@@ -1,79 +1,53 @@
-/**
- * Billing Checkout API — POST: Create checkout session
- */
+import { NextRequest, NextResponse } from "next/server";
+import { chariow } from "@/lib/payment/chariow";
+import { PLANS } from "@/lib/sebpay";
 
-import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { createCheckoutSession } from '@/lib/billing/stripe-client';
-import { getPlan, type PlanTier } from '@/lib/billing/plans';
-
-export async function OPTIONS() {
-  const response = new NextResponse(null, { status: 204 });
-  response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  return response;
-}
-
+export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, {
-    requireAuth: true,
-    rateLimit: { limit: 10, windowMs: 60000 },
-  });
-
-  if (error) return error;
-  if (!auth) return secureResponse(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), request);
-
   try {
     const body = await request.json();
-    const { planId, mode, successUrl, cancelUrl } = body;
+    const { planId, customerEmail, customerName } = body;
 
-    if (!planId) {
-      return secureResponse(
-        NextResponse.json({ error: 'Missing required field: planId' }, { status: 400 }),
-        request
-      );
-    }
-
-    // Validate plan
-    const plan = getPlan(planId as PlanTier);
+    const plan = PLANS.find(p => p.id === planId);
     if (!plan) {
-      return secureResponse(
-        NextResponse.json({ error: 'Invalid plan ID' }, { status: 400 }),
-        request
-      );
+      return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
+    }
+    if (plan.price === 0) {
+      return NextResponse.json({ status: "free_plan", message: "Plan gratuit activé" });
+    }
+    if (!chariow.isConfigured()) {
+      return NextResponse.json({ error: "Chariow non configuré" }, { status: 503 });
     }
 
-    if (!plan.stripePriceId) {
-      return secureResponse(
-        NextResponse.json({ error: 'This plan is not available for purchase' }, { status: 400 }),
-        request
-      );
+    const productId = process.env[`CHARIOW_PRODUCT_PLAN_${planId.toUpperCase()}`] || '';
+    if (!productId) {
+      return NextResponse.json({ error: `Produit Chariow non configuré pour ${planId}` }, { status: 503 });
     }
 
-    const session = await createCheckoutSession({
-      userId: auth.userId,
-      priceId: plan.stripePriceId,
-      planId,
-      successUrl,
-      cancelUrl,
-      mode: mode || 'subscription',
+    const reference = `GENOVA-${planId}-${Date.now()}`;
+    const checkout = await chariow.initiateCheckout({
+      productId,
+      customerEmail,
+      customerName,
+      metadata: { type: 'plan', planId, credits: String(plan.credits || 0) },
+      successUrl: `${process.env.NEXT_PUBLIC_APP_URL}/billing?success=1&ref=${reference}`,
+      cancelUrl: `${process.env.NEXT_PUBLIC_APP_URL}/billing`,
     });
 
-    return secureResponse(
-      NextResponse.json({
+    return NextResponse.json({
+      payment: {
         success: true,
-        sessionId: session.sessionId,
-        url: session.url,
-      }),
-      request
-    );
+        transactionId: checkout.saleId || reference,
+        paymentUrl: checkout.checkoutUrl,
+        status: checkout.step === 'payment' ? 'pending' : checkout.step,
+      },
+      plan,
+      reference,
+    });
   } catch (err) {
-    return secureResponse(
-      NextResponse.json(
-        { error: 'Failed to create checkout session', details: err instanceof Error ? err.message : 'Unknown error' },
-        { status: 500 }
-      ),
-      request
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Erreur paiement" },
+      { status: 500 }
     );
   }
 }
