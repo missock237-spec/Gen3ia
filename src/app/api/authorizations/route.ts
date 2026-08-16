@@ -10,15 +10,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
-import { getServerSession } from 'next-auth';
+import { getServerSession } from '@/lib/auth';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('authorizations');
 
 const VALID_SERVICES = [
   'github', 'gitlab', 'bitbucket',
   'gmail', 'google_calendar', 'google_drive', 'google_sheets', 'google_docs',
   'outlook', 'office365', 'microsoft_teams', 'microsoft_onedrive',
-  'slack', 'discord', 'telegram', 'whatsapp',
+  'slack', 'discord', 'telegram',
   'twitter', 'linkedin', 'instagram', 'facebook', 'tiktok', 'youtube',
   'notion', 'asana', 'trello', 'jira', 'linear', 'clickup', 'monday',
   'shopify', 'woocommerce', 'stripe', 'paypal',

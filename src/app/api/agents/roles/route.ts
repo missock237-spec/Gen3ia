@@ -7,12 +7,16 @@ import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { applySecurity } from '@/lib/security';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('agent-roles');
 
 const VALID_PERMISSIONS = [
   'browse_web', 'social_post', 'social_youtube', 'social_facebook',
   'social_instagram', 'social_tiktok', 'social_linkedin',
-  'whatsapp_message', 'whatsapp_call',
   'use_api', 'use_cpu', 'use_mvp',
 ];
 

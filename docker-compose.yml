@@ -1,40 +1,152 @@
 # ============================================================
-# GENOVA — Docker Compose (développement local)
+# Gen3ia — Docker Compose (dev + production)
+# Orchestre : Redis, Next.js, Worker BullMQ (Firestore/Storage gérés par Firebase)
 # ============================================================
 
+version: '3.8'
+
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: genova-db
-    restart: unless-stopped
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "5432:5432"
+      - "3000:3000"
     environment:
-      POSTGRES_USER: genova
-      POSTGRES_PASSWORD: genova_pass
-      POSTGRES_DB: genova
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U genova"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - REDIS_URL=redis://redis:6379
+      - FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}
+      - ...
+    depends_on:
+      - redis
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: genova-redis
-    restart: unless-stopped
+    command: redis-server --appendonly yes --save 900 1 --save 300 10 --save 60 10000
+    volumes:
+      - redis-data:/data
     ports:
       - "6379:6379"
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ...
+    depends_on:
+      - redis
+    restart: unless-stopped
 
 volumes:
-  pgdata:
-  redisdata:
+  redis-data:
+
+  app:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runner
+    container_name: gen3ia-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: 1
+      # Firebase (client)
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+      # Firebase (Admin SDK — serveur)
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      # IA / LLM
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Paiements Chariow
+      CHARIOW_API_KEY: ${CHARIOW_API_KEY:-}
+      CHARIOW_WEBHOOK_SECRET: ${CHARIOW_WEBHOOK_SECRET:-}
+      CHARIOW_API_URL: ${CHARIOW_API_URL:-}
+      # Monitoring
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      LOKI_URL: ${LOKI_URL:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - gen3ia-net
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      target: runner
+    container_name: gen3ia-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      NEXT_TELEMETRY_DISABLED: 1
+      # Firebase (Admin SDK — serveur)
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      # IA / LLM
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gen3ia-net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: gen3ia-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:6333/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - gen3ia-net
+    profiles:
+      - full
+
+networks:
+  gen3ia-net:
+    name: gen3ia-network
+    driver: bridge
+
+volumes:
+  redis_data:
+    name: gen3ia-redis-data
+  qdrant_data:
+    name: gen3ia-qdrant-data

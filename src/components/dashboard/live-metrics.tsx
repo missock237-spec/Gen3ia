@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Loader2, Wifi, WifiOff, Zap, DollarSign, Coins, Phone, Timer, BrainCircuit } from 'lucide-react';
 import { createLogger } from '@/lib/logger';
 
@@ -38,6 +38,8 @@ export function LiveMetrics({ userId, refreshInterval = 5000 }: LiveMetricsProps
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const [eventCount, setEventCount] = useState(0);
+  // Ref to break self-reference cycle (connectSSE references itself via setTimeout).
+  const connectSSERef = useRef<(() => EventSource) | null>(null);
 
   const connectSSE = useCallback(() => {
     const eventSource = new EventSource(`/api/events?userId=${userId}`);
@@ -56,7 +58,8 @@ export function LiveMetrics({ userId, refreshInterval = 5000 }: LiveMetricsProps
         if (m.label === 'Requêtes/min') return { ...m, value: eventCount + 1, change: 12, trend: 'up' };
         if (m.label === 'Coût aujourd\'hui') {
           const cost = (data as { data?: { costUsd?: number } })?.data?.costUsd || 0;
-          const currentCost = parseFloat(String(m.value).replace('$', '').replace('—', '0'));
+          const costStr = String(m.value).replace(/[^0-9.]/g, '') || '0';
+        const currentCost = parseFloat(costStr);
           return { ...m, value: `${(currentCost + cost).toFixed(4)}$`, change: cost > 0 ? 5 : 0, trend: cost > 0 ? 'up' : 'stable' };
         }
         return m;
@@ -93,11 +96,16 @@ export function LiveMetrics({ userId, refreshInterval = 5000 }: LiveMetricsProps
     eventSource.onerror = () => {
       setConnected(false);
       log.warn('SSE déconnecté, reconnexion dans 5s');
-      setTimeout(connectSSE, 5000);
+      setTimeout(() => connectSSERef.current?.(), 5000);
     };
 
     return eventSource;
   }, [userId, eventCount]);
+
+  // Keep ref in sync for recursive setTimeout calls (must be in effect, not during render).
+  useEffect(() => {
+    connectSSERef.current = connectSSE;
+  }, [connectSSE]);
 
   useEffect(() => {
     const eventSource = connectSSE();

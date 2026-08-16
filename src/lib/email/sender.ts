@@ -33,13 +33,13 @@ export async function sendEmail(options: EmailOpts): Promise<EmailResult> {
           tls: { rejectUnauthorized: false },
         });
         const info = await transportInstance.sendMail({
-          from: '"' + config.fromName + '" <' + config.fromEmail + '>',
+          from: '"' + config.fromName.replace(/"/g, '\\"').replace(/\r\n/g, '') + '" <' + config.fromEmail.replace(/[<>"\r\n]/g, '') + '>',
           to: options.to, subject: options.subject,
-          html: options.html, text: options.text || options.html.replace(/<[^>]*>/g, ''),
+          html: options.html, text: options.text || options.html.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' '),
         });
         return { success: true, messageId: info.messageId };
       } catch (err) {
-        console.log('[Email] SMTP echoue, fallback Resend:', err instanceof Error ? err.message : '?');
+        console.warn('[Email] SMTP echoue, fallback Resend:', err instanceof Error ? err.message : '?');
         transportInstance = null;
         useResend = true;
       }
@@ -63,9 +63,9 @@ export async function sendEmail(options: EmailOpts): Promise<EmailResult> {
       tls: { rejectUnauthorized: false },
     });
     const info = await transport.sendMail({
-      from: '"' + config.fromName + '" <' + config.fromEmail + '>',
+      from: '"' + config.fromName.replace(/"/g, '\\"').replace(/\r\n/g, '') + '" <' + config.fromEmail.replace(/[<>"\r\n]/g, '') + '>',
       to: options.to, subject: options.subject,
-      html: options.html, text: options.text || options.html.replace(/<[^>]*>/g, ''),
+      html: options.html, text: options.text || options.html.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' '),
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
@@ -97,7 +97,7 @@ async function sendViaResend(options: EmailOpts): Promise<EmailResult> {
         to: [options.to],
         subject: options.subject,
         html: options.html,
-        text: options.text || options.html.replace(/<[^>]*>/g, ''),
+        text: options.text || options.html.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' '),
       }),
     });
 

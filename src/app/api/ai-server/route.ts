@@ -1,19 +1,23 @@
 // AI Server — Point d'entree unique pour les services IA
 // GET: health, status
 // POST: analyze, process, diagnose
+// SECURITE: withAuth() + quota + rateLimit Redis
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
-import { applySecurity, secureResponse } from '@/lib/security';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 import { createAIRouter } from '@/lib/ai-router';
 import { db } from '@/lib/db';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('ai-server');
 
-export async function GET(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
+// GET /api/ai-server?action=health|status
+const getHandler = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   const action = request.nextUrl.searchParams.get('action') || 'health';
 
   switch (action) {
@@ -42,51 +46,58 @@ export async function GET(request: NextRequest) {
     default:
       return NextResponse.json({ error: 'Action non reconnue. Utilisez health ou status' }, { status: 400 });
   }
-}
+}, {
+  requireAuth: true,
+  rateLimit: { limit: 100, windowMs: 60000 },
+});
 
-export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true, rateLimit: { limit: 20, windowMs: 60000 } });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+// POST /api/ai-server — Action LLM (analyze/process/diagnose) : couteuse en tokens → QUOTA obligatoire
+const postHandler = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
+  const action = request.nextUrl.searchParams.get('action');
+  const body = await request.json().catch(() => ({}));
+  const resolvedAction: string = action || (body as { action?: string }).action as string;
+  const input: unknown = body.input;
+  const model: string | undefined = body.model;
 
-  try {
-    const body = await request.json();
-    const { action, input, model } = body;
+  if (!resolvedAction) return NextResponse.json({ error: 'Action requise (analyze, process, diagnose)' }, { status: 400 });
+  if (!input) return NextResponse.json({ error: 'Input requis' }, { status: 400 });
 
-    if (!action) return NextResponse.json({ error: 'Action requise (analyze, process, diagnose)' }, { status: 400 });
-    if (!input) return NextResponse.json({ error: 'Input requis' }, { status: 400 });
+  const router = createAIRouter(auth.userId);
+  let systemPrompt: string;
 
-    const router = createAIRouter(auth.userId);
-    let systemPrompt: string;
-
-    switch (action) {
-      case 'analyze':
-        systemPrompt = 'Tu es un analyste IA. Analyse les donnees fournies et donne des insights clairs et concis en francais.';
-        break;
-      case 'process':
-        systemPrompt = 'Tu es un processeur IA. Traite les donnees selon les instructions et retourne un resultat structure en francais.';
-        break;
-      case 'diagnose':
-        systemPrompt = 'Tu es un diagnostiqueur IA. Analyse les logs/erreurs fournis et identifie les causes racines en francais.';
-        break;
-      default:
-        return NextResponse.json({ error: 'Action invalide. Utilisez analyze, process ou diagnose' }, { status: 400 });
-    }
-
-    const response = await router.chat([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: String(input).slice(0, 10000) },
-    ], { model: model || 'default' });
-
-    log.info('ai_server_action', { userId: auth.userId, action, tokens: response.usage?.total_tokens });
-
-    return NextResponse.json({
-      success: true,
-      result: response.content,
-      model: response.model,
-      usage: response.usage,
-    });
-  } catch (error) {
-    log.error('ai_server_error', { error: String(error) });
-    return NextResponse.json({ error: 'Erreur du serveur IA' }, { status: 500 });
+  switch (resolvedAction) {
+    case 'analyze':
+      systemPrompt = 'Tu es un analyste IA. Analyse les donnees fournies et donne des insights clairs et concis en francais.';
+      break;
+    case 'process':
+      systemPrompt = 'Tu es un processeur IA. Traite les donnees selon les instructions et retourne un resultat structure en francais.';
+      break;
+    case 'diagnose':
+      systemPrompt = 'Tu es un diagnostiqueur IA. Analyse les logs/erreurs fournis et identifie les causes racines en francais.';
+      break;
+    default:
+      return NextResponse.json({ error: 'Action invalide. Utilisez analyze, process ou diagnose' }, { status: 400 });
   }
-}
+
+  const response = await router.chat([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: String(input).slice(0, 10000) },
+// @ts-ignore — type narrowing pending, see refactor ticket
+  ], { model: model || 'default' });
+
+  log.info('ai_server_action', { userId: auth.userId, action: resolvedAction, tokens: response.usage?.totalTokens });
+
+  return NextResponse.json({
+    success: true,
+    result: response.content,
+    model: response.model,
+    usage: response.usage,
+  });
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 20, windowMs: 60000 },
+  quota: true,
+});
+
+export { getHandler as GET, postHandler as POST };

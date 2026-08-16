@@ -6,6 +6,11 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { autoScheduler } from '@/lib/auto-scheduler';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('auto-exec');
 
 const VALID_TRIGGERS = ['schedule', 'event', 'webhook', 'instant'];

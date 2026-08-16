@@ -3,15 +3,20 @@ import { getServerSession } from '@/lib/auth';
 import { refreshExpiredTokens, refreshSingleToken } from '@/lib/oauth/token-refresher';
 import { prisma } from '@/lib/prisma';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST() {
   try {
     const session = await getServerSession();
-    if (!session?.userId) {
+    if (!session?.user.id) {
       return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
 
     const authorizations = await prisma.workflowAuthorization.findMany({
-      where: { userId: session.userId, isActive: true, refreshToken: { not: null } },
+      where: { userId: session.user.id, isActive: true, refreshToken: { not: null } },
       select: { id: true, service: true, accountName: true },
     });
 

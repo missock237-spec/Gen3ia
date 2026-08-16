@@ -1,22 +1,25 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { siteConfig } from '@/lib/seo/config';
+import { ErrorBoundary, ErrorProvider } from '@/components/error-boundary';
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+// geist package provides the font variables directly
+const geistSans = GeistSans;
+const geistMono = GeistMono;
 
 const siteUrl = siteConfig.url;
 const siteName = siteConfig.name;
-const title = "gen3ia — Systeme d'exploitation pour agents IA";
+const title = "gen3ia - Système d'exploitation pour agents IA";
 const description = siteConfig.description;
 
 export const viewport: Viewport = {
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#09090b' },
+    { media: '(prefers-color-scheme: dark)', color: '#0A0A0B' },
   ],
   colorScheme: 'dark light',
   width: 'device-width',
@@ -30,7 +33,8 @@ export const metadata: Metadata = {
   description,
   keywords: ['Gen3ia', 'IA', 'agents IA', 'automatisation', 'SaaS', 'AI Operating System',
     'agent autonome', 'ReAct', 'Cameroun', 'Afrique', 'AI agents', 'voice AI',
-    'WhatsApp bot', 'AI automation platform', 'LLM', 'GPT', 'Claude'],
+    'AI automation platform', 'LLM', 'GPT', 'Claude', 'verifiable autonomy',
+    'proof of correctness', 'agents neuro-symboliques'],
   authors: [{ name: siteConfig.author, url: siteUrl }],
   creator: siteConfig.author,
   publisher: siteConfig.author,
@@ -45,7 +49,7 @@ export const metadata: Metadata = {
       { url: '/icon.svg', type: 'image/svg+xml' },
     ],
     apple: [{ url: '/favicon-gen3ia.png', sizes: '180x180', type: 'image/png' }],
-    other: [{ rel: 'mask-icon', url: '/icon.svg', color: '#7c3aed' }],
+    other: [{ rel: 'mask-icon', url: '/icon.svg', color: '#00F5FF' }],
   },
   manifest: '/manifest.json',
   appleWebApp: {
@@ -74,7 +78,7 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: siteUrl,
-    languages: { 'fr-FR': siteUrl, 'en-US': `${siteUrl}/en` },
+    languages: { 'fr-FR': siteUrl, 'en-US': `${siteUrl}/en`, 'ar-SA': `${siteUrl}/ar` },
   },
   formatDetection: { telephone: true, date: true, address: true, email: true, url: true },
   other: {
@@ -91,13 +95,17 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="me" href={siteConfig.githubUrl} />
         <link rel="author" href={`${siteUrl}/about`} />
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#0f172a" />
+        <meta name="theme-color" content="#0A0A0B" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          {children}
+          <ErrorProvider>
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </ErrorProvider>
           <Toaster richColors position="top-right" />
         </ThemeProvider>
         <script

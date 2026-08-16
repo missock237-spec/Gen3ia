@@ -60,7 +60,7 @@ export interface ExecutionResult {
  * Supports: minute hour day-of-month month day-of-week
  * Example: "0 9 * * 1-5" → every weekday at 9:00 AM
  */
-export function getNextRunTime(cronExpression: string, timezone: string = 'UTC'): Date {
+export function getNextRunTime(cronExpression: string, _timezone: string = 'UTC'): Date {
   const parts = cronExpression.trim().split(/\s+/);
   if (parts.length !== 5) {
     throw new Error(`Invalid cron expression: "${cronExpression}". Expected 5 fields.`);
@@ -522,7 +522,7 @@ async function executeNotification(
 // Timer Management
 // ---------------------------------------------------------------------------
 
-function registerTimer(taskId: string, nextRun: Date, userId: string): void {
+function registerTimer(taskId: string, nextRun: Date, _userId: string): void {
   const now = Date.now();
   const delay = Math.max(nextRun.getTime() - now, 1000); // At least 1 second
 
