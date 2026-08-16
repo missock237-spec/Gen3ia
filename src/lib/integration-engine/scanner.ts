@@ -30,8 +30,8 @@ const CATEGORY_KEYWORDS: Record<IntegrationCategory, string[]> = {
     'videocrafter', 'diffusion', 'generation',
   ],
   communication: [
-    'whatsapp', 'telegram', 'slack', 'discord', 'messenger', 'chat',
-    'baileys', 'socket', 'real-time', 'messaging', 'voip',
+    'telegram', 'slack', 'discord', 'messenger', 'chat',
+    'socket', 'real-time', 'messaging', 'voip',
   ],
   automation: [
     'workflow', 'automation', 'trigger', 'pipeline', 'n8n', 'zapier',

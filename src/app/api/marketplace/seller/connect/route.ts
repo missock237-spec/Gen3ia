@@ -1,27 +1,30 @@
+/**
+ * Marketplace Seller Connect API — POST: start/continue onboarding, GET: check status
+ *
+ * Crée (ou récupère) le compte Stripe Connect Express du vendeur et renvoie
+ * un lien d'onboarding hébergé par Stripe. Une fois l'onboarding terminé,
+ * stripeConnectOnboarded passe à true et les prochains achats sur les
+ * listings de ce vendeur déclenchent automatiquement le split 75/25
+ * (voir src/lib/marketplace/purchase-system.ts).
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-
-import { db } from '@/lib/db'
 import { applySecurity, secureResponse } from '@/lib/security'
-import { createLogger } from '@/lib/logger'
+import { db } from '@/lib/db'
 
-const log = createLogger('marketplace-seller-connect')
+export const dynamic = "force-dynamic";
 
-// Fixed: removed invalid `typescript: true` — not a valid Stripe SDK constructor option
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set')
   }
-  return new Stripe(key)
+  return new Stripe(key, { typescript: true })
 }
 
 function getAppUrl(): string {
-  const url = process.env.NEXT_PUBLIC_APP_URL
-  if (!url) {
-    throw new Error('NEXT_PUBLIC_APP_URL environment variable is not set')
-  }
-  return url.replace(/\/$/, '')
+  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -30,14 +33,14 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204 })
 }
 
+// GET → statut de l'onboarding vendeur (à afficher dans le dashboard vendeur)
 export async function GET(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, { requireAuth: true })
+  const { auth, error: secError } = await applySecurity(request, {
+    requireAuth: true,
+  })
 
-  if (error || !auth) {
-    return (
-      error ||
-      NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    )
+  if (secError || !auth) {
+    return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 })
   }
 
   try {
@@ -46,62 +49,41 @@ export async function GET(request: NextRequest) {
       select: {
         stripeConnectAccountId: true,
         stripeConnectOnboarded: true,
-        stripeConnectDetailsSubmitted: true,
-        stripeConnectChargesEnabled: true,
-        stripeConnectPayoutsEnabled: true,
-        stripeConnectCountry: true,
-        stripeConnectCurrency: true,
-        stripeConnectLastSyncedAt: true,
       },
     })
 
     return secureResponse(
       NextResponse.json({
-        connected: Boolean(user?.stripeConnectAccountId),
-        accountId: user?.stripeConnectAccountId || null,
-        onboarded: Boolean(user?.stripeConnectOnboarded),
-        detailsSubmitted: Boolean(user?.stripeConnectDetailsSubmitted),
-        chargesEnabled: Boolean(user?.stripeConnectChargesEnabled),
-        payoutsEnabled: Boolean(user?.stripeConnectPayoutsEnabled),
-        country: user?.stripeConnectCountry || null,
-        currency: user?.stripeConnectCurrency || null,
-        lastSyncedAt: user?.stripeConnectLastSyncedAt || null,
+        connected: !!user?.stripeConnectAccountId,
+        onboarded: !!user?.stripeConnectOnboarded,
       }),
       request
     )
-  } catch (error) {
-    log.error('GET /api/marketplace/seller/connect failed', { error })
+  } catch {
     return secureResponse(
-      NextResponse.json({ error: 'Failed to fetch seller status' }, { status: 500 }),
+      NextResponse.json({ error: 'Failed to fetch Connect status' }, { status: 500 }),
       request
     )
   }
 }
 
+// POST → crée le compte Connect si besoin + retourne le lien d'onboarding Stripe
 export async function POST(request: NextRequest) {
-  const { auth, error } = await applySecurity(request, { requireAuth: true })
+  const { auth, error: secError } = await applySecurity(request, {
+    requireAuth: true,
+    rateLimit: { limit: 5, windowMs: 60000 },
+  })
 
-  if (error || !auth) {
-    return (
-      error ||
-      NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    )
+  if (secError || !auth) {
+    return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 })
   }
 
   try {
     const stripe = getStripe()
-    const appUrl = getAppUrl()
 
     const user = await db.user.findUnique({
       where: { id: auth.userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        stripeConnectAccountId: true,
-        stripeConnectOnboarded: true,
-        stripeConnectChargesEnabled: true,
-      },
+      select: { id: true, email: true, name: true, stripeConnectAccountId: true },
     })
 
     if (!user) {
@@ -111,25 +93,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let body: { country?: string } = {}
-    try {
-      body = await request.json()
-    } catch {
-      body = {}
-    }
-
-    const country = body.country?.trim()?.toUpperCase() || 'FR'
     let accountId = user.stripeConnectAccountId
 
+    // 1. Créer le compte Express seulement s'il n'existe pas déjà
     if (!accountId) {
       const account = await stripe.accounts.create({
         type: 'express',
-        country,
         email: user.email,
-        business_type: 'individual',
         capabilities: {
           transfers: { requested: true },
+          card_payments: { requested: true },
         },
+        business_type: 'individual',
         metadata: { userId: user.id },
       })
 
@@ -137,70 +112,27 @@ export async function POST(request: NextRequest) {
 
       await db.user.update({
         where: { id: user.id },
-        data: {
-          stripeConnectAccountId: account.id,
-          stripeConnectOnboarded: false,
-          stripeConnectDetailsSubmitted: Boolean(account.details_submitted),
-          stripeConnectChargesEnabled: Boolean(account.charges_enabled),
-          stripeConnectPayoutsEnabled: Boolean(account.payouts_enabled),
-          stripeConnectCountry: account.country || country,
-          stripeConnectCurrency: account.default_currency || null,
-          stripeConnectLastSyncedAt: new Date(),
-        },
+        data: { stripeConnectAccountId: accountId },
       })
     }
 
-    const refreshedUser = await db.user.findUnique({
-      where: { id: user.id },
-      select: {
-        stripeConnectAccountId: true,
-        stripeConnectOnboarded: true,
-        stripeConnectChargesEnabled: true,
-      },
-    })
-
-    if (
-      refreshedUser?.stripeConnectAccountId &&
-      refreshedUser.stripeConnectOnboarded &&
-      refreshedUser.stripeConnectChargesEnabled
-    ) {
-      const loginLink = await stripe.accounts.createLoginLink(
-        refreshedUser.stripeConnectAccountId
-      )
-
-      return secureResponse(
-        NextResponse.json({
-          connected: true,
-          onboarded: true,
-          accountId: refreshedUser.stripeConnectAccountId,
-          dashboardUrl: loginLink.url,
-        }),
-        request
-      )
-    }
-
+    // 2. Générer le lien d'onboarding hébergé (à ouvrir dans un navigateur/WebView)
     const accountLink = await stripe.accountLinks.create({
-      account: accountId!,
-      refresh_url: `${appUrl}/marketplace/seller?stripe=refresh`,
-      return_url: `${appUrl}/marketplace/seller?stripe=return`,
+      account: accountId,
+      refresh_url: `${getAppUrl()}/dashboard/seller/connect?refresh=true`,
+      return_url: `${getAppUrl()}/dashboard/seller/connect?success=true`,
       type: 'account_onboarding',
     })
 
     return secureResponse(
       NextResponse.json({
-        connected: true,
-        onboarded: false,
         accountId,
         onboardingUrl: accountLink.url,
-        expiresAt: accountLink.expires_at,
       }),
       request
     )
-  } catch (error) {
-    log.error('POST /api/marketplace/seller/connect failed', { error })
-    return secureResponse(
-      NextResponse.json({ error: 'Failed to connect seller account' }, { status: 500 }),
-      request
-    )
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to start Connect onboarding'
+    return secureResponse(NextResponse.json({ error: message }, { status: 500 }), request)
   }
 }
