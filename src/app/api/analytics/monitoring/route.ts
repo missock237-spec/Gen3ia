@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -93,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate source
-    const validSources = ['agent', 'ai', 'workflow', 'browser', 'social', 'whatsapp'];
+    const validSources = ['agent', 'ai', 'workflow', 'browser', 'social'];
     if (!validSources.includes(source)) {
       return secureResponse(
         NextResponse.json(
