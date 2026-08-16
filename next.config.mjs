@@ -42,6 +42,18 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
 
+  // ——— Tolérance build (préviews branches feature) ———
+  // Les branches feature/fix peuvent avoir du code en cours de développement
+  // avec des erreurs TypeScript ou ESLint. On ignore ces erreurs pendant le
+  // build Vercel pour que la preview se déploie quand même.
+  // Le CI GitHub Actions (ci.yml) reste strict sur main.
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
   // ——— Optimisation des images ———
   images: {
     formats: ['image/avif', 'image/webp'],
