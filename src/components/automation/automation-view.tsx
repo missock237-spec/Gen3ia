@@ -161,7 +161,7 @@ export function AutomationView() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
               {[
-                'Trouve 50 prospects à Douala et lance une campagne WhatsApp',
+                'Trouve 50 prospects à Douala et lance une campagne marketing',
                 'Analyse les ventes du mois et génère un rapport',
                 'Planifie les rendez-vous de la semaine prochaine',
                 'Vérifie les emails clients et réponds aux urgentes',

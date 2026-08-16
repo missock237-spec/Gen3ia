@@ -1,0 +1,34 @@
+# ============================================================
+# HUMANS.TXT — Genova AI
+# Fichier standard pour les developpeurs et IA
+# https://humanstxt.org
+# ============================================================
+
+# TEAM
+    Developer: Genova AI Team
+    Contact: contact@genova-ai.com
+    GitHub: https://github.com/missock237-spec
+    Location: Cameroon
+
+# THANKS
+    Next.js, Prisma, Bun, Tailwind CSS, PostgreSQL, Redis
+    Twilio, n8n, OpenAI, Anthropic, Groq, Deepgram, ElevenLabs
+
+# TECHNOLOGY
+    Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
+    Backend: Next.js API Routes, Prisma ORM, BullMQ
+    Database: PostgreSQL 16
+    Cache: Redis 7
+    Voice: Twilio API, Deepgram STT, ElevenLabs TTS
+    AI/ML: OpenAI GPT-4o, Anthropic Claude, Groq LLaMA
+    Automations: n8n
+    Infrastructure: Docker, Caddy
+
+# STANDARDS
+    HTML5, CSS3, ECMAScript 2024
+    Schema.org, Open Graph, Twitter Cards, Dublin Core
+    WCAG 2.1 AA (target)
+
+# LAST UPDATE
+    Date: 2026-07-26
+    Version: 0.1.0
