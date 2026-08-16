@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
+import {
 
+  createSecureUserResource,
+  listSecureUserResources,
+} from '@/lib/secure-user-resource';
+
+
+
+
+export const dynamic = "force-dynamic";
 const VALID_TYPES = ['cpu', 'api', 'mvp', 'database', 'storage'];
+
+function parseConfig(config: string) {
+  try {
+    return JSON.parse(config);
+  } catch {
+    return {};
+  }
+}
 
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
@@ -18,29 +35,21 @@ export async function GET(request: NextRequest) {
 
   try {
     const typeFilter = request.nextUrl.searchParams.get('type');
+    const safeType =
+      typeFilter && VALID_TYPES.includes(typeFilter) ? typeFilter : undefined;
 
-    const resources = await db.userResource.findMany({
-      where: {
-        userId: auth.userId,
-        ...(typeFilter && VALID_TYPES.includes(typeFilter) ? { type: typeFilter } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        type: true,
-        name: true,
-        config: true,
-        endpoint: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const resources = await listSecureUserResources(auth.userId, safeType);
 
-    // Parse config JSON for each resource
     const parsedResources = resources.map((r) => ({
-      ...r,
-      config: (() => { try { return JSON.parse(r.config); } catch { return {}; } })(),
+      id: r.id,
+      type: r.type,
+      name: r.name,
+      config: parseConfig(r.config),
+      endpoint: r.endpoint,
+      isActive: r.isActive,
+      hasApiKey: !!r.apiKey,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
     }));
 
     const res = NextResponse.json(parsedResources);
@@ -64,7 +73,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { type, name, config, apiKey, endpoint } = body;
 
-    if (!type || !name || !config) {
+    if (!type || !name || config === undefined || config === null) {
       const res = NextResponse.json(
         { error: 'Type, name, and config are required' },
         { status: 400 }
@@ -89,15 +98,14 @@ export async function POST(request: NextRequest) {
       return secureResponse(res, request);
     }
 
-    const resource = await db.userResource.create({
-      data: {
-        type,
-        name,
-        config: typeof config === 'string' ? config : JSON.stringify(config),
-        apiKey: apiKey || null,
-        endpoint: endpoint || null,
-        userId: auth.userId,
-      },
+    const resource = await createSecureUserResource({
+      userId: auth.userId,
+      type,
+      name,
+      config: typeof config === 'string' ? config : JSON.stringify(config),
+      apiKey: apiKey || undefined,
+      endpoint: endpoint || null,
+      isActive: true,
     });
 
     await db.activityLog.create({
@@ -114,14 +122,15 @@ export async function POST(request: NextRequest) {
         id: resource.id,
         type: resource.type,
         name: resource.name,
-        config: (() => { try { return JSON.parse(resource.config); } catch { return {}; } })(),
-        apiKey: resource.apiKey ? '••••••••' : null,
+        config: parseConfig(resource.config),
+        hasApiKey: !!resource.apiKey,
         endpoint: resource.endpoint,
         isActive: resource.isActive,
         createdAt: resource.createdAt,
       },
       { status: 201 }
     );
+
     return secureResponse(res, request);
   } catch {
     const res = NextResponse.json(

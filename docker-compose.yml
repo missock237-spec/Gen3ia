@@ -1,212 +1,152 @@
-# =============================================
-# Genova Genova — Docker Compose Stack v2
-# =============================================
-# Architecture 3-tier:
-#   Tier 1: Genova Backend (Next.js + Prisma + BullMQ)
-#   Tier 2: API IA / Orchestration (Ruflo, n8n, PocketBase)
-#   Tier 3: GPU Server (ComfyUI, SpeechBrain, Video API)
-#
-# Heavy AI models DO NOT run on the backend server.
-# They run on a separate GPU server (Tier 3).
-#
-# Start backend + infra:  docker compose up -d
-# Start GPU server:       docker compose -f docker-compose.gpu.yml up -d
-# =============================================
+# ============================================================
+# Gen3ia — Docker Compose (dev + production)
+# Orchestre : Redis, Next.js, Worker BullMQ (Firestore/Storage gérés par Firebase)
+# ============================================================
 
-version: "3.9"
+version: '3.8'
 
 services:
-  # =============================================
-  # TIER 1: Genova Backend Infrastructure
-  # =============================================
-
-  # PostgreSQL — Primary Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: genova-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: genova
-      POSTGRES_PASSWORD: genova_secret
-      POSTGRES_DB: genova
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U genova"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "3000:3000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}
+      - ...
+    depends_on:
+      - redis
+    restart: unless-stopped
 
-  # Redis — BullMQ Job Queue + Cache + Rate Limiting
   redis:
     image: redis:7-alpine
-    container_name: genova-redis
-    restart: unless-stopped
+    command: redis-server --appendonly yes --save 900 1 --save 300 10 --save 60 10000
+    volumes:
+      - redis-data:/data
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    restart: unless-stopped
 
-  # Qdrant — Vector Database (for RAG / embeddings)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ...
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+
+  app:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runner
+    container_name: gen3ia-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: 1
+      # Firebase (client)
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+      # Firebase (Admin SDK — serveur)
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      # IA / LLM
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Paiements Chariow
+      CHARIOW_API_KEY: ${CHARIOW_API_KEY:-}
+      CHARIOW_WEBHOOK_SECRET: ${CHARIOW_WEBHOOK_SECRET:-}
+      CHARIOW_API_URL: ${CHARIOW_API_URL:-}
+      # Monitoring
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      LOKI_URL: ${LOKI_URL:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - gen3ia-net
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      target: runner
+    container_name: gen3ia-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      NEXT_TELEMETRY_DISABLED: 1
+      # Firebase (Admin SDK — serveur)
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      # IA / LLM
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gen3ia-net
+
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: genova-qdrant
+    container_name: gen3ia-qdrant
     restart: unless-stopped
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
-    environment:
-      QDRANT__SERVICE__GRPC_PORT: 6334
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 15s
+      test: ["CMD-SHELL", "curl -fsS http://localhost:6333/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - gen3ia-net
+    profiles:
+      - full
 
-  # =============================================
-  # TIER 2: API IA / Orchestration
-  # =============================================
+networks:
+  gen3ia-net:
+    name: gen3ia-network
+    driver: bridge
 
-  # PocketBase — Lightweight Backend
-  pocketbase:
-    image: ghcr.io/muchobien/pocketbase:latest
-    container_name: genova-pocketbase
-    restart: unless-stopped
-    ports:
-      - "8090:8090"
-    volumes:
-      - pocketbase_data:/pb_data
-    environment:
-      TZ: UTC
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8090/api/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
-  # Ruflo — MCP Agent Orchestration
-  ruflo:
-    build:
-      context: ./services/ruflo
-      dockerfile: Dockerfile
-    container_name: genova-ruflo
-    restart: unless-stopped
-    ports:
-      - "8190:8190"
-    environment:
-      PORT: 8190
-      NODE_ENV: production
-      REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://genova:genova_secret@postgres:5432/genova
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-
-  # n8n — Workflow Automation
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: genova-n8n
-    restart: unless-stopped
-    ports:
-      - "5678:5678"
-    volumes:
-      - n8n_data:/home/node/.n8n
-    environment:
-      N8N_BASIC_AUTH_ACTIVE: "true"
-      N8N_BASIC_AUTH_USER: admin
-      N8N_BASIC_AUTH_PASSWORD: genova_admin
-      N8N_HOST: localhost
-      N8N_PORT: 5678
-      N8N_PROTOCOL: http
-      WEBHOOK_URL: http://localhost:5678/
-
-  # Baileys — WhatsApp Web API
-  baileys:
-    build:
-      context: ./services/baileys
-      dockerfile: Dockerfile
-    container_name: genova-baileys
-    restart: unless-stopped
-    ports:
-      - "8186:8186"
-    volumes:
-      - baileys_auth:/app/auth_info
-    environment:
-      PORT: 8186
-      NODE_ENV: production
-
-  # =============================================
-  # TIER 3: Monitoring Stack
-  # =============================================
-
-  # Prometheus — Metrics Collection
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: genova-prometheus
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=30d'
-      - '--storage.tsdb.retention.size=5GB'
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
-  # Grafana — Dashboards & Visualization
-  grafana:
-    image: grafana/grafana:latest
-    container_name: genova-grafana
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: genova_grafana
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/genova-overview.json
-    depends_on:
-      prometheus:
-        condition: service_healthy
-
-# =============================================
-# Volumes
-# =============================================
 volumes:
-  postgres_data:
-    driver: local
   redis_data:
-    driver: local
+    name: gen3ia-redis-data
   qdrant_data:
-    driver: local
-  pocketbase_data:
-    driver: local
-  baileys_auth:
-    driver: local
-  n8n_data:
-    driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
-    driver: local
+    name: gen3ia-qdrant-data

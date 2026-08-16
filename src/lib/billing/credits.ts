@@ -200,22 +200,25 @@ export async function addCredits(input: AddCreditsInput): Promise<{
 export async function getCreditBalance(userId: string): Promise<number> {
   // Check subscription for unlimited plans
   const subscription = await db.subscription.findFirst({
-    where: { userId, status: 'active' },
-    select: { plan: true },
+    where: [
+      { field: 'userId', op: '==', value: userId },
+      { field: 'status', op: '==', value: 'active' },
+    ],
+    select: ['plan'],
   });
 
-  if (subscription?.plan === 'enterprise' || subscription?.plan === 'custom') {
+  if (subscription?.plan === 'enterprise') {
     return -1; // Unlimited
   }
 
   // Get the latest transaction balance
   const latestTransaction = await db.creditTransaction.findFirst({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    select: { balance: true },
+    where: [{ field: 'userId', op: '==', value: userId }],
+    orderBy: [{ field: 'createdAt', direction: 'desc' }],
+    select: ['balance'],
   });
 
-  return latestTransaction?.balance ?? 0;
+  return (latestTransaction?.balance as number) ?? 0;
 }
 
 /**
@@ -235,23 +238,22 @@ export async function getUsageHistory(
   entries: UsageHistoryEntry[];
   total: number;
 }> {
-  const where: Record<string, unknown> = { userId };
+  // La façade Firestore attend un tableau de FirestoreWhereOp[]
+  const where: Array<{ field: string; op: '==' | '>=' | '<='; value: unknown }> = [
+    { field: 'userId', op: '==', value: userId },
+  ];
 
-  if (options?.type) where.type = options.type;
-  if (options?.resourceType) where.resourceType = options.resourceType;
-  if (options?.startDate || options?.endDate) {
-    where.createdAt = {
-      ...(options.startDate ? { gte: options.startDate } : {}),
-      ...(options.endDate ? { lte: options.endDate } : {}),
-    };
-  }
+  if (options?.type) where.push({ field: 'type', op: '==', value: options.type });
+  if (options?.resourceType) where.push({ field: 'resourceType', op: '==', value: options.resourceType });
+  if (options?.startDate) where.push({ field: 'createdAt', op: '>=', value: options.startDate });
+  if (options?.endDate) where.push({ field: 'createdAt', op: '<=', value: options.endDate });
 
   const [entries, total] = await Promise.all([
     db.creditTransaction.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
-      take: options?.limit || 50,
-      skip: options?.offset || 0,
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      limit: options?.limit || 50,
+      offset: options?.offset || 0,
     }),
     db.creditTransaction.count({ where }),
   ]);
@@ -259,12 +261,12 @@ export async function getUsageHistory(
   return {
     entries: entries.map((e) => ({
       id: e.id,
-      amount: e.amount,
-      balance: e.balance,
-      type: e.type,
-      resourceType: e.resourceType,
-      description: e.description,
-      createdAt: e.createdAt.toISOString(),
+      amount: e.amount as number,
+      balance: e.balance as number,
+      type: e.type as string,
+      resourceType: e.resourceType as string,
+      description: e.description as string,
+      createdAt: (e.createdAt as Date).toISOString(),
     })),
     total,
   };
@@ -275,7 +277,7 @@ export async function getUsageHistory(
  */
 export async function initializeUserCredits(userId: string): Promise<void> {
   const existing = await db.creditTransaction.findFirst({
-    where: { userId },
+    where: [{ field: 'userId', op: '==', value: userId }],
   });
 
   if (existing) return; // Already initialized
@@ -314,6 +316,7 @@ export async function purchaseCredits(
 
   const result = await createCheckoutSession({
     userId,
+// @ts-ignore — type narrowing pending, see refactor ticket
     priceId: pkg.stripePriceId,
     planId: 'credit_purchase',
     mode: 'payment',

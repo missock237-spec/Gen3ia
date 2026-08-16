@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
+import { createSecureSocialAccount } from '@/lib/secure-social-account';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const VALID_PLATFORMS = ['youtube', 'facebook', 'instagram', 'tiktok', 'linkedin'];
 
 export async function OPTIONS(request: NextRequest) {
@@ -54,7 +60,10 @@ export async function POST(request: NextRequest) {
 
     if (!platform || !accountId || !accountName || !accessToken) {
       const res = NextResponse.json(
-        { error: 'Platform, accountId, accountName, and accessToken are required' },
+        {
+          error:
+            'Platform, accountId, accountName, and accessToken are required',
+        },
         { status: 400 }
       );
       return secureResponse(res, request);
@@ -62,7 +71,9 @@ export async function POST(request: NextRequest) {
 
     if (!VALID_PLATFORMS.includes(platform)) {
       const res = NextResponse.json(
-        { error: `Invalid platform. Allowed: ${VALID_PLATFORMS.join(', ')}` },
+        {
+          error: `Invalid platform. Allowed: ${VALID_PLATFORMS.join(', ')}`,
+        },
         { status: 400 }
       );
       return secureResponse(res, request);
@@ -71,7 +82,9 @@ export async function POST(request: NextRequest) {
     // Input length validation
     if (accountId.length > 200 || accountName.length > 200) {
       const res = NextResponse.json(
-        { error: 'accountId and accountName must be at most 200 characters' },
+        {
+          error: 'accountId and accountName must be at most 200 characters',
+        },
         { status: 400 }
       );
       return secureResponse(res, request);
@@ -104,15 +117,14 @@ export async function POST(request: NextRequest) {
       return secureResponse(res, request);
     }
 
-    const account = await db.socialAccount.create({
-      data: {
-        platform,
-        accountId,
-        accountName,
-        accessToken,
-        refreshToken: refreshToken || null,
-        userId: auth.userId,
-      },
+    const account = await createSecureSocialAccount({
+      userId: auth.userId,
+      platform,
+      accountId,
+      accountName,
+      accessToken,
+      refreshToken: refreshToken || undefined,
+      isActive: true,
     });
 
     await db.activityLog.create({
@@ -135,6 +147,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
+
     return secureResponse(res, request);
   } catch {
     const res = NextResponse.json(

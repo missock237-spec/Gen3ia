@@ -1,10 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
+import {
+
+  getDecryptedUserResource,
+  updateSecureUserResource,
+} from '@/lib/secure-user-resource';
+
+
+
+
+export const dynamic = "force-dynamic";
+function parseConfig(config: string) {
+  try {
+    return JSON.parse(config);
+  } catch {
+    return {};
+  }
+}
 
 export async function OPTIONS(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: _params }: { params: Promise<{ id: string }> }
 ) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -24,7 +41,8 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    const resource = await db.userResource.findUnique({ where: { id } });
+    const resource = await getDecryptedUserResource(id, auth.userId);
+
     if (!resource) {
       const res = NextResponse.json(
         { error: 'Resource not found' },
@@ -33,16 +51,10 @@ export async function PUT(
       return secureResponse(res, request);
     }
 
-    if (resource.userId !== auth.userId) {
-      const res = NextResponse.json(
-        { error: 'You do not have permission to update this resource' },
-        { status: 403 }
-      );
-      return secureResponse(res, request);
-    }
-
-    // Validate input fields on update
-    if (body.name !== undefined && (typeof body.name !== 'string' || body.name.length > 100)) {
+    if (
+      body.name !== undefined &&
+      (typeof body.name !== 'string' || body.name.length > 100)
+    ) {
       const res = NextResponse.json(
         { error: 'Name must be a string at most 100 characters' },
         { status: 400 }
@@ -50,7 +62,12 @@ export async function PUT(
       return secureResponse(res, request);
     }
 
-    if (body.apiKey !== undefined && body.apiKey !== null && typeof body.apiKey === 'string' && body.apiKey.length > 5000) {
+    if (
+      body.apiKey !== undefined &&
+      body.apiKey !== null &&
+      typeof body.apiKey === 'string' &&
+      body.apiKey.length > 5000
+    ) {
       const res = NextResponse.json(
         { error: 'API key too long (max 5000 characters)' },
         { status: 400 }
@@ -58,7 +75,12 @@ export async function PUT(
       return secureResponse(res, request);
     }
 
-    if (body.endpoint !== undefined && body.endpoint !== null && typeof body.endpoint === 'string' && body.endpoint.length > 500) {
+    if (
+      body.endpoint !== undefined &&
+      body.endpoint !== null &&
+      typeof body.endpoint === 'string' &&
+      body.endpoint.length > 500
+    ) {
       const res = NextResponse.json(
         { error: 'Endpoint too long (max 500 characters)' },
         { status: 400 }
@@ -66,30 +88,31 @@ export async function PUT(
       return secureResponse(res, request);
     }
 
-    const updated = await db.userResource.update({
-      where: { id },
-      data: {
-        ...(body.name !== undefined && { name: body.name }),
-        ...(body.config !== undefined && {
-          config: typeof body.config === 'string' ? body.config : JSON.stringify(body.config),
-        }),
-        ...(body.apiKey !== undefined && { apiKey: body.apiKey }),
-        ...(body.endpoint !== undefined && { endpoint: body.endpoint }),
-        ...(body.isActive !== undefined && { isActive: body.isActive }),
-      },
+    const updated = await updateSecureUserResource(id, auth.userId, {
+      ...(body.name !== undefined && { name: body.name }),
+      ...(body.config !== undefined && {
+        config:
+          typeof body.config === 'string'
+            ? body.config
+            : JSON.stringify(body.config),
+      }),
+      ...(body.apiKey !== undefined && { apiKey: body.apiKey }),
+      ...(body.endpoint !== undefined && { endpoint: body.endpoint }),
+      ...(body.isActive !== undefined && { isActive: body.isActive }),
     });
 
     const res = NextResponse.json({
       id: updated.id,
       type: updated.type,
       name: updated.name,
-      config: (() => { try { return JSON.parse(updated.config); } catch { return {}; } })(),
-      apiKey: updated.apiKey ? '••••••••' : null,
+      config: parseConfig(updated.config),
+      hasApiKey: !!updated.apiKey,
       endpoint: updated.endpoint,
       isActive: updated.isActive,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     });
+
     return secureResponse(res, request);
   } catch {
     const res = NextResponse.json(
@@ -112,7 +135,8 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const resource = await db.userResource.findUnique({ where: { id } });
+    const resource = await getDecryptedUserResource(id, auth.userId);
+
     if (!resource) {
       const res = NextResponse.json(
         { error: 'Resource not found' },
@@ -121,15 +145,9 @@ export async function DELETE(
       return secureResponse(res, request);
     }
 
-    if (resource.userId !== auth.userId) {
-      const res = NextResponse.json(
-        { error: 'You do not have permission to delete this resource' },
-        { status: 403 }
-      );
-      return secureResponse(res, request);
-    }
-
-    await db.userResource.delete({ where: { id } });
+    await db.userResource.delete({
+      where: { id },
+    });
 
     await db.activityLog.create({
       data: {

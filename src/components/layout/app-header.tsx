@@ -1,162 +1,58 @@
 'use client';
 
-import { useAppStore, useAuthStore } from '@/lib/store';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Menu, Bell, Moon, Sun, Search, CheckCircle2 } from 'lucide-react';
+import { useAuthStore, useAppStore } from '@/lib/store';
+import { Bell, Search, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useSyncExternalStore, useState, useRef, useEffect } from 'react';
-
-const viewTitles: Record<string, string> = {
-  dashboard: 'Tableau de bord',
-  agents: 'Agents IA',
-  automation: 'Automatisation',
-  guardrails: 'Garde-fous',
-  coordination: 'Coordination',
-  settings: 'Paramètres',
-  approvals: 'Approbations',
-  marketplace: 'Marketplace',
-  billing: 'Facturation',
-  knowledge: 'Connaissance',
-  avatars: 'Avatars',
-  voice: 'Voix & Audio',
-  browser: 'Navigateur',
-  multimodal: 'Multimodal',
-  scheduler: 'Planificateur',
-  integrations: 'Intégrations',
-  connectors: 'Connecteurs',
-  services: 'Services',
-};
+import { useEffect, useState } from 'react';
 
 export function AppHeader() {
-  const { currentView, setSidebarOpen, pendingApprovalCount, setCurrentView } = useAppStore();
   const { user } = useAuthStore();
+  const { approvalCount } = useAppStore();
   const { theme, setTheme } = useTheme();
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
 
-  const mounted = useSyncExternalStore(
-    (callback) => {
-      window.addEventListener('resize', callback);
-      return () => window.removeEventListener('resize', callback);
-    },
-    () => typeof window !== 'undefined',
-    () => false,
-  );
-
-  // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setNotificationsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
   }, []);
 
+  if (!mounted) {
+    return (
+      <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 sm:px-6">
+        <div className="w-64 h-9 bg-muted rounded-lg animate-pulse" />
+      </header>
+    );
+  }
+
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 sm:px-6 border-b border-border/50 bg-background/80 backdrop-blur-md">
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="lg:hidden h-8 w-8"
-          onClick={() => setSidebarOpen(true)}
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-sm sm:text-base font-semibold">{viewTitles[currentView] || 'genova.Ia'}</h1>
+    <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 sm:px-6">
+      <div className="flex items-center gap-4 flex-1 max-w-md">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Rechercher..."
+            className="w-full pl-9 pr-4 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
         </div>
       </div>
-
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="h-8 w-8 hidden sm:flex">
-          <Search className="h-4 w-4" />
-        </Button>
-
-        {/* Notifications Bell */}
-        <div className="relative" ref={dropdownRef}>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 relative"
-            onClick={() => setNotificationsOpen(!notificationsOpen)}
-          >
-            <Bell className="h-4 w-4" />
-            {pendingApprovalCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-amber-500 text-[10px] text-white flex items-center justify-center font-bold">
-                {pendingApprovalCount > 9 ? '9+' : pendingApprovalCount}
-              </span>
-            )}
-          </Button>
-
-          {/* Notifications Dropdown */}
-          {notificationsOpen && (
-            <div className="absolute right-0 top-full mt-2 w-72 bg-popover border border-border/50 rounded-xl shadow-lg overflow-hidden z-50">
-              <div className="p-3 border-b border-border/50">
-                <h3 className="text-sm font-semibold">Notifications</h3>
-              </div>
-              <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                {pendingApprovalCount > 0 ? (
-                  <button
-                    className="w-full p-3 text-left hover:bg-muted/50 transition-colors flex items-start gap-3"
-                    onClick={() => {
-                      setCurrentView('approvals');
-                      setNotificationsOpen(false);
-                    }}
-                  >
-                    <div className="p-1.5 rounded-md bg-amber-500/10 mt-0.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-amber-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">Approbations en attente</p>
-                      <p className="text-xs text-muted-foreground">
-                        {pendingApprovalCount} demande{pendingApprovalCount > 1 ? 's' : ''} d&apos;approbation en attente
-                      </p>
-                    </div>
-                  </button>
-                ) : (
-                  <div className="p-6 text-center text-muted-foreground">
-                    <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-xs">Aucune notification</p>
-                  </div>
-                )}
-              </div>
-              {pendingApprovalCount > 0 && (
-                <div className="p-2 border-t border-border/50">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-xs justify-center"
-                    onClick={() => {
-                      setCurrentView('approvals');
-                      setNotificationsOpen(false);
-                    }}
-                  >
-                    Voir toutes les approbations
-                  </Button>
-                </div>
-              )}
-            </div>
+        <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-lg hover:bg-accent text-muted-foreground">
+          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+        <button className="relative p-2 rounded-lg hover:bg-accent text-muted-foreground">
+          <Bell className="h-4 w-4" />
+          {approvalCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 bg-destructive text-destructive-foreground text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+              {approvalCount > 9 ? '9+' : approvalCount}
+            </span>
           )}
-        </div>
-
-        {mounted && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          >
-            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
-        )}
-        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center ml-1">
-          <span className="text-xs font-bold text-primary">
+        </button>
+        <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-medium text-primary">
             {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-          </span>
+          </div>
+          <span className="text-sm font-medium hidden sm:block">{user?.name || 'Utilisateur'}</span>
         </div>
       </div>
     </header>

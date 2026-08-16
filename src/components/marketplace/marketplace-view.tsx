@@ -1,583 +1,321 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { apiFetch } from '@/lib/api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import dynamic from 'next/dynamic';
-import {
-  Search, Star, Download, ShoppingBag, Package, Bot, GitBranch, FileCode, Plug,
-  Filter, Plus, StarHalf, ExternalLink, CheckCircle2, Coins, Eye, TrendingUp
-} from 'lucide-react';
+import type { MarketplaceTab, MarketplaceItem, InstalledItem, CreatorForm, ItemType } from './types';
 
-const SellerDashboard = dynamic(() => import('./seller-dashboard').then(m => m.SellerDashboard), {
-  ssr: false,
-  loading: () => <div className="p-8 text-center text-slate-400">Chargement du dashboard vendeur...</div>
-});
-
-const BuyerDashboard = dynamic(() => import('./buyer-dashboard').then(m => m.BuyerDashboard), {
-  ssr: false,
-  loading: () => <div className="p-8 text-center text-slate-400">Chargement de vos achats...</div>
-});
-
-interface Listing {
-  id: string;
-  type: string;
-  name: string;
-  description: string;
-  category: string;
-  tags: string[];
-  price: number;
-  currency: string;
-  downloads: number;
-  rating: number;
-  reviewCount: number;
-  author?: { name: string; avatar: string | null };
-  createdAt: string;
-  status: string;
-}
-
-interface Review {
-  id: string;
-  userId: string;
-  rating: number;
-  title: string;
-  content: string;
-  author?: { name: string; avatar: string | null };
-  createdAt: string;
-}
-
-const TYPE_ICONS: Record<string, React.ReactNode> = {
-  template: <FileCode className="h-5 w-5" />,
-  workflow: <GitBranch className="h-5 w-5" />,
-  api: <Plug className="h-5 w-5" />,
-};
-
-const CATEGORIES = ['all', 'general', 'productivity', 'development', 'marketing', 'sales', 'support', 'research', 'finance', 'hr', 'creative'];
-
-export function MarketplaceView() {
-  const [listings, setListings] = useState<Listing[]>([]);
+export function MarketplaceView({ userId }: { userId: string }) {
+  const [activeTab, setActiveTab] = useState<MarketplaceTab>('loops');
+  const [items, setItems] = useState<Record<ItemType, MarketplaceItem[]>>({ skill: [], loop: [], customization: [] });
+  const [installed, setInstalled] = useState<InstalledItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<string>('newest');
-  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showReviewDialog, setShowReviewDialog] = useState(false);
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewContent, setReviewContent] = useState('');
-
-  // Create listing form
-  const [createForm, setCreateForm] = useState({
-    name: '',
-    type: 'template' as string,
-    description: '',
-    category: 'general',
-    price: 0,
-    tags: '',
+  const [skillFilter, setSkillFilter] = useState('all');
+  const [agentId, setAgentId] = useState<string>('');
+  const [form, setForm] = useState<CreatorForm>({
+    type: 'loop', name: '', slug: '', description: '', icon: '🔄',
+    price: 0, category: 'analysis', tags: '', level: 'intermediate',
+    compatibleModels: '', config: '{}',
   });
 
-  const fetchListings = useCallback(async () => {
-    setLoading(true);
+  const fetchMarketplace = useCallback(async (type: ItemType) => {
     try {
-      const params = new URLSearchParams();
-      if (searchQuery) params.set('q', searchQuery);
-      if (typeFilter !== 'all') params.set('type', typeFilter);
-      if (categoryFilter !== 'all') params.set('category', categoryFilter);
-      params.set('sort', sortBy);
-      params.set('limit', '30');
+      const res = await fetch(`/api/skills?scope=marketplace&type=${type}s`);
+      const data = await res.json();
+      if (data.success) setItems(prev => ({ ...prev, [type]: data.items }));
+    } catch {}
+  }, []);
 
-      const data = await apiFetch<{ listings: Listing[]; total: number }>(`/api/marketplace/listings?${params.toString()}`);
-      setListings(data.listings || []);
-    } catch {
-      setListings([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [searchQuery, typeFilter, categoryFilter, sortBy]);
+  const fetchInstalled = useCallback(async () => {
+    if (!agentId) return;
+    try {
+      const [skillsRes, loopsRes] = await Promise.all([
+        fetch(`/api/skills?scope=installed&type=skills&agentId=${agentId}`),
+        fetch(`/api/skills?scope=installed&type=loops&agentId=${agentId}`),
+      ]);
+      const [skillsData, loopsData] = await Promise.all([skillsRes.json(), loopsRes.json()]);
+      const all: InstalledItem[] = [];
+      if (skillsData.success) skillsData.items.forEach((i: any) => all.push({ id: i.id, itemId: i.skillId, name: i.skill?.name || '', icon: i.skill?.icon || '🧩', type: 'skill', enabled: i.enabled, config: i.config, createdAt: i.createdAt }));
+      if (loopsData.success) loopsData.items.forEach((i: any) => all.push({ id: i.id, itemId: i.loopId, name: i.loop?.name || '', icon: i.loop?.icon || '🔄', type: 'loop', enabled: i.enabled, config: i.config, createdAt: i.createdAt }));
+      setInstalled(all);
+    } catch {}
+  }, [agentId]);
 
   useEffect(() => {
-    fetchListings();
-  }, [fetchListings]);
+    let cancelled = false;
+    (async () => {
+      try {
+        await Promise.all([fetchMarketplace('skill'), fetchMarketplace('loop'), fetchMarketplace('customization')]);
+      } catch {}
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [fetchMarketplace]);
+  useEffect(() => {
+    if (!agentId) return;
+    let cancelled = false;
+    (async () => { if (!cancelled) try { await fetchInstalled(); } catch {} })();
+    return () => { cancelled = true; };
+  }, [agentId, fetchInstalled]);
 
-  const fetchReviews = async (listingId: string) => {
-    try {
-      const data = await apiFetch<{ reviews: Review[] }>(`/api/marketplace/reviews?listingId=${listingId}&limit=10`);
-      setReviews(data.reviews || []);
-    } catch {
-      setReviews([]);
-    }
-  };
+  const install = useCallback(async (type: ItemType, itemId: string) => {
+    if (!agentId && type !== 'customization') { alert('Selectionnez un agent'); return; }
+    const action = type === 'skill' ? 'install-skill' : type === 'loop' ? 'install-loop' : 'apply-customization';
+    const body: any = { [type === 'skill' ? 'skillId' : type === 'loop' ? 'loopId' : 'customizationId']: itemId };
+    if (type !== 'customization') body.agentId = agentId;
+    const res = await fetch(`/api/skills?action=${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+    alert(data.message || 'Erreur');
+    if (data.success) fetchInstalled();
+  }, [agentId, fetchInstalled]);
 
-  const handleSelectListing = (listing: Listing) => {
-    setSelectedListing(listing);
-    fetchReviews(listing.id);
-  };
+  const uninstall = useCallback(async (itemId: string, type: ItemType) => {
+    const res = await fetch('/api/skills?action=uninstall', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemId, type }) });
+    const data = await res.json();
+    if (data.success) fetchInstalled();
+  }, [fetchInstalled]);
 
-  const handleCreateListing = async () => {
-    try {
-      await apiFetch('/api/marketplace/listings', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...createForm,
-          tags: createForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
-        }),
-      });
-      setShowCreateDialog(false);
-      setCreateForm({ name: '', type: 'template', description: '', category: 'general', price: 0, tags: '' });
-      fetchListings();
-    } catch {
-      // Silently fail
-    }
-  };
+  const createItem = useCallback(async () => {
+    const res = await fetch('/api/skills?action=create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    const data = await res.json();
+    alert(data.success ? 'Cree avec succes !' : data.error);
+    if (data.success) fetchMarketplace(form.type);
+  }, [form, fetchMarketplace]);
 
-  const handlePurchase = async (listing: Listing) => {
-    try {
-      if (listing.price > 0) {
-        // Stripe Commercial Checkout
-        const res = await apiFetch<{ url: string }>('/api/marketplace/checkout', {
-          method: 'POST',
-          body: JSON.stringify({ listingId: listing.id }),
-        });
-        if (res.url) window.location.href = res.url;
-      } else {
-        // Free direct purchase
-        await apiFetch('/api/marketplace/purchases', {
-          method: 'POST',
-          body: JSON.stringify({ listingId: listing.id }),
-        });
-        fetchListings();
-        alert('Produit ajouté à votre espace de travail !');
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Purchase failed';
-      alert(message);
-    }
-  };
+  const tabs: { key: MarketplaceTab; label: string; icon: string }[] = [
+    { key: 'loops', label: 'Boucles IA', icon: '🔄' },
+    { key: 'skills', label: 'Competences', icon: '🧩' },
+    { key: 'customizations', label: 'Personnalisations', icon: '🎨' },
+    { key: 'installed', label: 'Installés', icon: '📦' },
+    { key: 'creator', label: 'Createur', icon: '✏️' },
+  ];
 
-  const handleAddReview = async () => {
-    if (!selectedListing) return;
-    try {
-      await apiFetch('/api/marketplace/reviews', {
-        method: 'POST',
-        body: JSON.stringify({
-          listingId: selectedListing.id,
-          rating: reviewRating,
-          content: reviewContent,
-        }),
-      });
-      setShowReviewDialog(false);
-      setReviewContent('');
-      setReviewRating(5);
-      fetchReviews(selectedListing.id);
-      fetchListings();
-    } catch {
-      // Silently fail
-    }
-  };
+  const categories = ['all', 'analysis', 'code', 'research', 'writing', 'reasoning', 'creative', 'automation'];
 
-  const renderStars = (rating: number, size: 'sm' | 'md' = 'sm') => {
-    const stars: React.ReactNode[] = [];
-    const sizeClass = size === 'sm' ? 'h-3 w-3' : 'h-4 w-4';
-    for (let i = 1; i <= 5; i++) {
-      stars.push(
-        <Star
-          key={i}
-          className={`${sizeClass} ${i <= Math.round(rating) ? 'text-amber-400 fill-amber-400' : 'text-muted-foreground/30'}`}
-        />
-      );
-    }
-    return <div className="flex gap-0.5">{stars}</div>;
-  };
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px', color: 'var(--muted-foreground)' }}>Chargement...</div>;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Marketplace</h1>
-          <p className="text-muted-foreground">Discover, share, and purchase AI agents, workflows, and templates</p>
+          <h1 style={{ fontSize: '1.3rem', fontWeight: 700, margin: 0 }}>🧩 Gen3ia Marketplace</h1>
+          <p style={{ color: 'var(--muted-foreground)', fontSize: '.8rem', margin: '2px 0 0' }}>Boucles IA · Competences · Personnalisations</p>
         </div>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Create Listing
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Create Marketplace Listing</DialogTitle>
-              <DialogDescription>Share your AI creation with the community</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Name</Label>
-                <Input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} placeholder="My AI Agent" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Type</Label>
-                  <Select value={createForm.type} onValueChange={(v) => setCreateForm({ ...createForm, type: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="template">Template</SelectItem>
-                      <SelectItem value="workflow">Workflow</SelectItem>
-                      <SelectItem value="api">API</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Category</Label>
-                  <Select value={createForm.category} onValueChange={(v) => setCreateForm({ ...createForm, category: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.filter((c) => c !== 'all').map((c) => (
-                        <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label>Description</Label>
-                <Textarea value={createForm.description} onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })} placeholder="Describe what your listing does..." rows={3} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Price (credits, 0 = free)</Label>
-                  <Input type="number" min={0} value={createForm.price} onChange={(e) => setCreateForm({ ...createForm, price: parseFloat(e.target.value) || 0 })} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Tags (comma-separated)</Label>
-                  <Input value={createForm.tags} onChange={(e) => setCreateForm({ ...createForm, tags: e.target.value })} placeholder="ai, automation, sales" />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
-              <Button onClick={handleCreateListing} disabled={!createForm.name || !createForm.description}>Create</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={agentId} onChange={e => setAgentId(e.target.value)} style={{ padding: '6px 10px', background: 'var(--background)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.8rem' }}>
+            <option value="">Selectionner un agent...</option>
+            <option value="agent1">Assistant Pro</option>
+            <option value="agent2">Codeur Auto</option>
+          </select>
+          <span style={{ background: 'var(--muted)', padding: '4px 10px', borderRadius: 'var(--radius)', fontSize: '.75rem', border: '1px solid var(--border)' }}>📦 {installed.length} installés</span>
+        </div>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-10"
-                placeholder="Search marketplace..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[140px]"><SelectValue placeholder="Type" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="template">Templates</SelectItem>
-                <SelectItem value="workflow">Workflows</SelectItem>
-                <SelectItem value="api">APIs</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Category" /></SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>{c === 'all' ? 'All Categories' : c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-[140px]"><SelectValue placeholder="Sort" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">Newest</SelectItem>
-                <SelectItem value="popular">Most Popular</SelectItem>
-                <SelectItem value="rating">Top Rated</SelectItem>
-                <SelectItem value="price_asc">Price: Low</SelectItem>
-                <SelectItem value="price_desc">Price: High</SelectItem>
-              </SelectContent>
-            </Select>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)}
+            style={{
+              background: activeTab === t.key ? 'var(--primary)' : 'transparent',
+              color: activeTab === t.key ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+              border: 'none', padding: '8px 16px', borderRadius: 'var(--radius)',
+              fontSize: '.875rem', fontWeight: 500, cursor: 'pointer',
+            }}
+          >{t.icon} {t.label}</button>
+        ))}
+      </div>
+
+      {/* Boucles IA */}
+      {activeTab === 'loops' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {items.loop.filter(i => i.status === 'published').map(loop => (
+            <ItemCard key={loop.id} item={loop} type="loop" onInstall={install} />
+          ))}
+        </div>
+      )}
+
+      {/* Competences */}
+      {activeTab === 'skills' && (
+        <>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            {categories.map(c => (
+              <button key={c} onClick={() => setSkillFilter(c)}
+                style={{
+                  background: skillFilter === c ? 'var(--primary)' : 'var(--muted)',
+                  color: skillFilter === c ? 'var(--primary-foreground)' : 'var(--foreground)',
+                  padding: '4px 12px', borderRadius: 999, fontSize: '.75rem',
+                  border: 'none', cursor: 'pointer',
+                }}
+              >{c === 'all' ? 'Toutes' : c}</button>
+            ))}
           </div>
-        </CardContent>
-      </Card>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {items.skill.filter(s => s.status === 'published' && (skillFilter === 'all' || s.category === skillFilter)).map(skill => (
+              <SkillCard key={skill.id} item={skill} onInstall={install} />
+            ))}
+          </div>
+        </>
+      )}
 
-      <Tabs defaultValue="browse" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="browse" className="gap-2"><Package className="h-4 w-4" />Parcourir</TabsTrigger>
-          <TabsTrigger value="purchases" className="gap-2"><ShoppingBag className="h-4 w-4" />Mes Achats</TabsTrigger>
-          <TabsTrigger value="seller" className="gap-2"><TrendingUp className="h-4 w-4" />Vendre</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="browse" className="space-y-4">
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Card key={i} className="animate-pulse"><CardContent className="p-6"><div className="h-40 bg-muted rounded" /></CardContent></Card>
-              ))}
-            </div>
-          ) : listings.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Package className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium">No listings found</h3>
-                <p className="text-muted-foreground text-sm">Try adjusting your search or filters</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {listings.map((listing) => (
-                <Card
-                  key={listing.id}
-                  className="cursor-pointer hover:border-primary/50 transition-colors"
-                  onClick={() => handleSelectListing(listing)}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                          {TYPE_ICONS[listing.type] || <Package className="h-5 w-5" />}
-                        </div>
-                        <div className="min-w-0">
-                          <CardTitle className="text-base truncate">{listing.name}</CardTitle>
-                          <CardDescription className="text-xs">{listing.author?.name || 'Unknown'}</CardDescription>
-                        </div>
-                      </div>
-                      <Badge variant="secondary" className="text-xs shrink-0">{listing.type}</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{listing.description}</p>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1">
-                          {renderStars(listing.rating)}
-                          <span className="text-xs text-muted-foreground ml-1">({listing.reviewCount})</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Download className="h-3 w-3" />{listing.downloads}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {listing.price === 0 ? (
-                          <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">Gratuit</Badge>
-                        ) : (
-                          <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">
-                            {listing.price}€
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    {listing.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-3">
-                        {listing.tags.slice(0, 3).map((tag) => (
-                          <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
-                        ))}
-                        {listing.tags.length > 3 && (
-                          <Badge variant="outline" className="text-[10px]">+{listing.tags.length - 3}</Badge>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="purchases">
-          <BuyerDashboard />
-        </TabsContent>
-
-        <TabsContent value="seller">
-          <SellerDashboard />
-        </TabsContent>
-      </Tabs>
-
-      {/* Listing Detail Dialog */}
-      <Dialog open={!!selectedListing} onOpenChange={(open) => { if (!open) setSelectedListing(null); }}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          {selectedListing && (
-            <>
-              <DialogHeader>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                    {TYPE_ICONS[selectedListing.type] || <Package className="h-5 w-5" />}
-                  </div>
-                  <div>
-                    <DialogTitle>{selectedListing.name}</DialogTitle>
-                    <DialogDescription>by {selectedListing.author?.name || 'Unknown'} &middot; {selectedListing.type}</DialogDescription>
-                  </div>
-                </div>
-              </DialogHeader>
-              <ScrollArea className="flex-1 -mx-6 px-6">
-                <div className="space-y-4 py-2">
-                  <p className="text-sm">{selectedListing.description}</p>
-                  <div className="flex items-center gap-4">
-                    {renderStars(selectedListing.rating, 'md')}
-                    <span className="text-sm text-muted-foreground">{selectedListing.rating.toFixed(1)} ({selectedListing.reviewCount} reviews)</span>
-                    <span className="text-sm text-muted-foreground flex items-center gap-1"><Download className="h-3.5 w-3.5" />{selectedListing.downloads} downloads</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedListing.tags.map((tag) => (
-                      <Badge key={tag} variant="outline">{tag}</Badge>
-                    ))}
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <div className="text-lg font-semibold">
-                      {selectedListing.price === 0 ? 'Gratuit' : `${selectedListing.price}€`}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setShowReviewDialog(true)}>
-                        <Star className="h-4 w-4 mr-1" />Avis
-                      </Button>
-                      <Button size="sm" onClick={() => handlePurchase(selectedListing)}>
-                        {selectedListing.price === 0 ? <Download className="h-4 w-4 mr-1" /> : <ShoppingBag className="h-4 w-4 mr-1" />}
-                        {selectedListing.price === 0 ? 'Installer' : `Acheter (${selectedListing.price}€)`}
-                      </Button>
-                    </div>
-                  </div>
-                  <Separator />
-                  <div>
-                    <h4 className="font-medium mb-2">Reviews</h4>
-                    {reviews.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No reviews yet</p>
-                    ) : (
-                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                        {reviews.map((review) => (
-                          <div key={review.id} className="flex gap-3 p-3 rounded-lg bg-muted/50">
-                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                              <span className="text-xs font-bold text-primary">{review.author?.name?.charAt(0) || '?'}</span>
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">{review.author?.name || 'User'}</span>
-                                {renderStars(review.rating)}
-                              </div>
-                              {review.content && <p className="text-sm text-muted-foreground mt-1">{review.content}</p>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </ScrollArea>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Review Dialog */}
-      <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Write a Review</DialogTitle>
-            <DialogDescription>Share your experience with this listing</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex items-center gap-2">
-              <Label>Rating:</Label>
-              <div className="flex gap-1">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star
-                    key={i}
-                    className={`h-6 w-6 cursor-pointer ${i < reviewRating ? 'text-amber-400 fill-amber-400' : 'text-muted-foreground/30'}`}
-                    onClick={() => setReviewRating(i + 1)}
-                  />
-                ))}
+      {/* Personnalisations */}
+      {activeTab === 'customizations' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {items.customization.filter(c => c.status === 'published').map(cust => (
+            <div key={cust.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 20, textAlign: 'center' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>{cust.icon}</div>
+              <h3 style={{ fontWeight: 600, fontSize: '.95rem', margin: 0 }}>{cust.name}</h3>
+              <p style={{ color: 'var(--muted-foreground)', fontSize: '.78rem', margin: '4px 0 8px' }}>{cust.description}</p>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ background: 'var(--muted)', padding: '2px 8px', borderRadius: 4, fontSize: '.65rem' }}>{cust.tags?.[0] || cust.type}</span>
+                <PriceBadge price={cust.price} isFree={cust.isFree} />
               </div>
+              <button onClick={() => install('customization', cust.id)}
+                style={{ background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', padding: '8px 20px', borderRadius: 'var(--radius)', fontSize: '.8rem', cursor: 'pointer' }}>
+                {cust.isFree ? '🎨 Appliquer' : '📥 Acquérir'}
+              </button>
             </div>
-            <Textarea value={reviewContent} onChange={(e) => setReviewContent(e.target.value)} placeholder="Write your review..." rows={4} />
+          ))}
+        </div>
+      )}
+
+      {/* Installes */}
+      {activeTab === 'installed' && (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>📦 Installations</h3>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: '.8rem' }}>{installed.length} items</span>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReviewDialog(false)}>Cancel</Button>
-            <Button onClick={handleAddReview}>Submit Review</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          {installed.length === 0 && (
+            <p style={{ color: 'var(--muted-foreground)', fontSize: '.85rem', textAlign: 'center', padding: 20 }}>
+              Aucun item installé. Allez dans l&apos;onglet Boucles ou Compétences pour installer.
+            </p>
+          )}
+          {installed.map(item => (
+            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{item.icon}</span>
+                <div>
+                  <span style={{ fontWeight: 500, fontSize: '.85rem' }}>{item.name}</span>
+                  <span style={{ color: 'var(--muted-foreground)', fontSize: '.7rem', marginLeft: 8 }}>
+                    {item.enabled ? 'Activé' : 'Désactivé'} · {item.type}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => uninstall(item.id, item.type)}
+                style={{ background: 'var(--destructive)', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: 'var(--radius)', fontSize: '.7rem', cursor: 'pointer' }}>
+                🗑️ Désinstaller
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Createur */}
+      {activeTab === 'creator' && (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 20 }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 4px' }}>✏️ Creer et publier</h3>
+          <p style={{ color: 'var(--muted-foreground)', fontSize: '.8rem', margin: '0 0 16px' }}>Creez vos propres items et publiez-les sur le marketplace.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ fontSize: '.8rem', color: 'var(--muted-foreground)' }}>Type
+              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as ItemType })}
+                style={{ display: 'block', width: '100%', marginTop: 4, padding: 8, background: 'var(--background)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.875rem' }}>
+                <option value="loop">🔄 Boucle IA</option>
+                <option value="skill">🧩 Competence</option>
+                <option value="customization">🎨 Personnalisation</option>
+              </select>
+            </label>
+            <label style={{ fontSize: '.8rem', color: 'var(--muted-foreground)' }}>Nom
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
+                placeholder="ex: Super analyseur"
+                style={{ display: 'block', width: '100%', marginTop: 4, padding: 8, background: 'var(--background)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.875rem' }} />
+            </label>
+            <label style={{ fontSize: '.8rem', color: 'var(--muted-foreground)', gridColumn: '1/-1' }}>Description
+              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2}
+                placeholder="Description de votre creation..."
+                style={{ display: 'block', width: '100%', marginTop: 4, padding: 8, background: 'var(--background)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.875rem', resize: 'vertical' }} />
+            </label>
+            <label style={{ fontSize: '.8rem', color: 'var(--muted-foreground)' }}>Prix (crédits)
+              <input type="number" value={form.price} onChange={e => setForm({ ...form, price: parseInt(e.target.value) || 0 })}
+                style={{ display: 'block', width: '100%', marginTop: 4, padding: 8, background: 'var(--background)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.875rem' }} />
+            </label>
+            <label style={{ fontSize: '.8rem', color: 'var(--muted-foreground)' }}>Tags (séparés par virgule)
+              <input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })}
+                placeholder="react, reflexion, base"
+                style={{ display: 'block', width: '100%', marginTop: 4, padding: 8, background: 'var(--background)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '.875rem' }} />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button onClick={createItem}
+              style={{ background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', padding: '10px 24px', borderRadius: 'var(--radius)', fontSize: '.875rem', fontWeight: 600, cursor: 'pointer' }}>
+              💾 Creer le brouillon
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// Purchases Tab Component
-function PurchasesTab() {
-  const [purchases, setPurchases] = useState<Array<{
-    id: string;
-    amount: number;
-    status: string;
-    purchasedAt: string;
-    listing?: { name: string; type: string };
-  }>>([]);
-  const [loading, setLoading] = useState(true);
+// ============================================================
+// Sous-composants
+// ============================================================
 
-  useEffect(() => {
-    async function fetchPurchases() {
-      try {
-        const data = await apiFetch<{ purchases: typeof purchases }>('/api/marketplace/purchases?limit=20');
-        setPurchases(data.purchases || []);
-      } catch {
-        setPurchases([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchPurchases();
-  }, []);
+function PriceBadge({ price, isFree }: { price: number; isFree: boolean }) {
+  if (isFree) return <span style={{ background: 'var(--success)', color: '#fff', padding: '2px 8px', borderRadius: 999, fontSize: '.65rem', fontWeight: 600 }}>GRATUIT</span>;
+  return <span style={{ background: 'var(--warning)', color: '#fff', padding: '2px 8px', borderRadius: 999, fontSize: '.65rem', fontWeight: 600 }}>{price} crédits</span>;
+}
 
-  if (loading) {
-    return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
-  }
-
-  if (purchases.length === 0) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <ShoppingBag className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium">No purchases yet</h3>
-          <p className="text-muted-foreground text-sm">Browse the marketplace to find agents and templates</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
+function ItemCard({ item, type, onInstall }: { item: MarketplaceItem; type: ItemType; onInstall: (t: ItemType, id: string) => void }) {
+  const config = typeof item.config === 'string' ? JSON.parse(item.config || '{}') : item.config;
   return (
-    <div className="space-y-3">
-      {purchases.map((purchase) => (
-        <Card key={purchase.id}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                {TYPE_ICONS[purchase.listing?.type || ''] || <Package className="h-5 w-5" />}
-              </div>
-              <div>
-                <p className="font-medium">{purchase.listing?.name || 'Unknown'}</p>
-                <p className="text-xs text-muted-foreground">{new Date(purchase.purchasedAt).toLocaleDateString()}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">{purchase.amount === 0 ? 'Free' : `${purchase.amount} credits`}</Badge>
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 16, position: 'relative' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div>
+          <span style={{ fontSize: '1.5rem', marginRight: 8 }}>{item.icon}</span>
+          <span style={{ fontWeight: 600, fontSize: '.95rem' }}>{item.name}</span>
+          {item.isOfficial && <span style={{ background: 'var(--muted)', fontSize: '.65rem', padding: '1px 6px', borderRadius: 4, marginLeft: 6 }}>Officiel</span>}
+        </div>
+        <PriceBadge price={item.price} isFree={item.isFree} />
+      </div>
+      <p style={{ color: 'var(--muted-foreground)', fontSize: '.78rem', margin: '6px 0 10px', lineHeight: 1.4 }}>{item.description}</p>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        {item.tags?.slice(0, 3).map(t => (
+          <span key={t} style={{ background: 'var(--background)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: 999, fontSize: '.65rem' }}>{t}</span>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ color: 'var(--muted-foreground)', fontSize: '.7rem' }}>
+          ⚡ {config?.maxIterations && `${config.maxIterations} itérations`}
+          {config?.temperature && ` · 🌡️ ${config.temperature}`}
+          {!config?.maxIterations && item.installCount > 0 && `★ ${item.rating} · ${item.installCount}k`}
+        </span>
+        <button onClick={() => onInstall(type, item.id)}
+          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', padding: '6px 16px', borderRadius: 'var(--radius)', fontSize: '.75rem', fontWeight: 600, cursor: 'pointer' }}>
+          {item.isFree ? '📥 Installer' : '📥 Acheter'}
+        </button>
+      </div>
+      <div style={{ position: 'absolute', top: 8, right: 8, fontSize: '.65rem', color: 'var(--muted-foreground)' }}>★ {item.rating} · {item.installCount}</div>
+    </div>
+  );
+}
+
+function SkillCard({ item, onInstall }: { item: MarketplaceItem; onInstall: (t: ItemType, id: string) => void }) {
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
+      <div style={{ fontSize: '2rem' }}>{item.icon}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 600, fontSize: '.9rem' }}>
+          {item.name} <PriceBadge price={item.price} isFree={item.isFree} />
+        </div>
+        <p style={{ color: 'var(--muted-foreground)', fontSize: '.75rem', margin: '2px 0' }}>{item.description}</p>
+        {(item.compatibleModels?.length ?? 0) > 0 && (
+          <div style={{ fontSize: '.65rem', color: 'var(--muted-foreground)', marginTop: 4 }}>
+            ✅ {(item.compatibleModels ?? []).join(' · ')}
+          </div>
+        )}
+      </div>
+      <button onClick={() => onInstall('skill', item.id)}
+        style={{ background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', padding: '6px 12px', borderRadius: 'var(--radius)', fontSize: '.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        {item.isFree ? '📥 Installer' : '📥 Acheter'}
+      </button>
     </div>
   );
 }

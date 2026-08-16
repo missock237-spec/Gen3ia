@@ -1,0 +1,21 @@
+# ============================================================
+# Gen3ia — Snyk Policy
+# Exclusions et seuils pour le scan des vulnerabilites
+# ============================================================
+
+exclude:
+  global:
+    - node_modules/**
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+    - '**/*.spec.ts'
+    - coverage/**
+    - .next/**
+
+patch:
+  {}
+
+disabled:
+  # - id: SNYK-JS-EXAMPLE-12345
+  #   reason: "Fausse alerte - dependance uniquement dev"
+  #   expires: '2026-12-31'
