@@ -1,0 +1,36 @@
+services:
+  agent-engine:
+    build:
+      context: ./services/agent-engine
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: "4000"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: genova
+      POSTGRES_PASSWORD: genova
+      POSTGRES_DB: genova
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genova"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
