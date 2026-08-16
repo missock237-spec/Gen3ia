@@ -1,15 +1,2 @@
 #!/bin/bash
-# Genova Genova — Stop All Services
-
-echo "Stopping Genova Services..."
-
-# Stop PocketBase
-pkill -f "pocketbase serve" 2>/dev/null
-
-# Stop PostgreSQL
-/home/z/my-project/pg-install/bin/pg_ctl -D /home/z/my-project/data/pg stop 2>/dev/null
-
-# Stop Next.js dev
-pkill -f "next dev" 2>/dev/null
-
-echo "All services stopped."
+REMOVED - fichier vide
