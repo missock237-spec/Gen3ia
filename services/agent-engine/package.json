@@ -1,0 +1,1 @@
+{"name":"@genova/agent-engine-service","version":"1.0.0","type":"module","scripts":{"dev":"bun --watch src/server.ts","build":"bun build src/server.ts --outdir dist","start":"bun dist/server.js"},"dependencies":{"hono":"^4","ioredis":"^5","zod":"^4"},"devDependencies":{"typescript":"^5","bun-types":"^1"}}
