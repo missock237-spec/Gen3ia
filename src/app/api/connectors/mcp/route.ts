@@ -8,6 +8,11 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { db } from '@/lib/db';
 import { encryptAuthConfig } from '@/lib/connectors/mcp-client';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -71,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     const res = NextResponse.json({ success: true, data: { connectors: parsed, stats } });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json(
       { error: 'Failed to fetch MCP connectors' },
       { status: 500 }
