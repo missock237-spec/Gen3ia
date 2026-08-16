@@ -1,6 +1,9 @@
+
+
 import { NextRequest, NextResponse } from 'next/server'
 import { applySecurity, secureResponse } from '@/lib/security'
 import {
+
   getListingForViewer,
   updateListing,
   deleteListing,
@@ -112,3 +115,6 @@ export async function DELETE(
     return secureResponse(res, request)
   }
 }
+
+
+export const dynamic = "force-dynamic";

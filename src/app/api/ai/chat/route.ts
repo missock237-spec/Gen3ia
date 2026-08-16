@@ -1,80 +1,74 @@
+// ============================================================
+// POST /api/ai/chat — Chat avec l'assistant IA
+// SECURITE: withAuth() + quota LLM + rate limiting Redis
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createAIRouter } from '@/lib/ai-router';
-import { applySecurity, secureResponse } from '@/lib/security';
 import { createLogger } from '@/lib/logger';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('ai-chat');
 
 const MAX_HISTORY_LENGTH = 50;
 const MAX_MESSAGE_LENGTH = 5000;
 const MAX_TOTAL_HISTORY_SIZE = 20000;
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
-
-export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, {
-    requireAuth: true,
-    rateLimit: { limit: 20, windowMs: 60000 },
-  });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
     const body = await request.json();
     const { message, history } = body;
 
     if (!message) {
-      const res = NextResponse.json({ error: 'Message requis' }, { status: 400 });
-      return secureResponse(res, request);
+      return NextResponse.json({ error: 'Message requis' }, { status: 400 });
     }
 
     if (typeof message !== 'string' || message.length > MAX_MESSAGE_LENGTH) {
-      const res = NextResponse.json({ error: `Message trop long (max ${MAX_MESSAGE_LENGTH} caractères)` }, { status: 400 });
-      return secureResponse(res, request);
+      return NextResponse.json({
+        error: `Message trop long (max ${MAX_MESSAGE_LENGTH} caracteres)`,
+      }, { status: 400 });
     }
 
-    // Validate history
+    // Valider l'historique
     const validatedHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
     if (history !== undefined && history !== null) {
       if (!Array.isArray(history)) {
-        const res = NextResponse.json({ error: 'History doit être un tableau' }, { status: 400 });
-        return secureResponse(res, request);
+        return NextResponse.json({ error: 'History doit etre un tableau' }, { status: 400 });
       }
 
       if (history.length > MAX_HISTORY_LENGTH) {
-        const res = NextResponse.json({ error: `History trop longue (max ${MAX_HISTORY_LENGTH} messages)` }, { status: 400 });
-        return secureResponse(res, request);
+        return NextResponse.json({
+          error: `History trop longue (max ${MAX_HISTORY_LENGTH} messages)`,
+        }, { status: 400 });
       }
 
       let totalSize = 0;
 
       for (const m of history) {
         if (!m || typeof m.role !== 'string' || typeof m.content !== 'string') {
-          const res = NextResponse.json({ error: 'Format de message invalide dans history' }, { status: 400 });
-          return secureResponse(res, request);
+          return NextResponse.json({ error: 'Format de message invalide dans history' }, { status: 400 });
         }
 
         if (!['user', 'assistant'].includes(m.role)) {
-          const res = NextResponse.json({ error: 'Rôle invalide dans history (user ou assistant uniquement)' }, { status: 400 });
-          return secureResponse(res, request);
+          return NextResponse.json({
+            error: 'Role invalide dans history (user ou assistant uniquement)',
+          }, { status: 400 });
         }
 
         const content = String(m.content).slice(0, MAX_MESSAGE_LENGTH);
         totalSize += content.length;
 
         if (totalSize > MAX_TOTAL_HISTORY_SIZE) {
-          const res = NextResponse.json({ error: 'History trop volumineuse' }, { status: 400 });
-          return secureResponse(res, request);
+          return NextResponse.json({ error: 'History trop volumineuse' }, { status: 400 });
         }
 
-        validatedHistory.push({
-          role: m.role as 'user' | 'assistant',
-          content,
-        });
+        validatedHistory.push({ role: m.role as 'user' | 'assistant', content });
       }
     }
 
@@ -83,7 +77,7 @@ export async function POST(request: NextRequest) {
     const messages = [
       {
         role: 'system' as const,
-        content: `Tu es l'assistant Genova, un IA qui aide les utilisateurs à contrôler leur système d'agents IA. Tu parles en français. Tu aides à comprendre les commandes en langage naturel et à les transformer en actions. Tu es concis et professionnel. Réponds toujours en français.`,
+        content: `Tu es Gen3ia, un assistant IA qui aide les utilisateurs a controler leur systeme d'agents IA. Tu parles en francais. Tu es concis et professionnel.`,
       },
       ...validatedHistory.map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -94,21 +88,33 @@ export async function POST(request: NextRequest) {
 
     const response = await router.chat(messages, { model: 'default' });
 
-    const res = NextResponse.json({
+    log.info('ai_chat_success', {
+      userId: auth.userId,
+      model: response.model,
+      provider: response.provider,
+      tokens: response.usage?.totalTokens,
+      costUsd: response.costUsd,
+    });
+
+    return NextResponse.json({
       reply: response.content,
       usage: response.usage,
       provider: response.provider,
       model: response.model,
       costUsd: response.costUsd,
     });
-    return secureResponse(res, request);
-  } catch (error: unknown) {
+
+  } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     log.error('AI chat failed', { error: errMsg });
-    const res = NextResponse.json({
+    return NextResponse.json({
       error: 'Erreur lors de la communication avec l\'IA',
       details: process.env.NODE_ENV === 'development' ? errMsg : undefined,
     }, { status: 500 });
-    return secureResponse(res, request);
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 20, windowMs: 60000 },
+  quota: true, // Le chat consomme des tokens LLM → vérifier quota
+});
