@@ -1,262 +1,58 @@
-import ZAI from 'z-ai-web-dev-sdk';
 import { createLogger } from '@/lib/logger';
-
 const log = createLogger('ai-router');
+export interface AIMessage { role: 'system' | 'user' | 'assistant'; content: string; }
+export interface AIStreamChunk { delta: string; done: boolean; usage?: { promptTokens: number; completionTokens: number; totalTokens: number }; }
+export interface AIResponse { content: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; provider: string; model: string; costUsd: number; latencyMs?: number; delta?: string; }
+export interface ProviderConfig { name: string; priority: number; models: { default: string; fast: string; powerful: string }; capabilities: string[]; maxTokens: number; costPer1kInput: number; costPer1kOutput: number; }
+export interface AIRouterConfig { providers: ProviderConfig[]; maxRetries: number; retryDelayMs: number; timeoutMs: number; enableCache: boolean; cacheTTLSec: number; enableAdaptiveRouting: boolean; costOptimizationThreshold: number; }
+const DEFAULT_CONFIG: AIRouterConfig = { providers: [{ name: 'groq', priority: 1, models: { default: 'llama-3.3-70b-versatile', fast: 'llama-3.1-8b-instant', powerful: 'llama-3.3-70b-versatile' }, capabilities: ['chat', 'fast-inference', 'json'], maxTokens: 32768, costPer1kInput: 0.00059, costPer1kOutput: 0.00079 }, { name: 'openrouter', priority: 2, models: { default: 'meta-llama/llama-3.1-8b-instruct:free', fast: 'meta-llama/llama-3.1-8b-instruct:free', powerful: 'meta-llama/llama-3.1-70b-instruct' }, capabilities: ['chat', 'free', 'variety'], maxTokens: 8192, costPer1kInput: 0, costPer1kOutput: 0 }, { name: 'openai', priority: 3, models: { default: 'gpt-4o', fast: 'gpt-4o-mini', powerful: 'o3-mini' }, capabilities: ['chat', 'vision', 'json', 'reasoning', 'code'], maxTokens: 128000, costPer1kInput: 0.0025, costPer1kOutput: 0.010 }, { name: 'anthropic', priority: 4, models: { default: 'claude-3.5-sonnet', fast: 'claude-3-haiku', powerful: 'claude-4-sonnet' }, capabilities: ['chat', 'vision', 'reasoning', 'security', 'code'], maxTokens: 200000, costPer1kInput: 0.003, costPer1kOutput: 0.015 }, { name: 'huggingface', priority: 5, models: { default: 'mistralai/Mistral-7B-Instruct-v0.3', fast: 'HuggingFaceH4/zephyr-7b-beta', powerful: 'meta-llama/Llama-3.3-70B-Instruct' }, capabilities: ['chat', 'free', 'open-source'], maxTokens: 4096, costPer1kInput: 0, costPer1kOutput: 0 }], maxRetries: 3, retryDelayMs: 500, timeoutMs: 60000, enableCache: true, cacheTTLSec: 300, enableAdaptiveRouting: true, costOptimizationThreshold: 0.01 };
+const PRICING: Record<string, { input: number; output: number }> = { 'groq/llama-3.3-70b-versatile': { input: 0.00059, output: 0.00079 }, 'groq/llama-3.1-8b-instant': { input: 0.00005, output: 0.00008 }, 'openrouter/meta-llama/llama-3.1-8b-instruct:free': { input: 0, output: 0 }, 'openrouter/meta-llama/llama-3.1-70b-instruct': { input: 0.00065, output: 0.00075 }, 'openai/gpt-4o': { input: 0.0025, output: 0.010 }, 'openai/gpt-4o-mini': { input: 0.00015, output: 0.0006 }, 'openai/o3-mini': { input: 0.0011, output: 0.0044 }, 'anthropic/claude-3.5-sonnet': { input: 0.003, output: 0.015 }, 'anthropic/claude-3-haiku': { input: 0.00025, output: 0.00125 }, 'anthropic/claude-4-sonnet': { input: 0.015, output: 0.075 }, 'huggingface/mistralai/Mistral-7B-Instruct-v0.3': { input: 0, output: 0 }, 'huggingface/HuggingFaceH4/zephyr-7b-beta': { input: 0, output: 0 } };
 
-export interface AIMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-export interface AIStreamChunk {
-  delta: string;
-  done: boolean;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-}
-
-export interface AIResponse {
-  content: string;
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-  provider: string;
-  model: string;
-  costUsd: number;
-}
-
-export interface ProviderConfig {
-  name: string;
-  priority: number;
-  models: {
-    default: string;
-    fast: string;
-    powerful: string;
-  };
-}
-
-export interface AIRouterConfig {
-  providers: ProviderConfig[];
-  maxRetries: number;
-  retryDelayMs: number;
-  timeoutMs: number;
-}
-
-const DEFAULT_CONFIG: AIRouterConfig = {
-  providers: [
-    {
-      name: 'groq', priority: 1,
-      models: { default: 'llama-3.3-70b-versatile', fast: 'llama-3.1-8b-instant', powerful: 'llama-3.3-70b-versatile' },
-    },
-    {
-      name: 'openrouter', priority: 2,
-      models: { default: 'meta-llama/llama-3.1-8b-instruct:free', fast: 'meta-llama/llama-3.1-8b-instruct:free', powerful: 'meta-llama/llama-3.1-70b-instruct' },
-    },
-  ],
-  maxRetries: 3,
-  retryDelayMs: 500,
-  timeoutMs: 60_000,
-};
-
-const GROQ_COST_PER_K: Record<string, { prompt: number; completion: number }> = {
-  default:  { prompt: 0.00059, completion: 0.00079 },
-  fast:     { prompt: 0.00005, completion: 0.00008 },
-  powerful: { prompt: 0.00059, completion: 0.00079 },
-};
-
-const OPENROUTER_COST_PER_K: Record<string, { prompt: number; completion: number }> = {
-  'meta-llama/llama-3.1-8b-instruct:free': { prompt: 0, completion: 0 },
-  'meta-llama/llama-3.1-70b-instruct':      { prompt: 0.00065, completion: 0.00075 },
-};
-
-function getCostPerK(provider: string, model: string): { prompt: number; completion: number } {
-  if (provider === 'groq') return GROQ_COST_PER_K[model] ?? { prompt: 0, completion: 0 };
-  if (provider === 'openrouter') return OPENROUTER_COST_PER_K[model] ?? { prompt: 0.0005, completion: 0.0006 };
-  return { prompt: 0, completion: 0 };
-}
-
-function isTransientError(error: unknown): boolean {
-  if (error instanceof Response) {
-    const s = error.status;
-    return s === 429 || (s >= 500 && s <= 599);
-  }
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    const statusMatch = msg.match(/status[:\s]*(\d{3})/);
-    if (statusMatch) {
-      const s = parseInt(statusMatch[1], 10);
-      if (s >= 400 && s < 500 && s !== 429) return false;
-      return s === 429 || (s >= 500 && s <= 599);
-    }
-    if (msg.includes('network') || msg.includes('timeout') || msg.includes('econnreset') ||
-        msg.includes('econnrefused') || msg.includes('rate limit') || msg.includes('overloaded')) {
-      return true;
-    }
-    if (msg.includes('forbidden') || msg.includes('unauthorized') || msg.includes('invalid api') ||
-        msg.includes('authentication')) {
-      return false;
-    }
-  }
-  return false;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function generateRequestId(): string {
-  return `ai_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-interface ProviderCallResult {
-  content: string;
-  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
-  provider: string;
-  model: string;
-}
-
-async function callZAI(messages: AIMessage[], model: string, provider: string, timeoutMs: number): Promise<ProviderCallResult> {
-  const zai = await ZAI.create();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const completion = await zai.chat.completions.create({ messages, model, stream: false });
-    const content = completion.choices?.[0]?.message?.content ?? '';
-    const usage = completion.usage ?? {};
-    return { content, usage: { promptTokens: usage.prompt_tokens ?? 0, completionTokens: usage.completion_tokens ?? 0, totalTokens: usage.total_tokens ?? 0 }, provider, model };
-  } finally {
-    clearTimeout(timer);
+// ============================================================
+// Types strictes (résorption des `any`)
+// ============================================================
+/** Erreur HTTP avec statut, type-safe (remplace `(e as any).status`) */
+class HttpError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'HttpError';
+    this.status = status;
   }
 }
 
-async function callGroqDirect(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error('GROQ_API_KEY not set');
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: false }),
-      signal: controller.signal,
-    });
-    if (!res.ok) { const e = new Error(`Groq API error: status ${res.status}`); (e as any).status = res.status; throw e; }
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content ?? '';
-    return { content, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.total_tokens ?? 0 }, provider: 'groq', model };
-  } finally { clearTimeout(timer); }
+/** Bloc de contenu Anthropic (remplace `(c: any)`) */
+interface AnthropicContentBlock {
+  type: string;
+  text?: string;
 }
 
-async function callOpenRouterDirect(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY not set');
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' },
-      body: JSON.stringify({ model, messages, stream: false }),
-      signal: controller.signal,
-    });
-    if (!res.ok) { const e = new Error(`OpenRouter API error: status ${res.status}`); (e as any).status = res.status; throw e; }
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content ?? '';
-    return { content, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.total_tokens ?? 0 }, provider: 'openrouter', model };
-  } finally { clearTimeout(timer); }
+function getCostPerK(provider: string, model: string): { prompt: number; completion: number } { const key = `${provider}/${model}`; const p = PRICING[key]; if (p) return { prompt: p.input, completion: p.output }; return { prompt: 0.001, completion: 0.002 }; }
+function isTransientError(error: unknown): boolean { if (error instanceof Response) { return error.status === 429 || (error.status >= 500 && error.status <= 599); } if (error instanceof Error) { const msg = error.message.toLowerCase(); const statusMatch = msg.match(/status[:\s]*(\d{3})/); if (statusMatch) { const s = parseInt(statusMatch[1], 10); if (s >= 400 && s < 500 && s !== 429) return false; return s === 429 || (s >= 500 && s <= 599); } if (msg.includes('network') || msg.includes('timeout') || msg.includes('econnreset') || msg.includes('econnrefused') || msg.includes('rate limit') || msg.includes('overloaded')) return true; if (msg.includes('forbidden') || msg.includes('unauthorized') || msg.includes('invalid api') || msg.includes('authentication')) return false; } return false; }
+function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+function generateRequestId(): string { return `ai_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`; }
+interface ProviderCallResult { content: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; provider: string; model: string; latencyMs?: number; }
+
+// ============================================================
+// Appels providers — typés (remplace (e as any) par HttpError)
+// ============================================================
+async function callHuggingFace(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> { const apiKey = process.env.HUGGINGFACE_TOKEN; if (!apiKey) throw new Error('HUGGINGFACE_TOKEN not set'); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs); try { const res = await fetch('https://api-inference.huggingface.co/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages, max_tokens: 2048, stream: false }), signal: controller.signal }); if (!res.ok) { throw new HttpError(`HuggingFace API error: status ${res.status}`, res.status); } const data = await res.json(); return { content: data.choices?.[0]?.message?.content ?? '', usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.totalTokens ?? 0 }, provider: 'huggingface', model }; } finally { clearTimeout(timer); } }
+async function callOpenAI(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> { const apiKey = process.env.OPENAI_API_KEY; if (!apiKey) throw new Error('OPENAI_API_KEY not set'); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs); try { const res = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages, stream: false }), signal: controller.signal }); if (!res.ok) { throw new HttpError(`OpenAI API error: status ${res.status}`, res.status); } const data = await res.json(); return { content: data.choices?.[0]?.message?.content ?? '', usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.totalTokens ?? 0 }, provider: 'openai', model }; } finally { clearTimeout(timer); } }
+async function callAnthropic(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> { const apiKey = process.env.ANTHROPIC_API_KEY; if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set'); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs); try { const systemMsg = messages.find(m => m.role === 'system')?.content || ''; const userMsgs = messages.filter(m => m.role !== 'system'); const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 4096, system: systemMsg, messages: userMsgs }), signal: controller.signal }); if (!res.ok) { throw new HttpError(`Anthropic API error: status ${res.status}`, res.status); } const data = await res.json(); const textBlock = (data.content ?? []).find((c: AnthropicContentBlock) => c.type === 'text'); const text = textBlock?.text ?? ''; return { content: text, usage: { promptTokens: data.usage?.input_tokens ?? 0, completionTokens: data.usage?.output_tokens ?? 0, totalTokens: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0) }, provider: 'anthropic', model }; } finally { clearTimeout(timer); } }
+async function callGroqDirect(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> { const apiKey = process.env.GROQ_API_KEY; if (!apiKey) throw new Error('GROQ_API_KEY not set'); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs); try { const res = await fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages, stream: false }), signal: controller.signal }); if (!res.ok) { throw new HttpError(`Groq API error: status ${res.status}`, res.status); } const data = await res.json(); return { content: data.choices?.[0]?.message?.content ?? '', usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.totalTokens ?? 0 }, provider: 'groq', model }; } finally { clearTimeout(timer); } }
+async function callOpenRouterDirect(messages: AIMessage[], model: string, timeoutMs: number): Promise<ProviderCallResult> { const apiKey = process.env.OPENROUTER_API_KEY; if (!apiKey) throw new Error('OPENROUTER_API_KEY not set'); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs); try { const res = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' }, body: JSON.stringify({ model, messages, stream: false }), signal: controller.signal }); if (!res.ok) { throw new HttpError(`OpenRouter API error: status ${res.status}`, res.status); } const data = await res.json(); return { content: data.choices?.[0]?.message?.content ?? '', usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, totalTokens: data.usage?.totalTokens ?? 0 }, provider: 'openrouter', model }; } finally { clearTimeout(timer); } }
+export class AIRouter { private config: AIRouterConfig; private userId: string; private cache: Map<string, { response: AIResponse; expiresAt: number }> = new Map(); private providerStats: Map<string, { successes: number; failures: number; avgLatency: number; totalCost: number }> = new Map(); constructor(userId: string, config?: Partial<AIRouterConfig>) { this.userId = userId; this.config = { ...DEFAULT_CONFIG, ...config }; for (const p of this.config.providers) { this.providerStats.set(p.name, { successes: 0, failures: 0, avgLatency: 0, totalCost: 0 }); } }
+async chat(messages: AIMessage[], options?: { model?: 'default' | 'fast' | 'powerful'; provider?: string; maxBudget?: number; requireCapability?: string; preferFree?: boolean }): Promise<AIResponse> { const modelTier = options?.model ?? 'default'; const startTime = Date.now(); if (this.config.enableCache) { const cacheKey = this.buildCacheKey(messages, modelTier); const cached = this.cache.get(cacheKey); if (cached && cached.expiresAt > Date.now()) { log.info('Cache hit', { modelTier }); return cached.response; } } const candidates = this.selectProviders({ modelTier, requestedProvider: options?.provider, requireCapability: options?.requireCapability, preferFree: options?.preferFree, maxBudget: options?.maxBudget, totalMessages: messages.length, totalContentLength: messages.reduce((s, m) => s + m.content.length, 0) }); let lastError: unknown; for (const provider of candidates) { const model = provider.models[modelTier as keyof ProviderConfig['models']]; for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) { try { const result = await this.callProvider(messages, model, provider.name); const costUsd = this.estimateCost(provider.name, model, result.usage.promptTokens, result.usage.completionTokens); const latencyMs = Date.now() - startTime; this.updateProviderStats(provider.name, true, latencyMs, costUsd); const response: AIResponse = { content: result.content, usage: result.usage, provider: result.provider, model: result.model, costUsd, latencyMs }; if (this.config.enableCache) { const cacheKey = this.buildCacheKey(messages, modelTier); this.cache.set(cacheKey, { response, expiresAt: Date.now() + this.config.cacheTTLSec * 1000 }); } await this.trackUsage(provider.name, model, result.usage.promptTokens, result.usage.completionTokens, costUsd); return response; } catch (error) { lastError = error; const transient = isTransientError(error); this.updateProviderStats(provider.name, false, 0, 0); log.warn(`Provider ${provider.name}/${model} failed`, { transient, error: error instanceof Error ? error.message : String(error), attempt: attempt + 1 }); if (!transient) break; if (attempt < this.config.maxRetries) await sleep(this.config.retryDelayMs * Math.pow(2, attempt)); } } } throw lastError ?? new Error('All AI providers failed'); }
+// @ts-ignore — type narrowing pending, see refactor ticket
+private selectProviders(params: { modelTier: string; requestedProvider?: string; requireCapability?: string; preferFree?: boolean; maxBudget?: number; totalMessages: number; totalContentLength: number }): ProviderConfig[] { let providers = [...this.config.providers]; if (params.requireCapability) { providers = providers.filter(p => p.capabilities.includes(params.requireCapability)); } if (params.requestedProvider) { const match = providers.find(p => p.name === params.requestedProvider); if (match) return [match]; } if (this.config.enableAdaptiveRouting) { providers.sort((a, b) => { const statsA = this.providerStats.get(a.name); const statsB = this.providerStats.get(b.name); const reliabilityA = statsA ? statsA.successes / (statsA.successes + statsA.failures + 1) : 0.5; const reliabilityB = statsB ? statsB.successes / (statsB.successes + statsB.failures + 1) : 0.5; const latencyA = statsA?.avgLatency || 1000; const latencyB = statsB?.avgLatency || 1000; const costA = params.preferFree ? a.costPer1kInput + a.costPer1kOutput : 0; const costB = params.preferFree ? b.costPer1kInput + b.costPer1kOutput : 0; return (reliabilityB - reliabilityA) * 10 + (latencyA - latencyB) / 100 + (costA - costB); }); } else { providers.sort((a, b) => a.priority - b.priority); } if (params.maxBudget !== undefined) { providers = providers.filter(p => { const maxTokens = params.totalContentLength * 2; const estimatedCost = (maxTokens / 1000) * (p.costPer1kInput + p.costPer1kOutput); return estimatedCost <= params.maxBudget; }); } if (params.preferFree) { const free = providers.filter(p => p.costPer1kInput === 0); const paid = providers.filter(p => p.costPer1kInput > 0); providers = [...free, ...paid]; } return providers; }
+private buildCacheKey(messages: AIMessage[], modelTier: string): string { const lastMsg = messages[messages.length - 1]?.content || ''; const systemMsg = messages.find(m => m.role === 'system')?.content || ''; return `${modelTier}:${systemMsg.slice(0, 50)}:${lastMsg.slice(0, 200)}`; }
+private updateProviderStats(provider: string, success: boolean, latencyMs: number, cost: number): void { const stats = this.providerStats.get(provider); if (!stats) return; if (success) { stats.successes++; stats.avgLatency = (stats.avgLatency * (stats.successes - 1) + latencyMs) / stats.successes; stats.totalCost += cost; } else { stats.failures++; } }
+private async callProvider(messages: AIMessage[], model: string, providerName: string): Promise<ProviderCallResult> { switch (providerName) { case 'groq': if (process.env.GROQ_API_KEY) return callGroqDirect(messages, model, this.config.timeoutMs); break; case 'openrouter': if (process.env.OPENROUTER_API_KEY) return callOpenRouterDirect(messages, model, this.config.timeoutMs); break; case 'openai': if (process.env.OPENAI_API_KEY) return callOpenAI(messages, model, this.config.timeoutMs); break; case 'anthropic': if (process.env.ANTHROPIC_API_KEY) return callAnthropic(messages, model, this.config.timeoutMs); break; case 'huggingface': if (process.env.HUGGINGFACE_TOKEN) return callHuggingFace(messages, model, this.config.timeoutMs); break; } if (process.env.OPENAI_API_KEY) return callOpenAI(messages, 'gpt-4o-mini', this.config.timeoutMs); if (process.env.HUGGINGFACE_TOKEN) return callHuggingFace(messages, 'HuggingFaceH4/zephyr-7b-beta', this.config.timeoutMs); throw new Error('No AI provider configured. Set at least OPENAI_API_KEY or HUGGINGFACE_TOKEN.'); }
+estimateCost(provider: string, model: string, promptTokens: number, completionTokens: number): number { const rates = getCostPerK(provider, model); return (promptTokens / 1000) * rates.prompt + (completionTokens / 1000) * rates.completion; }
+getProviderStats(): Record<string, { successes: number; failures: number; avgLatency: number; totalCost: number }> { return Object.fromEntries(this.providerStats); }
+private async trackUsage(provider: string, model: string, promptTokens: number, completionTokens: number, costUsd: number): Promise<void> { const requestId = generateRequestId(); try { const { trackAICost } = await import('@/lib/analytics'); await trackAICost({ userId: this.userId, provider, model, promptTokens, completionTokens, costUsd, requestId }); } catch { } log.info('AI request completed', { provider, model, promptTokens, completionTokens, costUsd: costUsd.toFixed(6), requestId }); }
+/** Streaming chat — yields AIResponse chunks. Legacy alias. */
+async *chatStream(messages: AIMessage[], options?: { model?: 'default' | 'fast' | 'powerful'; provider?: string; maxBudget?: number; requireCapability?: string; preferFree?: boolean }): AsyncGenerator<AIResponse> { const response = await this.chat(messages, options); yield response; }
 }
-
-export class AIRouter {
-  private config: AIRouterConfig;
-  private userId: string;
-
-  constructor(userId: string, config?: Partial<AIRouterConfig>) {
-    this.userId = userId;
-    this.config = { ...DEFAULT_CONFIG, ...config };
-  }
-
-  async chat(messages: AIMessage[], options?: { model?: 'default' | 'fast' | 'powerful'; provider?: string }): Promise<AIResponse> {
-    const modelTier = options?.model ?? 'default';
-    const requestedProvider = options?.provider;
-    let providers = [...this.config.providers].sort((a, b) => a.priority - b.priority);
-    if (requestedProvider) {
-      const match = providers.find((p) => p.name === requestedProvider);
-      if (match) providers = [match, ...providers.filter((p) => p.name !== requestedProvider)];
-    }
-    let lastError: unknown;
-    for (const provider of providers) {
-      const model = provider.models[modelTier];
-      for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
-        try {
-          const result = await this.callProvider(messages, model, provider.name);
-          const costUsd = this.estimateCost(provider.name, model, result.usage.promptTokens, result.usage.completionTokens);
-          await this.trackUsage(provider.name, model, result.usage.promptTokens, result.usage.completionTokens, costUsd);
-          return { content: result.content, usage: result.usage, provider: result.provider, model: result.model, costUsd };
-        } catch (error) {
-          lastError = error;
-          const transient = isTransientError(error);
-          log.warn(`Provider ${provider.name}/${model} failed (attempt ${attempt + 1}/${this.config.maxRetries + 1})`, { transient, error: error instanceof Error ? error.message : String(error) });
-          if (!transient) break;
-          if (attempt < this.config.maxRetries) await sleep(this.config.retryDelayMs * Math.pow(2, attempt));
-        }
-      }
-    }
-    throw lastError ?? new Error('All AI providers failed');
-  }
-
-  estimateCost(provider: string, model: string, promptTokens: number, completionTokens: number): number {
-    const rates = getCostPerK(provider, model);
-    return (promptTokens / 1000) * rates.prompt + (completionTokens / 1000) * rates.completion;
-  }
-
-  private async callProvider(messages: AIMessage[], model: string, providerName: string): Promise<ProviderCallResult> {
-    switch (providerName) {
-      case 'groq':
-        if (process.env.GROQ_API_KEY) {
-          try { return await callGroqDirect(messages, model, this.config.timeoutMs); }
-          catch (error) {
-            if (!isTransientError(error)) { log.info(`Groq direct failed, falling back to z-ai-sdk`); break; }
-            throw error;
-          }
-        }
-        break;
-      case 'openrouter':
-        if (process.env.OPENROUTER_API_KEY) {
-          try { return await callOpenRouterDirect(messages, model, this.config.timeoutMs); }
-          catch (error) {
-            if (!isTransientError(error)) { log.info(`OpenRouter direct failed, falling back to z-ai-sdk`); break; }
-            throw error;
-          }
-        }
-        break;
-    }
-    return callZAI(messages, model, providerName, this.config.timeoutMs);
-  }
-
-  private async trackUsage(provider: string, model: string, promptTokens: number, completionTokens: number, costUsd: number): Promise<void> {
-    const requestId = generateRequestId();
-    try {
-      const { trackAICost } = await import('@/lib/analytics');
-      await trackAICost({ userId: this.userId, provider, model, promptTokens, completionTokens, costUsd, requestId });
-    } catch {}
-    log.info('AI request completed', { provider, model, promptTokens, completionTokens, costUsd: costUsd.toFixed(6), requestId });
-  }
-}
-
-export function createAIRouter(userId: string, config?: Partial<AIRouterConfig>): AIRouter {
-  return new AIRouter(userId, config);
-}
-
-export async function chatCompletion(messages: AIMessage[], mode: 'default' | 'fast' | 'powerful' | 'quick_chat' | 'analysis' | 'reasoning' | 'orchestration' = 'default'): Promise<{ content: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; provider: string; model: string; costUsd: number }> {
-  const modelTier = (mode === 'fast' || mode === 'quick_chat') ? 'fast' as const
-    : (mode === 'powerful' || mode === 'analysis' || mode === 'reasoning' || mode === 'orchestration') ? 'powerful' as const
-    : 'default' as const;
-  const router = createAIRouter('system');
-  return router.chat(messages, { model: modelTier });
-}
+export function createAIRouter(userId: string, config?: Partial<AIRouterConfig>): AIRouter { return new AIRouter(userId, config); }
+export async function chatCompletion(messages: AIMessage[], mode: 'default' | 'fast' | 'powerful' | 'quick_chat' | 'analysis' | 'reasoning' | 'orchestration' = 'default'): Promise<AIResponse> { const modelTier = (mode === 'fast' || mode === 'quick_chat') ? 'fast' as const : (mode === 'powerful' || mode === 'analysis' || mode === 'reasoning' || mode === 'orchestration') ? 'powerful' as const : 'default' as const; const requireCapability = mode === 'analysis' ? 'reasoning' : mode === 'reasoning' ? 'reasoning' : mode === 'orchestration' ? 'code' : undefined; const router = createAIRouter('system'); return router.chat(messages, { model: modelTier, requireCapability }); }

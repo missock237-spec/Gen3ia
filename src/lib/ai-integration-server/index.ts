@@ -72,7 +72,7 @@ export interface ServerStatus {
 // ============================================================
 
 let currentPipeline: PipelineProgress | null = null;
-let serverStats = {
+const serverStats = {
   totalIntegrationsProcessed: 0,
   successfulIntegrations: 0,
   failedIntegrations: 0,
@@ -245,7 +245,7 @@ export async function processProject(options: ProcessProjectOptions): Promise<In
         initialize: async () => {
           log.info('Auto-generated adapter initialized', { project: projectName });
         },
-        execute: async (functionId: string, params: Record<string, unknown>) => {
+        execute: async (functionId: string, _params: Record<string, unknown>) => {
           // Dynamic execution via the generated adapter code
           // In production, this would load and execute the compiled adapter
           return {

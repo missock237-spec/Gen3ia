@@ -511,10 +511,6 @@ export function ExecutionTraces({ userId }: { userId: string }) {
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadTraces();
-  }, [userId]);
-
   const loadTraces = async () => {
     if (!userId) return;
     setLoading(true);
@@ -531,6 +527,11 @@ export function ExecutionTraces({ userId }: { userId: string }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    void loadTraces();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   const formatDuration = (ms?: number | null) => {
     if (!ms) return '—';

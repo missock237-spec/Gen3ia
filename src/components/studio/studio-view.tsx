@@ -98,7 +98,6 @@ Tu es un assistant IA spécialisé dans ${prompt}
                   <option value="support">Support client</option>
                   <option value="marketing">Marketing</option>
                   <option value="research">Recherche</option>
-                  <option value="whatsapp">WhatsApp</option>
                   <option value="browser">Navigateur</option>
                   <option value="custom">Personnalisé</option>
                 </select>

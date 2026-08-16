@@ -1,16 +1,22 @@
-// ============================================================
-// CORRELATION ID — Trace bout en bout des requêtes
-// ============================================================
-// Attache un ID de corrélation à chaque requête pour suivre
-// le flux complet à travers logs, services et providers externes
-// ============================================================
+/**
+ * Correlation ID & Distributed Tracing
+ * 
+ * Provides end-to-end tracing through:
+ * - Request lifecycle (start → process → end)
+ * - Database queries
+ * - External API calls
+ * - Log aggregation (injected into every log)
+ * - OpenTelemetry compatibility
+ * 
+ * Uses AsyncLocalStorage to preserve context through async operations.
+ */
 
 import { randomUUID } from "crypto";
+import { AsyncLocalStorage } from "async_hooks";
 import { logger } from "./logger";
 
-// Stockage local pour le contexte async
-const correlationContext = new Map<string, string>();
-const requestStore = new Map<string, {
+// AsyncLocalStorage for proper async context preservation
+interface CorrelationContext {
   correlationId: string;
   parentId: string | null;
   service: string;
@@ -23,23 +29,22 @@ const requestStore = new Map<string, {
     status: "ok" | "error";
     metadata?: Record<string, unknown>;
   }>;
-}>();
+}
+
+const correlationStorage = new AsyncLocalStorage<CorrelationContext>();
 
 class CorrelationManager {
-  // ============================================================
-  // Créer ou récupérer un correlation ID
-  // ============================================================
+  /**
+   * Get current correlation ID from AsyncLocalStorage
+   */
   getCurrentId(): string | null {
-    // Vérifier dans le contexte local d'abord
-    for (const [key, value] of correlationContext) {
-      if (key.startsWith("correlation_")) return value;
-    }
-    return null;
+    const context = correlationStorage.getStore();
+    return context?.correlationId ?? null;
   }
 
-  // ============================================================
-  // Initialiser un nouveau contexte de corrélation
-  // ============================================================
+  /**
+   * Start a new correlation context
+   */
   start(params: {
     correlationId?: string;
     parentId?: string;
@@ -49,17 +54,17 @@ class CorrelationManager {
     const correlationId = params.correlationId ?? this.generateId();
     const parentId = params.parentId ?? null;
 
-    correlationContext.set(`correlation_${correlationId}`, correlationId);
-
-    requestStore.set(correlationId, {
+    const context: CorrelationContext = {
       correlationId,
       parentId,
       service: params.service,
       startTime: Date.now(),
       spans: [],
-    });
+    };
 
-    logger.info("correlation_started", {
+    correlationStorage.enterWith(context);
+
+    logger.info("Correlation started", {
       correlationId,
       parentId,
       service: params.service,
@@ -69,20 +74,17 @@ class CorrelationManager {
     return correlationId;
   }
 
-  // ============================================================
-  // Ajouter un span (opération unitaire)
-  // ============================================================
+  /**
+   * Start a named span (sub-operation)
+   */
   startSpan(name: string, metadata?: Record<string, unknown>): string {
-    const correlationId = this.getCurrentId();
-    if (!correlationId) {
+    const context = correlationStorage.getStore();
+    if (!context) {
       return this.start({ service: name });
     }
 
-    const store = requestStore.get(correlationId);
-    if (!store) return correlationId;
-
     const spanId = this.generateId();
-    store.spans.push({
+    context.spans.push({
       id: spanId,
       name,
       startTime: Date.now(),
@@ -91,8 +93,8 @@ class CorrelationManager {
       metadata,
     });
 
-    logger.debug("correlation_span_started", {
-      correlationId,
+    logger.debug("Span started", {
+      correlationId: context.correlationId,
       spanId,
       name,
       ...(metadata ?? {}),
@@ -101,84 +103,83 @@ class CorrelationManager {
     return spanId;
   }
 
-  // ============================================================
-  // Terminer un span
-  // ============================================================
+  /**
+   * End a span and record metrics
+   */
   endSpan(spanId: string, status: "ok" | "error" = "ok", metadata?: Record<string, unknown>): void {
-    const correlationId = this.getCurrentId();
-    if (!correlationId) return;
+    const context = correlationStorage.getStore();
+    if (!context) return;
 
-    const store = requestStore.get(correlationId);
-    if (!store) return;
-
-    const span = store.spans.find((s) => s.id === spanId);
+    const span = context.spans.find((s) => s.id === spanId);
     if (!span) return;
 
     span.endTime = Date.now();
     span.status = status;
     if (metadata) span.metadata = { ...span.metadata, ...metadata };
+
+    logger.debug("Span ended", {
+      correlationId: context.correlationId,
+      spanId,
+      name: span.name,
+      duration: span.endTime - span.startTime,
+      status,
+    });
   }
 
-  // ============================================================
-  // Marquer une erreur sur la corrélation
-  // ============================================================
+  /**
+   * Mark an error in the current correlation context
+   */
   markError(error: Error | string, metadata?: Record<string, unknown>): void {
-    const correlationId = this.getCurrentId();
-    if (!correlationId) return;
+    const context = correlationStorage.getStore();
+    if (!context) return;
 
     const errorMsg = error instanceof Error ? error.message : error;
 
-    logger.error("correlation_error", {
-      correlationId,
+    logger.error("Correlation error", {
+      correlationId: context.correlationId,
       error: errorMsg,
       ...(metadata ?? {}),
     });
   }
 
-  // ============================================================
-  // Terminer la corrélation et rapporter
-  // ============================================================
+  /**
+   * End correlation and return trace report
+   */
   end(): {
     correlationId: string;
     durationMs: number;
     spanCount: number;
     spans: Array<{ name: string; durationMs: number; status: string }>;
   } | null {
-    const correlationId = this.getCurrentId();
-    if (!correlationId) return null;
+    const context = correlationStorage.getStore();
+    if (!context) return null;
 
-    const store = requestStore.get(correlationId);
-    if (!store) return null;
-
-    const durationMs = Date.now() - store.startTime;
+    const durationMs = Date.now() - context.startTime;
 
     const report = {
-      correlationId,
+      correlationId: context.correlationId,
       durationMs,
-      spanCount: store.spans.length,
-      spans: store.spans.map((s) => ({
+      spanCount: context.spans.length,
+      spans: context.spans.map((s) => ({
         name: s.name,
         durationMs: s.endTime > 0 ? s.endTime - s.startTime : Date.now() - s.startTime,
         status: s.status,
       })),
     };
 
-    logger.info("correlation_ended", {
-      correlationId,
+    logger.info("Correlation ended", {
+      correlationId: context.correlationId,
       durationMs,
-      spanCount: store.spans.length,
+      spanCount: context.spans.length,
+      service: context.service,
     });
-
-    // Nettoyage
-    correlationContext.delete(`correlation_${correlationId}`);
-    requestStore.delete(correlationId);
 
     return report;
   }
 
-  // ============================================================
-  // Injecter l'ID dans les en-têtes pour appels externes
-  // ============================================================
+  /**
+   * Get headers to inject correlation ID into external calls
+   */
   injectHeaders(): Record<string, string> {
     const correlationId = this.getCurrentId();
     if (!correlationId) return {};
@@ -186,64 +187,61 @@ class CorrelationManager {
     return {
       "X-Correlation-ID": correlationId,
       "X-Request-ID": correlationId,
+      "Traceparent": `00-${correlationId.padEnd(32, '0')}-0000000000000001-01`, // W3C Trace Context
     };
   }
 
-  // ============================================================
-  // Extraire l'ID depuis des en-têtes entrants
-  // ============================================================
+  /**
+   * Extract correlation ID from incoming headers
+   */
   extractFromHeaders(headers: Record<string, string | null>): string | null {
-    const correlationId = headers["x-correlation-id"]
+    return headers["x-correlation-id"]
       ?? headers["X-Correlation-ID"]
       ?? headers["x-request-id"]
       ?? headers["X-Request-ID"];
-
-    if (correlationId) {
-      correlationContext.set(`correlation_${correlationId}`, correlationId);
-    }
-
-    return correlationId;
   }
 
-  // ============================================================
-  // Utilitaires
-  // ============================================================
+  /**
+   * Generate random ID (16 chars)
+   */
   private generateId(): string {
     return randomUUID().replace(/-/g, "").slice(0, 16);
-  }
-
-  // ============================================================
-  // Nettoyer tous les contextes
-  // ============================================================
-  cleanup(): void {
-    correlationContext.clear();
-    requestStore.clear();
   }
 }
 
 export const correlationManager = new CorrelationManager();
 
-// ============================================================
-// Middleware helper — wrapper pour Next.js
-// ============================================================
+/**
+ * Run an async function with correlation tracking
+ * Useful for Next.js API routes, server actions, etc.
+ */
 export function withCorrelation<T>(
   service: string,
   fn: () => Promise<T>,
-  parentId?: string
+  parentId?: string,
 ): Promise<T> {
-  const correlationId = correlationManager.start({ service, parentId });
-  const spanId = correlationManager.startSpan(service);
+  return correlationStorage.run(
+    {
+      correlationId: randomUUID().slice(0, 16),
+      parentId: parentId ?? null,
+      service,
+      startTime: Date.now(),
+      spans: [],
+    },
+    async () => {
+      const spanId = correlationManager.startSpan(service);
 
-  return fn()
-    .then((result) => {
-      correlationManager.endSpan(spanId, "ok");
-      correlationManager.end();
-      return result;
-    })
-    .catch((error) => {
-      correlationManager.endSpan(spanId, "error", { error: String(error) });
-      correlationManager.markError(error);
-      correlationManager.end();
-      throw error;
-    });
+      try {
+        const result = await fn();
+        correlationManager.endSpan(spanId, "ok");
+        correlationManager.end();
+        return result;
+      } catch (error) {
+        correlationManager.endSpan(spanId, "error", { error: String(error) });
+        correlationManager.markError(error instanceof Error ? error : String(error));
+        correlationManager.end();
+        throw error;
+      }
+    },
+  );
 }

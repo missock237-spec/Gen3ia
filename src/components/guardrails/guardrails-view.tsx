@@ -49,7 +49,11 @@ export function GuardrailsView() {
   }, []);
 
   useEffect(() => {
-    loadGuardrails();
+    let _cancelled = false;
+    (async () => {
+      if (!_cancelled) { try { await loadGuardrails(); } catch {} }
+    })();
+    return () => { _cancelled = true; };
   }, [loadGuardrails]);
 
   const handleToggle = async (id: string) => {

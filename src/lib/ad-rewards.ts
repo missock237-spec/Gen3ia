@@ -1,8 +1,16 @@
 /**
- * Système de récompenses crédit pour les publicités
- * - Anti-abuse : rate limiting, cooldowns, limites journalières
- * - Persistance : localStorage + API sync
- * - Protection : pas de double comptage, validation côté serveur
+ * Système de récompenses crédit pour les publicités (CLIENT-SIDE CACHE)
+ *
+ * ⚠️ AVERTISSEMENT : Ce module est un cache d'affichage côté client.
+ * Toute la logique anti-abuse est côté SERVEUR dans src/lib/advertising/anti-abuse.ts
+ * (cooldown, limites horaire/journalière, détection de doublons, click fraud).
+ *
+ * Ce fichier ne sert qu'à :
+ * - Afficher le solde de crédits localement (UX)
+ * - Sync avec le serveur via /api/analytics/ad-event
+ *
+ * NE JAMAIS faire confiance au localStorage pour la sécurité.
+ * Le serveur valide et crédite les récompenses de façon atomique.
  */
 
 interface RewardEntry {

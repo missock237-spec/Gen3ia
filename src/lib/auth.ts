@@ -1,49 +1,119 @@
+import { randomBytes } from 'node:crypto';
 // ============================================================
-// AUTH — Hachage et vérification des mots de passe
-// Utilise argon2id (recommandé OWASP 2026)
+// Gen3ia — Auth shim (compatibilité)
+// ============================================================
+//  Préserve l'API historique :
+//    - import { hashPassword, verifyPassword } from '@/lib/auth'
+//    - import { getServerSession } from '@/lib/auth'
+//    - import { verifyAccessToken } from '@/lib/auth'
+//    - import { createAuditLog, generateResetToken } from '@/lib/auth'
+//
+//  Backend : Firebase Authentication (server-side) via Admin SDK.
+//
+//  hashPassword/verifyPassword ne sont plus utilisés : Firebase Auth
+//  gère le hachage (scrypt configurable). On expose des no-ops /
+//  helpers qui lèvent une erreur explicite si appelés directement.
 // ============================================================
 
-import * as argon2 from "argon2";
+export {
+  getServerSession,
+  getCurrentUser,
+  verifyIdToken,
+  verifyAccessToken,
+  createSessionCookie,
+  setSessionCookie,
+  clearSessionCookie,
+  getSessionCookie,
+  createUser,
+  getUserByUid,
+  getUserByEmail,
+  updateUser,
+  setUserRole,
+  deleteUser,
+  revokeAllSessions,
+  sendPasswordResetEmail,
+  sendEmailVerificationLink,
+  validatePasswordStrength,
+  createAuditLog,
+  SESSION_COOKIE_NAME,
+  SESSION_COOKIE_MAX_AGE,
+  type Gen3iaUser,
+  type ServerSession,
+  type AccessTokenPayload,
+} from '@/lib/firebase/auth';
 
-const ARGON2_OPTIONS: argon2.Options & { raw?: false } = {
-  type: argon2.argon2id,
-  memoryCost: 65536,      // 64 MB
-  timeCost: 3,            // 3 itérations
-  parallelism: 4,         // 4 threads
-  hashLength: 32,
-  saltLength: 16,
-};
+import { getServerSession as getServerSessionImpl } from '@/lib/firebase/auth';
 
-export async function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, ARGON2_OPTIONS);
+// ============================================================
+// Legacy helpers — dépréciés (Firebase Auth gère en interne)
+// ============================================================
+
+/**
+ * @deprecated Firebase Auth gère le hachage des mots de passe (scrypt).
+ * Cette fonction n'a plus d'effet. Conservée uniquement pour compat
+ * avec d'éventuels imports résiduels.
+ */
+export async function hashPassword(_password: string): Promise<string> {
+  throw new Error(
+    '[auth] hashPassword() est déprécié — Firebase Auth gère le hachage côté serveur. ' +
+    'Utilisez createUser() ou signInWithEmailAndPassword côté client.',
+  );
 }
 
-export async function verifyPassword(hash: string, password: string): Promise<boolean> {
-  try {
-    return await argon2.verify(hash, password, ARGON2_OPTIONS);
-  } catch {
-    return false;
-  }
+/**
+ * @deprecated Firebase Auth gère la vérification côté serveur.
+ */
+export async function verifyPassword(_hash: string, _password: string): Promise<boolean> {
+  throw new Error(
+    '[auth] verifyPassword() est déprécié — Firebase Auth vérifie le mot de passe via signInWithEmailAndPassword.',
+  );
 }
 
-export function validatePasswordStrength(password: string): { valid: boolean; reasons: string[] } {
-  const reasons: string[] = [];
+/**
+ * Génère un token aléatoire (utilisé pour des identifiants non-Firebase,
+ * ex: tokens d'invitation, tokens API). Conservé car non spécifique à l'auth.
+ */
+export function generateSessionToken(): string {
+  return randomBytes(48).toString('hex');
+}
 
-  if (password.length < 12) {
-    reasons.push("Le mot de passe doit contenir au moins 12 caractères");
-  }
-  if (!/[A-Z]/.test(password)) {
-    reasons.push("Le mot de passe doit contenir au moins une majuscule");
-  }
-  if (!/[a-z]/.test(password)) {
-    reasons.push("Le mot de passe doit contenir au moins une minuscule");
-  }
-  if (!/[0-9]/.test(password)) {
-    reasons.push("Le mot de passe doit contenir au moins un chiffre");
-  }
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-    reasons.push("Le mot de passe doit contenir au moins un caractère spécial");
-  }
+export function generateResetToken(): string {
+  return randomBytes(32).toString('hex');
+}
 
-  return { valid: reasons.length === 0, reasons };
+export async function hashToken(token: string): Promise<string> {
+  const crypto = await import('node:crypto');
+  const salt = crypto.randomBytes(16);
+  return new Promise((resolve, reject) => {
+    crypto.pbkdf2(token, salt, 100_000, 32, 'sha256', (err, derivedKey) => {
+      if (err) return reject(err);
+      resolve(`pbkdf2:sha256:${salt.toString('hex')}:${derivedKey.toString('hex')}`);
+    });
+  });
+}
+
+// ============================================================
+// Route helpers — wrappers for API route authentication
+// ============================================================
+
+/**
+ * Returns the current server session (compat with next-auth style).
+ */
+export async function auth() {
+  return getServerSessionImpl();
+}
+
+/**
+ * Wraps an API route handler with authentication.
+ * Passes the session/user info to the callback.
+ */
+export async function withAuth<T = unknown>(
+  request: Request,
+  handler: (session: { userId: string; user?: { id: string; email?: string; role?: string } }) => Promise<T>
+): Promise<T> {
+  const session = await getServerSessionImpl();
+  if (!session?.user?.id) {
+    throw new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+  return handler({ userId: session.user.id, user: session.user });
 }
