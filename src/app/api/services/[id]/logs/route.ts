@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceManager } from '@/lib/service-manager';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 interface RouteContext {
   params: Promise<{ id: string }>;
 }

@@ -1,0 +1,64 @@
+# ============================================================
+# Gen3ia — Docker Compose pour le developpement local
+# Services : Redis + Qdrant (vecteurs)
+# La base de donnees applicative est Firestore (Firebase).
+# ============================================================
+# Usage : docker compose -f docker-compose.dev.yml up -d
+#         docker compose -f docker-compose.dev.yml down
+# ============================================================
+
+services:
+  # === Redis 7 (Cache + BullMQ + Rate Limiting) ===
+  redis:
+    image: redis:7-alpine
+    container_name: gen3ia-dev-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # === Qdrant (Base vectorielle pour la memoire semantique) ===
+  qdrant:
+    image: qdrant/qdrant:v1.13.5
+    container_name: gen3ia-dev-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_dev_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_dev_data:
+    driver: local
+  qdrant_dev_data:
+    driver: local
+
+# ============================================================
+# Fichier .env.local attendu :
+#
+# REDIS_URL=redis://localhost:6379
+# QDRANT_URL=http://localhost:6333
+# AUTH_SECRET=dev-secret-key-32-caracteres-minimum!!
+# FIREBASE_PROJECT_ID=...
+# FIREBASE_CLIENT_EMAIL=...
+# FIREBASE_PRIVATE_KEY=...
+# NEXT_PUBLIC_APP_URL=http://localhost:3000
+#
+# ============================================================
