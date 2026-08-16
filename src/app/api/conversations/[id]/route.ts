@@ -1,30 +1,49 @@
+// GET/DELETE /api/conversations/[id]
+// SECURITE: withAuth() + ownership (ne permet l'acces qu'a la conversation de l'utilisateur)
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { applySecurity, verifyOwnership, secureResponse } from '@/lib/security';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+
+
+
+
+export const dynamic = "force-dynamic";
+export const GET = withAuth(async (r: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
-    const { auth, error } = await applySecurity(request, { requireAuth: true });
-    if (error || !auth) return error || NextResponse.json({ error: 'Auth required' }, { status: 401 });
+    const params = ctx.params ? await ctx.params : {};
+    const id = typeof params['id'] === 'string' ? params['id'] : '';
+    if (!id) return NextResponse.json({ error: 'Conversation id manquant' }, { status: 400 });
 
-    const { id } = await params;
-    const conversation = await db.conversation.findUnique({
-      where: { id },
+    // SECURITY: ownership — la conversation doit appartenir a auth.userId
+    const conv = await db.conversation.findFirst({
+      where: { id, userId: auth.userId },
       include: { messages: { orderBy: { createdAt: 'asc' } } },
     });
+    if (!conv) return NextResponse.json({ error: 'Conversation non trouvée' }, { status: 404 });
+    return NextResponse.json(conv);
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 60, windowMs: 60000 },
+});
 
-    if (!conversation) {
-      return secureResponse(NextResponse.json({ error: 'Conversation non trouvée' }, { status: 404 }), request);
-    }
+export const DELETE = withAuth(async (r: NextRequest, ctx: { params?: RouteParams }, auth) => {
+  try {
+    const params = ctx.params ? await ctx.params : {};
+    const id = typeof params['id'] === 'string' ? params['id'] : '';
+    if (!id) return NextResponse.json({ error: 'Conversation id manquant' }, { status: 400 });
 
-    const ownershipError = verifyOwnership(auth.userId, conversation.userId, 'Conversation');
-    if (ownershipError) return ownershipError;
+    // SECURITY: ownership avant suppression
+    const conv = await db.conversation.findFirst({ where: { id, userId: auth.userId }, select: { id: true } });
+    if (!conv) return NextResponse.json({ error: 'Conversation non trouvée' }, { status: 404 });
 
-    return secureResponse(NextResponse.json(conversation), request);
-  } catch {
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
-  }
-}
+    await db.conversation.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 20, windowMs: 60000 },
+});

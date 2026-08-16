@@ -4,12 +4,13 @@
  * Re-exports all billing modules for convenient imports.
  */
 
-// Stripe Integration
+// SebPay Integration (remplace Stripe)
 export {
   createCheckoutSession,
-  createPortalSession,
+  getPaymentStatus,
   handleWebhook,
   getSubscription,
+  SUBSCRIPTION_PLANS,
   type CheckoutSessionInput,
   type PortalSessionInput,
   type SubscriptionInfo,
