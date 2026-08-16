@@ -1,0 +1,128 @@
+{
+  "title": "Gen3ia - Vue d'ensemble",
+  "uid": "gen3ia-overview",
+  "version": 1,
+  "tags": ["gen3ia", "production"],
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "title": "Etat du service",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "up{job=\"gen3ia\"}",
+        "legendFormat": "API"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Agents actifs",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "targets": [{
+        "expr": "gen3ia_active_agents_total",
+        "legendFormat": "Agents"
+      }]
+    },
+    {
+      "title": "Executions totales",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "targets": [{
+        "expr": "gen3ia_executions_total",
+        "legendFormat": "Executions"
+      }]
+    },
+    {
+      "title": "Uptime",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "targets": [{
+        "expr": "gen3ia_uptime_seconds",
+        "legendFormat": "Uptime"
+      }]
+    },
+    {
+      "title": "Requetes API / min",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 4 },
+      "targets": [{
+        "expr": "rate(gen3ia_requests_total[1m])",
+        "legendFormat": "req/m"
+      }]
+    },
+    {
+      "title": "Utilisateurs actifs",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 4 },
+      "targets": [{
+        "expr": "gen3ia_users_total",
+        "legendFormat": "Utilisateurs"
+      }]
+    },
+    {
+      "title": "Memoire systeme",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "100 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100)",
+        "legendFormat": "RAM %"
+      }]
+    },
+    {
+      "title": "CPU systeme",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 12 },
+      "targets": [{
+        "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)",
+        "legendFormat": "CPU %"
+      }]
+    },
+    {
+      "title": "Espace disque",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 12 },
+      "targets": [{
+        "expr": "100 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"} * 100)",
+        "legendFormat": "Disque %"
+      }]
+    },
+    {
+      "title": "Conteneurs Docker",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 18 },
+      "targets": [{
+        "expr": "count(container_last_seen)",
+        "legendFormat": "Conteneurs"
+      }]
+    },
+    {
+      "title": "Credits consomes",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 18 },
+      "targets": [{
+        "expr": "gen3ia_credits_used_total",
+        "legendFormat": "Credits"
+      }]
+    },
+    {
+      "title": "Sessions terminal",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 18 },
+      "targets": [{
+        "expr": "gen3ia_terminal_sessions_total",
+        "legendFormat": "Sessions"
+      }]
+    }
+  ]
+}
