@@ -79,3 +79,6 @@ export async function getSecret(userId: string, service: string): Promise<string
   const vault = SecretVault.getInstance();
   return vault.getSecret(userId, service);
 }
+
+// Key Rotation
+export { rotateMasterKey, verifyKey, getSecretRotationChecklist, generateNewMasterKey, keyFingerprint, type RotationReport } from './key-rotation';

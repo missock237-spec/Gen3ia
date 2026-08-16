@@ -1,334 +1,195 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuthStore, useAppStore } from '@/lib/store';
-import { apiFetch } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { StatCard } from '@/components/shared/stat-card';
-import { ActivityFeed } from '@/components/shared/activity-feed';
+import { useAuthStore } from '@/lib/store';
 import {
-  Bot,
-  Play,
-  Workflow,
-  ShieldCheck,
-  Plus,
-  Wand2,
-  GitBranch,
-  Activity,
-  Megaphone,
-  MessageCircle,
-  Clock,
-  Monitor,
-  Server,
-  Settings,
-  CheckCircle2,
+  Bot, Activity, Users, Zap, TrendingUp, Clock, AlertCircle,
+  Wallet, CheckCircle, XCircle, Loader2
 } from 'lucide-react';
 
 interface DashboardStats {
-  activeAgents: number;
-  runningTasks: number;
-  todayValidations: number;
-  activeWorkflows: number;
-  totalAgents: number;
+  agentCount: number;
+  activeSessions: number;
   totalTasks: number;
-  totalWorkflows: number;
-  totalGuardrails: number;
-  socialAccounts: number;
-  pendingApprovals: number;
-  browserSessions: number;
-  whatsappActive: boolean;
-  whatsappAutoMessage: boolean;
-  whatsappAutoCall: boolean;
-  totalResources: number;
-  recentActivities: Array<{
-    id: string;
-    action: string;
-    details: string;
-    category: string;
-    createdAt: string;
-  }>;
-  tasksByStatus: Array<{ status: string; _count: { status: number } }>;
-  socialAccountsByPlatform: Array<{ platform: string; _count: { platform: number } }>;
-  resourcesByType: Array<{ type: string; _count: { type: number } }>;
-  recentApprovals: Array<{
-    id: string;
-    agentId: string;
-    action: string;
-    details: string;
-    status: string;
-    createdAt: string;
-  }>;
+  successRate: number;
+  creditsUsed: number;
+  creditsRemaining: number;
+  recentActivity: { action: string; createdAt: string }[];
 }
 
 export function DashboardView() {
   const { user } = useAuthStore();
-  const { setCurrentView } = useAppStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadStats();
-  }, [user?.id]);
+  const fetchStats = async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
 
-  const loadStats = async () => {
     try {
-      const data = await apiFetch<DashboardStats>('/api/dashboard/stats');
-      setStats(data);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
+      const res = await fetch('/api/dashboard');
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      } else {
+        setStats({
+          agentCount: 0,
+          activeSessions: 0,
+          totalTasks: 0,
+          successRate: 0,
+          creditsUsed: 0,
+          creditsRemaining: 0,
+          recentActivity: [],
+        });
+      }
+    } catch {
+      setStats({
+        agentCount: 0,
+        activeSessions: 0,
+        totalTasks: 0,
+        successRate: 0,
+        creditsUsed: 0,
+        creditsRemaining: 0,
+        recentActivity: [],
+      });
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6">
-                <div className="h-16 bg-muted rounded" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    // Wrap in async IIFE so setState inside fetchStats is deferred (not synchronous).
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) try { await fetchStats(); } catch {}
+    })();
+    // Rafraîchissement automatique toutes les 30s
+    const interval = setInterval(() => { void fetchStats(true); }, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  const cards = [
+    { label: 'Agents', value: stats?.agentCount ?? 0, icon: Bot, color: 'text-blue-500' },
+    { label: 'Sessions actives', value: stats?.activeSessions ?? 0, icon: Activity, color: 'text-green-500' },
+    { label: 'Tâches totales', value: stats?.totalTasks ?? 0, icon: Zap, color: 'text-yellow-500' },
+    { label: 'Taux de succès', value: `${stats?.successRate ?? 0}%`, icon: TrendingUp, color: 'text-purple-500' },
+    { label: 'Crédits utilisés', value: stats?.creditsUsed ?? 0, icon: Wallet, color: 'text-orange-500' },
+    { label: 'Crédits restants', value: stats?.creditsRemaining ?? 0, icon: CheckCircle, color: 'text-emerald-500' },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards - Row 1 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Agents actifs"
-          value={stats?.activeAgents || 0}
-          icon={Bot}
-          description={`${stats?.totalAgents || 0} agents au total`}
-          trend={stats?.activeAgents ? `${Math.round(((stats.activeAgents) / Math.max(stats.totalAgents, 1)) * 100)}% actifs` : undefined}
-        />
-        <StatCard
-          title="Tâches en cours"
-          value={stats?.runningTasks || 0}
-          icon={Play}
-          description={`${stats?.totalTasks || 0} tâches au total`}
-          className={stats?.runningTasks ? 'border-primary/30' : ''}
-        />
-        <StatCard
-          title="Réseaux sociaux"
-          value={stats?.socialAccounts || 0}
-          icon={Megaphone}
-          description={stats?.whatsappActive ? 'WhatsApp actif' : 'WhatsApp inactif'}
-        />
-        <StatCard
-          title="Approbations"
-          value={stats?.pendingApprovals || 0}
-          icon={Clock}
-          description="En attente"
-          className={stats?.pendingApprovals ? 'border-amber-500/30' : ''}
-        />
+      {/* En-tête */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Bienvenue, {user?.name || 'Utilisateur'}
+          </p>
+        </div>
+        <button
+          onClick={() => fetchStats(true)}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card hover:bg-accent text-sm transition-colors disabled:opacity-50"
+        >
+          <Loader2 className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Actualiser
+        </button>
       </div>
 
-      {/* Stats Cards - Row 2 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatCard
-          title="Navigateurs actifs"
-          value={stats?.browserSessions || 0}
-          icon={Monitor}
-          description="Sessions navigateur"
-        />
-        <StatCard
-          title="Ressources"
-          value={stats?.totalResources || 0}
-          icon={Server}
-          description="Ressources configurées"
-        />
-        <StatCard
-          title="Validations aujourd'hui"
-          value={stats?.todayValidations || 0}
-          icon={ShieldCheck}
-        />
-      </div>
+      {/* Cartes statistiques */}
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="h-28 bg-card rounded-xl border border-border animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {cards.map((card) => (
+            <div
+              key={card.label}
+              className="bg-card rounded-xl border border-border p-5 hover:shadow-md hover:border-primary/20 transition-all"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <card.icon className={`h-5 w-5 ${card.color}`} />
+              </div>
+              <p className="text-2xl font-bold">{card.value}</p>
+              <p className="text-sm text-muted-foreground">{card.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* Quick Actions + Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Quick Actions */}
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Actions rapides</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button
-              className="w-full justify-start gap-3"
-              variant="outline"
-              onClick={() => setCurrentView('agents')}
-            >
-              <Plus className="h-4 w-4 text-primary" />
-              Créer un agent
-            </Button>
-            <Button
-              className="w-full justify-start gap-3"
-              variant="outline"
-              onClick={() => setCurrentView('coordination')}
-            >
-              <GitBranch className="h-4 w-4 text-primary" />
-              Nouveau workflow
-            </Button>
-            <Button
-              className="w-full justify-start gap-3"
-              variant="outline"
-              onClick={() => setCurrentView('automation')}
-            >
-              <Wand2 className="h-4 w-4 text-primary" />
-              Lancer une commande
-            </Button>
-            <Button
-              className="w-full justify-start gap-3"
-              variant="outline"
-              onClick={() => setCurrentView('settings')}
-            >
-              <Settings className="h-4 w-4 text-primary" />
-              Configurer les réseaux
-            </Button>
-            {stats && stats.pendingApprovals > 0 && (
-              <Button
-                className="w-full justify-start gap-3"
-                variant="outline"
-                onClick={() => setCurrentView('approvals')}
-              >
-                <CheckCircle2 className="h-4 w-4 text-amber-500" />
-                Approuver les demandes
-                <span className="ml-auto bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded text-xs">
-                  {stats.pendingApprovals}
-                </span>
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Activity */}
-        <Card className="lg:col-span-2 border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" />
-              Activité récente
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ActivityFeed activities={stats?.recentActivities || []} />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Bottom Row: Tasks + Social + Resources */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Tasks by Status */}
-        {stats?.tasksByStatus && stats.tasksByStatus.length > 0 && (
-          <Card className="border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Répartition des tâches</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                {['pending', 'running', 'completed', 'failed', 'validated'].map((status) => {
-                  const found = stats.tasksByStatus.find((t) => t.status === status);
-                  const count = found?._count.status || 0;
-                  const labels: Record<string, string> = {
-                    pending: 'En attente',
-                    running: 'En cours',
-                    completed: 'Terminées',
-                    failed: 'Échouées',
-                    validated: 'Validées',
-                  };
-                  const colors: Record<string, string> = {
-                    pending: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
-                    running: 'bg-primary/10 text-primary border-primary/20',
-                    completed: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-                    failed: 'bg-red-500/10 text-red-600 border-red-500/20',
-                    validated: 'bg-teal-500/10 text-teal-600 border-teal-500/20',
-                  };
-                  return (
-                    <div
-                      key={status}
-                      className={`p-3 rounded-lg border text-center ${colors[status]}`}
-                    >
-                      <p className="text-2xl font-bold">{count}</p>
-                      <p className="text-xs mt-1">{labels[status]}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Social + WhatsApp + Resources overview */}
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Megaphone className="h-4 w-4 text-primary" />
-              Aperçu des connexions
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Social accounts */}
-            <div>
-              <p className="text-xs text-muted-foreground mb-2">Réseaux sociaux</p>
-              <div className="flex gap-2 flex-wrap">
-                {stats?.socialAccountsByPlatform && stats.socialAccountsByPlatform.length > 0 ? (
-                  stats.socialAccountsByPlatform.map((item) => (
-                    <div key={item.platform} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50">
-                      <Megaphone className="h-3 w-3 text-pink-500" />
-                      <span className="text-xs capitalize">{item.platform}</span>
-                      <span className="text-xs text-muted-foreground">({item._count.platform})</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground">Aucun compte connecté</p>
-                )}
-              </div>
+        {/* Activité récente */}
+        <div className="lg:col-span-2 bg-card rounded-xl border border-border p-5">
+          <h2 className="font-semibold mb-4 flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Activité récente
+          </h2>
+          {stats?.recentActivity && stats.recentActivity.length > 0 ? (
+            <div className="space-y-3">
+              {stats.recentActivity.slice(0, 8).map((act, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm p-2 rounded-lg hover:bg-accent/50 transition-colors">
+                  <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                  <span className="flex-1">{act.action}</span>
+                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                    {new Date(act.createdAt).toLocaleDateString('fr-FR', {
+                      day: 'numeric',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+              ))}
             </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <Activity className="h-8 w-8 mb-2 opacity-50" />
+              <p className="text-sm">Aucune activité récente</p>
+            </div>
+          )}
+        </div>
 
-            {/* WhatsApp */}
-            <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
-              <div className="flex items-center gap-2">
-                <MessageCircle className={`h-4 w-4 ${stats?.whatsappActive ? 'text-green-500' : 'text-muted-foreground'}`} />
-                <span className="text-xs">WhatsApp</span>
+        {/* Informations système */}
+        <div className="bg-card rounded-xl border border-border p-5">
+          <h2 className="font-semibold mb-4 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            Système
+          </h2>
+          <div className="space-y-4">
+            {[
+              { label: 'Version', value: '1.0.0' },
+              { label: 'Plan', value: user?.plan || 'free', capitalize: true },
+              { label: 'Rôle', value: (user as { role?: string })?.role || 'user', capitalize: true },
+            ].map((item) => (
+              <div key={item.label} className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">{item.label}</span>
+                <span className={`text-sm font-medium ${item.capitalize ? 'capitalize' : ''}`}>
+                  {item.value}
+                </span>
               </div>
-              <div className="flex items-center gap-2">
-                {stats?.whatsappAutoMessage && (
-                  <span className="text-[10px] text-muted-foreground">Messages</span>
-                )}
-                {stats?.whatsappAutoCall && (
-                  <span className="text-[10px] text-muted-foreground">Appels</span>
-                )}
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${stats?.whatsappActive ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
-                  {stats?.whatsappActive ? 'Actif' : 'Inactif'}
+            ))}
+            <div className="pt-3 border-t border-border">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Statut</span>
+                <span className="flex items-center gap-1.5 text-sm">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-green-500 font-medium">En ligne</span>
                 </span>
               </div>
             </div>
-
-            {/* Resources */}
-            <div>
-              <p className="text-xs text-muted-foreground mb-2">Ressources</p>
-              <div className="flex gap-2 flex-wrap">
-                {stats?.resourcesByType && stats.resourcesByType.length > 0 ? (
-                  stats.resourcesByType.map((item) => (
-                    <div key={item.type} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50">
-                      <Server className="h-3 w-3 text-emerald-500" />
-                      <span className="text-xs capitalize">{item.type}</span>
-                      <span className="text-xs text-muted-foreground">({item._count.type})</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground">Aucune ressource configurée</p>
-                )}
+            <div className="pt-3 border-t border-border">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">{user?.email}</span>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

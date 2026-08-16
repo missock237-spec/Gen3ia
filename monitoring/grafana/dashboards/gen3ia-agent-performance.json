@@ -1,0 +1,93 @@
+{
+  "title": "Gen3ia - Performance des Agents",
+  "uid": "gen3ia-agent-performance",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["gen3ia", "agents", "performance"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "panels": [
+    {
+      "title": "Exécutions totales",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "targets": [{ "expr": "gen3ia_executions_total", "legendFormat": "Total" }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      }
+    },
+    {
+      "title": "Agents actifs",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "targets": [{ "expr": "gen3ia_active_agents_total", "legendFormat": "Actifs" }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      }
+    },
+    {
+      "title": "Exécutions échouées (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "targets": [{ "expr": "gen3ia_failed_executions_total", "legendFormat": "Échecs" }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Temps moyen d'exécution",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "targets": [{ "expr": "gen3ia_avg_execution_time_ms", "legendFormat": "ms" }],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "title": "Exécutions par statut",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 4 },
+      "targets": [{ "expr": "gen3ia_executions_by_status", "legendFormat": "{{status}}" }],
+      "options": {
+        "pieType": "pie",
+        "legend": { "displayMode": "table", "placement": "right" },
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Crédits consommés (cumul)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 4 },
+      "targets": [{ "expr": "gen3ia_credits_used_total", "legendFormat": "Crédits" }]
+    },
+    {
+      "title": "Crédits par plan",
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 12 },
+      "targets": [{ "expr": "gen3ia_credits_by_plan", "legendFormat": "{{plan}}" }]
+    },
+    {
+      "title": "Exécutions par heure",
+      "type": "graph",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 12 },
+      "targets": [{
+        "expr": "rate(gen3ia_executions_total[1h])",
+        "legendFormat": "exec/h"
+      }]
+    }
+  ]
+}
