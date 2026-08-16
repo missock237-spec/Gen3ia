@@ -1,0 +1,15 @@
+{
+  "title": "Genova — Crédits & paniers",
+  "uid": "genova-credits",
+  "schemaVersion": 39,
+  "timezone": "utc",
+  "panels": [
+    { "id": 1, "type": "stat", "title": "Packs vendus",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(genova_credit_packs_sold_total)", "legendFormat": "packs" }],
+      "options": { "colorMode": "value", "graphMode": "area" } },
+    { "id": 2, "type": "stat", "title": "Échecs paiement",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "sum(rate(genova_payment_fail_total[5m]))", "legendFormat": "échecs" }] }
+  ]
+}

@@ -1,93 +1,45 @@
-/**
- * GENOVA AI OS — GET /api/auth/me
- * Returns current authenticated user data.
- * Uses getCurrentSession() for cookie-based auth.
- */
+// ============================================================
+// GET /api/auth/me — Retourne l'utilisateur courant (Firebase)
+// ============================================================
 
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { getCurrentSession, extractToken, validateSession } from '@/lib/session';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+import { getServerSession } from '@/lib/firebase/auth';
+import { db } from '@/lib/firebase/firestore';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
   try {
-    // Try cookie-based session first
-    const session = await getCurrentSession();
-
-    if (session) {
-      const user = await db.user.findUnique({
-        where: { id: session.userId },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          plan: true,
-          avatar: true,
-          role: true,
-          isEmailVerified: true,
-          isActive: true,
-          createdAt: true,
-        },
-      });
-
-      if (!user) {
-        return NextResponse.json({ error: 'User not found' }, { status: 404 });
-      }
-
-      return NextResponse.json({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        plan: user.plan,
-        avatar: user.avatar,
-        role: user.role || 'user',
-        emailVerified: user.isEmailVerified,
-        isEmailVerified: user.isEmailVerified,
-        isActive: user.isActive,
-      });
+    const session = await getServerSession();
+    if (!session) {
+      return NextResponse.json({ user: null }, { status: 200 });
     }
 
-    // Fallback: check Authorization header / cookie token manually
-    const token = extractToken(request);
-    if (!token) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const userId = await validateSession(token);
-    if (!userId) {
-      return NextResponse.json({ error: 'Invalid or expired session' }, { status: 401 });
-    }
-
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        plan: true,
-        avatar: true,
-        role: true,
-        isEmailVerified: true,
-        isActive: true,
-        createdAt: true,
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
+    // Récupère le profil étendu depuis Firestore
+    const profile = await db.user.findUnique({ where: { id: session.user.id } });
 
     return NextResponse.json({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      plan: user.plan,
-      avatar: user.avatar,
-      role: user.role || 'user',
-      emailVerified: user.isEmailVerified,
-      isEmailVerified: user.isEmailVerified,
-      isActive: user.isActive,
+      user: {
+        id: session.user.id,
+        uid: session.user.uid,
+        email: session.user.email,
+        name: session.user.name,
+        picture: session.user.picture,
+        emailVerified: session.user.emailVerified,
+        role: session.user.role,
+        plan: (profile as Record<string, unknown>)?.plan || 'free',
+        credits: (profile as Record<string, unknown>)?.credits || 0,
+        isActive: (profile as Record<string, unknown>)?.isActive ?? true,
+        isCreator: (profile as Record<string, unknown>)?.isCreator ?? false,
+      },
     });
-  } catch {
-    return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 });
+  } catch (error) {
+    console.error('[auth/me] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erreur' },
+      { status: 500 },
+    );
   }
 }

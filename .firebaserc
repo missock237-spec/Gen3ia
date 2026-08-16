@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "gen3ia-prod",
+    "staging": "gen3ia-staging"
+  },
+  "targets": {
+    "gen3ia-prod": {
+      "hosting": { "main": ["main"] },
+      "storage": { "main": ["gen3ia.appspot.com"] },
+      "firestore": { "main": ["(default)"] }
+    },
+    "gen3ia-staging": {
+      "hosting": { "main": ["staging"] },
+      "storage": { "main": ["gen3ia-staging.appspot.com"] },
+      "firestore": { "main": ["(default)"] }
+    }
+  }
+}

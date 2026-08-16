@@ -449,7 +449,7 @@ async function generateAPIRoutes(
   return routes;
 }
 
-function generateAPIRouteCode(slug: string, projectName: string, analysis: CodeAnalysisResult): string {
+function generateAPIRouteCode(slug: string, projectName: string, _analysis: CodeAnalysisResult): string {
   return `/**
  * GET /api/integrations/${slug} — ${projectName} Integration Status
  * POST /api/integrations/${slug} — Manage ${projectName} Integration
