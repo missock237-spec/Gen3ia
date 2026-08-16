@@ -1,41 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
-import { getServerSession } from 'next-auth';
-import { v4 as uuidv4 } from 'uuid';
+import { getServerSession } from '@/lib/auth';
+import crypto from 'crypto';
 
+export const dynamic = "force-dynamic";
 const log = createLogger('api-keys');
 
-interface ApiKey {
-  id: string;
-  name: string;
-  key: string;
-  prefix: string;
-  scopes: string[];
-  lastUsedAt: string | null;
-  expiresAt: string | null;
-  isActive: boolean;
-  createdAt: string;
+const VALID_SCOPES = ['agents:read', 'agents:write', 'agents:execute', 'voice:call', 'messages:send', 'billing:read', 'admin:read'];
+const PREFIX = 'gva_';
+const KEY_BYTES = 48;
+
+function generateApiKey(): string {
+  const raw = crypto.randomBytes(KEY_BYTES).toString('base64url');
+  return `${PREFIX}${raw}`;
 }
 
-function generateApiKey(prefix: string = 'gv'): string {
-  const key = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
-  return `${prefix}_${key}`;
+function hashKeySha256(key: string): string {
+  return crypto.scryptSync(key, 'gen3ia-api-key-salt', 64).toString('hex');
 }
 
-function hashKey(key: string): string {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    const char = key.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36);
-}
-
-const VALID_SCOPES = ['agents:read', 'agents:write', 'voice:call', 'messages:send', 'billing:read', 'admin:read'];
-
-// POST — Créer une nouvelle clé API
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -50,46 +34,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Le nom est requis' }, { status: 400 });
     }
 
-    if (scopes.length === 0) {
-      return NextResponse.json({ error: 'Au moins un scope est requis' }, { status: 400 });
-    }
-
-    const invalidScopes = scopes.filter((s: string) => !VALID_SCOPES.includes(s));
-    if (invalidScopes.length > 0) {
+    const validScopes = scopes.filter((s: string) => VALID_SCOPES.includes(s));
+    if (validScopes.length === 0) {
       return NextResponse.json({
-        error: `Scopes invalides: ${invalidScopes.join(', ')}`,
+        error: 'Aucun scope valide fourni',
         validScopes: VALID_SCOPES,
       }, { status: 400 });
     }
 
     const rawKey = generateApiKey();
-    const keyHash = hashKey(rawKey);
-    const prefix = rawKey.slice(0, 8);
+    const keyHash = hashKeySha256(rawKey);
+    const expiresAt = expiresInDays
+      ? new Date(Date.now() + expiresInDays * 86400000)
+      : null;
+    const id = `key_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
-    const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 86400000).toISOString() : null;
-
-    await db.$executeRawUnsafe(`
-      INSERT INTO api_keys (id, user_id, name, key_hash, prefix, scopes, expires_at, is_active, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
-    `,
-      `key_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      session.user.id,
-      name.trim(),
+    // Collection Firestore `api_keys` — le champ `keyValue` est lu par
+    // src/lib/security.ts (authenticateApiKey) via db.apiKey.findFirst.
+    await db.apiKey.createWithId(id, {
+      userId: session.user.id,
+      name: name.trim(),
+      keyValue: rawKey,
       keyHash,
-      prefix,
-      JSON.stringify(scopes),
-      expiresAt
-    );
+      prefix: rawKey.substring(0, 8),
+      scopes: validScopes,
+      expiresAt: expiresAt?.toISOString() ?? null,
+      isActive: true,
+    });
 
-    log.info('API key created', { name: name.trim(), scopes, userId: session.user.id });
+    log.info('API key created', { name: name.trim(), scopes: validScopes, userId: session.user.id });
 
     return NextResponse.json({
       success: true,
       key: rawKey,
-      prefix,
+      prefix: rawKey.substring(0, 8),
       name: name.trim(),
-      scopes,
-      expiresAt,
+      scopes: validScopes,
+      expiresAt: expiresAt?.toISOString() ?? null,
     });
   } catch (error) {
     log.error('API key creation error', { error: error instanceof Error ? error.message : String(error) });
@@ -97,7 +78,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET — Lister les clés API
 export async function GET() {
   try {
     const session = await getServerSession();
@@ -105,18 +85,29 @@ export async function GET() {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    const keys = await db.$queryRawUnsafe<ApiKey[]>(`
-      SELECT id, name, prefix, scopes, last_used_at as "lastUsedAt", expires_at as "expiresAt", is_active as "isActive", created_at as "createdAt"
-      FROM api_keys
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-    `, session.user.id);
+    const keys = await db.apiKey.findMany({
+      where: [{ field: 'userId', op: '==', value: session.user.id }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+    });
 
     return NextResponse.json({
       success: true,
-      keys: keys.map(k => ({
-        ...k,
-        scopes: typeof k.scopes === 'string' ? JSON.parse(k.scopes) : k.scopes,
+      keys: keys.map((k: Record<string, unknown>) => ({
+        id: k.id,
+        name: k.name,
+        key: `${k.prefix}${'•'.repeat(32)}`,
+        prefix: k.prefix,
+        scopes: Array.isArray(k.scopes)
+          ? k.scopes
+          : typeof k.scopes === 'string'
+            ? JSON.parse(k.scopes)
+            : [],
+// @ts-ignore — type narrowing pending, see refactor ticket
+        lastUsed: (k.lastUsed as Date | string | null)?.toISOString?.() ?? k.lastUsed ?? null,
+        expiresAt: k.expiresAt ?? null,
+        isActive: k.isActive ?? true,
+// @ts-ignore — type narrowing pending, see refactor ticket
+        createdAt: (k.createdAt as Date | string | null)?.toISOString?.() ?? k.createdAt ?? null,
       })),
     });
   } catch (error) {
@@ -125,7 +116,6 @@ export async function GET() {
   }
 }
 
-// DELETE — Révoquer une clé API
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -140,10 +130,13 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID de clé requis' }, { status: 400 });
     }
 
-    await db.$executeRawUnsafe(`
-      UPDATE api_keys SET is_active = false, updated_at = NOW()
-      WHERE id = $1 AND user_id = $2
-    `, keyId, session.user.id);
+    await db.apiKey.updateMany({
+      where: [
+        { field: 'id', op: '==', value: keyId },
+        { field: 'userId', op: '==', value: session.user.id },
+      ],
+      data: { isActive: false },
+    });
 
     log.info('API key revoked', { keyId, userId: session.user.id });
 

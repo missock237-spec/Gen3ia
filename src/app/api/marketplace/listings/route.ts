@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { applySecurity, secureResponse } from '@/lib/security'
 import { searchListings, createListing } from '@/lib/marketplace/listing-manager'
 
+export const dynamic = "force-dynamic";
+
 const VALID_TYPES = ['agent', 'workflow', 'template', 'plugin'] as const
 const VALID_CATEGORIES = [
   'general',
@@ -53,6 +55,9 @@ export async function GET(request: NextRequest) {
     const rawCategory = searchParams.get('category') || undefined
     const rawSort = searchParams.get('sort') || 'newest'
     const rawTags = searchParams.getAll('tag')
+
+
+
     const page = parsePositiveInt(searchParams.get('page'), 1, 100000)
     const limit = parsePositiveInt(searchParams.get('limit'), 20, 100)
     const minPriceRaw = searchParams.get('minPrice')

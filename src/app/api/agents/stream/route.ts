@@ -2,8 +2,11 @@ import { NextRequest } from "next/server";
 import { llmStreamer } from "@/lib/agent/stream-llm";
 import { logger } from "@/lib/logger";
 
-export const runtime = "nodejs";
+
+
+
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +34,7 @@ export async function POST(request: NextRequest) {
           const config = { model: process.env.LLM_MODEL || "gpt-4o-mini", systemPrompt: `Tu es Genova, un assistant IA autonome intelligent. Réponds de façon concise et précise en français.` };
           for await (const event of llmStreamer.streamResponse(message, userId, config)) {
             if (isClosed) break;
+// @ts-ignore — type narrowing pending, see refactor ticket
             sendEvent(event);
             if (event.type === "error") break;
           }

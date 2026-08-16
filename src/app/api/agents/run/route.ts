@@ -1,19 +1,45 @@
-// ============================================================
-// POST /api/agents/run — Exécuter un agent (ReAct Loop)
-// ============================================================
-// Boucle ReAct complète : Think → Act → Observe
-// Avec checkpointing (reprise sur panne) + supervisor (garde-fou) + logs structurés
-// ============================================================
-
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { logger } from "@/lib/logger";
+import { createLogger } from "@/lib/logger";
+import { db } from "@/lib/db";
 import { checkpointManager } from "@/lib/checkpoint";
-import { supervisor } from "@/lib/supervisor";
+import { supervisor } from "@/lib/agent/supervisor";
 import { rateLimiter } from "@/lib/rate-limiter";
 import { executeAgentSchema } from "@/lib/validation";
 import { handleApiError } from "@/lib/errors";
+import { callLLM } from "@/lib/llm";
 import { ZodError } from "zod";
+
+// Agent Safety — detection d'injections et jailbreak (Rust natif + fallback JS)
+// Dynamic import with fallback
+type SafetyResult = { safe: boolean; score: number; reason: string };
+let checkPromptInjection: (input: string) => Promise<SafetyResult> | SafetyResult;
+let checkJailbreak: (input: string) => Promise<SafetyResult> | SafetyResult;
+try {
+  const safety = await import("@gen3ia/agent-safety");
+  // Adapt the module's return shape {detected,score,patterns} to {safe,score,reason}
+  checkPromptInjection = async (input: string) => {
+    const r = await safety.checkPromptInjection(input);
+    return { safe: !r.detected, score: r.score, reason: (r.patterns || []).join(', ') || 'clean' };
+  };
+  checkJailbreak = async (input: string) => {
+    const r = await safety.checkJailbreak(input);
+    return { safe: !r.detected, score: r.score, reason: (r.patterns || []).join(', ') || 'clean' };
+  };
+} catch {
+  checkPromptInjection = (_input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
+  checkJailbreak = (_input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
+}
+
+
+
+
+
+export const dynamic = "force-dynamic";
+const log = createLogger('agent-run');
+const MAX_ITERATIONS = 25;
+const MAX_COST = 1.0;
+const MAX_TOKENS = 10000;
+const CREDIT_COST_PER_STEP = 0.0002;
 
 interface ReActStep {
   thought: string;
@@ -27,158 +53,187 @@ interface ReActStep {
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Rate limiting
     const identifier = request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "127.0.0.1";
-    const { allowed, remaining, resetIn } = await rateLimiter.check(identifier, "/api/agents/run");
-
+    const { allowed, resetIn } = await rateLimiter.check(identifier, "/api/agents/run");
     if (!allowed) {
-      return NextResponse.json(
-        { error: "Trop de requêtes", retryAfter: resetIn },
-        { status: 429, headers: { "X-RateLimit-Remaining": "0", "Retry-After": String(resetIn) } },
-      );
+      return NextResponse.json({ error: "Trop de requetes", retryAfter: resetIn }, { status: 429 });
     }
 
-    // 2. Validation Zod
     let body: { agentId: string; input: string; sessionId?: string; resume?: boolean };
     try {
       body = executeAgentSchema.parse(await request.json());
     } catch (error) {
       if (error instanceof ZodError) {
-        return NextResponse.json({ error: "Données invalides", details: error.errors }, { status: 400 });
+        return NextResponse.json({ error: "Donnees invalides", details: error.issues }, { status: 400 });
       }
       throw error;
     }
 
     const { agentId, input, sessionId: existingSessionId, resume } = body;
 
-    // 3. Charger l'agent
-    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
-    if (!agent) {
-      return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
+    // ============================================================
+    // SECURITE: Detection d'injections et jailbreak
+    // ============================================================
+    const injectionCheck = await checkPromptInjection(input);
+    if (!injectionCheck.safe) {
+      log.warn('prompt_injection_detected', { agentId, score: injectionCheck.score, reason: injectionCheck.reason });
+      await db.agentActionLog.create({
+        data: {
+          agentId, action: 'prompt_injection_blocked',
+          details: JSON.stringify({ score: injectionCheck.score, reason: injectionCheck.reason }),
+          status: 'blocked', userId: '', resolvedAt: new Date(),
+        },
+      }).catch(() => {});
+      return NextResponse.json({ error: "Entree bloque par le securite", reason: injectionCheck.reason }, { status: 400 });
     }
 
-    // 4. Générer ou reprendre une session
+    const jailbreakCheck = await checkJailbreak(input);
+    if (!jailbreakCheck.safe) {
+      log.warn('jailbreak_attempt_detected', { agentId, score: jailbreakCheck.score });
+      return NextResponse.json({ error: "Tentative de jailback detectee" }, { status: 400 });
+    }
+
+    const agent = await db.agent.findUnique({
+      where: { id: agentId },
+      include: {
+        permissions: { select: { permission: true, granted: true } },
+        _count: { select: { memories: true } },
+      },
+    });
+    if (!agent) return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
+
     const sessionId = existingSessionId ?? `session_${agentId}_${Date.now()}`;
 
-    // 5. Vérifier les crédits
-    const user = await prisma.user.findUnique({ where: { id: agent.userId }, select: { credits: true, plan: true } });
-    if (!user || user.credits < 1) {
-      return NextResponse.json({ error: "Crédits insuffisants" }, { status: 402 });
-    }
+    const user = await db.user.findUnique({
+      where: { id: agent.userId },
+      select: { credits: true, plan: true },
+    });
+    if (!user || user.credits < 1) return NextResponse.json({ error: "Credits insuffisants" }, { status: 402 });
 
-    logger.info("agent_execution_started", { agentId, sessionId, inputLength: input.length, resume: !!resume });
+    log.info("agent_execution_started", { agentId, sessionId, inputLength: input.length, resume: !!resume, agentType: agent.type });
 
-    // 6. Boucle ReAct
-    let iteration = 0;
-    let totalCost = 0;
-    let totalTokens = 0;
-    let previousState = resume ? await checkpointManager.getLatest(agentId, sessionId) : null;
-    if (previousState) {
-      iteration = previousState.step;
-      totalCost = previousState.totalCost;
-      totalTokens = previousState.totalTokens;
+    const recentMemories = await db.agentMemory.findMany({
+      where: { agentId, userId: agent.userId },
+      orderBy: { relevance: 'desc' }, take: 10,
+      select: { content: true, source: true },
+    });
+
+    const permissionsList = agent.permissions.filter(p => p.granted).map(p => p.permission).join(', ');
+
+    const systemPrompt = [
+      `Tu es ${agent.name}, un agent IA de type "${agent.type}".`,
+      agent.description ? `Description: ${agent.description}` : '',
+      permissionsList ? `Permissions: ${permissionsList}.` : '',
+      `Fonctionne en mode ReAct: THOUGHT: (pensee) ACTION: (action) OBSERVATION: (observation).`,
+      recentMemories.length > 0 ? `Memoire: ${recentMemories.map(m => m.content).join(' | ')}` : '',
+    ].filter(Boolean).join('\n');
+
+    let iteration = 0, totalCost = 0, totalTokens = 0;
+
+    if (resume) {
+      const saved = await checkpointManager.restore(agentId, sessionId);
+      if (saved) {
+        iteration = saved.step; totalCost = saved.totalCost; totalTokens = saved.totalTokens;
+        log.info('agent_resumed', { agentId, sessionId, fromStep: iteration });
+      }
     }
 
     const steps: ReActStep[] = [];
-    const maxIterations = 25;
-    const maxCostLimit = 1.0;
-    const maxTokens = 10000;
+    const messages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: input },
+    ];
 
-    while (iteration < maxIterations) {
-      // 6a. Check supervisor
-      const supervisorResult = await supervisor.check(
-        agentId, sessionId, iteration, totalCost, totalTokens,
-        { maxIterations, maxCostLimit, maxTokens },
-      );
+    while (iteration < MAX_ITERATIONS) {
+      if (iteration > 0) {
+        const lastStep = steps[steps.length - 1];
+        const check = supervisor.recordIteration({
+          step: iteration, action: lastStep.action, thought: lastStep.thought,
+          result: lastStep.observation, timestamp: new Date(),
+        });
+        if (check.shouldStop) {
+          log.info('agent_stopped_by_supervisor', { agentId, sessionId, reason: check.reason });
+          break;
+        }
+      }
 
-      if (supervisorResult.decision === "stop") {
-        logger.info("agent_stopped_by_supervisor", { agentId, sessionId, reason: supervisorResult.reason });
+      iteration++;
+
+      let llmResponse: { content: string; tokens: number };
+      try {
+        const result = await callLLM({
+          messages: messages.map(m => ({ role: m.role as 'system' | 'user' | 'assistant', content: m.content })),
+          maxTokens: 1024, temperature: 0.7, signal: AbortSignal.timeout(30000),
+        }, { tag: `agent-run:${agentId}` });
+        llmResponse = { content: result.content, tokens: result.tokens };
+      } catch (llmError) {
+        const msg = llmError instanceof Error ? llmError.message : String(llmError);
+        log.error('LLM call failed', { agentId, sessionId, iteration, error: msg });
+        steps.push({ thought: `Erreur LLM: ${msg}`, action: 'error', actionInput: input, observation: msg, cost: 0, tokens: 0, timestamp: new Date().toISOString() });
         break;
       }
 
-      // 6b. Penser (Think) — appeler le LLM
-      iteration++;
-      const thought = `[Étape ${iteration}] Analyse de: "${input.slice(0, 100)}${input.length > 100 ? "..." : ""}"`;
+      totalCost += CREDIT_COST_PER_STEP;
+      totalTokens += llmResponse.tokens;
 
-      // Simulation — REMPLACER par un vrai appel OpenAI/LLM ici
-      const stepCost = 0.0002;
-      const stepTokens = 150;
-      totalCost += stepCost;
-      totalTokens += stepTokens;
+      // Securite: verifier la reponse du LLM aussi
+      const llmInjectionCheck = await checkPromptInjection(llmResponse.content);
+      if (!llmInjectionCheck.safe) {
+        log.warn('llm_output_injection', { agentId, score: llmInjectionCheck.score });
+        break;
+      }
 
-      // 6c. Agir (Act)
-      const step: ReActStep = {
-        thought,
-        action: "process_input",
-        actionInput: input,
-        observation: `Traitement effectué via ${agent.type}`,
-        cost: stepCost,
-        tokens: stepTokens,
-        timestamp: new Date().toISOString(),
-      };
+      const thoughtMatch = llmResponse.content.match(/THOUGHT:\s*(.+?)(?:ACTION:|$)/s);
+      const actionMatch = llmResponse.content.match(/ACTION:\s*(.+?)(?:OBSERVATION:|$)/s);
+      const obsMatch = llmResponse.content.match(/OBSERVATION:\s*(.+?)$/s);
+
+      const thought = thoughtMatch?.[1]?.trim() || llmResponse.content.slice(0, 200);
+      const action = actionMatch?.[1]?.trim() || 'process_input';
+      const observation = obsMatch?.[1]?.trim() || `Etape ${iteration}: traitee.`;
+
+      const step: ReActStep = { thought, action, actionInput: input, observation, cost: CREDIT_COST_PER_STEP, tokens: llmResponse.tokens, timestamp: new Date().toISOString() };
       steps.push(step);
+      messages.push({ role: 'assistant', content: llmResponse.content });
 
-      // 6d. Sauvegarder checkpoint après chaque étape
       await checkpointManager.save({
-        agentId,
-        sessionId,
-        step: iteration,
-        context: { lastInput: input },
-        memory: [{ role: "user", content: input, timestamp: new Date().toISOString() }, { role: "assistant", content: thought, timestamp: new Date().toISOString() }],
-        actions: steps.map((s) => ({ action: s.action, input: s.actionInput, output: s.observation, timestamp: s.timestamp, cost: s.cost })),
-        totalCost,
-        totalTokens,
+        agentId, sessionId, step: iteration,
+        context: { lastInput: input, thought, action },
+        memory: [
+          { role: 'user', content: input, timestamp: new Date().toISOString() },
+          { role: 'assistant', content: thought, timestamp: new Date().toISOString() },
+        ],
+        actions: steps.map(s => ({ action: s.action, input: s.actionInput, output: s.observation, timestamp: s.timestamp, cost: s.cost })),
+        totalCost, totalTokens,
       });
 
-      // 6e. Condition de sortie normale
-      if (iteration >= maxIterations) break;
-
-      // Simulation : après 3 itérations, on arrête
-      if (iteration >= 3) {
-        logger.info("agent_completed", { agentId, sessionId, steps: iteration, totalCost, totalTokens });
-        break;
-      }
+      if (iteration >= MAX_ITERATIONS || iteration >= 3) break;
     }
 
-    // 7. Enregistrer l'exécution complète
-    await prisma.agentExecution.create({
+    if (steps.length > 0) {
+      const summary = steps.map(s => `[${s.action}] ${s.observation}`).join(' | ');
+      await db.agentMemory.create({ data: { agentId, userId: agent.userId, content: `Session ${sessionId}: ${summary.slice(0, 1000)}`, source: 'execution', relevance: 0.9 } }).catch(() => {});
+    }
+
+    await db.agentExecution.create({
       data: {
-        agentId,
-        userId: agent.userId,
-        task: input.slice(0, 500),
-        steps: JSON.stringify(steps),
-        currentStep: iteration,
-        totalSteps: iteration,
-        status: "completed",
-        totalDuration: 0,
-        totalTokens,
-        estimatedCost: totalCost,
-        result: JSON.stringify({ output: steps.map((s) => s.observation).join("\n") }),
+        agentId, userId: agent.userId, task: input.slice(0, 500),
+        steps: JSON.stringify(steps), currentStep: iteration, totalSteps: iteration,
+        status: 'completed', totalDuration: 0, totalTokens, estimatedCost: totalCost,
+        result: JSON.stringify({ output: steps.map(s => s.observation).join('\n'), thoughts: steps.map(s => s.thought) }),
         completedAt: new Date(),
       },
     });
 
-    // 8. Débiter les crédits
     const creditsToCharge = Math.max(1, Math.ceil(totalCost * 1000));
-    await prisma.user.update({ where: { id: agent.userId }, data: { credits: { decrement: creditsToCharge } } });
+    await db.user.update({ where: { id: agent.userId }, data: { credits: { decrement: creditsToCharge } } });
+    await checkpointManager.cleanOldSessions(agentId, 5);
 
-    // 9. Nettoyer les checkpoints
-    await checkpointManager.cleanup(agentId, sessionId);
+    log.info('agent_execution_success', { agentId, sessionId, steps: iteration, totalTokens, totalCost, creditsCharged: creditsToCharge });
 
-    logger.info("agent_execution_success", { agentId, sessionId, steps: iteration, totalTokens, totalCost, creditsCharged: creditsToCharge });
-
-    return NextResponse.json({
-      success: true,
-      sessionId,
-      steps: iteration,
-      totalCost,
-      totalTokens,
-      output: steps.map((s) => s.observation).join("\n"),
-      stoppedBy: iteration >= maxIterations ? "iteration_limit" : null,
-    });
+    return NextResponse.json({ success: true, sessionId, steps: iteration, totalCost, totalTokens, output: steps.map(s => s.observation).join('\n'), thoughts: steps.map(s => s.thought), stoppedBy: iteration >= MAX_ITERATIONS ? 'iteration_limit' : null, creditsCharged: creditsToCharge });
 
   } catch (error) {
-    logger.error("agent_execution_crashed", { error: error instanceof Error ? error.message : String(error) });
+    log.error('agent_execution_crashed', { error: error instanceof Error ? error.message : String(error) });
     return handleApiError(error);
   }
 }

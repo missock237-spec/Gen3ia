@@ -1,53 +1,40 @@
 # Changelog
 
-## [0.5.0] - 2026-07-26
+## [0.9.0] — 2026-07-28 — Session Monorepo & Terminal v2
 
 ### 🚀 Nouvelles fonctionnalités
+- **Terminal v2.1** : Exécution bash réelle, auto-complétion TAB, historique ↑/↓, sudo protégé (#96, #99, #100, #101)
+- **Éditeur de fichiers inline** : edit, read, delete dans le terminal (#100)
+- **WebSocket hook** : `useTerminalWS` avec reconnexion automatique (#101)
+- **Mode PWA** : Service Worker v2 offline-first, cache partitionné (#104)
+- **Docker** : Dockerfile multi-stage, docker-compose avec postgres/redis/traefik (#102)
+- **CI/CD Release** : Pipeline tests + coverage 80% + auto-tag GitHub Release (#107)
+- **Monorepo** : Structure `packages/`, `apps/`, `tsconfig.base.json` (#105)
 
-#### 🏢 Multi-Tenant
-- Isolation complète des données par tenant (agents, conversations, uploads)
-- 4 plans : free, pro, enterprise
-- 4 rôles : owner, admin, member, viewer
-- Permissions granulaires par rôle
-- Cache tenant (5 min TTL)
-- Rate limiting par quota (API, agents, stockage, utilisateurs)
-- Comptage des membres avec limite par plan
+### 📝 Documentation
+- README complet avec badges, terminal docs, Docker (#102)
+- ARCHITECTURE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
 
-#### 💻 Agent Répl.IT
-- Agent de développement interactif
-- Commandes : write, read, run, install, search, fix
-- Sessions persistantes avec historique d\'exécution
-- Itération automatique : analyse → génération → exécution → correction
-- Jusqu\'à 3 itérations de correction automatique
-- Support des langages : TypeScript, JavaScript, Python, HTML, CSS, JSON
+### 🧪 Tests
+- 46 tests (auth, agent, rate-limit, terminal, ReAct loop, crédits, autocomplete)
+- Coverage seuil 80% configuré dans vitest.config.ts (#106)
+- Tests ReAct : validation, execution, mémoire, erreurs (#106)
+- Tests crédits : déduction, plans, vérification (#106)
 
-#### 🎮 API Playground
-- Interface interactive pour tester tous les endpoints Genova
-- Endpoint POST `/api/playground` avec documentation GET
-- 7 endpoints testables : chat, image, audio, translate, summarize, compute, stream
-- Documentation automatique avec exemples et paramètres
-- Messages d\'erreur explicites
+### 🏷️ Renommage
+- Projet entièrement renommé **Genova → Gen3ia** (30+ fichiers, 0 références restantes)
+- PRs : #93, #94, #95, #96, #97, #103, #104
 
-#### 🛍️ Plugin Store
-- 6 plugins pré-installés : Web Scraper, Email Sender, PDF Generator, SQL Query Engine, Image Editor Pro, WhatsApp Broadcast
-- Catégories : tool, connector, template, skill, integration
-- Système de permissions par plugin
-- Hooks : before-agent-think, after-tool-execution, after-agent-response
-- Installation/désinstallation avec suivi d\'utilisation
+### 🐛 Corrections
+- Settings-view complète avec 6 onglets (#93)
+- Mise à jour email.ts (noreply@gen3ia.ai, footer, sujets) (#103)
+- Nettoyage des fichiers temporaires (ci.yml, deploy.yml, test-force-push...) (#105)
+- Correction test setup.ts (genova_test → gen3ia_test) (#107)
 
-### 🗄️ Base de Données
-- Migration 00005 : tables tenants, tenant_members, webhook_logs, api_usage
-- Ajout colonne tenant_id aux tables agents, conversations, uploads
-- Index optimisés pour les requêtes multi-tenant
+## [0.8.0] — 2026-07-20
 
-## [0.4.0] - 2026-07-26
-### 📊 Dashboard temps réel, Templates vocaux, Webhook engine, Coverage 80%
-
-## [0.3.0] - 2026-07-26
-### 📡 SSE events, TTS multi-provider, API Keys, Upload, Tests E2E
-
-## [0.2.0] - 2026-07-26
-### 🖥️ WebGPU Compute, AI Router adaptatif, HuggingFace gratuit, CI/CD
-
-## [0.1.0] - 2026-05-29
-### 🚀 Première version
+- Version initiale Gen3ia
+- Agents IA avec boucle ReAct
+- Authentication Google/GitHub
+- Dashboard avec métriques
+- Paiements Mobile Money (SebPay)

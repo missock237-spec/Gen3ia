@@ -161,7 +161,7 @@ export function sanitizeHtml(input: string, options?: { allowSafeTags?: boolean 
  */
 export function sanitizeUrl(url: string): string {
   if (typeof url !== 'string') return '';
-  let s = decodeHtmlEntities(url.trim()).slice(0, 2000);
+  const s = decodeHtmlEntities(url.trim()).slice(0, 2000);
 
   // Bloquer les protocoles interdits en premier
   if (hasForbiddenProtocol(s)) return '';
@@ -229,4 +229,5 @@ export function sanitizePrompt(input: string): string {
   return s;
 }
 
+// eslint-disable-next-line import/no-anonymous-default-export
 export default { sanitizeHtml, sanitizeUrl, sanitizeForDb, sanitizeFilename, sanitizeModelPath, escapeShellArg, sanitizePrompt };

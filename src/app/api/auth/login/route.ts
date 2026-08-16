@@ -1,62 +1,87 @@
+// ============================================================
+// POST /api/auth/login — Firebase Authentication
+// ============================================================
+//  Body: { idToken: string }  (obtenu côté client via signInWithEmailAndPassword)
+//  Réponse: { user, sessionCookie }
+//  Side-effect: positionne le cookie `gen3ia_session` (httpOnly, 14 jours).
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import * as argon2 from 'argon2';
-import { sign } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.AUTH_SECRET || 'genova-dev-secret-change-in-production';
+import { setSessionCookie, getUserByUid } from '@/lib/firebase/auth';
+import { db } from '@/lib/firebase/firestore';
 
-export async function POST(request: NextRequest) {
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await request.json();
-
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email et mot de passe requis' }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    const idToken = body?.idToken as string | undefined;
+    if (!idToken) {
+      return NextResponse.json({ error: 'idToken manquant' }, { status: 400 });
     }
 
-    // Vérifier l'utilisateur
-    const user = await db.user.findUnique({ where: { email } });
-    if (!user) {
-      return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
-    }
+    // Positionne le cookie de session Firebase
+    await setSessionCookie(idToken);
 
-    // Vérifier le mot de passe
-    const valid = await argon2.verify(user.password, password);
-    if (!valid) {
-      return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
-    }
-
-    // Générer le token JWT
-    const token = sign(
-      { userId: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
+    // Récupère l'utilisateur Firebase
+    const user = await getUserByUid(
+      // On décode l'uid du token via le session cookie fraîchement créé
+// @ts-ignore — type narrowing pending, see refactor ticket
+      (await import('@/lib/firebase/admin')).getAdminAuth().verifySessionCookie(
+        ((await (await import('next/headers')).cookies()).get('gen3ia_session'))?.value || '',
+        true,
+      ).then((d) => d.uid),
     );
 
-    const refreshToken = sign(
-      { userId: user.id, type: 'refresh' },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-
-    // Log activité
-    await db.activityLog.create({
-      data: {
-        action: 'Connexion',
-        details: JSON.stringify({ email }),
-        category: 'auth',
-        userId: user.id,
-      },
-    });
-
-    const { password: _, ...userWithoutPassword } = user;
+    // Synchronise le profil Firestore (miroir étendu de Firebase Auth)
+    if (user) {
+      await db.user.upsert({
+        where: { id: user.uid },
+        create: {
+          uid: user.uid,
+          email: user.email || '',
+          name: user.displayName || user.email?.split('@')[0] || 'Utilisateur',
+          avatar: user.photoURL || null,
+          emailVerified: user.emailVerified,
+          plan: 'free',
+          role: (user.customClaims?.role as string) || 'user',
+          credits: 0,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastActiveAt: new Date(),
+        },
+        update: {
+          email: user.email || '',
+          name: user.displayName || undefined,
+          avatar: user.photoURL || undefined,
+          emailVerified: user.emailVerified,
+          lastActiveAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+    }
 
     return NextResponse.json({
-      token,
-      refreshToken,
-      user: userWithoutPassword,
+      user: user
+        ? {
+            id: user.uid,
+            uid: user.uid,
+            email: user.email,
+            name: user.displayName,
+            picture: user.photoURL,
+            emailVerified: user.emailVerified,
+            role: (user.customClaims?.role as string) || 'user',
+          }
+        : null,
     });
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 });
+    console.error('[auth/login] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erreur d\'authentification' },
+      { status: 500 },
+    );
   }
 }

@@ -6,17 +6,16 @@ export function JsonLd() {
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
-      name: "Genova AI",
+      name: "Gen3ia",
       applicationCategory: "AIApplication",
       operatingSystem: "Web",
       description:
-        "Genova AI est la plateforme SaaS qui vous permet de créer, gérer et coordonner vos agents IA. Outils, automatisation, ReAct Loop, WhatsApp, Marketplace.",
+        "Gen3ia est la plateforme SaaS qui vous permet de créer, gérer et coordonner vos agents IA. Outils, automatisation, ReAct Loop, Marketplace.",
       url: siteConfig.url,
-      sameAs: siteConfig.sameAs,
       image: `${siteConfig.url}/og-image.png`,
       author: {
         "@type": "Organization",
-        name: "Genova AI",
+        name: "Gen3ia",
         url: siteConfig.url,
       },
       offers: {
@@ -29,7 +28,6 @@ export function JsonLd() {
         "Agents IA autonomes avec ReAct Loop",
         "Appels vocaux avec voix humaine (Twilio)",
         "Outils et actions personnalisables",
-        "Pipeline WhatsApp",
         "Marketplace d'agents",
         "Billing adapté à l'Afrique",
         "Multimodal (texte, image, vidéo)",
@@ -43,18 +41,17 @@ export function JsonLd() {
     {
       "@context": "https://schema.org",
       "@type": "Organization",
-      name: "Genova AI",
+      name: "Gen3ia",
       url: siteConfig.url,
-      logo: `${siteConfig.url}/favicon-genova.png`,
+      logo: `${siteConfig.url}/favicon-gen3ia.png`,
       description:
         "Système d'exploitation pour agents IA. Créez, gérez et coordonnez vos agents intelligents.",
-      sameAs: siteConfig.sameAs,
       foundingDate: "2026-05-29",
       contactPoint: [
         {
           "@type": "ContactPoint",
           contactType: "support",
-          email: "contact@genova-ai.com",
+          email: "contact@gen3ia.online",
           availableLanguage: ["French", "English"],
         },
       ],
@@ -64,7 +61,7 @@ export function JsonLd() {
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      name: "Genova AI",
+      name: "Gen3ia",
       url: siteConfig.url,
       description:
         "Plateforme SaaS de création et gestion d'agents IA.",
@@ -85,26 +82,26 @@ export function JsonLd() {
       mainEntity: [
         {
           "@type": "Question",
-          name: "Qu'est-ce que Genova AI ?",
+          name: "Qu'est-ce que Gen3ia ?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Genova AI est un système d'exploitation pour agents IA. Une plateforme SaaS qui permet de créer, gérer et coordonner des agents intelligents capables d'exécuter des tâches, passer des appels vocaux, répondre sur WhatsApp, et bien plus.",
+            text: "Gen3ia est un système d'exploitation pour agents IA. Une plateforme SaaS qui permet de créer, gérer et coordonner des agents intelligents capables d'exécuter des tâches, passer des appels vocaux, et bien plus.",
           },
         },
         {
           "@type": "Question",
-          name: "Genova AI est-il gratuit ?",
+          name: "Gen3ia est-il gratuit ?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Oui, Genova AI propose un plan gratuit avec 1000 crédits. Les plans payants (Starter, Pro, Enterprise) offrent plus de crédits et des fonctionnalités avancées comme les pubs récompensées.",
+            text: "Oui, Gen3ia propose un plan gratuit avec 1000 crédits. Les plans payants (Starter, Pro, Enterprise) offrent plus de crédits et des fonctionnalités avancées comme les pubs récompensées.",
           },
         },
         {
           "@type": "Question",
-          name: "Peut-on passer des appels téléphoniques avec Genova AI ?",
+          name: "Peut-on passer des appels téléphoniques avec Gen3ia ?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Oui ! Les agents vocaux Genova peuvent passer et recevoir des appels téléphoniques avec une voix naturelle, comprendre le langage parlé et répondre intelligemment via Twilio.",
+            text: "Oui ! Les agents vocaux Gen3ia peuvent passer et recevoir des appels téléphoniques avec une voix naturelle, comprendre le langage parlé et répondre intelligemment via Twilio.",
           },
         },
         {
@@ -112,7 +109,7 @@ export function JsonLd() {
           name: "Quels fournisseurs LLM sont supportés ?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Genova AI supporte OpenAI (GPT-4o), Anthropic (Claude), Groq (LLaMA) et OpenRouter avec bascule automatique en cas de panne.",
+            text: "Gen3ia supporte OpenAI (GPT-4o), Anthropic (Claude), Groq (LLaMA) et OpenRouter avec bascule automatique en cas de panne.",
           },
         },
       ],
