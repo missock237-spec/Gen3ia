@@ -104,6 +104,21 @@ const nextConfig = {
     // which can break with npm install --legacy-peer-deps on Vercel).
     config.resolve.alias['@gen3ia/agent-safety'] = path.join(__dirname, 'packages/agent-safety/index.js');
 
+    // Modules optionnels/non-installés sur certaines branches feature
+    // Alias vers false = webpack les remplace par un objet vide au lieu de crasher.
+    const optionalModules = [
+      '@prisma/client',
+      '@whiskeysockets/baileys',
+      '@whiskeysockets/baileys/lib/Utils/logger.js',
+      '@hapi/boom',
+      'react-helmet',
+    ];
+    for (const mod of optionalModules) {
+      if (!config.resolve.alias[mod]) {
+        config.resolve.alias[mod] = false;
+      }
+    }
+
     // Mark native modules as external (can't be bundled on Vercel)
     config.externals = config.externals || [];
     config.externals.push({
