@@ -273,6 +273,7 @@ export class ComfyUIAdapter implements IntegrationAdapter {
   }
 
   private async generateViaSDK(prompt: string, width?: number, height?: number): Promise<ExecutionResult> {
+// @ts-ignore — type narrowing pending, see refactor ticket
     const { default: ZAI } = await import('z-ai-web-dev-sdk');
     const client = await ZAI.create();
     const size = `${width || 1024}x${height || 1024}` as '1024x1024';

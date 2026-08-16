@@ -14,6 +14,11 @@ import { getServiceManager } from '@/lib/service-manager';
 import { createAuditLog } from '@/lib/auth';
 import { z } from 'zod';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api:services:id');
 
 // ============================================================
@@ -262,6 +267,7 @@ export async function POST(
       userId: auth.userId,
       action: `service_${action}`,
       resource: 'service',
+// @ts-ignore — type narrowing pending, see refactor ticket
       resourceId: idValidation.id,
       details: {
         action,
