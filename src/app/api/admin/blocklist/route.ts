@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import {
+
   getBlockedDomains,
   addBlockedDomain,
   removeBlockedDomain,
 } from '@/lib/url-safety';
 import { db } from '@/lib/db';
 
+
+
 // Admin rate limiting — stricter than normal
+
+export const dynamic = "force-dynamic";
 const ADMIN_RATE_LIMIT = { limit: 50, windowMs: 60 * 1000 }; // 50 req/min
 
 export async function OPTIONS(request: NextRequest) {

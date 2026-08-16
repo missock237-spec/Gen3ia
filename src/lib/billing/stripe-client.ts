@@ -1,190 +1,136 @@
-import Stripe from 'stripe'
+/**
+ * CHARIOW CLIENT ADAPTER — Paiement numérique (Mobile Money Afrique + Carte)
+ * Remplace Stripe et SebPay. Paiements via Orange Money, MTN MoMo, Wave, Carte.
+ * Vérification d'identité simplifiée via Chariow.
+ */
 
-import { db } from '@/lib/db'
-import { createLogger } from '@/lib/logger'
+import { db } from '@/lib/db';
+import { createLogger } from '@/lib/logger';
+import { chariow } from '@/lib/payment/chariow';
 
-const log = createLogger('stripe-client')
+const log = createLogger('chariow-client');
 
-// Fixed: removed invalid `typescript: true` — not a valid Stripe SDK constructor option
-function getStripe(): Stripe {
-  const key = process.env.STRIPE_SECRET_KEY
-  if (!key) {
-    throw new Error('STRIPE_SECRET_KEY environment variable is not set')
-  }
-  return new Stripe(key)
-}
-
-let _stripe: Stripe | null = null
-
-function stripe(): Stripe {
-  if (!_stripe) {
-    _stripe = getStripe()
-  }
-  return _stripe
-}
-
-function getAppUrl(): string {
-  const url = process.env.NEXT_PUBLIC_APP_URL
-  if (!url) {
-    throw new Error('NEXT_PUBLIC_APP_URL environment variable is not set')
-  }
-  return url.replace(/\/$/, '')
-}
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface CheckoutSessionInput {
-  userId: string
-  priceId: string
-  planId: string
-  successUrl?: string
-  cancelUrl?: string
-  mode?: 'payment' | 'subscription'
+  userId: string;
+  planId: string;
+  successUrl?: string;
+  cancelUrl?: string;
 }
 
 export interface PortalSessionInput {
-  userId: string
-  returnUrl?: string
+  userId: string;
+  returnUrl?: string;
 }
 
 export interface SubscriptionInfo {
-  id: string
-  plan: string
-  status: string
-  currentPeriodStart: Date | null
-  currentPeriodEnd: Date | null
-  cancelAtPeriodEnd: boolean
-  stripeCustomerId: string | null
-  stripeSubscriptionId: string | null
+  id: string;
+  plan: string;
+  status: string;
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
 }
 
-export async function createCheckoutSession(
-  input: CheckoutSessionInput
-): Promise<{ sessionId: string; url: string }> {
-  const { userId, priceId, planId, successUrl, cancelUrl, mode } = input
-  const customerId = await getOrCreateCustomer(userId)
-  const appUrl = getAppUrl()
+/**
+ * Plans tarifaires disponibles via Chariow
+ */
+export const SUBSCRIPTION_PLANS = [
+  { id: 'free', name: 'Gratuit', price: 0, priceUSD: 0, credits: 100, maxAgents: 2, features: ['2 agents IA', '100 crédits/mois', 'Outils de base', 'Support communautaire'] },
+  { id: 'starter', name: 'Starter', price: 5000, priceUSD: 9.99, credits: 1000, maxAgents: 5, features: ['5 agents IA', '1000 crédits/mois', 'Tous les outils', 'Support email'] },
+  { id: 'pro', name: 'Pro', price: 15000, priceUSD: 29.99, credits: 5000, maxAgents: 20, features: ['20 agents IA', '5000 crédits/mois', 'Outils avancés', 'Support prioritaire'], popular: true },
+  { id: 'enterprise', name: 'Enterprise', price: 50000, priceUSD: 99.99, credits: -1, maxAgents: -1, features: ['Agents illimités', 'Crédits illimités', 'Support dédié', 'SLA garanti'] },
+];
 
-  const session = await stripe().checkout.sessions.create({
-    customer: customerId,
-    mode: mode || 'subscription',
-    payment_method_types: ['card'],
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url:
-      successUrl || `${appUrl}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: cancelUrl || `${appUrl}?checkout=cancel`,
-    metadata: { userId, planId },
-    subscription_data:
-      mode === 'subscription'
-        ? { metadata: { userId, planId } }
-        : undefined,
-  })
+// ---------------------------------------------------------------------------
+// Méthodes principales
+// ---------------------------------------------------------------------------
 
-  log.info('Checkout session created', {
-    userId,
-    sessionId: session.id,
-    planId,
-    mode: mode || 'subscription',
-  })
+/**
+ * Crée une session de checkout Chariow
+ */
+export async function createCheckoutSession(input: CheckoutSessionInput): Promise<{
+  sessionId: string;
+  url: string;
+}> {
+  const { userId, planId, successUrl, cancelUrl } = input;
 
-  return { sessionId: session.id, url: session.url || '' }
-}
-
-export async function createPortalSession(
-  input: PortalSessionInput
-): Promise<{ url: string }> {
-  const { userId, returnUrl } = input
-
-  const subscription = await db.subscription.findFirst({
-    where: { userId, status: 'active' },
-    select: { stripeCustomerId: true },
-  })
-
-  if (!subscription?.stripeCustomerId) {
-    throw new Error('No active Stripe customer found for this user')
+  const plan = SUBSCRIPTION_PLANS.find((p: { id: string }) => p.id === planId);
+  if (!plan) {
+    throw new Error(`Plan introuvable: ${planId}`);
   }
 
-  const appUrl = getAppUrl()
+  if (!chariow.isConfigured()) {
+    throw new Error('Chariow non configuré. Définissez CHARIOW_API_KEY.');
+  }
 
-  const session = await stripe().billingPortal.sessions.create({
-    customer: subscription.stripeCustomerId,
-    return_url: returnUrl || `${appUrl}?portal=return`,
-  })
+  const productId = process.env[`CHARIOW_PRODUCT_PLAN_${planId.toUpperCase()}`] || '';
+  if (!productId) {
+    throw new Error(`Produit Chariow non configuré pour le plan ${planId}.`);
+  }
 
-  log.info('Portal session created', {
-    userId,
-    customerId: subscription.stripeCustomerId,
-  })
+  const reference = `gen3ia_${userId.slice(0, 8)}_${Date.now()}`;
 
-  return { url: session.url }
+  const checkout = await chariow.initiateCheckout({
+    productId,
+    metadata: { userId, type: 'plan', planId, credits: String(plan.credits) },
+    successUrl: successUrl || `${process.env.NEXT_PUBLIC_APP_URL}/billing?checkout=success&ref=${reference}`,
+    cancelUrl: cancelUrl || `${process.env.NEXT_PUBLIC_APP_URL}/billing`,
+  });
+
+  log.info('Checkout session created', { userId, sessionId: checkout.saleId, planId });
+
+  return {
+    sessionId: checkout.saleId || reference,
+    url: checkout.checkoutUrl || successUrl || `${process.env.NEXT_PUBLIC_APP_URL}?checkout=success&ref=${reference}`,
+  };
 }
 
+/**
+ * Vérifie le statut d'un paiement Chariow
+ */
+export async function getPaymentStatus(transactionId: string): Promise<{
+  status: string;
+  success: boolean;
+}> {
+  const { status } = await chariow.getSaleStatus(transactionId);
+  return { status, success: status === 'completed' };
+}
+
+/**
+ * Gère le webhook Chariow
+ */
 export async function handleWebhook(
-  payload: string | Buffer,
+  payload: any,
   signature: string
 ): Promise<{ received: boolean; event?: string }> {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-  if (!webhookSecret) {
-    throw new Error('STRIPE_WEBHOOK_SECRET environment variable is not set')
+  const raw = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  const isValid = chariow.verifyWebhookSignature(raw, signature);
+
+  if (!isValid) {
+    log.error('Webhook signature verification failed');
+    throw new Error('Invalid webhook signature');
   }
 
-  let event: Stripe.Event
+  log.info('Webhook received', { event: payload.event });
+  await chariow.handleWebhook(payload);
 
-  try {
-    event = stripe().webhooks.constructEvent(
-      typeof payload === 'string' ? Buffer.from(payload) : payload,
-      signature,
-      webhookSecret
-    )
-  } catch (err) {
-    log.error('Webhook signature verification failed', {
-      error: err instanceof Error ? err.message : String(err),
-    })
-    throw new Error('Invalid webhook signature')
-  }
-
-  log.info('Webhook received', { type: event.type, eventId: event.id })
-
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session)
-      break
-    }
-    case 'customer.subscription.created': {
-      await handleSubscriptionCreated(event.data.object as Stripe.Subscription)
-      break
-    }
-    case 'customer.subscription.updated': {
-      await handleSubscriptionUpdated(event.data.object as Stripe.Subscription)
-      break
-    }
-    case 'customer.subscription.deleted': {
-      await handleSubscriptionDeleted(event.data.object as Stripe.Subscription)
-      break
-    }
-    case 'invoice.paid': {
-      await handleInvoicePaid(event.data.object as Stripe.Invoice)
-      break
-    }
-    case 'invoice.payment_failed': {
-      await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice)
-      break
-    }
-    default: {
-      log.info('Unhandled webhook event type', { type: event.type })
-    }
-  }
-
-  return { received: true, event: event.type }
+  return { received: true, event: payload.event };
 }
 
-export async function getSubscription(
-  userId: string
-): Promise<SubscriptionInfo | null> {
+/**
+ * Récupère les infos d'abonnement
+ */
+export async function getSubscription(userId: string): Promise<SubscriptionInfo | null> {
   const subscription = await db.subscription.findFirst({
     where: { userId },
     orderBy: { createdAt: 'desc' },
-  })
+  });
 
-  if (!subscription) return null
+  if (!subscription) return null;
 
   return {
     id: subscription.id,
@@ -193,266 +139,15 @@ export async function getSubscription(
     currentPeriodStart: subscription.currentPeriodStart,
     currentPeriodEnd: subscription.currentPeriodEnd,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-    stripeCustomerId: subscription.stripeCustomerId,
-    stripeSubscriptionId: subscription.stripeSubscriptionId,
-  }
+  };
 }
 
-// ---------------------------------------------------------------------------
-// Internal: Webhook Handlers
-// ---------------------------------------------------------------------------
-
-async function handleCheckoutCompleted(
-  session: Stripe.Checkout.Session
-): Promise<void> {
-  const userId = session.metadata?.userId
-  const planId = session.metadata?.planId
-
-  if (!userId || !planId) {
-    log.error('Missing metadata in checkout session', { sessionId: session.id })
-    return
-  }
-
-  if (session.mode === 'payment') {
-    const { addCredits } = await import('./credits')
-    const creditAmount = parseInt(session.metadata?.creditAmount || '0', 10)
-
-    if (creditAmount > 0) {
-      await addCredits({
-        userId,
-        amount: creditAmount,
-        type: 'purchase',
-        resourceType: 'credit_purchase',
-        description: `Credit purchase: ${creditAmount} credits`,
-        metadata: {
-          stripeSessionId: session.id,
-          paymentIntentId: session.payment_intent as string,
-        },
-      })
-    }
-  }
-
-  log.info('Checkout completed', { userId, planId, mode: session.mode })
-}
-
-async function handleSubscriptionCreated(
-  subscription: Stripe.Subscription
-): Promise<void> {
-  const userId = subscription.metadata?.userId
-  const planId = subscription.metadata?.planId
-
-  if (!userId) {
-    log.error('Missing userId in subscription metadata', {
-      subscriptionId: subscription.id,
-    })
-    return
-  }
-
-  const periodStart = (subscription as unknown as { current_period_start: number }).current_period_start
-  const periodEnd = (subscription as unknown as { current_period_end: number }).current_period_end
-
-  await db.subscription.upsert({
-    where: { stripeCustomerId: subscription.customer as string },
-    create: {
-      userId,
-      plan: planId || 'free',
-      stripeCustomerId: subscription.customer as string,
-      stripeSubscriptionId: subscription.id,
-      stripePriceId: subscription.items.data[0]?.price.id,
-      status: subscription.status,
-      currentPeriodStart: new Date(periodStart * 1000),
-      currentPeriodEnd: new Date(periodEnd * 1000),
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      trialStart: subscription.trial_start
-        ? new Date(subscription.trial_start * 1000)
-        : null,
-      trialEnd: subscription.trial_end
-        ? new Date(subscription.trial_end * 1000)
-        : null,
-    },
-    update: {
-      plan: planId || 'free',
-      stripeSubscriptionId: subscription.id,
-      stripePriceId: subscription.items.data[0]?.price.id,
-      status: subscription.status,
-      currentPeriodStart: new Date(periodStart * 1000),
-      currentPeriodEnd: new Date(periodEnd * 1000),
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-    },
-  })
-
-  await db.user.update({
-    where: { id: userId },
-    data: { plan: planId || 'free' },
-  })
-
-  const { addCredits } = await import('./credits')
-  const { PLAN_CREDITS } = await import('./plans')
-  const credits = PLAN_CREDITS[planId as keyof typeof PLAN_CREDITS] || 0
-
-  if (credits > 0) {
-    await addCredits({
-      userId,
-      amount: credits,
-      type: 'bonus',
-      resourceType: 'plan_upgrade',
-      description: `${planId} plan credits`,
-      metadata: { subscriptionId: subscription.id },
-    })
-  }
-
-  log.info('Subscription created', {
-    userId,
-    planId,
-    subscriptionId: subscription.id,
-  })
-}
-
-async function handleSubscriptionUpdated(
-  subscription: Stripe.Subscription
-): Promise<void> {
-  const userId = subscription.metadata?.userId
-  const periodStart = (subscription as unknown as { current_period_start: number }).current_period_start
-  const periodEnd = (subscription as unknown as { current_period_end: number }).current_period_end
-
-  await db.subscription.updateMany({
-    where: { stripeSubscriptionId: subscription.id },
-    data: {
-      status: subscription.status,
-      currentPeriodStart: new Date(periodStart * 1000),
-      currentPeriodEnd: new Date(periodEnd * 1000),
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      stripePriceId: subscription.items.data[0]?.price.id,
-    },
-  })
-
-  if (userId) {
-    await db.user.update({
-      where: { id: userId },
-      data: { plan: subscription.metadata?.planId || 'free' },
-    })
-  }
-
-  log.info('Subscription updated', {
-    subscriptionId: subscription.id,
-    status: subscription.status,
-  })
-}
-
-async function handleSubscriptionDeleted(
-  subscription: Stripe.Subscription
-): Promise<void> {
-  const userId = subscription.metadata?.userId
-
-  await db.subscription.updateMany({
-    where: { stripeSubscriptionId: subscription.id },
-    data: { status: 'canceled', cancelAtPeriodEnd: false },
-  })
-
-  if (userId) {
-    await db.user.update({
-      where: { id: userId },
-      data: { plan: 'free' },
-    })
-  }
-
-  log.info('Subscription deleted', { subscriptionId: subscription.id })
-}
-
-async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
-  if (!invoice.customer) return
-
-  await db.invoice.upsert({
-    where: { stripeInvoiceId: invoice.id },
-    create: {
-      userId: invoice.metadata?.userId || '',
-      stripeInvoiceId: invoice.id,
-      subscriptionId: (invoice as unknown as { subscription: string | null }).subscription,
-      amount: invoice.amount_paid / 100,
-      currency: invoice.currency,
-      status: 'paid',
-      pdfUrl: invoice.invoice_pdf,
-      hostedUrl: invoice.hosted_invoice_url,
-      paidAt: new Date(),
-      metadata: JSON.stringify({
-        lines: invoice.lines.data.map((line) => ({
-          description: line.description,
-          amount: line.amount / 100,
-        })),
-        tax: (invoice as unknown as { tax?: number }).tax
-          ? (invoice as unknown as { tax: number }).tax / 100
-          : 0,
-        total: invoice.total / 100,
-      }),
-    },
-    update: {
-      status: 'paid',
-      paidAt: new Date(),
-      pdfUrl: invoice.invoice_pdf,
-      hostedUrl: invoice.hosted_invoice_url,
-    },
-  })
-
-  log.info('Invoice paid', {
-    invoiceId: invoice.id,
-    customerId: invoice.customer as string,
-    amount: invoice.amount_paid / 100,
-  })
-}
-
-async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
-  await db.invoice.upsert({
-    where: { stripeInvoiceId: invoice.id },
-    create: {
-      userId: invoice.metadata?.userId || '',
-      stripeInvoiceId: invoice.id,
-      subscriptionId: (invoice as unknown as { subscription: string | null }).subscription,
-      amount: invoice.amount_due / 100,
-      currency: invoice.currency,
-      status: 'failed',
-      pdfUrl: null,
-      hostedUrl: invoice.hosted_invoice_url,
-      paidAt: null,
-      metadata: JSON.stringify({ failedAt: new Date().toISOString() }),
-    },
-    update: { status: 'failed' },
-  })
-
-  log.warn('Invoice payment failed', {
-    invoiceId: invoice.id,
-    customerId: invoice.customer as string,
-    amountDue: invoice.amount_due / 100,
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Internal: Customer management
-// ---------------------------------------------------------------------------
-
-export async function getOrCreateCustomer(userId: string): Promise<string> {
-  const existing = await db.subscription.findFirst({
-    where: { userId, stripeCustomerId: { not: null } },
-    select: { stripeCustomerId: true },
-  })
-
-  if (existing?.stripeCustomerId) {
-    return existing.stripeCustomerId
-  }
-
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { email: true, name: true },
-  })
-
-  if (!user) {
-    throw new Error(`User not found: ${userId}`)
-  }
-
-  const customer = await stripe().customers.create({
-    email: user.email,
-    name: user.name,
-    metadata: { userId },
-  })
-
-  return customer.id
+/**
+ * Crée une session de portail de gestion d'abonnement
+ */
+export async function createPortalSession(input: PortalSessionInput): Promise<{ url: string }> {
+  const { userId, returnUrl } = input;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const portalUrl = `${baseUrl}/billing/portal?userId=${encodeURIComponent(userId)}&returnUrl=${encodeURIComponent(returnUrl || baseUrl)}`;
+  return { url: portalUrl };
 }

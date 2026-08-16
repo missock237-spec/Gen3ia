@@ -1,0 +1,23 @@
+# ============================================================
+# SECURITY.TXT — Genova AI
+# https://securitytxt.org
+# ============================================================
+
+# Contact pour signaler une vulnerabilite
+Contact: mailto:security@genova-ai.com
+Contact: https://github.com/missock237-spec/Genova/security/advisories
+
+# Chiffrement (PGP)
+# Encrypted: https://genova.app/pgp-key.txt
+
+# Politique de securite
+Policy: https://github.com/missock237-spec/Genova/blob/main/SECURITY.md
+
+# Preference pour la divulgation
+Preferred-Languages: fr, en
+
+# Date d'expiration
+Expires: 2027-07-26T00:00:00.000Z
+
+# Canonical URL
+Canonical: https://missock237-spec.github.io/Genova/security.txt
