@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPlatformStats, getRevenueStats, getAdminLogs, isAdminRole } from '@/lib/admin';
 import { verifyAccessToken } from '@/lib/auth';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -10,7 +15,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 });
   }
 
-  const payload = verifyAccessToken(token);
+  const payload = await verifyAccessToken(token);
   if (!payload || !isAdminRole(payload.role)) {
     return NextResponse.json({ error: 'Accès réservé aux administrateurs' }, { status: 403 });
   }

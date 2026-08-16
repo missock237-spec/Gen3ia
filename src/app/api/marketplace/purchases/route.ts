@@ -6,6 +6,8 @@ import {
   getPurchaseHistory,
 } from '@/lib/marketplace/purchase-system'
 
+export const dynamic = "force-dynamic";
+
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request)
   if (error) return error
@@ -27,6 +29,9 @@ export async function GET(request: NextRequest) {
 
     if (action === 'verify') {
       const listingId = searchParams.get('listingId')
+
+
+
       if (!listingId) {
         return secureResponse(
           NextResponse.json({ error: 'listingId required' }, { status: 400 }),

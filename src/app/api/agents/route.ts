@@ -3,7 +3,12 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { checkAgentLimit } from '@/lib/usage-limits';
 import { sanitizeHtml, sanitizeJson, stripNullBytes, escapeForDb } from '@/lib/input-sanitizer';
+import { rateLimit } from '@/lib/rate-limiter';
 
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -16,23 +21,48 @@ export async function GET(request: NextRequest) {
   });
   if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
 
+  // Rate limit distribué (Redis)
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
+
   try {
     const agents = await db.agent.findMany({
-      where: { userId: auth.userId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: { select: { tasks: true } },
-        permissions: {
-          select: {
-            permission: true,
-            granted: true,
-            requiresApproval: true,
-          },
-        },
-      },
+      where: [{ field: 'userId', op: '==', value: auth.userId }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
     });
 
-    const res = NextResponse.json(agents);
+    // include:{ _count:{tasks}, permissions } -> calculé en mémoire via la façade
+    const [permissions, tasks] = await Promise.all([
+      db.agentPermission.findMany({ where: [{ field: 'userId', op: '==', value: auth.userId }] }),
+      db.task.findMany({ where: [{ field: 'userId', op: '==', value: auth.userId }] }),
+    ]);
+
+    const byAgentPerms = permissions.reduce<Record<string, unknown[]>>((acc, p) => {
+      const agentId = String((p as Record<string, unknown>).agentId || '');
+      if (!acc[agentId]) acc[agentId] = [];
+      acc[agentId].push({
+        permission: (p as Record<string, unknown>).permission,
+        granted: (p as Record<string, unknown>).granted,
+        requiresApproval: (p as Record<string, unknown>).requiresApproval,
+      });
+      return acc;
+    }, {});
+    const taskCountByAgent = tasks.reduce<Record<string, number>>((acc, t) => {
+      const agentId = String((t as Record<string, unknown>).agentId || '');
+      acc[agentId] = (acc[agentId] || 0) + 1;
+      return acc;
+    }, {});
+
+    const enriched = agents.map((agent) => {
+      const id = String((agent as Record<string, unknown>).id);
+      return {
+        ...agent,
+        _count: { tasks: taskCountByAgent[id] || 0 },
+        permissions: byAgentPerms[id] || [],
+      };
+    });
+
+    const res = NextResponse.json(enriched);
     return secureResponse(res, request);
   } catch {
     const res = NextResponse.json(
@@ -49,9 +79,14 @@ export async function POST(request: NextRequest) {
   });
   if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
 
+  // Rate limit plus strict pour la création (abuse possible)
+  const rl = await rateLimit(request, auth.userId);
+  if (!rl.allowed) return NextResponse.json({ error: 'Trop de requêtes' }, { status: 429 });
+
   try {
     const body = await request.json();
-    let { name, type, description, config, avatar } = body;
+    let { name, description, config, avatar } = body;
+    const { type } = body;
 
     if (!name || !type) {
       const res = NextResponse.json(
@@ -62,7 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate agent type
-    const VALID_TYPES = ['sales', 'support', 'marketing', 'research', 'rh', 'accounting', 'custom', 'social_media', 'whatsapp', 'browser'];
+    const VALID_TYPES = ['sales', 'support', 'marketing', 'research', 'rh', 'accounting', 'custom', 'social_media', 'browser'];
     if (!VALID_TYPES.includes(type)) {
       const res = NextResponse.json(
         { error: `Invalid type. Allowed: ${VALID_TYPES.join(', ')}` },
@@ -113,9 +148,9 @@ export async function POST(request: NextRequest) {
     // Check total agent limit for the user's plan
     const user = await db.user.findUnique({
       where: { id: auth.userId },
-      select: { plan: true },
+      select: ['plan'],
     });
-    const plan = user?.plan || 'free';
+    const plan = (user?.plan as string) || 'free';
     const agentLimitCheck = await checkAgentLimit(auth.userId, plan);
 
     if (!agentLimitCheck.allowed) {
@@ -155,8 +190,6 @@ export async function POST(request: NextRequest) {
       { permission: 'social_instagram', granted: false, requiresApproval: true },
       { permission: 'social_tiktok', granted: false, requiresApproval: true },
       { permission: 'social_linkedin', granted: false, requiresApproval: true },
-      { permission: 'whatsapp_message', granted: false, requiresApproval: true },
-      { permission: 'whatsapp_call', granted: false, requiresApproval: true },
       { permission: 'use_api', granted: false, requiresApproval: true },
       { permission: 'use_cpu', granted: false, requiresApproval: true },
       { permission: 'use_mvp', granted: false, requiresApproval: true },
@@ -164,7 +197,7 @@ export async function POST(request: NextRequest) {
 
     await db.agentPermission.createMany({
       data: defaultPermissions.map((p) => ({
-        agentId: agent.id,
+        agentId: (agent as Record<string, unknown>).id as string,
         permission: p.permission,
         granted: p.granted,
         requiresApproval: p.requiresApproval,
@@ -172,7 +205,8 @@ export async function POST(request: NextRequest) {
       })),
     });
 
-    await db.activityLog.create({
+    // activityLog n'existe plus dans la façade -> audit_logs (collection dédiée)
+    await db.auditLog.create({
       data: {
         action: 'Agent Created',
         details: JSON.stringify({ agentName: name, type }),
@@ -181,11 +215,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Return agent with permissions
-    const agentWithPerms = await db.agent.findUnique({
-      where: { id: agent.id },
-      include: { permissions: true },
+    // Return agent with permissions (include:{permissions} calculé en mémoire)
+    const agentRow = await db.agent.findUnique({
+      where: { id: (agent as Record<string, unknown>).id as string },
     });
+    const perms = await db.agentPermission.findMany({
+      where: [{ field: 'agentId', op: '==', value: (agent as Record<string, unknown>).id }],
+    });
+    const agentWithPerms = { ...agentRow, permissions: perms };
 
     const res = NextResponse.json(agentWithPerms, { status: 201 });
     return secureResponse(res, request);

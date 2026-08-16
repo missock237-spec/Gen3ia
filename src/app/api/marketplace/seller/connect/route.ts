@@ -13,6 +13,8 @@ import Stripe from 'stripe'
 import { applySecurity, secureResponse } from '@/lib/security'
 import { db } from '@/lib/db'
 
+export const dynamic = "force-dynamic";
+
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) {

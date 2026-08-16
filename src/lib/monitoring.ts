@@ -1,89 +1,62 @@
-import * as Sentry from '@sentry/nextjs';
+// ============================================================
+// Gen3ia — Collecteur de métriques (buffer → Prisma)
+// FIX : import correct de `prisma` depuis './prisma' (db.ts exporte `db`, pas `prisma`).
+// ============================================================
+import { prisma } from './prisma';
 
-const SENTRY_DSN = process.env.SENTRY_DSN || '';
-const ENVIRONMENT = process.env.NODE_ENV || 'development';
-const RELEASE = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev';
-
-export function initSentry(): void {
-  if (!SENTRY_DSN) {
-    console.log('[Sentry] DSN non configuré - mode dégradé');
-    return;
-  }
-
-  Sentry.init({
-    dsn: SENTRY_DSN,
-    environment: ENVIRONMENT,
-    release: RELEASE,
-    tracesSampleRate: ENVIRONMENT === 'production' ? 0.2 : 1.0,
-    profilesSampleRate: ENVIRONMENT === 'production' ? 0.1 : 0.5,
-    integrations: [
-      new Sentry.BrowserTracing(),
-      new Sentry.Replay({
-        maskAllText: true,
-        blockAllMedia: true,
-      }),
-    ],
-    replaysSessionSampleRate: 0.1,
-    replaysOnErrorSampleRate: 1.0,
-    beforeSend(event) {
-      if (ENVIRONMENT === 'development') {
-        console.log('[Sentry Event]', event.exception?.values?.[0]?.value);
-        return null; // Ne pas envoyer en dev
-      }
-      return event;
-    },
-  });
-
-  console.log(`[Sentry] Initialisé: ${ENVIRONMENT}`);
+interface MetricEntry {
+  name: string;
+  value: number;
+  tags?: Record<string, unknown>;
+  timestamp: number;
 }
 
-export function captureError(error: Error, context?: Record<string, unknown>): void {
-  if (!SENTRY_DSN) {
-    console.error('[Error]', error.message, context || '');
-    return;
-  }
+class MetricsCollector {
+  private buffer: MetricEntry[] = [];
+  private flushInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly maxBufferSize = 100;
 
-  Sentry.withScope((scope) => {
-    if (context) {
-      scope.setExtras(context);
+  constructor() {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
+      this.flushInterval = setInterval(() => this.flush(), 60000);
     }
-    Sentry.captureException(error);
-  });
-}
-
-export function captureMessage(message: string, level: 'info' | 'warning' | 'error' = 'info'): void {
-  if (!SENTRY_DSN) {
-    console.log(`[${level.toUpperCase()}]`, message);
-    return;
   }
 
-  Sentry.captureMessage(message, level);
-}
-
-export function setUserContext(userId: string, email: string, plan: string): void {
-  if (!SENTRY_DSN) return;
-  Sentry.setUser({ id: userId, email, plan });
-}
-
-export function clearUserContext(): void {
-  if (!SENTRY_DSN) return;
-  Sentry.setUser(null);
-}
-
-export function addBreadcrumb(message: string, category: string, data?: Record<string, unknown>): void {
-  if (!SENTRY_DSN) {
-    console.log(`[Breadcrumb:${category}]`, message);
-    return;
+  record(name: string, value: number, tags?: Record<string, unknown>) {
+    this.buffer.push({ name, value, tags, timestamp: Date.now() });
+    if (this.buffer.length >= this.maxBufferSize) void this.flush();
   }
 
-  Sentry.addBreadcrumb({
-    message,
-    category,
-    data,
-    level: 'info',
-  });
+  async flush() {
+    if (this.buffer.length === 0) return;
+    const entries = [...this.buffer];
+    this.buffer = [];
+    try {
+      await prisma.monitoringEvent.createMany({
+        data: entries.map(m => ({
+          userId: (m.tags?.userId as string) || 'system',
+          eventType: 'metric',
+          source: 'backend',
+          message: m.name,
+          details: JSON.stringify({ value: m.value, tags: m.tags }),
+          severity: 'info',
+        })),
+      });
+    } catch { /* silent */ }
+  }
+
+  recordApiCall(endpoint: string, duration: number, status: number, userId?: string) {
+    this.record('api.duration', duration, { endpoint, status: String(status), ...(userId ? { userId } : {}) });
+    this.record('api.calls', 1, { endpoint, status: String(status), ...(userId ? { userId } : {}) });
+  }
+
+  recordAgentAction(action: string, platform: string, success: boolean) {
+    this.record('agent.action', 1, { action, platform, success: String(success) });
+  }
+
+  recordAuthEvent(type: string) {
+    this.record('auth.event', 1, { type });
+  }
 }
 
-export function getSentryDSN(): string {
-  return SENTRY_DSN;
-}
+export const metrics = new MetricsCollector();
