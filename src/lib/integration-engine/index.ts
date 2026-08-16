@@ -11,7 +11,6 @@ import { createLogger } from '@/lib/logger';
 
 // Adapters
 import { SpeechBrainAdapter } from './adapters/speechbrain';
-import { BaileysAdapter } from './adapters/baileys';
 import { N8nAdapter } from './adapters/n8n';
 import { ComfyUIAdapter } from './adapters/comfyui';
 import { PocketBaseAdapter } from './adapters/pocketbase';
@@ -52,7 +51,6 @@ export async function initializeIntegrationEngine(): Promise<void> {
   // Register all built-in adapters (9 integrations)
   const adapters = [
     new SpeechBrainAdapter(),
-    new BaileysAdapter(),
     new N8nAdapter(),
     new ComfyUIAdapter(),
     new PocketBaseAdapter(),

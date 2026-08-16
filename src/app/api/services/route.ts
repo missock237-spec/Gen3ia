@@ -14,6 +14,11 @@ import { getServiceManager } from '@/lib/service-manager';
 import { createAuditLog } from '@/lib/auth';
 import { z } from 'zod';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('api:services');
 
 // ============================================================
