@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 // ============================================================
 // Campay Client — Paiement Mobile Money (Cameroun)
 // ============================================================

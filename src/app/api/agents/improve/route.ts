@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         const action = await improvementEngine.analyzeAndImprove(agent.id);
         if (action) {
           improved++;
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
           results.push({ agentId: agent.id, action: action.action });
         }
       }

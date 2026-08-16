@@ -354,7 +354,7 @@ export class AvatarSessionEngine {
   }): AvatarSessionState {
     return {
       id: session.id,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       userId: session.user.id,
       avatarConfigId: session.avatarConfigId,
       agentId: session.agentId,

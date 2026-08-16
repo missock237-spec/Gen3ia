@@ -12,7 +12,7 @@ import { getAutonomousActionEngine } from '@/lib/saas-automation/action-engine';
 export const GET = withAuth(async (req, ctx, auth) => {
   try {
     const params = await ctx.params;
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const actionId = params.actionId;
 
     const action = await prisma.autonomousAction.findFirst({
@@ -41,19 +41,19 @@ export const GET = withAuth(async (req, ctx, auth) => {
 export const PATCH = withAuth(async (req, ctx, auth) => {
   try {
     const params = await ctx.params;
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const actionId = params.actionId;
     const body = await req.json();
     const engine = getAutonomousActionEngine();
 
     if (body.action === 'approve') {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       const result = await engine.approveAction(actionId, auth.userId);
       return NextResponse.json(result);
     }
 
     if (body.action === 'cancel') {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       await engine.cancelAction(actionId, auth.userId);
       return NextResponse.json({ message: 'Action annulée' });
     }

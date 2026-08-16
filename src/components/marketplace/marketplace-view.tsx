@@ -39,8 +39,22 @@ export function MarketplaceView({ userId }: { userId: string }) {
     } catch {}
   }, [agentId]);
 
-  useEffect(() => { fetchMarketplace('skill'); fetchMarketplace('loop'); fetchMarketplace('customization'); setLoading(false); }, [fetchMarketplace]);
-  useEffect(() => { if (agentId) fetchInstalled(); }, [agentId, fetchInstalled]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await Promise.all([fetchMarketplace('skill'), fetchMarketplace('loop'), fetchMarketplace('customization')]);
+      } catch {}
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [fetchMarketplace]);
+  useEffect(() => {
+    if (!agentId) return;
+    let cancelled = false;
+    (async () => { if (!cancelled) try { await fetchInstalled(); } catch {} })();
+    return () => { cancelled = true; };
+  }, [agentId, fetchInstalled]);
 
   const install = useCallback(async (type: ItemType, itemId: string) => {
     if (!agentId && type !== 'customization') { alert('Selectionnez un agent'); return; }
@@ -171,7 +185,7 @@ export function MarketplaceView({ userId }: { userId: string }) {
           </div>
           {installed.length === 0 && (
             <p style={{ color: 'var(--muted-foreground)', fontSize: '.85rem', textAlign: 'center', padding: 20 }}>
-              Aucun item installé. Allez dans l'onglet Boucles ou Compétences pour installer.
+              Aucun item installé. Allez dans l&apos;onglet Boucles ou Compétences pour installer.
             </p>
           )}
           {installed.map(item => (
@@ -292,10 +306,8 @@ function SkillCard({ item, onInstall }: { item: MarketplaceItem; onInstall: (t: 
           {item.name} <PriceBadge price={item.price} isFree={item.isFree} />
         </div>
         <p style={{ color: 'var(--muted-foreground)', fontSize: '.75rem', margin: '2px 0' }}>{item.description}</p>
-// @ts-ignore
         {(item.compatibleModels?.length ?? 0) > 0 && (
           <div style={{ fontSize: '.65rem', color: 'var(--muted-foreground)', marginTop: 4 }}>
-// @ts-ignore
             ✅ {(item.compatibleModels ?? []).join(' · ')}
           </div>
         )}

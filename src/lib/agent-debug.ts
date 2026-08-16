@@ -56,8 +56,8 @@ export interface ReplayConfig {
 }
 
 const db = {
-  collection: (name: string) => ({
-    add: async (data: any) => ({ id: 'mock-' + Date.now() }),
+  collection: (_name: string) => ({
+    add: async (_data: any) => ({ id: 'mock-' + Date.now() }),
     get: async () => ({ docs: [] }),
     where: () => ({
       get: async () => ({ docs: [] }),
@@ -67,7 +67,7 @@ const db = {
         })
       })
     }),
-    doc: (id: string) => ({
+    doc: (_id: string) => ({
       get: async () => ({ exists: false }),
       delete: async () => undefined
     })

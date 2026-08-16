@@ -16,7 +16,7 @@ const logger = createLogger('whatsapp-status-api');
  * 2. De vérifier la disponibilité du quota de messages (Rate Limiting de 80 msgs/min).
  * 3. De garantir la santé opérationnelle du canal de vente principal au Cameroun.
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const status = whatsapp.getStatus();
 

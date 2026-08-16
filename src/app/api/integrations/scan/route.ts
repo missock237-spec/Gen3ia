@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         registry.register({
           config,
           initialize: async () => {},
-          execute: async (functionId: string, params: Record<string, unknown>) => ({
+          execute: async (_functionId: string, _params: Record<string, unknown>) => ({
             success: false,
             error: `Integration not yet activated. Activate ${scanResult.projectName} to enable this function.`,
             executionTimeMs: 0,

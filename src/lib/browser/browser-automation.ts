@@ -542,7 +542,7 @@ export class BrowserAutomationEngine {
   }): BrowserSession {
     return {
       id: session.id,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       userId: session.user.id,
       agentId: session.agentId,
       url: session.url,

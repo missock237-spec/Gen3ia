@@ -12,7 +12,7 @@ const log = createLogger('api-compute');
 
 // POST /api/compute — Exécute des calculs CPU/GPU (COÛTEUX)
 // SECURITE: withAuth() + quota (le compute peut être abusé pour DoS)
-export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
+export const POST = withAuth(async (request: NextRequest, _ctx: { params?: RouteParams }, _auth) => {
   try {
     const body = await request.json();
     const { task, data, options = {} } = body;

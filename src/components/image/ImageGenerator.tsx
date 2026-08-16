@@ -114,6 +114,7 @@ export function ImageGenerator({ onGenerateComplete, agentId }: ImageGeneratorPr
 
       {generatedImage && (
         <div className="space-y-3">
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={`data:image/png;base64,${generatedImage}`}
             alt="Generated"

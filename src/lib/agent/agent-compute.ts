@@ -4,7 +4,7 @@ import { createComputePredictor } from '@/lib/compute/predictor';
 const log = createLogger('agent-compute');
 let engine: ReturnType<typeof createComputeEngineV2> | null = null;
 async function getEngine() {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   if (!engine) { engine = createComputeEngineV2({ preferredBackend: 'auto', enablePredictor: true }); await engine.initialize(); }
   return engine;
 }
@@ -23,7 +23,7 @@ export async function computeToolScore(tools: string[]): Promise<Record<string, 
   const e = await getEngine();
   const embeddings = tools.map(t => new Float32Array([t.length, t.split('_').length, t.charCodeAt(0) || 0, t.charCodeAt(t.length - 1) || 0]));
   const results = await e.computeBatch({
-    operations: embeddings.map((emb, i) => ({ operation: 'sigmoid', input: emb, options: { priority: 'normal', cacheTTLMs: 300000 } })),
+    operations: embeddings.map((emb, _i) => ({ operation: 'sigmoid', input: emb, options: { priority: 'normal', cacheTTLMs: 300000 } })),
     options: { useCache: true, usePredictor: true },
   });
   const scores: Record<string, number> = {};

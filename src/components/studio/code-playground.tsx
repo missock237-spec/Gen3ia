@@ -57,17 +57,18 @@ export default function CodePlayground() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const loadSavedProjects = async () => {
+    try { const res = await fetch('/api/code/projects'); if (res.ok) { const data = await res.json(); setSavedProjects(data.projects || []); } } catch {}
+  };
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
     check();
     window.addEventListener('resize', check);
-    loadSavedProjects();
+    void loadSavedProjects();
     return () => window.removeEventListener('resize', check);
+     
   }, []);
-
-  const loadSavedProjects = async () => {
-    try { const res = await fetch('/api/code/projects'); if (res.ok) { const data = await res.json(); setSavedProjects(data.projects || []); } } catch {}
-  };
 
   const currentFile = project.files[activeFile];
   const language = currentFile?.language || 'javascript';

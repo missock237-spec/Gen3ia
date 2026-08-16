@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { planId, phone, userId } = body;
+    const { planId, _phone, userId } = body;
 
     if (!planId || !userId) {
       return NextResponse.json({ error: "Champs requis : planId, userId" }, { status: 400 });

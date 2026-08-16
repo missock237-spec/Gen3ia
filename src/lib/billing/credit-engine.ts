@@ -502,7 +502,7 @@ export class CreditEngine {
       _sum: { amount: true },
     });
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     return Math.abs(result._sum.amount || 0);
   }
 

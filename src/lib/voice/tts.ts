@@ -129,7 +129,7 @@ async function callHuggingFaceTTS(text: string): Promise<TTSResult> {
   };
 }
 
-async function callEdgeTTS(text: string, language: string): Promise<TTSResult> {
+async function callEdgeTTS(text: string, _language: string): Promise<TTSResult> {
   // Synthèse vocale via Web Speech API (côté client)
   // Sur le serveur, fallback vers HuggingFace
   return callHuggingFaceTTS(text);

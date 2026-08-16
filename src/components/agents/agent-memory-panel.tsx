@@ -81,7 +81,11 @@ export function AgentMemoryPanel({ agentId, userId, className = '' }: AgentMemor
   }, [agentId, userId]);
 
   useEffect(() => {
-    fetchMemories();
+    let _cancelled = false;
+    (async () => {
+      if (!_cancelled) { try { await fetchMemories(); } catch {} }
+    })();
+    return () => { _cancelled = true; };
   }, [fetchMemories]);
 
   // Handle Create

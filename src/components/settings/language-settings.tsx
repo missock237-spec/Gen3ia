@@ -80,7 +80,7 @@ export function LanguageSettings({ userId }: LanguageSettingsProps) {
         setFallbackLanguage(data.fallbackLanguage || SupportedLanguage.EN);
         setAutoDetect(data.autoDetect !== undefined ? data.autoDetect : true);
         setAgentOverrides(data.agentOverrides || {});
-      } catch (err) {
+      } catch (_err) {
         setError('Unable to load language preferences. Using default settings.');
       } finally {
         setLoading(false);
@@ -120,7 +120,7 @@ export function LanguageSettings({ userId }: LanguageSettingsProps) {
 
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to save language settings. Please try again.');
     } finally {
       setSaving(false);
@@ -165,7 +165,7 @@ export function LanguageSettings({ userId }: LanguageSettingsProps) {
       if (!res.ok) throw new Error('Detection failed');
       const data: DetectionResult = await res.json();
       setDetectionResult(data);
-    } catch (err) {
+    } catch (_err) {
       // Ignore test error or show inline
     } finally {
       setDetecting(false);
@@ -287,7 +287,7 @@ export function LanguageSettings({ userId }: LanguageSettingsProps) {
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Automatically detect the user's language from input messages (French, English, Arabic, Swahili, Wolof, Bambara) and respond in the same language.
+              Automatically detect the user&apos;s language from input messages (French, English, Arabic, Swahili, Wolof, Bambara) and respond in the same language.
             </p>
           </div>
 

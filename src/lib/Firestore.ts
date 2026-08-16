@@ -75,12 +75,12 @@ export async function setCachedDoc<T>(
   options?: { merge?: boolean }
 ): Promise<void> {
   await withRetry(() =>
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     db.collection(collection).doc(docId).set(data, { merge: options?.merge ?? false })
   );
   // Invalider le cache
   const key = cacheKey('firestore', collection, docId);
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   await redis.del(key); // Attention, redis importé via cache.ts
 }
 

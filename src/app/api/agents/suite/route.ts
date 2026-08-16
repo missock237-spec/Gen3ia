@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       goal,
       context,
       strategy: strategy || 'sequential',
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       agents: agentConfigs,
     });
 

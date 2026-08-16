@@ -295,6 +295,7 @@ export async function executeResilient<T>(
   return wrappedFn();
 }
 
+// eslint-disable-next-line import/no-anonymous-default-export
 export default {
   executeWithRetry,
   executeWithFallback,

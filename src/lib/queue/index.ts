@@ -105,19 +105,19 @@ export class AIJobQueue {
     if (this.workersRegistered) return;
 
     // Register image worker on ai:image queue
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     this.bullMQ.registerWorker('ai:image', async (job) => {
       return processImageJob(job as Job<ImageJobPayload, JobResult>);
     });
 
     // Register video worker on ai:video queue
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     this.bullMQ.registerWorker('ai:video', async (job) => {
       return processVideoJob(job as Job<VideoJobPayload, JobResult>);
     });
 
     // Register AI worker on ai:long queue
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     this.bullMQ.registerWorker('ai:long', async (job) => {
       return processAIJob(job as Job<AIJobPayload, JobResult>);
     });
@@ -148,7 +148,7 @@ export class AIJobQueue {
       priority: options.priority ?? JobPriority.NORMAL,
     };
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const jobId = await this.bullMQ.addJob('ai:image', payload, {
       priority: options.priority,
       delay: options.delay,
@@ -178,7 +178,7 @@ export class AIJobQueue {
       priority: options.priority ?? JobPriority.NORMAL,
     };
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const jobId = await this.bullMQ.addJob('ai:video', payload, {
       priority: options.priority,
       delay: options.delay,
@@ -207,7 +207,7 @@ export class AIJobQueue {
       priority: options.priority ?? JobPriority.NORMAL,
     };
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const jobId = await this.bullMQ.addJob('ai:long', payload, {
       priority: options.priority,
       delay: options.delay,

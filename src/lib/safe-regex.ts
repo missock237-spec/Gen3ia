@@ -120,6 +120,7 @@ export function safeStripHtml(html: string): string {
   return text.trim();
 }
 
+// eslint-disable-next-line import/no-anonymous-default-export
 export default {
   safeRegexMatch,
   isRegexVulnerable,

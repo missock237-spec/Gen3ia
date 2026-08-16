@@ -16,7 +16,7 @@ import type { MemoryCategory, MemorySource } from '@/lib/agent-memory';
 export const dynamic = "force-dynamic";
 export async function OPTIONS(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: _params }: { params: Promise<{ id: string }> }
 ) {
   const { error } = await applySecurity(request);
   if (error) return error;

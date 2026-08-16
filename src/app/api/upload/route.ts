@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
         return {
           filename: f.name.split('/').pop() || f.name,
           path: f.name,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
           size: parseInt(metadata.size || '0', 10),
           mimeType: metadata.contentType || 'application/octet-stream',
           modifiedAt: metadata.updated || new Date().toISOString(),

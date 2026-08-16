@@ -121,7 +121,14 @@ export default function SaaSAutomationPanel() {
   }, []);
 
   useEffect(() => {
-    Promise.all([fetchAccounts(), fetchTemplates(), fetchActions()]).finally(() => setLoading(false));
+    let cancelled = false;
+    (async () => {
+      try {
+        await Promise.all([fetchAccounts(), fetchTemplates(), fetchActions()]);
+      } catch {}
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [fetchAccounts, fetchTemplates, fetchActions]);
 
   // Lier un compte via OAuth

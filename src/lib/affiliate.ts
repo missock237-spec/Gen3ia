@@ -38,7 +38,7 @@ export function generateReferralCode(userId: string): string {
   return `GVA-${rawCode}`;
 }
 
-export function createAffiliateCode(userId: string, name: string): AffiliateCode {
+export function createAffiliateCode(userId: string, _name: string): AffiliateCode {
   return {
     code: generateReferralCode(userId),
     userId,
