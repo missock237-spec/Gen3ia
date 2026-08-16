@@ -1,0 +1,31 @@
+# ============================================================
+# Gen3ia — Qdrant Configuration
+# ============================================================
+
+log_level: INFO
+
+storage:
+  # Performance: optimize for SSD
+  performance:
+    max_search_threads: 2
+    max_optimization_threads: 2
+  
+  # Optimizer configuration
+  optimizers:
+    default_segment_number: 2
+    indexing_threshold: 20000
+    memmap_threshold: 20000
+    vacuum_min_vector_number: 1000
+
+  # WAL configuration for crash recovery
+  wal:
+    wal_capacity_mb: 32
+    wal_segments_ahead: 0
+
+# Service configuration
+service:
+  max_request_size_mb: 64
+  max_workers: 4
+  grpc_port: 6334
+  http_port: 6333
+  host: 0.0.0.0
