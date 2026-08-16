@@ -1,35 +1,21 @@
 {
   "name": "Gen3ia",
   "short_name": "Gen3ia",
-  "description": "Systeme d'exploitation pour agents IA",
+  "description": "AI Agent OS for Africa",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#7c3aed",
-  "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "business"],
   "icons": [
-    {
-      "src": "/favicon-gen3ia.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/favicon-gen3ia.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
-  "categories": ["productivity", "developer-tools"],
-  "scope": "/",
-  "lang": "fr-FR",
-  "screenshots": [
-    {
-      "src": "/og-image.png",
-      "sizes": "1200x630",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Tableau de bord Gen3ia"
-    }
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/dashboard", "short_name": "Dashboard" },
+    { "name": "Agents", "url": "/agents", "short_name": "Agents" },
+    { "name": "Billing", "url": "/billing", "short_name": "Billing" }
   ],
-  "prefer_related_applications": false
+  "_comment_pwa_africa": "PWA essentiel pour l'Afrique : internet instable, data chère. Offline-first."
 }

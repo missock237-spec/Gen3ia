@@ -111,8 +111,13 @@ export function handleApiError(error: unknown): NextResponse<ApiErrorResponse> {
   }
 
   if (error instanceof Error) {
-    // Erreurs Prisma
-    if (error.name === 'PrismaClientKnownRequestError') {
+    // Erreurs Firestore / Firebase Admin SDK
+    if (
+      error.name === 'FirebaseError' ||
+      error.name === 'FirestoreError' ||
+      error.message?.includes('firestore') ||
+      error.message?.includes('firebase')
+    ) {
       return errorResponse(
         'Erreur de base de données',
         ErrorCode.INTERNAL_ERROR,

@@ -58,7 +58,7 @@ describe('JWT Tokens', () => {
     // Simulate expiration by manipulating the payload
     const parts = tokens.accessToken.split('.');
     const payloadB64 = parts[1];
-    let decoded = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+    const decoded = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
     decoded.exp = Math.floor(Date.now() / 1000) - 3600; // 1h ago
     const tamperedPayload = Buffer.from(JSON.stringify(decoded)).toString('base64url').replace(/=/g, '');
     const tamperedToken = `${parts[0]}.${tamperedPayload}.${parts[2]}`;

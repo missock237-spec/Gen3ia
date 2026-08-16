@@ -11,7 +11,6 @@ export default function SupportPage() {
     { q: 'Comment recharger mes credits ?', r: 'Allez dans Facturation > Acheter des credits. Choisissez un pack.' },
     { q: 'Comment obtenir une cle API ?', r: 'Allez dans Cles API > Creer une cle. Copiez-la immediatement.' },
     { q: 'Quels moyens de paiement ?', r: 'Nous acceptons Orange Money, MTN Mobile Money, Airtel Money, Wave, et Stripe.' },
-    { q: 'Comment integrer WhatsApp ?', r: 'Configurez votre token WhatsApp Business dans les variables d\'environnement.' },
     { q: 'L\'application est-elle disponible en haoussa ?', r: 'Oui ! Nous supportons 6 langues dont le Haoussa et le Swahili.' },
   ];
 

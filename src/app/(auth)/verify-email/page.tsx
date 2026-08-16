@@ -1,28 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Sparkles, Mail, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  // État dérivé : si pas de token, on est en erreur dès le premier render.
+  const derivedStatus = !token ? 'error' : status;
+  const derivedMessage = !token ? 'Token de vérification manquant' : message;
 
   useEffect(() => {
-    if (!token) {
-      setStatus('error');
-      setMessage('Token de vérification manquant');
-      return;
-    }
+    if (!token) return;  // état dérivé géré pendant le render
 
+    let cancelled = false;
     (async () => {
       try {
         const res = await fetch(`/api/auth/verify-email?token=${token}`);
         const data = await res.json();
+        if (cancelled) return;
 
         if (res.ok) {
           setStatus('success');
@@ -32,10 +33,12 @@ export default function VerifyEmailPage() {
           setMessage(data.error || 'La vérification a échoué');
         }
       } catch {
+        if (cancelled) return;
         setStatus('error');
         setMessage('Erreur de connexion');
       }
     })();
+    return () => { cancelled = true; };
   }, [token]);
 
   return (
@@ -76,5 +79,20 @@ export default function VerifyEmailPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+        <div className="w-full max-w-md bg-card rounded-xl border border-border p-8 text-center shadow-lg">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground mt-4">Chargement...</p>
+        </div>
+      </div>
+    }>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }

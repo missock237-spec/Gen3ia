@@ -1,4 +1,5 @@
 import { createLogger } from '@/lib/logger';
+import { validatePathSegment } from '@/lib/security/validate-url';
 const log = createLogger('huggingface-client');
 const HF_API_BASE = 'https://api-inference.huggingface.co/models';
 
@@ -23,6 +24,7 @@ export class HuggingFaceClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs || 120000);
     try {
+      if (!/^[a-zA-Z0-9_\/-]+$/.test(options.model)) throw new Error('Invalid model name');
       const res = await fetch(`${HF_API_BASE}/${options.model}`, {
         method: 'POST', headers: this.getHeaders(),
         body: JSON.stringify({ inputs: options.inputs, parameters: { ...options.parameters, ...(options.waitForModel ? { wait_for_model: true } : {}), ...(options.useCache !== undefined ? { use_cache: options.useCache } : {}) } }),
@@ -43,6 +45,7 @@ export class HuggingFaceClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs || 180000);
     try {
+      if (!/^[a-zA-Z0-9_\/-]+$/.test(options.model)) throw new Error('Invalid model name');
       const res = await fetch(`${HF_API_BASE}/${options.model}`, {
         method: 'POST', headers: this.getHeaders(),
         body: JSON.stringify({ inputs: options.inputs, parameters: { ...options.parameters, wait_for_model: true } }),

@@ -45,7 +45,7 @@ export default function VoicePage() {
       <div className="text-center py-12 bg-gray-800/30 border border-gray-700/50 rounded-xl">
         <span className="text-4xl">📋</span>
         <h3 className="text-white font-medium mt-3">Aucun appel</h3>
-        <p className="text-gray-400 text-sm mt-1">L'historique des appels apparaitra ici</p>
+        <p className="text-gray-400 text-sm mt-1">L&apos;historique des appels apparaitra ici</p>
       </div>
     </div>
   );

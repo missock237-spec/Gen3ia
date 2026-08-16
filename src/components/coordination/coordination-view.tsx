@@ -36,7 +36,7 @@ export function CoordinationView() {
     }
   }, []);
 
-  useEffect(() => { loadWorkflows(); }, [loadWorkflows]);
+  useEffect(() => { let _cancelled = false; (async () => { if (!_cancelled) { try { await loadWorkflows(); } catch {} } })(); return () => { _cancelled = true; }; }, [loadWorkflows]);
 
   const handleExecute = async (id: string) => {
     setExecutingId(id);

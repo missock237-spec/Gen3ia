@@ -64,7 +64,7 @@ async function fetchWebContent(url: string, css?: string): Promise<string> {
     const html = await r.text();
     if (css) { const idx = html.indexOf(css); if (idx!==-1) return html.substring(idx,Math.min(idx+5000,html.length)); }
     return safeStripHtml(html).substring(0,10000);
-  } catch(e) { return `[ERROR]`; }
+  } catch(_e) { return `[ERROR]`; }
 }
 export async function getUserMonitors(userId: string) { return db.scheduledTask.findMany({ where:{userId,payload:{contains:'monitor_web'}}, orderBy:{createdAt:'desc'} }); }
 export async function deleteMonitor(id: string, uid: string) { const {cancelTask}=await import('./agent-scheduler'); return cancelTask(id,uid); }

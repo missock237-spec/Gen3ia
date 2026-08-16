@@ -39,7 +39,7 @@
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string", "maxLength": 100 },
-          "type": { "type": "string", "enum": ["sales","support","marketing","research","rh","accounting","custom","social_media","whatsapp","browser"] },
+          "type": { "type": "string", "enum": ["sales","support","marketing","research","rh","accounting","custom","social_media","browser"] },
           "description": { "type": "string", "maxLength": 1000 },
           "status": { "type": "string", "enum": ["active","inactive"] },
           "config": { "type": "string" },
@@ -163,7 +163,7 @@
                 "required": ["name","type"],
                 "properties": {
                   "name": { "type": "string", "maxLength": 100 },
-                  "type": { "type": "string", "enum": ["sales","support","marketing","research","rh","accounting","custom","social_media","whatsapp","browser"] },
+                  "type": { "type": "string", "enum": ["sales","support","marketing","research","rh","accounting","custom","social_media","browser"] },
                   "description": { "type": "string", "maxLength": 1000 },
                   "config": { "type": "string" }
                 }
@@ -617,21 +617,6 @@
             }
           }
         }
-      }
-    },
-    "/api/webhooks/whatsapp": {
-      "get": {
-        "summary": "Verification webhook WhatsApp (Meta)",
-        "tags": ["Webhooks"],
-        "parameters": [
-          { "name": "hub.mode", "in": "query", "schema": { "type": "string" } },
-          { "name": "hub.verify_token", "in": "query", "schema": { "type": "string" } },
-          { "name": "hub.challenge", "in": "query", "schema": { "type": "string" } }
-        ]
-      },
-      "post": {
-        "summary": "Recevoir un message WhatsApp",
-        "tags": ["Webhooks"]
       }
     },
     "/api/approvals": {

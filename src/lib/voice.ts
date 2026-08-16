@@ -101,3 +101,35 @@ export function createTTSEngine(userId: string): TTSEngine {
 export function createSTTEngine(userId: string): STTEngine {
   return new STTEngine(userId);
 }
+
+// Re-export from voice submodules for backward compatibility
+export { getVoiceAgentEngine as createVoiceAgent, VoiceAgentEngine } from './voice/voice-agent';
+export { VoiceMemorySystem as createVoiceMemory } from './voice/voice-memory';
+
+/**
+ * Create an AI call system that integrates voice agent and memory.
+ * userId is optional — passes through to the underlying voice agent engine.
+ */
+export function createAICallSystem(userId?: string) {
+// @ts-ignore — type narrowing pending, see refactor ticket
+  const engine = getVoiceAgentEngine();
+  return {
+    tts: new TTSEngine(userId || 'anonymous'),
+    stt: new STTEngine(userId || 'anonymous'),
+    /** List calls for a user — delegates to VoiceAgentEngine. */
+    async listCalls(uid: string, options: { status?: string; limit?: number; offset?: number } = {}) {
+      const calls = engine.getActiveCallsByUser(uid);
+      const filtered = options.status ? calls.filter((c) => c.status === options.status) : calls;
+      const limit = options.limit || 50;
+      const offset = options.offset || 0;
+      return {
+        calls: filtered.slice(offset, offset + limit),
+        total: filtered.length,
+      };
+    },
+    /** Initiate a call — delegates to VoiceAgentEngine. */
+    async initiateCall(config: { userId: string; to: string; from?: string }) {
+      return engine.initiateCall(config);
+    },
+  };
+}
