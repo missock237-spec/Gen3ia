@@ -1,15 +1,4 @@
-export { ComputeEngine } from './engine';
-export type { ComputeBackend, ComputeConfig, ComputeResult } from './engine';
-export { createComputeEngine } from './engine';
-export { ComputeCache } from './cache';
-export type { CachePriority } from './cache';
-export { createComputeCache } from './cache';
-export { OperationPipeline } from './pipeline';
-export type { PipelineStep, PipelineContext, PipelineResult, PipelineStepResult } from './pipeline';
-export { createOperationPipeline } from './pipeline';
-export { ComputePredictor } from './predictor';
-export type { BackendPerformance, PredictionResult } from './predictor';
-export { createComputePredictor } from './predictor';
-export { ComputeEngineV2 } from './engine-v2';
-export type { ComputeRequest, ComputeBatchRequest, ComputeEngineV2Config } from './engine-v2';
-export { createComputeEngineV2 } from './engine-v2';
+// Barrel exports for compute engine
+
+export { computeEngine } from './engine';
+export type { ComputeBackend, ComputeTask, ComputeOptions, ComputeResult } from './engine';

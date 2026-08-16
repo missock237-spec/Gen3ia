@@ -94,7 +94,6 @@ export async function sendWelcomeEmail(email: string, name: string): Promise<voi
         <li>🧠 Agents IA intelligents</li>
         <li>🤖 Automatisation des tâches</li>
         <li>📊 Analytics en temps réel</li>
-        <li>💬 Intégration WhatsApp</li>
       </ul>
       <p style="text-align: center;">
         <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/agents" class="btn">

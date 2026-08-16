@@ -1,61 +1,38 @@
+import { FieldValue } from 'firebase-admin/firestore';
+import { BaseRepository } from './base.repository.js';
+
 // ============================================================
-// UserRepository
+// UserRepository — collection Firestore 'users'
 // ============================================================
 
-import { BaseRepository } from './base.repository';
-
-export interface UserData {
+export interface UserRecord extends Record<string, unknown> {
   id: string;
-  email: string;
-  name: string | null;
-  password: string | null;
-  avatar: string | null;
-  plan: string;
-  role: string;
-  credits: number;
-  isActive: boolean;
-  isEmailVerified: boolean;
-  lastActiveAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CreateUserInput {
-  email: string;
   name?: string;
-  password?: string;
-  plan?: string;
-  role?: string;
-}
-
-export interface UpdateUserInput {
-  name?: string;
-  avatar?: string;
-  plan?: string;
-  role?: string;
+  email?: string;
   credits?: number;
-  isActive?: boolean;
-  isEmailVerified?: boolean;
-  lastActiveAt?: Date;
-  password?: string;
+  plan?: string;
+  createdAt?: Date;
 }
 
-class UserRepository extends BaseRepository<UserData, CreateUserInput, UpdateUserInput> {
-  protected tableName = 'user';
-
-  async findByEmail(email: string): Promise<UserData | null> {
-    return this.findByUnique({ email });
+export class UserRepository extends BaseRepository<UserRecord> {
+  constructor() {
+    super('users');
   }
 
-  async deductCredits(userId: string, amount: number): Promise<UserData> {
-    const user = await this.findByIdOrThrow(userId);
-    const newCredits = Math.max(0, (user.credits || 0) - amount);
-    return this.update(userId, { credits: newCredits } as any);
+  async deductCredits(userId: string, amount: number): Promise<UserRecord> {
+    const docRef = this.db().collection('users').doc(userId);
+    await docRef.update({ credits: FieldValue.increment(-amount) });
+    const snap = await docRef.get();
+    const data = snap.data() ?? {};
+    return { ...data, id: snap.id } as UserRecord;
   }
 
-  async addCredits(userId: string, amount: number): Promise<UserData> {
-    const user = await this.findByIdOrThrow(userId);
-    return this.update(userId, { credits: (user.credits || 0) + amount } as any);
+  async addCredits(userId: string, amount: number): Promise<UserRecord> {
+    const docRef = this.db().collection('users').doc(userId);
+    await docRef.update({ credits: FieldValue.increment(amount) });
+    const snap = await docRef.get();
+    const data = snap.data() ?? {};
+    return { ...data, id: snap.id } as UserRecord;
   }
 }
 

@@ -38,4 +38,3 @@
 - Authentication Google/GitHub
 - Dashboard avec métriques
 - Paiements Mobile Money (SebPay)
-- WhatsApp integration

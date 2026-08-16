@@ -8,6 +8,11 @@ import { NextRequest } from 'next/server';
 import { getVoiceAgentEngine } from '@/lib/voice/voice-agent';
 import { db } from '@/lib/db';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -68,7 +73,7 @@ export async function POST(request: NextRequest) {
       status: 200,
       headers: { 'Content-Type': 'text/xml; charset=utf-8' },
     });
-  } catch (error) {
+  } catch (_error) {
     return generateTwiML('Désolé, une erreur est survenue. Nous vous rappelons rapidement.', true);
   }
 }

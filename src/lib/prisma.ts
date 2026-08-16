@@ -1,20 +1,13 @@
-// Prisma client — Point d'entree unique pour Prisma ORM
-// Utilise Prisma 7 avec generation TypeScript
+// ============================================================
+// Gen3ia — Prisma shim (compatibilité)
+// ============================================================
+//  Préserve `import { prisma } from '@/lib/prisma'` (legacy imports).
+//  Délègue vers Firestore (façade + modèles supplémentaires).
+// ============================================================
+import { dbExt } from '@/lib/firestore-extra';
 
-import { PrismaClient } from '@prisma/client';
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  });
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
-
-export default prisma;
+export { Collections, FirestoreRepository } from '@/lib/firebase/firestore';
+export type { FirestoreWhereOp, FirestoreOrderBy, WhereInput, OrderByInput, SelectInput, IncludeInput, FindOptions, FindUniqueOptions, CreateOptions, UpdateOptions, DeleteOptions } from '@/lib/firebase/firestore';
+export const db = dbExt;
+export const prisma = dbExt;
+export default dbExt;

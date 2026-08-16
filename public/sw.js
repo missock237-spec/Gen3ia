@@ -1,133 +1,158 @@
 // ============================================================
-// Gen3ia — Service Worker v2
-// Stratégie : Network First, cache fallback
-// Cache : statique (navigation) + dynamique (API)
+// Gen3ia — Service Worker v1
 // ============================================================
-const CACHE_STATIC = 'gen3ia-static-v2';
-const CACHE_DYNAMIC = 'gen3ia-dynamic-v2';
-const CACHE_IMMUTABLE = 'gen3ia-immutable-v2';
+//  Cache-first pour assets statiques (économise la data)
+//  Network-first pour API (données fraîches si connecté)
+//  Background sync pour les exécutions d'agents en attente
+// ============================================================
 
-const STATIC_ASSETS = [
-  '/',
-  '/manifest.json',
-  '/icon.svg',
-  '/favicon-gen3ia.png',
-];
+const CACHE_VERSION = 'gen3ia-v1';
+const STATIC_CACHE = `${CACHE_VERSION}-static`;
+const API_CACHE = `${CACHE_VERSION}-api`;
 
-const API_CACHE_STRATEGIES = {
-  '/api/health': 'cache-first',
-  '/api/events': 'network-only',
-};
+// Assets à cacher au démarrage
+const PRECACHE_URLS = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
-// === INSTALL ===
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_STATIC).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+// --- INSTALL : pré-cacher les pages essentielles ---
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS).catch(() => {}))
   );
-  self.skipWaiting();
+  self.skipWaiting(); // Mise à jour immédiate
 });
 
-// === ACTIVATE ===
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
+// --- ACTIVATE : nettoyer les vieux caches ---
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
         keys
-          .filter((k) => k.startsWith('genova-') || (k.startsWith('gen3ia-') && k !== CACHE_STATIC && k !== CACHE_DYNAMIC && k !== CACHE_IMMUTABLE))
-          .map((k) => caches.delete(k))
-      );
+          .filter((key) => !key.startsWith(CACHE_VERSION))
+          .map((key) => caches.delete(key))
+      )
+    )
+  );
+  self.clients.claim();
+});
+
+// --- FETCH : stratégies de cache ---
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Ignorer les requêtes non-GET
+  if (request.method !== 'GET') return;
+
+  // Ignorer les WebSocket
+  if (request.url.startsWith('ws://') || request.url.startsWith('wss://')) return;
+
+  // API : network-first avec fallback cache
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Mettre en cache si réponse valide
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(API_CACHE).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => {
+          // Fallback : cache ou réponse offline JSON
+          return caches.match(request).then(
+            (cached) =>
+              cached ||
+              new Response(
+                JSON.stringify({ error: 'Vous êtes hors-ligne', offline: true }),
+                { status: 503, headers: { 'Content-Type': 'application/json' } }
+              )
+          );
+        })
+    );
+    return;
+  }
+
+  // Assets statiques : cache-first
+  if (
+    url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|eot)$/) ||
+    url.pathname === '/'
+  ) {
+    event.respondWith(
+      caches.match(request).then(
+        (cached) =>
+          cached ||
+          fetch(request).then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
+            }
+            return response;
+          })
+      )
+    );
+    return;
+  }
+
+  // Navigation : fallback vers la page hors-ligne
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
+    );
+  }
+});
+
+// --- BACKGROUND SYNC : exécutions d'agents en attente ---
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-agent-executions') {
+    event.waitUntil(syncQueuedExecutions());
+  }
+});
+
+async function syncQueuedExecutions() {
+  try {
+    const cache = await caches.open(`${CACHE_VERSION}-queue`);
+    const keys = await cache.keys();
+    for (const key of keys) {
+      const response = await cache.match(key);
+      const body = await response.json();
+      // Rejouer la requête
+      const result = await fetch(key.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (result.ok) {
+        await cache.delete(key);
+      }
+    }
+  } catch (err) {
+    console.error('[SW] sync failed:', err);
+  }
+}
+
+// --- PUSH : notifications ---
+self.addEventListener('push', (event) => {
+  const payload = event.data ? event.data.json() : { title: 'Gen3ia', body: 'Notification' };
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: payload.icon || '/icon-192.png',
+      badge: payload.badge || '/icon-192.png',
+      tag: payload.tag || 'gen3ia',
+      data: payload.data || {},
     })
   );
-  return self.clients.claim();
 });
 
-// === FETCH ===
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-
-  // API — Stratégie spécifique
-  const strategy = Object.entries(API_CACHE_STRATEGIES).find(([path]) =>
-    url.pathname.startsWith(path)
-  )?.[1];
-
-  if (strategy === 'cache-first') {
-    e.respondWith(cacheFirst(e.request));
-    return;
-  }
-
-  if (strategy === 'network-only') {
-    e.respondWith(networkOnly(e.request));
-    return;
-  }
-
-  // Pages et assets — Network First
-  if (url.origin === self.location.origin) {
-    if (
-      url.pathname === '/' ||
-      url.pathname.startsWith('/login') ||
-      url.pathname.startsWith('/register') ||
-      url.pathname.startsWith('/dashboard') ||
-      url.pathname.startsWith('/agents') ||
-      url.pathname.startsWith('/settings') ||
-      url.pathname.startsWith('/terminal')
-    ) {
-      e.respondWith(networkFirst(e.request, CACHE_STATIC));
-      return;
-    }
-
-    // Assets statiques — Cache First
-    if (
-      url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$/)
-    ) {
-      e.respondWith(cacheFirst(e.request));
-      return;
-    }
-
-    // API GET — Network First avec cache
-    if (url.pathname.startsWith('/api/') && e.request.method === 'GET') {
-      e.respondWith(networkFirst(e.request, CACHE_DYNAMIC));
-      return;
-    }
-  }
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
+  event.waitUntil(self.clients.openWindow(url));
 });
-
-// === STRATÉGIES ===
-async function networkFirst(request, cacheName) {
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (error) {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    // Fallback vers la page d'accueil
-    if (request.mode === 'navigate') {
-      return caches.match('/');
-    }
-    throw error;
-  }
-}
-
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(CACHE_IMMUTABLE);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (error) {
-    return new Response('Offline', { status: 503 });
-  }
-}
-
-async function networkOnly(request) {
-  return fetch(request);
-}

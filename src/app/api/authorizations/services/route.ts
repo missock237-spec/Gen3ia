@@ -3,10 +3,15 @@ import { getServerSession } from '@/lib/auth';
 import { getAvailableActions, getSupportedServices } from '@/lib/agent-engine/service-executor';
 import { prisma } from '@/lib/prisma';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession();
-    if (!session?.userId) {
+    if (!session?.user.id) {
       return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
 
@@ -14,7 +19,7 @@ export async function GET(request: NextRequest) {
     const service = url.searchParams.get('service');
 
     const connected = await prisma.workflowAuthorization.findMany({
-      where: { userId: session.userId, isActive: true },
+      where: { userId: session.user.id, isActive: true },
       select: { service: true, accountName: true },
     });
     const connectedSet = new Set(connected.map(c => c.service));

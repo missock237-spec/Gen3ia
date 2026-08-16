@@ -1,5 +1,6 @@
 import { createLogger } from '@/lib/logger';
 import { createAIRouter } from '@/lib/ai-router';
+import crypto from 'node:crypto';
 
 const log = createLogger('replit-agent');
 
@@ -39,7 +40,7 @@ export class ReplitAgent {
 
   createSession(userId: string, name: string, language: string = 'typescript'): ReplitSession {
     const session: ReplitSession = {
-      id: `rep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `rep_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
       userId,
       name,
       language,
@@ -66,7 +67,7 @@ export class ReplitAgent {
     if (!session) throw new Error(`Session ${sessionId} introuvable`);
 
     const execution: ReplitExecution = {
-      id: `exec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `exec_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
       command,
       code: command.content || '',
       result: '',
