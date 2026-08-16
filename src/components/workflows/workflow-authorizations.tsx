@@ -61,8 +61,6 @@ export default function WorkflowAuthorizations() {
   const [activeTab, setActiveTab] = useState('all');
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  useEffect(() => { loadAuthorizations(); }, []);
-
   const loadAuthorizations = async () => {
     try {
       const res = await fetch('/api/authorizations');
@@ -72,6 +70,8 @@ export default function WorkflowAuthorizations() {
     } catch { toast.error('Erreur chargement'); }
     finally { setLoading(false); }
   };
+
+  useEffect(() => { void loadAuthorizations();   }, []);
 
   const handleConnect = async (service: string) => {
     setConnecting(service);

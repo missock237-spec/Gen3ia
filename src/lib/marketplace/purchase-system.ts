@@ -1,4 +1,3 @@
-cat > src/lib/marketplace/purchase-system.ts << 'FILEEOF'
 /**
  * Purchase System — Marketplace purchases
  *
@@ -482,4 +481,3 @@ export async function getPurchaseHistory(
     totalPages: Math.ceil(total / limit),
   }
 }
-FILEEOF

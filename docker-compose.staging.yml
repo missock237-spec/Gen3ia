@@ -4,9 +4,11 @@
 #   docker compose -f docker-compose.staging.yml up -d
 #   docker compose -f docker-compose.staging.yml logs -f app
 #
-# Services: app (x2), postgres, redis, qdrant, workers,
+# Services: app (x2), redis, qdrant, workers,
 #           traefik, prometheus, loki, grafana, promtail,
 #           node-exporter, cadvisor
+#
+# Base de donnees applicative : Firestore (Firebase) — pas de PostgreSQL.
 # ============================================================
 
 name: gen3ia-staging
@@ -42,7 +44,11 @@ x-env: &app-env
   NEXT_TELEMETRY_DISABLED: 1
   PORT: 3000
   HOSTNAME: "0.0.0.0"
-  DATABASE_URL: postgresql://gen3ia:${POSTGRES_PASSWORD:-gen3ia_staging}@postgres:5432/gen3ia_staging
+  # Firebase (Admin SDK — serveur)
+  FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+  FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+  FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+  FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
   REDIS_URL: redis://redis:6379
   QDRANT_URL: http://qdrant:6333
   VECTOR_STORE_TYPE: qdrant
@@ -50,11 +56,16 @@ x-env: &app-env
   NEXTAUTH_SECRET: ${AUTH_SECRET}
   NEXTAUTH_URL: ${STAGING_URL:-https://staging.gen3ia.ai}
   NEXT_PUBLIC_APP_URL: ${STAGING_URL:-https://staging.gen3ia.ai}
+  NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-}
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+  NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
   LOG_LEVEL: info
   LOKI_URL: http://loki:3100
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
-  SEED_DATABASE: ${SEED_DATABASE:-false}
 
 services:
   # ============================================================
@@ -86,37 +97,8 @@ services:
       - gen3ia-staging
 
   # ============================================================
-  # DATABASES
+  # CACHE & VECTEURS
   # ============================================================
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: gen3ia-staging-postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: gen3ia
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gen3ia_staging}
-      POSTGRES_DB: gen3ia_staging
-    volumes:
-      - postgres_staging_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gen3ia -d gen3ia_staging"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      <<: *default-deploy
-      resources:
-        limits:
-          cpus: "1"
-          memory: "1G"
-        reservations:
-          cpus: "0.5"
-          memory: "512M"
-    networks:
-      - gen3ia-staging
 
   redis:
     image: redis:7-alpine
@@ -165,7 +147,7 @@ services:
       - gen3ia-staging
 
   # ============================================================
-  # APPLICATION (2 réplicas)
+  # APPLICATION (2 replicas)
   # ============================================================
 
   app:
@@ -185,7 +167,6 @@ services:
     volumes:
       - gen3ia_workspace:/tmp/gen3ia-workspace
     depends_on:
-      postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       qdrant: { condition: service_started }
     healthcheck: *app-healthcheck
@@ -227,7 +208,6 @@ services:
     volumes:
       - gen3ia_workspace:/tmp/gen3ia-workspace
     depends_on:
-      postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       qdrant: { condition: service_started }
     healthcheck: *app-healthcheck
@@ -256,7 +236,6 @@ services:
       WORKER_CONCURRENCY: 10
       WORKER_QUEUE: agent-execution
     depends_on:
-      postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     deploy:
       replicas: 2
@@ -401,32 +380,7 @@ services:
     networks:
       - gen3ia-staging
 
-  # ============================================================
-  # UTILITY (seed ponctuel)
-  # ============================================================
-
-  seed:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: builder
-    image: gen3ia:staging-seed
-    container_name: gen3ia-staging-seed
-    profiles:
-      - seed
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: postgresql://gen3ia:${POSTGRES_PASSWORD:-gen3ia_staging}@postgres:5432/gen3ia_staging
-      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
-    depends_on:
-      postgres: { condition: service_healthy }
-    command: npx tsx prisma/seed.ts
-    networks:
-      - gen3ia-staging
-
 volumes:
-  postgres_staging_data:
-    driver: local
   redis_staging_data:
     driver: local
   qdrant_staging_data:

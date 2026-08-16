@@ -199,8 +199,9 @@ let rustLoaded = false;
 function loadSafetyEngine(): RustSafetyModule | FallbackSafety {
   try {
     // Tentative de chargement du module NAPI Rust
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const rustModule = require('../../crates/agent-safety') as RustSafetyModule;
+     
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+const rustModule = require('../../crates/agent-safety') as RustSafetyModule;
     rustModule.safety_init();
     rustLoaded = true;
     console.log('[agent-safety] Rust engine loaded successfully');

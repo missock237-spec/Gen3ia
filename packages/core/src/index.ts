@@ -1,42 +1,10 @@
-// ============================================================
-// Gen3ia Core — Index barrel
-// ============================================================
+// @gen3ia/core - Point d'entree principal
 
-export { db, prisma } from './db.js';
-export { createLogger, logger } from './logger.js';
-
-// Erreurs standardisees
-export {
-  ApiError,
-  NotFoundError, UnauthorizedError, ForbiddenError,
-  ValidationError, RateLimitError,
-  AgentError,
-  AgentTimeoutError, AgentMaxIterationsError, AgentLoopDetectedError,
-  LLMError, ToolNotAllowedError,
-  PaymentError,
-  InsufficientCreditsError, PaymentFailedError, StripeError,
-  MobileMoneyError, PlanLimitReachedError,
-  AuthError,
-  SessionExpiredError, InvalidTokenError, OAuthError,
-  InvalidCredentialsError,
-  AgentSafetyError,
-  SandboxViolationError, PromptInjectionError, ResourceExceededError,
-  WebhookError,
-  InvalidSignatureError, ReplayDetectedError,
-  DatabaseError, UniqueConstraintError,
-  handleApiError, ErrorCodes,
-  ApiResponse, ApiSuccessResponse, ApiErrorResponse,
-} from './errors.js';
-
-export {
-  executeAgentSchema, createAgentSchema, loginSchema, registerSchema, formatZodErrors,
-} from './validation.js';
-export { encrypt, decrypt, hashToken } from './security.js';
-export { checkpointManager, CheckpointData } from './checkpoint.js';
-export { rateLimiter, getCategory, EndpointCategory, RateLimitResult } from './rate-limiter.js';
-export {
-  signPayload, verifySignature, createSecurePayload,
-  validateWebhook, webhookSecurityMiddleware,
-  WebhookPayload,
-} from './webhook-security.js';
-export { supervisor, SupervisorAgent } from './agent/supervisor.js';
+export * from './errors.js';
+export * from './env-validator.js';
+export * from './logger.js';
+export * from './repositories/index.js';
+export * from './services/index.js';
+export * from './validation.js';
+export { db, prisma, Collections, FirestoreRepository, default } from './db.js';
+export type { FirestoreWhereOp, FirestoreOrderBy, FindOptions, FindUniqueOptions } from './db.js';

@@ -25,7 +25,7 @@ export const options = {
 const agentRunErrorRate = new Rate('agent_run_errors');
 const agentRunDuration = new Trend('agent_run_duration');
 
-export default function () {
+export default function _default() {
   group('Agents Run - Cycle complet', () => {
     const agentId = `agent_${Math.floor(Math.random() * 10) + 1}`;
     const inputs = [

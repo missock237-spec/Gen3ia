@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
     const session = await getServerSession();
-    if (!session?.userId) {
+    if (!session?.user.id) {
       return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
     const { code, language, input } = await request.json();
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
         details: JSON.stringify({ language, codeLength: code.length }),
         status: result.error ? 'failed' : 'completed',
         result: JSON.stringify({ outputLength: result.output.length, executionTime: result.executionTime }),
-        userId: session.userId,
+        userId: session.user.id,
       },
     });
     return NextResponse.json({
@@ -75,22 +75,115 @@ async function executeInSandbox(code: string, language: string, input?: string):
         wrappedCode = transpiled.outputText;
       } catch { wrappedCode = code; }
     }
-    let logs: string[] = [];
-    const customConsole = {
-      log: (...args: unknown[]) => { logs.push(args.map(String).join(' ')); },
-      error: (...args: unknown[]) => { logs.push('[ERROR] ' + args.map(String).join(' ')); },
-      warn: (...args: unknown[]) => { logs.push('[WARN] ' + args.map(String).join(' ')); },
-    };
-    const fn = new Function('console', 'input', wrappedCode);
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout execution')), SANDBOX_TIMEOUT)
-    );
-    await Promise.race([
-      Promise.resolve().then(() => fn(customConsole, input || '')),
-      timeoutPromise,
-    ]);
-    const output = logs.join('\n').slice(0, MAX_OUTPUT_SIZE);
-    return { output, error: null, executionTime: Date.now() - startTime, memoryUsage: 0, exitCode: 0 };
+
+    // Validate: block dangerous patterns before execution
+    const dangerousPatterns = [
+      /require\s*\(/,          // No require()
+      /import\s+/,             // No import
+      /process\./,             // No process access
+      /global\./,              // No global access
+      /__dirname/,             // No filesystem paths
+      /child_process/,        // No subprocess
+      /eval\s*\(/,            // No eval
+      /Function\s*\(/,        // No Function constructor
+    ];
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(wrappedCode)) {
+        return {
+          output: '',
+          error: `Blocage sécurité: pattern interdit détecté (${pattern.source})`,
+          executionTime: Date.now() - startTime,
+          memoryUsage: 0,
+          exitCode: 1,
+        };
+      }
+    }
+
+    // Try isolated-vm for true sandbox isolation
+    const logs: string[] = [];
+    try {
+      const ivm = await import('isolated-vm') as any;
+      const isolate = new ivm.Isolate({ memoryLimit: 128 }); // 128MB max
+      const context = await isolate.createContext();
+
+      // Inject console.log into the isolate
+      const logFn = new ivm.Reference(function(...args: any[]) {
+        logs.push(args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' '));
+      });
+      context.global.setSync('console', {
+        log: logFn.derefInto(),
+        error: logFn.derefInto(),
+        warn: logFn.derefInto(),
+      });
+      context.global.setSync('input', input || '');
+
+      // Execute with timeout
+      const script = new ivm.Script(wrappedCode);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout execution')), SANDBOX_TIMEOUT)
+      );
+
+      await Promise.race([
+        script.run(context, { timeout: SANDBOX_TIMEOUT }),
+        timeoutPromise,
+      ]);
+
+      // Get memory usage from isolate
+      const heapStats = isolate.getHeapStatistics
+        ? isolate.getHeapStatistics()
+        : { used_heap_size: 0 };
+
+      isolate.dispose();
+
+      const output = logs.join('\n').slice(0, MAX_OUTPUT_SIZE);
+      return {
+        output,
+        error: null,
+        executionTime: Date.now() - startTime,
+        memoryUsage: heapStats.used_heap_size || 0,
+        exitCode: 0,
+      };
+    } catch (ivmError: any) {
+      // isolated-vm not available — use hardened new Function with strict guards
+      // This is a fallback, not as safe as isolated-vm
+      if (ivmError?.message?.includes('Cannot find module')) {
+        // Hardened fallback: block global access via proxy
+        const blockProxy = new Proxy({}, {
+          get: () => { throw new Error('Accès global interdit'); },
+          set: () => { throw new Error('Accès global interdit'); },
+        });
+
+        const logs2: string[] = [];
+        const safeConsole = {
+          log: (...args: unknown[]) => { logs2.push(args.map(String).join(' ')); },
+          error: (...args: unknown[]) => { logs2.push('[ERROR] ' + args.map(String).join(' ')); },
+          warn: (...args: unknown[]) => { logs2.push('[WARN] ' + args.map(String).join(' ')); },
+        };
+
+        // Strip all dangerous globals from the function scope
+        // Block code injection patterns
+      if (/eval\s*\(|Function\s*\(|child_process|process\.binding|require\s*\(/.test(wrappedCode)) {
+        return { output: '', error: 'Code contains forbidden patterns', executionTime: 0, memoryUsage: 0, exitCode: 1 };
+      }
+      const fn = new Function('console', 'input', 'process', 'require', 'global', 'module',
+          'const process=undefined;const require=undefined;const global=undefined;const module=undefined;' +
+          wrappedCode
+        );
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout execution')), SANDBOX_TIMEOUT)
+        );
+
+        await Promise.race([
+          Promise.resolve().then(() => fn(safeConsole, input || '', blockProxy, blockProxy, blockProxy, blockProxy)),
+          timeoutPromise,
+        ]);
+
+        const output = logs2.join('\n').slice(0, MAX_OUTPUT_SIZE);
+        return { output, error: null, executionTime: Date.now() - startTime, memoryUsage: 0, exitCode: 0 };
+      }
+      throw ivmError;
+    }
   } catch (error) {
     return {
       output: '',

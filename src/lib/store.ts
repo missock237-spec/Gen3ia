@@ -15,6 +15,8 @@ export interface AuthState {
   hydrate: () => Promise<void>;
   validateSession: () => Promise<boolean>;
   logout: () => void;
+  /** Legacy alias for hydrate — fetch session and populate user. */
+  login: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -49,6 +51,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch { return false; }
   },
   logout: () => set({ isAuthenticated: false, user: null }),
+  login: async () => {
+    // Legacy alias — delegates to hydrate
+    await useAuthStore.getState().hydrate();
+  },
 }));
 
 export type ViewType =

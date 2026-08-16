@@ -10,7 +10,7 @@ export function JsonLd() {
       applicationCategory: "AIApplication",
       operatingSystem: "Web",
       description:
-        "Gen3ia est la plateforme SaaS qui vous permet de créer, gérer et coordonner vos agents IA. Outils, automatisation, ReAct Loop, WhatsApp, Marketplace.",
+        "Gen3ia est la plateforme SaaS qui vous permet de créer, gérer et coordonner vos agents IA. Outils, automatisation, ReAct Loop, Marketplace.",
       url: siteConfig.url,
       image: `${siteConfig.url}/og-image.png`,
       author: {
@@ -28,7 +28,6 @@ export function JsonLd() {
         "Agents IA autonomes avec ReAct Loop",
         "Appels vocaux avec voix humaine (Twilio)",
         "Outils et actions personnalisables",
-        "Pipeline WhatsApp",
         "Marketplace d'agents",
         "Billing adapté à l'Afrique",
         "Multimodal (texte, image, vidéo)",
@@ -86,7 +85,7 @@ export function JsonLd() {
           name: "Qu'est-ce que Gen3ia ?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Gen3ia est un système d'exploitation pour agents IA. Une plateforme SaaS qui permet de créer, gérer et coordonner des agents intelligents capables d'exécuter des tâches, passer des appels vocaux, répondre sur WhatsApp, et bien plus.",
+            text: "Gen3ia est un système d'exploitation pour agents IA. Une plateforme SaaS qui permet de créer, gérer et coordonner des agents intelligents capables d'exécuter des tâches, passer des appels vocaux, et bien plus.",
           },
         },
         {

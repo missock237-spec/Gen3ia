@@ -32,9 +32,6 @@ class GenovaClient:
     def generate_audio(self, text: str, model: str = "mms-fra") -> dict:
         return self._request("POST", "/api/audio/generate", {"text": text, "model": model})
 
-    def send_whatsapp(self, to: str, text: str) -> dict:
-        return self._request("POST", "/api/whatsapp/send", {"type": "text", "to": to, "text": text})
-
     def get_plans(self) -> dict:
         return self._request("GET", "/api/payments/plans")
 

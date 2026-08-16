@@ -1,149 +1,251 @@
 // ============================================================
-// Base Repository — Classe abstraite pour tous les repositories
+// Gen3ia — BaseRepository (Cloud Firestore)
 // ============================================================
-// Pattern Repository : centralise l'acces aux donnees Prisma
-// Les services appellent les repositories, jamais Prisma directement
+//  Remplace le repository Prisma-based supprimé pendant la
+//  migration Firebase. API volontairement Prisma-like pour
+//  préserver la compat avec les services existants.
 // ============================================================
 
-import { db } from '../db';
-import { logger } from '../logger';
-import { DatabaseError, NotFoundError } from '../errors';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import {
+  getFirestore,
+  Timestamp,
+  FieldValue,
+  type DocumentData,
+  type WhereFilterOp,
+  type CollectionReference,
+  type DocumentReference,
+  type Query,
+  type WriteBatch,
+} from 'firebase-admin/firestore';
 
-export abstract class BaseRepository<T, TCreate, TUpdate = Partial<TCreate>> {
-  protected abstract tableName: string;
+// Initialisation idempotente du SDK Admin (si clés fournies)
+function adminApp() {
+  if (getApps().length > 0) return getApps()[0]!;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY || process.env.FIREBASE_SERVICE_ACCOUNT;
 
-  /**
-   * Trouver un enregistrement par son ID
-   */
-  async findById(id: string, select?: Record<string, boolean>): Promise<T | null> {
-    try {
-      const result = await (db as any)[this.tableName].findUnique({
-        where: { id },
-        ...(select ? { select } : {}),
-      });
-      return result as T | null;
-    } catch (error) {
-      logger.error(`repository.${this.tableName}.findById`, { id, error: String(error) });
-      throw new DatabaseError('QUERY_ERROR', `Erreur lors de la recuperation de ${this.tableName}`, { id });
-    }
+  if (!projectId || !clientEmail || !privateKey) {
+    // Mode émulateur / fonctionnel sans creds : application par défaut
+    return initializeApp({ projectId: projectId || 'gen3ia-local' });
   }
 
-  /**
-   * Trouver un enregistrement par un champ unique
-   */
-  async findByUnique(where: Record<string, unknown>, select?: Record<string, boolean>): Promise<T | null> {
-    try {
-      const result = await (db as any)[this.tableName].findUnique({
-        where,
-        ...(select ? { select } : {}),
-      });
-      return result as T | null;
-    } catch (error) {
-      logger.error(`repository.${this.tableName}.findByUnique`, { where, error: String(error) });
-      throw new DatabaseError('QUERY_ERROR', `Erreur de recherche ${this.tableName}`, { where });
-    }
+  const credentials =
+    typeof privateKey === 'string' && privateKey.trim().startsWith('{') ? JSON.parse(privateKey) : { clientEmail, privateKey: privateKey.replace(/\\n/g, '\n') };
+
+  return initializeApp({
+    credential: cert(credentials as Parameters<typeof cert>[0]),
+    projectId,
+  });
+}
+
+// ============================================================
+// Types (Prisma-like)
+// ============================================================
+
+export interface WhereOp {
+  field: string;
+  op: WhereFilterOp;
+  value: unknown;
+}
+
+export interface OrderByClause {
+  field: string;
+  direction?: 'asc' | 'desc';
+}
+
+export interface FindManyArgs {
+  where?: WhereOp[];
+  orderBy?: OrderByClause | OrderByClause[];
+  take?: number;
+  skip?: number;
+  select?: string[];
+}
+
+export interface FindUniqueArgs {
+  where: { id?: string; [key: string]: unknown };
+  select?: string[];
+}
+
+/** Sélecteur Prisma-like : `{ credits: true }` ou `['credits']` */
+export type Select = string[] | Record<string, boolean>;
+
+// ============================================================
+// Sérialisation
+// ============================================================
+
+function serialize(data: Record<string, unknown>): DocumentData {
+  const out: DocumentData = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) continue;
+    if (value instanceof Date) out[key] = Timestamp.fromDate(value);
+    else if (Array.isArray(value)) out[key] = value.map(serializeValue);
+    else if (value && typeof value === 'object' && !(value instanceof Timestamp)) {
+      out[key] = serialize(value as Record<string, unknown>);
+    } else out[key] = value;
+  }
+  return out;
+}
+
+function serializeValue(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (value instanceof Date) return Timestamp.fromDate(value);
+  if (Array.isArray(value)) return value.map(serializeValue);
+  if (value && typeof value === 'object' && !(value instanceof Timestamp)) {
+    return serialize(value as Record<string, unknown>);
+  }
+  return value;
+}
+
+function deserialize(snapshot: DocumentData): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (value instanceof Timestamp) out[key] = value.toDate();
+    else if (Array.isArray(value)) out[key] = value.map((v) => (v instanceof Timestamp ? v.toDate() : v));
+    else if (value && typeof value === 'object') out[key] = deserialize(value);
+    else out[key] = value;
+  }
+  return out;
+}
+
+function normalizeSelect(select?: Select): string[] | undefined {
+  if (!select) return undefined;
+  if (Array.isArray(select)) return select;
+  return Object.entries(select)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+}
+
+function project<T extends Record<string, unknown>>(data: T, select?: Select): T {
+  const fields = normalizeSelect(select);
+  if (!fields || fields.length === 0) return data;
+  const out: Record<string, unknown> = {};
+  for (const f of fields) if (f in data) out[f] = data[f];
+  if ('id' in data) out.id = data.id;
+  return out as T;
+}
+
+// ============================================================
+// BaseRepository
+// ============================================================
+
+export class BaseRepository<T extends Record<string, unknown> = Record<string, unknown>> {
+  constructor(protected collectionName: string) {}
+
+  protected db() {
+    return getFirestore(adminApp());
   }
 
-  /**
-   * Trouver le premier enregistrement correspondant aux criteres
-   */
-  async findFirst(where: Record<string, unknown>, include?: Record<string, unknown>): Promise<T | null> {
-    try {
-      const result = await (db as any)[this.tableName].findFirst({
-        where,
-        ...(include ? { include } : {}),
-      });
-      return result as T | null;
-    } catch (error) {
-      logger.error(`repository.${this.tableName}.findFirst`, { where, error: String(error) });
-      throw new DatabaseError('QUERY_ERROR', `Erreur de recherche ${this.tableName}`, { where });
-    }
+  protected col(): CollectionReference<DocumentData> {
+    return this.db().collection(this.collectionName);
   }
 
-  /**
-   * Lister les enregistrements avec pagination
-   */
-  async findMany(params?: {
-    where?: Record<string, unknown>;
-    orderBy?: Record<string, 'asc' | 'desc'>;
-    skip?: number;
-    take?: number;
-    select?: Record<string, boolean>;
-    include?: Record<string, unknown>;
-  }): Promise<T[]> {
-    try {
-      const results = await (db as any)[this.tableName].findMany(params || {});
-      return results as T[];
-    } catch (error) {
-      logger.error(`repository.${this.tableName}.findMany`, { params, error: String(error) });
-      throw new DatabaseError('QUERY_ERROR', `Erreur de liste ${this.tableName}`);
-    }
+  protected docRef(id: string): DocumentReference<DocumentData> {
+    return this.db().doc(`${this.collectionName}/${id}`);
   }
 
-  /**
-   * Creer un enregistrement
-   */
-  async create(data: TCreate): Promise<T> {
-    try {
-      const result = await (db as any)[this.tableName].create({ data });
-      return result as T;
-    } catch (error: any) {
-      if (error?.code === 'P2002') {
-        const fields = error.meta?.target || [];
-        throw new DatabaseError('UNIQUE_CONSTRAINT', `Contrainte unique: ${fields.join(', ')}`);
-      }
-      logger.error(`repository.${this.tableName}.create`, { error: String(error) });
-      throw new DatabaseError('QUERY_ERROR', `Erreur de creation ${this.tableName}`);
-    }
+  async findById(id: string, select?: Select): Promise<T | null> {
+    const snap = await this.docRef(id).get();
+    if (!snap.exists) return null;
+    const data = deserialize(snap.data()!);
+    data.id = snap.id;
+    return project(data as T, select);
   }
 
-  /**
-   * Mettre a jour un enregistrement
-   */
-  async update(id: string, data: TUpdate): Promise<T> {
-    try {
-      const result = await (db as any)[this.tableName].update({
-        where: { id },
-        data,
-      });
-      return result as T;
-    } catch (error) {
-      logger.error(`repository.${this.tableName}.update`, { id, error: String(error) });
-      throw new DatabaseError('QUERY_ERROR', `Erreur de mise a jour ${this.tableName}`, { id });
-    }
+  async findByIdOrThrow(id: string, select?: Select): Promise<T> {
+    const found = await this.findById(id, select);
+    if (!found) throw new Error(`${this.collectionName} introuvable: ${id}`);
+    return found;
   }
 
-  /**
-   * Supprimer un enregistrement
-   */
-  async delete(id: string): Promise<T> {
-    try {
-      const result = await (db as any)[this.tableName].delete({ where: { id } });
-      return result as T;
-    } catch (error) {
-      logger.error(`repository.${this.tableName}.delete`, { id, error: String(error) });
-      throw new DatabaseError('QUERY_ERROR', `Erreur de suppression ${this.tableName}`, { id });
-    }
+  async findUnique(args: FindUniqueArgs): Promise<T | null> {
+    if (args.where.id) return this.findById(args.where.id, args.select);
+    const entries = Object.entries(args.where).filter(([k]) => k !== 'id');
+    if (entries.length === 0) return null;
+    let q: Query<DocumentData> = this.col();
+    for (const [field, value] of entries) q = q.where(field, '==', serializeValue(value));
+    const snap = await q.get();
+    if (snap.empty) return null;
+    const d = snap.docs[0]!;
+    const data = deserialize(d.data() ?? {});
+    data.id = d.id;
+    return project(data as T, args.select);
   }
 
-  /**
-   * Compter les enregistrements
-   */
-  async count(where?: Record<string, unknown>): Promise<number> {
-    try {
-      return await (db as any)[this.tableName].count({ where });
-    } catch (error) {
-      logger.error(`repository.${this.tableName}.count`, { where, error: String(error) });
-      throw new DatabaseError('QUERY_ERROR', `Erreur de comptage ${this.tableName}`);
-    }
+  async findFirst(args: FindManyArgs = {}): Promise<T | null> {
+    const items = await this.findMany({ ...args, take: 1 });
+    return items[0] ?? null;
   }
 
-  /**
-   * Trouver par ID ou lever une erreur
-   */
-  async findByIdOrThrow(id: string): Promise<T> {
-    const result = await this.findById(id);
-    if (!result) throw new NotFoundError(this.tableName, id);
-    return result;
+  async findMany(args: FindManyArgs = {}): Promise<T[]> {
+    let q: Query<DocumentData> = this.col();
+    if (args.where) for (const w of args.where) q = q.where(w.field, w.op, serializeValue(w.value));
+    const order = args.orderBy ? (Array.isArray(args.orderBy) ? args.orderBy : [args.orderBy]) : [];
+    for (const o of order) q = q.orderBy(o.field, o.direction || 'asc');
+    if (args.take) q = q.limit(args.take);
+
+    const snap = await q.get();
+    let items = snap.docs.map((d) => {
+      const data = deserialize(d.data() ?? {});
+      data.id = d.id;
+      return data as T;
+    });
+    if (args.skip && args.skip > 0) items = items.slice(args.skip);
+    if (args.select && args.select.length > 0) items = items.map((it) => project(it, args.select) as T);
+    return items;
+  }
+
+  async count(where?: WhereOp[]): Promise<number> {
+    let q: Query<DocumentData> = this.col();
+    if (where) for (const w of where) q = q.where(w.field, w.op, serializeValue(w.value));
+    const snap = await q.get();
+    return snap.size;
+  }
+
+  async create(data: Record<string, unknown>): Promise<T> {
+    const payload = serialize({ ...data, createdAt: data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: data.updatedAt ?? FieldValue.serverTimestamp() });
+    const ref = await this.col().add(payload);
+    const snap = await ref.get();
+    const result = deserialize(snap.data() ?? {});
+    result.id = ref.id;
+    return result as T;
+  }
+
+  async createWithId(id: string, data: Record<string, unknown>): Promise<T> {
+    const payload = serialize({ ...data, createdAt: data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: data.updatedAt ?? FieldValue.serverTimestamp() });
+    const ref = this.docRef(id);
+    await ref.set(payload);
+    const snap = await ref.get();
+    const result = deserialize(snap.data() ?? {});
+    result.id = id;
+    return result as T;
+  }
+
+  async update(id: string, data: Record<string, unknown>): Promise<T> {
+    const ref = this.docRef(id);
+    const payload = serialize({ ...data, updatedAt: FieldValue.serverTimestamp() });
+    await ref.update(payload);
+    const snap = await ref.get();
+    const result = deserialize(snap.data() ?? {});
+    result.id = id;
+    return result as T;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.docRef(id).delete();
+  }
+
+  async updateMany(where: WhereOp[], data: Record<string, unknown>): Promise<{ count: number }> {
+    const items = await this.findMany({ where });
+    const batch: WriteBatch = this.db().batch();
+    const payload = serialize({ ...data, updatedAt: FieldValue.serverTimestamp() });
+    for (const item of items) batch.update(this.docRef((item as Record<string, unknown>).id as string), payload);
+    await batch.commit();
+    return { count: items.length };
+  }
+
+  protected subcollection(parentId: string, subName: string): BaseRepository {
+    return new BaseRepository(`${this.collectionName}/${parentId}/${subName}`);
   }
 }

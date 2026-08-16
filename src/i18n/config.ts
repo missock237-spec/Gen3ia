@@ -1,8 +1,8 @@
 import { createTranslator } from 'next-intl';
 
-export type Locale = 'fr' | 'en' | 'pt' | 'ar';
+export type Locale = 'fr' | 'en' | 'pt' | 'ar' | 'ha' | 'sw';
 
-export const LOCALES: Locale[] = ['fr', 'en', 'pt', 'ar'];
+export const LOCALES: Locale[] = ['fr', 'en', 'pt', 'ar', 'ha', 'sw'];
 export const DEFAULT_LOCALE: Locale = 'fr';
 
 // Langues avec lecture RTL (Right-to-Left)
@@ -13,10 +13,12 @@ export function isRTL(locale: Locale): boolean {
 }
 
 export const LOCALE_NAMES: Record<Locale, string> = {
-  fr: 'Francais',
+  fr: 'Français',
   en: 'English',
-  pt: 'Portugues',
+  pt: 'Português',
   ar: 'العربية',
+  ha: 'Hausa',
+  sw: 'Kiswahili',
 };
 
 export const LOCALE_FLAGS: Record<Locale, string> = {
@@ -24,6 +26,8 @@ export const LOCALE_FLAGS: Record<Locale, string> = {
   en: '🇬🇧',
   pt: '🇵🇹',
   ar: '🇸🇦',
+  ha: '🇳🇬',
+  sw: '🇹🇿',
 };
 
 export const LOCALE_DIRS: Record<Locale, 'ltr' | 'rtl'> = {
@@ -31,13 +35,17 @@ export const LOCALE_DIRS: Record<Locale, 'ltr' | 'rtl'> = {
   en: 'ltr',
   pt: 'ltr',
   ar: 'rtl',
+  ha: 'ltr',
+  sw: 'ltr',
 };
 
 export const LOCALE_MARKETS: Record<Locale, string[]> = {
-  fr: ['Cameroun', "Cote d'Ivoire", 'Senegal', 'RDC', 'Mali', 'Burkina Faso', 'France', 'Belgique', 'Suisse'],
+  fr: ['Cameroun', "Côte d'Ivoire", 'Sénégal', 'RDC', 'Mali', 'Burkina Faso', 'France', 'Belgique', 'Suisse'],
   en: ['Nigeria', 'Ghana', 'Kenya', 'South Africa', 'Uganda', 'Tanzania', 'UK', 'USA'],
-  pt: ['Angola', 'Mozambique', 'Portugal', 'Bresil'],
-  ar: ['Maroc', 'Algerie', 'Tunisie', 'Egypte', 'Mauritanie', 'Djibouti', 'Comores', 'Soudan'],
+  pt: ['Angola', 'Mozambique', 'Portugal', 'Brésil'],
+  ar: ['Maroc', 'Algérie', 'Tunisie', 'Égypte', 'Mauritanie', 'Djibouti', 'Comores', 'Soudan'],
+  ha: ['Nigeria', 'Niger', 'Tchad', 'Cameroun', 'Ghana', 'Bénin'],
+  sw: ['Tanzanie', 'Kenya', 'Ouganda', 'RDC', 'Rwanda', 'Burundi', 'Somalie', 'Comores'],
 };
 
 export function getLocaleFromPath(path: string): Locale {

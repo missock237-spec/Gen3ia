@@ -40,15 +40,18 @@ export function AdProvider({ children }: { children: ReactNode }) {
 
   // Charger le solde au montage
   useEffect(() => {
-    setCreditBalance(getCreditBalance());
-    setRewardStats(getRewardStats());
+    // Defer setState to avoid react-hooks/set-state-in-effect
+    const raf = requestAnimationFrame(() => {
+      setCreditBalance(getCreditBalance());
+      setRewardStats(getRewardStats());
+    });
 
     // Synchroniser avec le serveur toutes les 60s
     const interval = setInterval(() => {
-      syncRewardsWithServer();
+      void syncRewardsWithServer();
     }, 60000);
 
-    return () => clearInterval(interval);
+    return () => { cancelAnimationFrame(raf); clearInterval(interval); };
   }, []);
 
   const incMessageCount = useCallback(() => {

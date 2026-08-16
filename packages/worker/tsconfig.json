@@ -1,0 +1,1 @@
+{"extends":"../../tsconfig.base.json","compilerOptions":{"outDir":"dist","rootDir":"src","module":"commonjs","moduleResolution":"node","noEmit":false,"declaration":true,"paths":{"@gen3ia/core":["../../packages/core/src"]}},"include":["src"],"exclude":["node_modules","dist"]}

@@ -6,6 +6,11 @@ import { createAIRouter } from '@/lib/ai-router';
 import { db } from '@/lib/db';
 import { applySecurity } from '@/lib/security';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('ai-validate');
 
 const SYSTEM_PROMPT = `Tu es le systeme de validation Genova. Verifie si une action respecte les garde-fous.

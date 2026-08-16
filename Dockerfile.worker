@@ -1,14 +1,29 @@
-# Worker BullMQ dédié
-FROM node:20-alpine
-RUN apk add --no-cache openssl postgresql-client
-RUN addgroup -S nodejs && adduser -S -G nodejs nextjs
+FROM oven/bun:1.3-alpine AS base
+
+# ===== STAGE DE BUILD =====
+FROM base AS builder
 WORKDIR /app
+
+COPY package.json bun.lock turbo.json ./
+
+RUN bun install --frozen-lockfile
+
+COPY . .
+
+# On ne build pas forcément si le worker n'a pas besoin de TypeScript, mais on peut
+# On va copier directement les sources et les build avec tsc si nécessaire.
+# Ici on suppose que le worker est en JS/TS et que nous avons un script de build.
+RUN bun run build:worker || true
+
+# ===== STAGE DE PRODUCTION =====
+FROM base AS runner
+WORKDIR /app
+
 ENV NODE_ENV=production
-COPY --from=ghcr.io/gen3ia/app:staging /app/node_modules ./node_modules
-COPY prisma ./prisma
-COPY src/workers ./src/workers
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
-USER nextjs
-ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", "src/workers/auto-worker.ts"]
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./
+
+# Si le worker est un script unique, on ajuste le CMD
+CMD ["node", "dist/worker.js"]

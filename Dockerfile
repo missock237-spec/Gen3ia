@@ -1,58 +1,64 @@
 # ============================================================
-# Dockerfile — Gen3ia AI Agent OS
-# Multi-stage: dependencies → build → production
+# Gen3ia - Dockerfile de production (Monorepo)
+# Build context: racine du monorepo
+# Gestionnaire de paquets : bun (voir bun.lock)
+# Inclut la compilation du module Rust agent-safety (napi-rs)
 # ============================================================
 
-# ---- Stage 1: Dependencies ----
-FROM node:20-alpine AS deps
+# ===== STAGE 0 : Rust builder =====
+FROM rust:1.85-slim AS rust-builder
+WORKDIR /build
 
-RUN apk add --no-cache openssl postgresql-client
+# Installer les dépendances système pour napi-rs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev ca-certificates && \
+    apt-get clean
 
+COPY Cargo.toml Cargo.lock* ./
+COPY crates/agent-safety ./crates/agent-safety
+
+# Build en release
+RUN cargo build --release
+
+# ===== STAGE 1 : Build Node/bun =====
+FROM oven/bun:1.3-alpine AS base
+RUN apk add --no-cache libc6-compat
+
+FROM base AS builder
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+COPY package.json bun.lock turbo.json ./
+RUN bun install --frozen-lockfile
 
-RUN npm ci --legacy-peer-deps --only=production && \
-    npm cache clean --force
+COPY . .
 
-# ---- Stage 2: Build ----
-FROM node:20-alpine AS builder
+# Copier le module Rust compilé depuis le stage 0
+COPY --from=rust-builder /build/target/release/libagent_safety.so ./crates/agent-safety/agent_safety.node
+COPY --from=rust-builder /build/target/release/libagent_safety.so ./packages/agent-safety/agent_safety.node
 
-RUN apk add --no-cache openssl
+# Build avec Turborepo
+RUN bun run build
 
-WORKDIR /app
-
-COPY package.json package-lock.json* ./
-COPY prisma ./prisma
-COPY tsconfig.json next.config.ts ./
-COPY src ./src
-COPY public ./public
-
-RUN npm ci --legacy-peer-deps && \
-    npx prisma generate && \
-    npm run build
-
-# ---- Stage 3: Production ----
-FROM node:20-alpine AS runner
-
-RUN apk add --no-cache openssl postgresql-client bash curl \
-    && addgroup --system --gid 1001 nodejs \
-    && adduser --system --uid 1001 nextjs
-
+# ===== STAGE 2 : Production =====
+FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY --from=deps /app/node_modules ./node_modules
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copier les fichiers nécessaires depuis le build
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/prisma ./prisma
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
-RUN chmod +x ./docker-entrypoint.sh && \
-    chown -R nextjs:nodejs /app
+# Copier le module Rust compilé
+COPY --from=builder /app/crates/agent-safety/agent_safety.node ./crates/agent-safety/agent_safety.node
+COPY --from=builder /app/packages/agent-safety/agent_safety.node ./packages/agent-safety/agent_safety.node
+
+# Copier les scripts de validation
+COPY --from=builder /app/instrumentation.ts ./instrumentation.ts
 
 USER nextjs
 
@@ -60,6 +66,3 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-
-ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", "server.js"]

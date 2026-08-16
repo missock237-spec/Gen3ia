@@ -12,7 +12,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
   HUGGINGFACE_API_KEY: z.string().optional(),
-  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+
   EMAIL_FROM: z.string().email().default('noreply@genova.ai'),
 });
 

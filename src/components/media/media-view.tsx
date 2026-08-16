@@ -15,8 +15,9 @@ export function MediaView() {
   };
   return (
     <div className="space-y-6">
-      <div><h1 className="text-2xl font-bold">Media</h1><p className="text-muted-foreground">Generation d'images et videos</p></div>
+      <div><h1 className="text-2xl font-bold">Media</h1><p className="text-muted-foreground">Generation d&apos;images et videos</p></div>
       <div className="flex gap-2 border-b border-border pb-1">
+        {/* eslint-disable-next-line jsx-a11y/alt-text -- lucide-react Image icon, not HTML img */}
         <button onClick={() => setTab('images')} className={`px-4 py-2 text-sm rounded-t-lg ${tab === 'images' ? 'bg-card border border-border font-medium' : 'text-muted-foreground'}`}><Image className="h-4 w-4 inline mr-1" />Images</button>
         <button onClick={() => setTab('videos')} className={`px-4 py-2 text-sm rounded-t-lg ${tab === 'videos' ? 'bg-card border border-border font-medium' : 'text-muted-foreground'}`}><Video className="h-4 w-4 inline mr-1" />Videos</button>
       </div>
