@@ -1,0 +1,26 @@
+[workspace]
+members = ["crates/agent-safety", "crates/compute-engine"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+description = "Gen3ia AI Agent OS - Rust Security Engine"
+authors = ["Gen3ia Team"]
+license = "MIT"
+repository = "https://github.com/missock237-spec/Gen3ia"
+
+[workspace.dependencies]
+napi = { version = "3", features = ["default", "napi6", "serde-json"] }
+napi-derive = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+regex = "1"
+sha2 = "0.11"
+hex = "0.4"
+tracing = { version = "0.1", features = ["max_level_trace", "release_max_level_info"] }
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }

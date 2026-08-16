@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import {
+
   storeMemory,
   retrieveMemories,
   getAgentMemoryStats,
@@ -9,9 +10,13 @@ import {
 } from '@/lib/agent-memory';
 import type { MemoryCategory, MemorySource } from '@/lib/agent-memory';
 
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params: _params }: { params: Promise<{ id: string }> }
 ) {
   const { error } = await applySecurity(request);
   if (error) return error;

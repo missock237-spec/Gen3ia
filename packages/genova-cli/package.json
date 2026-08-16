@@ -1,0 +1,9 @@
+{
+  "name": "@gen3ia/cli",
+  "version": "0.9.0",
+  "private": true,
+  "description": "Gen3ia CLI — Outils en ligne de commande",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts"
+}

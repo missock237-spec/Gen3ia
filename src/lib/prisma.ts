@@ -1,13 +1,13 @@
-import { PrismaClient } from '@prisma/client';
+// ============================================================
+// Gen3ia — Prisma shim (compatibilité)
+// ============================================================
+//  Préserve `import { prisma } from '@/lib/prisma'` (legacy imports).
+//  Délègue vers Firestore (façade + modèles supplémentaires).
+// ============================================================
+import { dbExt } from '@/lib/firestore-extra';
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-});
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-
-export default prisma;
+export { Collections, FirestoreRepository } from '@/lib/firebase/firestore';
+export type { FirestoreWhereOp, FirestoreOrderBy, WhereInput, OrderByInput, SelectInput, IncludeInput, FindOptions, FindUniqueOptions, CreateOptions, UpdateOptions, DeleteOptions } from '@/lib/firebase/firestore';
+export const db = dbExt;
+export const prisma = dbExt;
+export default dbExt;
