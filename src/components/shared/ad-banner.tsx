@@ -76,7 +76,7 @@ const ADS: Ad[] = [
   },
 ];
 
-export function AdBanner({ userPlan, _placement, _onAdViewed, onAdClicked, messageIndex }: AdBannerProps) {
+export function AdBanner({ userPlan, placement, onAdViewed, onAdClicked, messageIndex }: AdBannerProps) {
   const [dismissed, setDismissed] = useState(false);
   const [currentAd, setCurrentAd] = useState<Ad | null>(null);
   const [timeLeft, setTimeLeft] = useState(8);

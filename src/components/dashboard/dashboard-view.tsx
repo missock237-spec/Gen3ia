@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/lib/store';
 import {
-  Bot, Activity, _Users, Zap, TrendingUp, Clock, AlertCircle,
-  Wallet, CheckCircle, _XCircle, Loader2
+  Bot, Activity, Users, Zap, TrendingUp, Clock, AlertCircle,
+  Wallet, CheckCircle, XCircle, Loader2
 } from 'lucide-react';
 
 interface DashboardStats {

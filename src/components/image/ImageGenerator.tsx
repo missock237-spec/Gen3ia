@@ -11,7 +11,7 @@ interface ImageGeneratorProps {
   agentId?: string;
 }
 
-export function ImageGenerator({ onGenerateComplete, _agentId }: ImageGeneratorProps) {
+export function ImageGenerator({ onGenerateComplete, agentId }: ImageGeneratorProps) {
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);

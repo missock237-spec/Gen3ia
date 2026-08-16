@@ -251,7 +251,7 @@ class MemorySummarizer {
     const selectedSentences: string[] = [];
     let currentLength = 0;
 
-    for (const { sentence, _score } of scoredSentences.sort((a, b) => b.score - a.score)) {
+    for (const { sentence, score } of scoredSentences.sort((a, b) => b.score - a.score)) {
       if (currentLength + sentence.length > targetLength) break;
       selectedSentences.push(sentence);
       currentLength += sentence.length;

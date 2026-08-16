@@ -496,7 +496,7 @@ export class LongTermMemory {
     minImportance?: number;
     olderThanDays?: number;
   } = {}): Promise<{ pruned: number }> {
-    const { maxMemories = 1000, minImportance = 0.1, _olderThanDays = 90 } = options;
+    const { maxMemories = 1000, minImportance = 0.1, olderThanDays = 90 } = options;
 
     const allMemories = await db.knowledge.findMany({
       where: { userId },
