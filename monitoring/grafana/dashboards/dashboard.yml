@@ -1,0 +1,19 @@
+# ============================================================
+# Gen3ia — Grafana Dashboard Provisioning
+# ============================================================
+# Charge automatiquement les dashboards JSON au démarrage.
+# ============================================================
+
+apiVersion: 1
+
+providers:
+  - name: 'Gen3ia Dashboards'
+    orgId: 1
+    folder: 'Gen3ia'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

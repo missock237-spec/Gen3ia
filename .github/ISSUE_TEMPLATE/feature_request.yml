@@ -1,0 +1,42 @@
+name: ✨ Demande de fonctionnalité
+description: Suggérer une idée pour Genova
+title: "[FEATURE] "
+labels: ["enhancement"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de partager votre idée !
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème lié
+      description: Décrivez le problème que cette fonctionnalité résoudrait
+      placeholder: "Je suis frustré quand..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution souhaitée
+      description: Décrivez clairement ce que vous voulez
+      placeholder: "J'aimerais pouvoir..."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives envisagées
+      description: Avez-vous envisagé d'autres solutions ?
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Critique
+        - Élevé
+        - Moyen
+        - Faible
+    validations:
+      required: true

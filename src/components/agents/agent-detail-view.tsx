@@ -95,8 +95,6 @@ const toolIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   social_tiktok: MessageCircle,
   social_linkedin: Linkedin,
   social_post: Megaphone,
-  whatsapp_message: MessageCircle,
-  whatsapp_call: Phone,
   use_api: Zap,
   use_cpu: Cpu,
   use_mvp: Server,
@@ -114,8 +112,6 @@ const toolColors: Record<string, string> = {
   social_tiktok: 'text-white',
   social_linkedin: 'text-blue-400',
   social_post: 'text-orange-500',
-  whatsapp_message: 'text-green-500',
-  whatsapp_call: 'text-green-400',
   use_api: 'text-yellow-500',
   use_cpu: 'text-purple-400',
   use_mvp: 'text-emerald-500',
@@ -133,8 +129,6 @@ const toolLabels: Record<string, string> = {
   social_tiktok: 'TikTok',
   social_linkedin: 'LinkedIn',
   social_post: 'Publications',
-  whatsapp_message: 'Messages WhatsApp',
-  whatsapp_call: 'Appels WhatsApp',
   use_api: 'APIs',
   use_cpu: 'CPU',
   use_mvp: 'MVP',
@@ -146,7 +140,6 @@ const toolLabels: Record<string, string> = {
 
 const typeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   social_media: Megaphone,
-  whatsapp: MessageCircle,
   browser: Monitor,
   sales: Phone,
   support: MessageCircle,
@@ -159,7 +152,6 @@ const typeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const typeLabels: Record<string, string> = {
   social_media: 'Social Media',
-  whatsapp: 'WhatsApp',
   browser: 'Navigateur',
   sales: 'Commercial',
   support: 'Support',
@@ -219,32 +211,6 @@ export function AgentDetailView({ agent, onBack }: AgentDetailViewProps) {
 
   const hasBrowser = configTools.includes('browse_web');
 
-  // Load browser session
-  useEffect(() => {
-    if (hasBrowser && agent.id) {
-      loadBrowserSession();
-    }
-  }, [agent.id, hasBrowser]);
-
-  // Load action logs
-  useEffect(() => {
-    if (agent.id) {
-      loadActionLogs();
-    }
-  }, [agent.id]);
-
-  // Load permissions
-  useEffect(() => {
-    if (agent.id) {
-      loadPermissions();
-    }
-  }, [agent.id]);
-
-  // Scroll to bottom of chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   const loadBrowserSession = async () => {
     try {
       const data = await apiFetch<BrowserSession>(`/api/agents/${agent.id}/browser`);
@@ -277,6 +243,32 @@ export function AgentDetailView({ agent, onBack }: AgentDetailViewProps) {
       setLoadingPerms(false);
     }
   };
+
+  // Load browser session
+  useEffect(() => {
+    if (hasBrowser && agent.id) {
+      void loadBrowserSession();
+    }
+  }, [agent.id, hasBrowser]);
+
+  // Load action logs
+  useEffect(() => {
+    if (agent.id) {
+      void loadActionLogs();
+    }
+  }, [agent.id]);
+
+  // Load permissions
+  useEffect(() => {
+    if (agent.id) {
+      void loadPermissions();
+    }
+  }, [agent.id]);
+
+  // Scroll to bottom of chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleTogglePermission = async (permId: string, field: 'granted' | 'requiresApproval') => {
     const perm = permissions?.find((p) => p.id === permId);
@@ -376,7 +368,7 @@ export function AgentDetailView({ agent, onBack }: AgentDetailViewProps) {
           }
         }
       }
-    } catch (err) {
+    } catch (_err) {
       setMessages((prev) => {
         const newMessages = [...prev];
         newMessages[newMessages.length - 1] = {
@@ -644,6 +636,7 @@ export function AgentDetailView({ agent, onBack }: AgentDetailViewProps) {
                 {/* Browser viewport */}
                 <div className="bg-muted/30 rounded-lg border border-border/50 aspect-video flex items-center justify-center overflow-hidden">
                   {browserSession?.screenshot ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={browserSession.screenshot}
                       alt="Browser screenshot"
