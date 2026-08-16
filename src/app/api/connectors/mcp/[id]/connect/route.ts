@@ -7,6 +7,11 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { db } from '@/lib/db';
 import { getMCPClientManager, decryptAuthConfig } from '@/lib/connectors/mcp-client';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

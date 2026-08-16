@@ -865,7 +865,7 @@ function generateGraphStepId(): string {
 /**
  * INIT node — Initialize context, load memory, set up tools
  */
-async function initNode(state: AgentState, toolRegistry: ToolRegistry): Promise<AgentState> {
+async function initNode(state: AgentState, _toolRegistry: ToolRegistry): Promise<AgentState> {
   const startTime = Date.now();
 
   // Load agent config from database if needed

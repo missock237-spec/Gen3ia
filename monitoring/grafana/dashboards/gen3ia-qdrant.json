@@ -1,0 +1,69 @@
+{
+  "title": "Gen3ia - Qdrant Vector DB",
+  "uid": "gen3ia-qdrant",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["gen3ia", "qdrant", "vectors"],
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "title": "Collections Qdrant",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "targets": [{ "expr": "gen3ia_vector_collections_total", "legendFormat": "Collections" }]
+    },
+    {
+      "title": "Vecteurs stockes",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "targets": [{ "expr": "gen3ia_vectors_total", "legendFormat": "Vecteurs" }]
+    },
+    {
+      "title": "Requetes de recherche",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "targets": [{ "expr": "rate(gen3ia_vector_searches_total[5m])", "legendFormat": "req/s" }]
+    },
+    {
+      "title": "Dimension des vecteurs",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "targets": [{ "expr": "gen3ia_vector_dimension", "legendFormat": "Dimensions" }]
+    },
+    {
+      "title": "Recherches vectorielles (cumul)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 4 },
+      "targets": [{ "expr": "rate(gen3ia_vector_searches_total[1h])", "legendFormat": "recherches/h" }]
+    },
+    {
+      "title": "Temps de reponse Qdrant (ms)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 4 },
+      "targets": [{ "expr": "gen3ia_vector_search_duration_ms", "legendFormat": "ms" }],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "title": "Adapter actif",
+      "type": "text",
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 12 },
+      "options": { "content": "## Adapter Vector Store\n\n**Type**: Qdrant (production)\n**Collection**: genova_vectors\n**Distance**: Cosine\n**Dimensions**: 384\n**URL**: http://qdrant:6333\n\nBasculer en SQLite : `VECTOR_STORE_TYPE=sqlite`", "mode": "markdown" }
+    },
+    {
+      "title": "Points par collection",
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 12 },
+      "targets": [{ "expr": "gen3ia_vectors_total", "legendFormat": "Points" }]
+    },
+    {
+      "title": "Statut Qdrant (+metriques)",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 12 },
+      "targets": [
+        { "expr": "gen3ia_vectors_total", "legendFormat": "Vecteurs" },
+        { "expr": "gen3ia_vector_collections_total", "legendFormat": "Collections" },
+        { "expr": "gen3ia_vector_dimension", "legendFormat": "Dimensions" }
+      ]
+    }
+  ]
+}

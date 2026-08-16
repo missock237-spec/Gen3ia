@@ -370,7 +370,7 @@ class ExecutionPolicyManager {
   /**
    * Check if an action is allowed by execution policies
    */
-  checkPolicies(agentType: string, toolName: string, action: string): { allowed: boolean; policy?: ExecutionPolicy; reason?: string } {
+  checkPolicies(agentType: string, toolName: string, _action: string): { allowed: boolean; policy?: ExecutionPolicy; reason?: string } {
     const applicable = this.getApplicablePolicies(agentType);
 
     for (const policy of applicable) {
@@ -557,7 +557,7 @@ class ResultParser {
   /**
    * Parse and sanitize a tool execution result
    */
-  parseResult(rawResult: unknown, tool: ToolDefinition): { result: unknown; tokensUsed: number; truncated: boolean } {
+  parseResult(rawResult: unknown, _tool: ToolDefinition): { result: unknown; tokensUsed: number; truncated: boolean } {
     let result = rawResult;
     let truncated = false;
 
