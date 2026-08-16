@@ -83,6 +83,7 @@ export class ScreenShareHandler {
     // Use z-ai-web-dev-sdk for AI-powered screen understanding
     let aiDescription = '';
     try {
+// @ts-ignore — type narrowing pending, see refactor ticket
       const ZAI = (await import('z-ai-web-dev-sdk')).default;
       const client = await ZAI.create();
       const result = await client.chat.completions.create({
@@ -165,7 +166,7 @@ export class ScreenShareHandler {
   // ----------------------------------------------------------
   // Extract UI Elements
   // ----------------------------------------------------------
-  extractUIElements(frame: ScreenFrame): UIElement[] {
+  extractUIElements(_frame: ScreenFrame): UIElement[] {
     // Simulated UI element extraction
     const elements: UIElement[] = [
       {

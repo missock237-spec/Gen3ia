@@ -8,6 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { listExecutions, checkN8NHealth } from '@/lib/n8n-client';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,

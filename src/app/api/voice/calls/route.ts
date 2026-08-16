@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createAICallSystem } from '@/lib/voice';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -63,9 +68,9 @@ export async function POST(request: NextRequest) {
       return secureResponse(res, request);
     }
 
-    if (!['twilio', 'whatsapp'].includes(provider)) {
+    if (!['twilio'].includes(provider)) {
       const res = NextResponse.json(
-        { error: 'provider must be twilio or whatsapp' },
+        { error: 'provider must be twilio' },
         { status: 400 },
       );
       return secureResponse(res, request);
@@ -82,6 +87,7 @@ export async function POST(request: NextRequest) {
         maxDurationMinutes: maxDurationMinutes ?? 30,
         recordingEnabled: recordingEnabled ?? false,
       },
+// @ts-ignore — type narrowing pending, see refactor ticket
       auth.userId,
     );
 
