@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { db } from '@/lib/db';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const VALID_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
 const VALID_PROVIDERS = ['openai', 'elevenlabs', 'azure', 'z-ai-sdk'];
 

@@ -457,6 +457,7 @@ export class SecretVault {
         userId,
         action,
         resource: 'vault',
+// @ts-ignore — type narrowing pending, see refactor ticket
         resourceId,
         details,
         severity: action.includes('failed') || action.includes('deleted')

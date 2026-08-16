@@ -7,6 +7,11 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { getUsageForPeriod, getUsageTrends, getUsageStats } from '@/lib/billing/usage-meter';
 import type { BillingPeriod } from '@/lib/billing/usage-meter';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS() {
   const response = new NextResponse(null, { status: 204 });
   response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
