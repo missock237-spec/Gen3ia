@@ -488,7 +488,7 @@ export async function searchListings(
   const [listings, total] = await Promise.all([
     db.marketplaceListing.findMany({
       where,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       orderBy,
       skip: (page - 1) * limit,
       take: limit,

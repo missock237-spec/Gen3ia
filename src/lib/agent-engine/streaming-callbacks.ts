@@ -41,7 +41,7 @@ export interface CostTracker {
   alerted: boolean;
 }
 
-class AgentEventBus extends EventEmitter {
+export class AgentEventBus extends EventEmitter {
   private costTracker: CostTracker;
   private subscribers: Map<string, (event: AgentEvent) => void> = new Map();
   private eventHistory: AgentEvent[] = [];

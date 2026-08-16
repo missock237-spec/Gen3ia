@@ -13,7 +13,7 @@ export const options = {
 
 const API_KEY = __ENV.K6_API_KEY;
 
-export default function () {
+export default function _default() {
   const res = http.get(`${baseUrl}/api/health`, { headers: baseHeaders(API_KEY), tags: { name: "health" } });
   check(res, {
     "health status 200": (r) => r.status === 200,

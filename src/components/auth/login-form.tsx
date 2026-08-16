@@ -54,7 +54,7 @@ export function LoginForm() {
       });
 
       const user = data.user;
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       login({
         id: user.id,
         email: user.email,

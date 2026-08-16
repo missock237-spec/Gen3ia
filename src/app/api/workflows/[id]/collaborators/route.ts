@@ -14,18 +14,18 @@ import { createLogger } from '@/lib/logger';
 export const dynamic = "force-dynamic";
 const log = createLogger('api-workflow-collaborators');
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   try {
     const workflow = await prisma.workflow.findFirst({
-      where: { id: params.id, userId: auth.userId },
+      where: { id: (await params).id, userId: auth.userId },
     });
     if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
 
     const collaborators = await prisma.workflowCollaborator.findMany({
-      where: { workflowId: params.id },
+      where: { workflowId: (await params).id },
       include: {
         user: { select: { id: true, name: true, email: true, avatar: true, isActive: true } },
       },
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const action = url.searchParams.get('action') || 'add';
 
     const workflow = await prisma.workflow.findFirst({
-      where: { id: params.id, userId: auth.userId },
+      where: { id: (await params).id, userId: auth.userId },
     });
     if (!workflow) return NextResponse.json({ error: 'Workflow introuvable' }, { status: 404 });
 
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         if (!targetUser) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
 
         const existing = await prisma.workflowCollaborator.findUnique({
-          where: { workflowId_userId: { workflowId: params.id, userId: body.userId } },
+          where: { workflowId_userId: { workflowId: (await params).id, userId: body.userId } },
         });
         if (existing) return NextResponse.json({ error: 'Déjà collaborateur' }, { status: 409 });
 
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
         const collaborator = await prisma.workflowCollaborator.create({
           data: {
-            workflowId: params.id,
+            workflowId: (await params).id,
             userId: body.userId,
             role: body.role,
           },
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           },
         });
 
-        log.info('collaborator_added', { workflowId: params.id, userId: body.userId, role: body.role });
+        log.info('collaborator_added', { workflowId: (await params).id, userId: body.userId, role: body.role });
         return NextResponse.json({ success: true, collaborator });
       }
 
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });
   if (error || !auth) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
@@ -130,7 +130,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     if (!collab) return NextResponse.json({ error: 'Collaborateur introuvable' }, { status: 404 });
 
     await prisma.workflowCollaborator.delete({ where: { id: collaboratorId } });
-    log.info('collaborator_removed', { workflowId: params.id, collaboratorId });
+    log.info('collaborator_removed', { workflowId: (await params).id, collaboratorId });
 
     return NextResponse.json({ success: true });
   } catch (err) {

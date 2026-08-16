@@ -43,18 +43,18 @@ export interface MemoryContext {
 
 // Mock Firestore Pattern per requirement
 const db = {
-  collection: (name: string) => ({
-    add: async (data: any) => ({ id: 'mock-' + Date.now() }),
-    get: async () => ({ docs: [] as any[] }),
+  collection: (_name: string) => ({
+    add: async (_data: any) => ({ id: 'mock-' + Date.now() }),
+    get: async () => ({ docs: [] as unknown[] }),
     where: () => ({
-      get: async () => ({ docs: [] as any[] }),
+      get: async () => ({ docs: [] as unknown[] }),
       limit: () => ({
-        get: async () => ({ docs: [] as any[] }),
+        get: async () => ({ docs: [] as unknown[] }),
       }),
     }),
-    doc: (id: string) => ({
+    doc: (_id: string) => ({
       delete: async () => undefined,
-      update: async (data: any) => undefined,
+      update: async (_data: any) => undefined,
       get: async () => ({ exists: false }),
     }),
   }),

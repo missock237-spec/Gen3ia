@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- test file uses dynamic require for modules that may not be installed */
 // ============================================================
 // Tests étendus — Webhooks de paiement Chariow
 // Validation HMAC, webhook, abonnement, plans

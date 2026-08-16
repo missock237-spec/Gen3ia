@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
     if (body.method.startsWith('notifications/')) return new NextResponse(null, { status: 202 });
     const { result, error } = await handleMCPRequest(body.method, body.params, auth.userId);
     return NextResponse.json({ jsonrpc: '2.0', id: body.id, ...(error ? { error } : { result }) });
-  } catch (e) {
+  } catch (_e) {
     return NextResponse.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, { status: 400 });
   }
 }

@@ -93,7 +93,7 @@ class IntelligentFallback {
   ): Promise<FallbackResult> {
     const startTime = performance.now();
     const fallbacksUsed: ProviderName[] = [];
-    let attemptCount = 0;
+    const attemptCount = 0;
 
     const fallbackChain = this.buildFallbackChain(primaryProvider);
 
@@ -207,7 +207,7 @@ class IntelligentFallback {
 
         return { provider, response, success: true };
       } catch (error) {
-        return { provider, response: null, success: false, error };
+        return { provider, response: '', success: false, error };
       }
     });
 

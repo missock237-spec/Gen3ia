@@ -94,7 +94,11 @@ export function DebugReplayStudio({ agentId, userId }: DebugReplayStudioProps) {
   };
 
   useEffect(() => {
-    fetchRuns();
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) try { await fetchRuns(); } catch {}
+    })();
+    return () => { cancelled = true; };
   }, [agentId, userId]);
 
   const selectedRun = useMemo(() => {
@@ -221,7 +225,7 @@ export function DebugReplayStudio({ agentId, userId }: DebugReplayStudioProps) {
       await navigator.clipboard.writeText(text);
       setCopiedFormat(format);
       setTimeout(() => setCopiedFormat(null), 2500);
-    } catch (err) {
+    } catch (_err) {
       alert('Failed to copy exported run trace to clipboard');
     }
   };

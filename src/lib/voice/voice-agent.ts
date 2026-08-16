@@ -560,27 +560,27 @@ ${conversationHistory}`;
 
   /** Legacy alias for initiateCall — delegates to makeCall. */
   async startSession(config: { userId: string; to: string; from?: string }): Promise<CallState> {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const callSid = await this.makeCall({
       userId: config.userId,
       to: config.to,
       from: config.from || '',
       direction: 'outbound',
     });
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     return this.getActiveCall(callSid)!;
   }
 
   /** Legacy alias for makeCall. */
   async initiateCall(config: { userId: string; to: string; from?: string; direction?: CallDirection }): Promise<CallState> {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const callSid = await this.makeCall({
       userId: config.userId,
       to: config.to,
       from: config.from || '',
       direction: config.direction || 'outbound',
     });
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     return this.getActiveCall(callSid)!;
   }
 

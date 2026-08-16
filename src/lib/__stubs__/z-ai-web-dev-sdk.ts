@@ -6,7 +6,7 @@
 const ZAI = {
   chat: {
     completions: {
-      create: async (params: any) => {
+      create: async (_params: any) => {
         return {
           choices: [{ message: { content: '[ZAI SDK not available — stub response]' } }],
         };
@@ -14,18 +14,18 @@ const ZAI = {
     },
   },
   images: {
-    generate: async (params: any) => {
+    generate: async (_params: any) => {
       return { data: [{ url: '', b64_json: '' }] };
     },
   },
   audio: {
     speech: {
-      create: async (params: any) => {
+      create: async (_params: any) => {
         return { buffer: Buffer.from('') };
       },
     },
     transcriptions: {
-      create: async (params: any) => {
+      create: async (_params: any) => {
         return { text: '' };
       },
     },

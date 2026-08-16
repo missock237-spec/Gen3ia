@@ -88,7 +88,7 @@ export class DocumentProcessor {
   /**
    * Extract text from various file formats
    */
-  async extractText(buffer: Buffer, fileName: string, mimeType: string): Promise<string> {
+  async extractText(buffer: Buffer, fileName: string, _mimeType: string): Promise<string> {
     const ext = fileName.split('.').pop()?.toLowerCase();
 
     switch (ext) {

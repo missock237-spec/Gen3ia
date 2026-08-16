@@ -26,7 +26,7 @@ export const GET = withAuth(async () => {
   rateLimit: { limit: 20, windowMs: 60000 },
 });
 
-export const PUT = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
+export const PUT = withAuth(async (request: NextRequest, _ctx: { params?: RouteParams }, _auth) => {
   try {
     const body = await request.json();
     const { planId } = body;
@@ -35,7 +35,7 @@ export const PUT = withAuth(async (request: NextRequest, ctx: { params?: RoutePa
       return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
     }
     return NextResponse.json({ message: `Redirection vers SebPay pour ${plan.name}`, plan });
-  } catch (err) {
+  } catch (_err) {
     return NextResponse.json({ error: "Erreur de mise à jour" }, { status: 500 });
   }
 }, {

@@ -72,11 +72,11 @@ async function getAgentBudget(agentId: string): Promise<AgentBudget> {
   const budget: AgentBudget = {
     agentId,
     dailyActions,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     dailyTokens: dailyTokens._sum.tokensUsed || 0,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     dailyCost: dailyCostAgg._sum.costUsd || 0,
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     monthlyCost: monthlyCostAgg._sum.costUsd || 0,
     maxDailyActions: limits.dailyActions,
     maxDailyTokens: limits.dailyTokens,

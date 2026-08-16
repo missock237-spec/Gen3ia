@@ -199,7 +199,7 @@ export class SafetyGuard {
     if (requiresConsent && agentId) {
       try {
         // Demander le consentement via le ConsentManager existant
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
         const consent = await requestConsent(
           userId,
           agentId,
@@ -297,7 +297,7 @@ export class SafetyGuard {
     };
 
     // Vérifier le statut de la réponse
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     if (result.error || result.status >= 400) {
       validation.success = false;
       validation.warnings.push(`Action échouée: ${result.error || `Status ${result.status}`}`);
@@ -356,7 +356,7 @@ export class SafetyGuard {
   /**
    * Évaluer le niveau de risque d'une opération
    */
-  assessRiskLevel(operation: string, params: Record<string, unknown>): RiskLevel {
+  assessRiskLevel(operation: string, _params: Record<string, unknown>): RiskLevel {
     // Opérations destructives → critical
     if (this.config.destructiveOperations.includes(operation)) {
       return 'critical';

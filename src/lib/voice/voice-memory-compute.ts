@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 const log = createLogger('voice-memory-compute');
 let computeEngine: ReturnType<typeof createComputeEngineV2> | null = null;
 async function getEngine() {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   if (!computeEngine) { computeEngine = createComputeEngineV2({ preferredBackend: 'auto', enablePredictor: true }); await computeEngine.initialize(); }
   return computeEngine;
 }

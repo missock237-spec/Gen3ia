@@ -33,7 +33,7 @@ export async function GET(
 
     const res = NextResponse.json({ success: true, data: key });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Failed to fetch access key' }, { status: 500 });
     return secureResponse(res, request);
   }

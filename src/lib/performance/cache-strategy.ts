@@ -109,7 +109,7 @@ class CacheStrategy {
   private setMemory<T>(key: string, data: T, ttl: number): void {
     // Evict oldest entry if at capacity
     if (this.memoryCache.size >= this.maxMemoryEntries) {
-      let oldest: string | null = null;
+      let oldest: string | undefined;
       let oldestTime = Infinity;
 
       this.memoryCache.forEach((entry, k) => {

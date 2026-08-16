@@ -438,7 +438,7 @@ export class BrowserBridge {
     const session = this.bridgeSessions.get(sessionId);
     if (!session) return;
 
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
     const browserEngine = createBrowserAutomationEngine(session.user.id);
     await browserEngine.closeSession(session.browserSessionId);
     this.bridgeSessions.delete(sessionId);
@@ -481,7 +481,7 @@ export class BrowserBridge {
 
   private findSessionByAccount(userId: string, saasAccountId: string): BrowserBridgeSession | undefined {
     for (const session of this.bridgeSessions.values()) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
       if (session.user.id === userId && session.saasAccountId === saasAccountId) {
         return session;
       }

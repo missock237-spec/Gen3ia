@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 /**
  * Service OAuth pour Google et GitHub
  */
@@ -141,7 +142,7 @@ export async function getGitHubProfile(code: string): Promise<OAuthProfile> {
 const stateStore = new Map<string, { timestamp: number; provider: string }>();
 
 export function generateOAuthState(provider: string): string {
-  const { randomBytes } = require('crypto');
+  // randomBytes imported at top of file
   const state = randomBytes(32).toString('hex');
   stateStore.set(state, { timestamp: Date.now(), provider });
   

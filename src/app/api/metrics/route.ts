@@ -36,7 +36,7 @@ async function verifyMetricsAccess(request: NextRequest): Promise<boolean> {
     if (token && token.role === "admin") {
       return true;
     }
-  } catch (e) {
+  } catch (_e) {
     // Token verification failed
   }
 

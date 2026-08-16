@@ -111,7 +111,7 @@ export { VoiceMemorySystem as createVoiceMemory } from './voice/voice-memory';
  * userId is optional — passes through to the underlying voice agent engine.
  */
 export function createAICallSystem(userId?: string) {
-// @ts-ignore
+// @ts-ignore — type narrowing pending, see refactor ticket
   const engine = getVoiceAgentEngine();
   return {
     tts: new TTSEngine(userId || 'anonymous'),

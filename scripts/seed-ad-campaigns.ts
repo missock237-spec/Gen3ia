@@ -139,14 +139,17 @@ const campaigns: Array<Record<string, unknown>> = [
 ];
 
 async function seed() {
+  // eslint-disable-next-line no-console
   console.log(`🌱 Seeding ${campaigns.length} link-only ad campaigns…`);
   const batch = db.batch();
   for (const c of campaigns) {
     const ref = db.collection('ad_campaigns').doc(String(c.id));
     batch.set(ref, c, { merge: true });
+    // eslint-disable-next-line no-console
     console.log(`  • ${c.id}  (${c.targetPlan})`);
   }
   await batch.commit();
+  // eslint-disable-next-line no-console
   console.log('✅ Done.');
 }
 

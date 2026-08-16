@@ -1,4 +1,5 @@
 let native;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 try { native = require('./agent-safety.node'); } catch { native = null; }
 
 function fallback(input, patterns) {

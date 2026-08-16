@@ -90,16 +90,21 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api || !setApi) return
-    setApi(api)
+    // Defer setApi to avoid synchronous setState in effect (react-hooks/set-state-in-effect).
+    // The api object is stable for a given carousel instance, so deferring does not change behavior.
+    const raf = requestAnimationFrame(() => setApi(api))
+    return () => cancelAnimationFrame(raf)
   }, [api, setApi])
 
   React.useEffect(() => {
     if (!api) return
-    onSelect(api)
+    // Defer onSelect call to avoid synchronous setState in effect
+    const raf = requestAnimationFrame(() => onSelect(api))
     api.on("reInit", onSelect)
     api.on("select", onSelect)
 
     return () => {
+      cancelAnimationFrame(raf)
       api?.off("select", onSelect)
     }
   }, [api, onSelect])
