@@ -304,7 +304,6 @@ const FEATURES = [
   { icon: '🤖', title: 'Agents IA Autonomes',   desc: 'Multi-agents avec boucle ReAct & LangGraph'    },
   { icon: '🧠', title: 'Mémoire 3 Niveaux',     desc: 'Court terme, long terme & épisodique'           },
   { icon: '🔗', title: 'Orchestration Avancée', desc: 'Workflows, n8n & coordination multi-agents'    },
-  { icon: '📱', title: 'WhatsApp IA',            desc: 'Intégration Baileys + Cloud API officielle'    },
   { icon: '🎨', title: 'Génération Médias',      desc: 'Images ComfyUI + Vidéos CogVideoX-2B'          },
   { icon: '🔒', title: 'Sécurité Entreprise',   desc: 'PBKDF2, RBAC, audit logs & garde-fous'         },
 ];

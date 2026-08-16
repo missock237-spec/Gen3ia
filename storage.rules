@@ -1,0 +1,129 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
+
+    match /public/{allPaths=**} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+
+      allow update: if isSignedIn()
+        && resource.metadata.ownerUid == request.auth.uid
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+
+      allow delete: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    match /uploads/{subdir}/{ownerUid}/{allPaths=**} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == ownerUid || isAdmin());
+
+      allow create: if isSignedIn()
+        && request.auth.uid == ownerUid
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 25 * 1024 * 1024;
+
+      allow update: if isSignedIn()
+        && request.auth.uid == ownerUid
+        && resource.metadata.ownerUid == request.auth.uid
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 25 * 1024 * 1024;
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == ownerUid
+        && resource.metadata.ownerUid == request.auth.uid;
+    }
+
+    match /uploads/{allPaths=**} {
+      allow read: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn()
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 25 * 1024 * 1024;
+
+      allow update: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin())
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 25 * 1024 * 1024;
+
+      allow delete: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    match /avatars/{uid}/{allPaths=**} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow update: if isSignedIn()
+        && request.auth.uid == uid
+        && resource.metadata.ownerUid == request.auth.uid
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == uid
+        && resource.metadata.ownerUid == request.auth.uid;
+    }
+
+    match /agent_thumbnails/{agentId}/{allPaths=**} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow update: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin())
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow delete: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    match /marketplace/{listingId}/{allPaths=**} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.metadata.ownerUid == request.auth.uid
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow update: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin())
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      allow delete: if isSignedIn()
+        && (resource.metadata.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
