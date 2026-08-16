@@ -1,0 +1,68 @@
+{
+  "title": "Gen3ia - Alertes & Incidents",
+  "uid": "gen3ia-alerts",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["gen3ia", "alerts", "incidents"],
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "title": "Erreurs récentes (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "targets": [{ "expr": "gen3ia_recent_errors_total", "legendFormat": "Erreurs" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+    {
+      "title": "Exécutions échouées",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "targets": [{ "expr": "gen3ia_failed_executions_total", "legendFormat": "Échecs" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+    {
+      "title": "Taux d'erreur global",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "targets": [{ "expr": "(gen3ia_failed_executions_total / gen3ia_executions_total) * 100", "legendFormat": "%" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 5 }, { "color": "red", "value": 15 }] } } }
+    },
+    {
+      "title": "Crédits épuisés (Free)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "targets": [{ "expr": "gen3ia_credits_by_plan{plan=\"free\"}", "legendFormat": "Crédits free" }]
+    },
+    {
+      "title": "Historique des erreurs (24h)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "gen3ia_recent_errors_total", "legendFormat": "Erreurs" },
+        { "expr": "gen3ia_failed_executions_total", "legendFormat": "Échecs" }
+      ]
+    },
+    {
+      "title": "Seuils d'alerte",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 4 },
+      "description": "Seuils critiques pour déclencher des alertes",
+      "transformations": [{
+        "id": "prepareTimeSeries",
+        "options": { "multiFrameTransform": false }
+      }]
+    },
+    {
+      "title": "Alertes actives (simulées)",
+      "type": "text",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 12 },
+      "options": { "content": "## Règles d'alerte recommandées\n\n### 🔴 Critique\n- **Taux d'échec > 15%** : Problème système majeur\n- **Erreurs > 50 en 1h** : Attaque ou bug critique\n- **Crédits free épuisés** : Impact utilisateurs gratuits\n- **Temps d'exécution > 30s** : Dégradation performance LLM\n\n### 🟠 Warning\n- **Taux d'échec > 5%** : Dégradation du service\n- **Agents inactifs > 10%** : Anomalie configuration\n- **Taux d'erreur API > 1%** : Problème à surveiller\n\n### ℹ️ Info\n- **Uptime < 99.9%** : Redémarrage récent\n- **Nouveaux utilisateurs > seuil** : Pic d'inscription", "mode": "markdown" }
+    },
+    {
+      "title": "Scénarios d'incidents",
+      "type": "text",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 12 },
+      "options": { "content": "## Runbooks d'incidents\n\n### Incident A - Taux d'échec élevé\n1. Vérifier les logs API : `kubectl logs -l app=gen3ia-api --tail=100`\n2. Vérifier la DB : `SELECT * FROM \"AgentExecution\" WHERE status='failed' AND created_at > NOW() - INTERVAL '1h';`\n3. Vérifier Redis/BullMQ : `redis-cli LLEN bullmq:agent-execution:wait`\n4. Redémarrer le worker : `docker compose restart gen3ia-worker`\n\n### Incident B - Performance dégradée\n1. Vérifier le temps LLM : `gen3ia_avg_execution_time_ms > 30000`\n2. Vérifier le CPU : `node_cpu_seconds_total > 80%`\n3. Vérifier la RAM : `node_memory_MemAvailable_bytes < 512MB`\n4. Augmenter les workers : Scale up le service\n\n### Incident C - Crédits bloqués\n1. Vérifier Stripe/SebPay : Statut des transactions\n2. Vérifier le webhook : Dernier callback reçu?\n3. Vérifier le solde utilisateur : Requête manuelle en base\n4. Forcer le refresh : `UPDATE \"User\" SET credits = credits + 10 WHERE plan = 'free';`", "mode": "markdown" }
+    }
+  ]
+}

@@ -1,35 +1,42 @@
 /**
- * GET /api/ai-server/diagnose — Run full SaaS diagnostics
- * POST /api/ai-server/diagnose — Run diagnostics with options
+ * GET/POST /api/ai-server/diagnose — Run full SaaS diagnostics
+ * SECURITE: Diagnostiques internes = réservés aux ADMIN uniquement.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { runDiagnostics } from '@/lib/ai-integration-server/saas-doctor';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-export async function GET() {
+
+
+// GET — Diagnostics complets (admin only)
+
+
+export const dynamic = "force-dynamic";
+export const GET = withAuth(async (_request: NextRequest, _ctx: { params?: RouteParams }, _auth) => {
   try {
     const report = await runDiagnostics();
-
-    return NextResponse.json({
-      success: true,
-      data: report,
-    });
+    return NextResponse.json({ success: true, data: report });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Diagnostics failed' },
       { status: 500 },
     );
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['admin'],
+  rateLimit: { limit: 10, windowMs: 60000 },
+});
 
-export async function POST(request: NextRequest) {
+// POST — Diagnostics avec options (admin only)
+export const POST = withAuth(async (request: NextRequest, _ctx: { params?: RouteParams }, _auth) => {
   try {
     const body = await request.json().catch(() => ({}));
     const { category } = body as { category?: string };
 
     const report = await runDiagnostics();
 
-    // Filter by category if specified
     if (category) {
       const filteredChecks = report.checks.filter(c => c.category === category);
       return NextResponse.json({
@@ -47,14 +54,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: report,
-    });
+    return NextResponse.json({ success: true, data: report });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Diagnostics failed' },
       { status: 500 },
     );
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['admin'],
+  rateLimit: { limit: 10, windowMs: 60000 },
+});
