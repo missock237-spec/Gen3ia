@@ -5,6 +5,11 @@
 import { NextResponse } from 'next/server';
 import { checkHealth } from '@/lib/ai-integration-server';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const result = await checkHealth();

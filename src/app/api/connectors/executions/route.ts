@@ -6,6 +6,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getConnectorRegistry } from '@/lib/connectors/connector-registry';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -35,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const res = NextResponse.json({ success: true, data: result });
     return secureResponse(res, request);
-  } catch (error) {
+  } catch (_error) {
     const res = NextResponse.json({ error: 'Failed to fetch executions' }, { status: 500 });
     return secureResponse(res, request);
   }
