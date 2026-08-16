@@ -1,73 +1,75 @@
 // ============================================================
-// EXPORT — Export CSV des données
+// GET /api/export — Exporter les données utilisateur
+// ============================================================
+//  Query: ?format=json|csv&collections=agents,conversations,credits
+//  Headers: Cookie gen3ia_session (authentification)
+//  Response: fichier téléchargeable
 // ============================================================
 
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from 'next/server';
+import { exportUserData, type ExportCollection, type ExportFormat } from '@/lib/data-export';
+import { withRateLimit, RATE_LIMIT_PRESETS } from '@/lib/api-rate-limit';
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const type = searchParams.get("type") ?? "agents";
-  const format = searchParams.get("format") ?? "csv";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
+async function handler(req: NextRequest): Promise<NextResponse> {
   try {
-    let data: Record<string, unknown>[] = [];
-
-    switch (type) {
-      case "agents":
-        data = await prisma.agent.findMany({
-          select: { id: true, name: true, type: true, status: true, createdAt: true },
-        });
-        break;
-
-      case "executions":
-        data = await prisma.agentExecution.findMany({
-          select: { id: true, status: true, totalTokens: true, estimatedCost: true, createdAt: true },
-          orderBy: { createdAt: "desc" },
-          take: 1000,
-        });
-        break;
-
-      case "users":
-        data = await prisma.user.findMany({
-          select: { id: true, email: true, name: true, plan: true, role: true, createdAt: true },
-        });
-        break;
-
-      case "workflows":
-        data = await prisma.workflow.findMany({
-          select: { id: true, name: true, status: true, createdAt: true },
-        });
-        break;
-
-      default:
-        return NextResponse.json({ error: `Type "${type}" non supporté` }, { status: 400 });
+    // Extraire l'userId de la session
+    const sessionCookie = req.cookies.get('gen3ia_session')?.value;
+    if (!sessionCookie) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    if (format === "csv") {
-      if (data.length === 0) {
-        return new NextResponse("Aucune donnée", {
-          headers: { "Content-Type": "text/csv", "Content-Disposition": `attachment; filename=${type}.csv` },
-        });
-      }
-
-      const headers = Object.keys(data[0]!);
-      const csvRows = [
-        headers.join(","),
-        ...data.map((row) => headers.map((h) => JSON.stringify(row[h] ?? "")).join(",")),
-      ];
-
-      return new NextResponse(csvRows.join("\n"), {
-        headers: {
-          "Content-Type": "text/csv",
-          "Content-Disposition": `attachment; filename=${type}-${Date.now()}.csv`,
-        },
-      });
+    let userId: string;
+    try {
+      const decoded = JSON.parse(Buffer.from(sessionCookie, 'base64url').toString());
+      userId = decoded.uid;
+    } catch {
+      return NextResponse.json({ error: 'Session invalide' }, { status: 401 });
     }
 
-    return NextResponse.json({ data, count: data.length });
+    // Paramètres
+    const url = new URL(req.url);
+    const format = (url.searchParams.get('format') || 'json') as ExportFormat;
+    const collectionsParam = url.searchParams.get('collections') || 'agents,conversations,creditTransactions,executions,profile';
+
+    const validCollections: ExportCollection[] = ['agents', 'conversations', 'creditTransactions', 'executions', 'workflows', 'apiKeys', 'notifications', 'profile'];
+    const requestedCollections = collectionsParam.split(',')
+      .filter(c => validCollections.includes(c as ExportCollection)) as ExportCollection[];
+
+    if (!requestedCollections.length) {
+      return NextResponse.json({ error: 'Collections invalides' }, { status: 400 });
+    }
+
+    // Lancer l'export
+    const result = await exportUserData({
+      userId,
+      format,
+      collections: requestedCollections,
+    });
+
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 500 });
+    }
+
+    // Retourner comme fichier téléchargeable
+    const contentType = format === 'json' ? 'application/json' : 'text/csv';
+    const response = new NextResponse(result.data, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${result.filename}"`,
+        'X-Export-Collections': result.collections.join(','),
+        'X-Export-Records': String(result.totalRecords),
+      },
+    });
+
+    return response;
   } catch (error) {
-    console.error("Export error:", error);
+    console.error('[export] error:', error);
     return NextResponse.json({ error: "Erreur lors de l'export" }, { status: 500 });
   }
 }
+
+export const GET = withRateLimit(handler, RATE_LIMIT_PRESETS.export);

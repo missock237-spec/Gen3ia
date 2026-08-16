@@ -39,9 +39,9 @@ export class PaymentRetryManager {
             await db.invoice.update({ where: { id: invoice.id }, data: { retryCount: rc, lastRetryError: result.error?.slice(0, 500), nextRetryAt: delay ? new Date(Date.now() + delay) : null, status: retry ? 'pending' : 'failed' } });
             failed++;
           }
-        } catch (e) { failed++; } finally { this.processing.delete(invoice.id); }
+        } catch (_e) { failed++; } finally { this.processing.delete(invoice.id); }
       }
-    } catch (e) {}
+    } catch (_e) {}
     return { processed, succeeded, failed };
   }
 

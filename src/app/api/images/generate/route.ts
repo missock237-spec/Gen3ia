@@ -1,13 +1,19 @@
 // ============================================================
 // POST /api/images/generate - Generation d'images via HF
+// SECURITE: withAuth() uniformisé + rate limit + crédits déjà débités
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
-import { applySecurity } from '@/lib/security';
+import { withAuth } from '@/lib/with-auth';
 import { queryHF, bufferToBase64 } from '@/lib/huggingface';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const log = createLogger('image-generate');
 
 const MODELS = {
@@ -17,12 +23,7 @@ const MODELS = {
   'animagine': 'cagliostrolab/animagine-xl-3.1',
 } as const;
 
-export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-  if (secError || !auth) {
-    return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-  }
-
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
   try {
     const body = await request.json();
     const { prompt, model = 'flux', negativePrompt, width = 1024, height = 1024, steps } = body;
@@ -91,7 +92,6 @@ export async function POST(request: NextRequest) {
     };
 
     // On lance l'appel HF sans bloquer la reponse
-    // (le statut sera mis a jour via une seconde requete)
     queryHF(modelId, hfPayload)
       .then(async (response) => {
         if (!response.ok) {
@@ -154,4 +154,8 @@ export async function POST(request: NextRequest) {
     log.error('image_generation_route_error', { error: String(error) });
     return NextResponse.json({ error: 'Erreur interne' }, { status: 500 });
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 10, windowMs: 60000 }, // 10 générations/min max (coûteux)
+});

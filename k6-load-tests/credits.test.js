@@ -28,7 +28,7 @@ const creditErrorRate = new Rate('credit_errors');
 const checkoutDuration = new Trend('checkout_duration');
 const balanceCheckDuration = new Trend('balance_check_duration');
 
-export default function () {
+export default function _default() {
   group('Credits - Checkout + Consommation', () => {
     const userId = `user_loadtest_${Math.floor(Math.random() * 1000)}`;
     

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verify } from 'jsonwebtoken';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const JWT_SECRET = process.env.AUTH_SECRET;
 
 export async function GET(request: NextRequest) {
@@ -11,10 +16,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
     const decoded = verify(authHeader.slice(7), JWT_SECRET) as { userId: string };
+    // Facade Firestore : where/orderBy en tableaux, limit au lieu de take.
     const tasks = await db.task.findMany({
-      where: { userId: decoded.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
+      where: [{ field: 'userId', op: '==', value: decoded.userId }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      limit: 50,
     });
     return NextResponse.json(tasks);
   } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }

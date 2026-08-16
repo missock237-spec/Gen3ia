@@ -271,7 +271,7 @@ export function webhookSecurityMiddleware(secret: string) {
       }
 
       return handler(result.payload!);
-    } catch (err) {
+    } catch (_err) {
       return new Response(
         JSON.stringify({ success: false, error: 'Erreur de validation du webhook' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }

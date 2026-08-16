@@ -2,17 +2,18 @@
 // Gen3ia — Classes d'erreur standardisees
 // ============================================================
 
-import { ZodError } from "zod";
+import { ZodError, type ZodIssue } from "zod";
 import { logger } from "./logger";
+import { NextResponse } from "next/server";
 
 // ============================================================
 // Classe de base
 // ============================================================
 
 export class ApiError extends Error {
-  public readonly code: string;
-  public readonly statusCode: number;
-  public readonly details?: Record<string, unknown>;
+  public code: string;
+  public statusCode: number;
+  public details?: Record<string, unknown>;
 
   constructor(code: string, message: string, statusCode = 500, details?: Record<string, unknown>) {
     super(message);
@@ -54,6 +55,17 @@ export class ValidationError extends ApiError {
 export class RateLimitError extends ApiError {
   constructor(retryAfter: number) {
     super("RATE_LIMIT_EXCEEDED", `Trop de requetes. Reessayez dans ${retryAfter}s.`, 429, { retryAfter });
+  }
+}
+
+// ============================================================
+// BusinessError — Regles metier (preconditions, etats invalides)
+// ============================================================
+
+export class BusinessError extends ApiError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(code, message, 400, details);
+    this.name = "BusinessError";
   }
 }
 
@@ -249,7 +261,7 @@ export class UniqueConstraintError extends DatabaseError {
 }
 
 // ============================================================
-// Types de reponse standardises
+// Types de reponse standardisees
 // ============================================================
 
 export interface ApiSuccessResponse<T = unknown> {
@@ -294,41 +306,65 @@ export const ErrorCodes = {
 
 let requestCounter = 0;
 
-export function handleApiError(error: unknown): { statusCode: number; body: ApiErrorResponse } {
+export function handleApiError(error: unknown): NextResponse<ApiErrorResponse> {
   const requestId = `err_${Date.now()}_${++requestCounter}`;
 
   if (error instanceof ApiError) {
     const level = error.statusCode >= 500 ? 'error' : 'warn';
     logger[level]('api_error', { requestId, code: error.code, message: error.message, status: error.statusCode });
-    return { statusCode: error.statusCode, body: { success: false, error: { code: error.code, message: error.message, details: error.details, requestId } } };
+    return NextResponse.json({ success: false, error: { code: error.code, message: error.message, details: error.details, requestId } }, { status: error.statusCode });
   }
 
   if (error instanceof ZodError) {
-    const details = error.errors.reduce((acc, e) => {
+    const details = (error.issues as ZodIssue[]).reduce<Record<string, string[]>>((acc, e) => {
       const path = e.path.join('.');
       if (!acc[path]) acc[path] = [];
       acc[path].push(e.message);
       return acc;
-    }, {} as Record<string, string[]>);
+    }, {});
     logger.warn('validation_error', { requestId, details });
-    return { statusCode: 400, body: { success: false, error: { code: 'VALIDATION_ERROR', message: 'Donnees invalides', details: { fields: details }, requestId } } };
+    return NextResponse.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Donnees invalides', details: { fields: details }, requestId } }, { status: 400 });
   }
 
   if (error instanceof SyntaxError) {
     logger.warn('syntax_error', { requestId, message: error.message });
-    return { statusCode: 400, body: { success: false, error: { code: 'INVALID_JSON', message: 'Format JSON invalide', requestId } } };
+    return NextResponse.json({ success: false, error: { code: 'INVALID_JSON', message: 'Format JSON invalide', requestId } }, { status: 400 });
   }
 
   const message = error instanceof Error ? error.message : 'Erreur interne';
   logger.error('unhandled_error', { requestId, error: message });
 
   try {
-    const Sentry = require('@sentry/nextjs');
-    if (error instanceof Error) Sentry.captureException(error, { tags: { requestId } });
+    // Lazy-load Sentry without require() — use a synchronous dynamic import via a top-level cache.
+    // We use a module-level variable so the import only happens once per process.
+    if (typeof window === 'undefined') {
+      // Server-side: use top-level import (see imports above)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { captureException } = require('@sentry/nextjs');
+      if (error instanceof Error) captureException(error, { tags: { requestId } });
+    }
   } catch {}
 
-  return {
-    statusCode: 500,
-    body: { success: false, error: { code: 'INTERNAL_ERROR', message: process.env.NODE_ENV === 'development' ? message : 'Une erreur interne est survenue', requestId } },
+  return NextResponse.json(
+    { success: false, error: { code: 'INTERNAL_ERROR', message: process.env.NODE_ENV === 'development' ? message : 'Une erreur interne est survenue', requestId } },
+    { status: 500 }
+  );
+}
+
+/**
+ * Wrapper de route API : capture et formate TOUTES les erreurs en JSON structure.
+ * Garantit que chaque route renvoie un corps { success, error: { code, message, details, requestId } }.
+ * Utilisation :
+ *   export const GET = handleRoute(handler);
+ *   export const POST = handleRoute(async (req) => { ... });
+ */
+export function handleRoute<T>(handler: (...args: any[]) => Promise<NextResponse<T> | Response>)
+  : (...args: any[]) => Promise<NextResponse> {
+  return async (...args: any[]) => {
+    try {
+      return (await handler(...args)) as NextResponse;
+    } catch (error) {
+      return handleApiError(error);
+    }
   };
 }

@@ -41,7 +41,7 @@ function sanitizeCode(code: string, language: string): { safe: boolean; sanitize
   if (language === 'html' || language === 'css') {
     // Le HTML/CSS n'est pas execute cote serveur, seulement rendu dans l'iframe
     // Mais on bloque quand meme les scripts inline dangereux
-    if (/<script[^>]*>/.test(code) && !/<script[^>]*src=/.test(code)) {
+    if (/<script\b[^>]*>([\s\S]*?)<\/script>/i.test(code) && !/<script\b[^>]*\bsrc=/i.test(code)) {
       // Les scripts inline sont autorises pour le rendu, pas d'injection
     }
     return { safe: true, sanitized: code };

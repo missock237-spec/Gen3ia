@@ -29,7 +29,7 @@ const COMMANDS = [
 
 export default function TerminalComponent({ agentId, userId }: TerminalProps) {
   const [lines, setLines] = useState<Line[]>([
-    { id: "w", type: "system", content: "Gen3ia Terminal v2.1\nCommandes: help, clear, ls, cat, history, files, create, edit, read, delete\nAuto-completion: TAB • WebSocket temps reel", ts: Date.now() }
+    { id: "w", type: "system", content: "Gen3ia Terminal v2.1\nCommandes: help, clear, ls, cat, history, files, create, edit, read, delete\nAuto-completion: TAB • WebSocket temps reel", ts: (useState(() => Date.now())[0]) }
   ]);
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -51,8 +51,10 @@ export default function TerminalComponent({ agentId, userId }: TerminalProps) {
 
   useEffect(() => { tr.current?.scrollTo({ top: tr.current.scrollHeight, behavior: "smooth" }); }, [lines]);
 
+  const idCounterRef = useRef(0);
   const add = useCallback((l: Omit<Line, "id" | "ts">) => {
-    setLines(p => [...p, { ...l, id: "l" + Date.now() + Math.random().toString(36).slice(2, 6), ts: Date.now() }]);
+    idCounterRef.current += 1;
+    setLines(p => [...p, { ...l, id: "l" + idCounterRef.current + Math.random().toString(36).slice(2, 6), ts: Date.now() }]);
   }, []);
 
   // === AUTO-COMPLETION ===

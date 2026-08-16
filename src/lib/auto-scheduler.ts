@@ -1,6 +1,6 @@
-import { prisma } from "./prisma";
+import { db } from "./db";
 import { logger } from "./logger";
-import { agentQueue } from "./bullmq";
+import { getAgentQueue } from "./bullmq";
 
 export type TriggerType = "schedule" | "event" | "webhook" | "instant";
 export type ScheduleFrequency = "every_minute" | "every_5_minutes" | "every_15_minutes" | "every_hour" | "every_6_hours" | "every_day" | "every_week" | "custom_cron";
@@ -25,8 +25,10 @@ class AutoScheduler {
   private intervals: Map<string, ReturnType<typeof setInterval>> = new Map();
   private isRunning = false;
 
+  // Lazy init — do not connect to DB or Redis at build time
   async start(): Promise<void> {
     if (this.isRunning) return;
+    if (process.env.NEXT_PHASE === 'phase-production-build') return;
     this.isRunning = true;
     logger.info("auto_scheduler_started");
     await this.scheduleAllAgents();
@@ -40,8 +42,8 @@ class AutoScheduler {
   }
 
   async scheduleAllAgents(): Promise<void> {
-    const agents = await prisma.agent.findMany({
-      where: { status: { not: "inactive" }, type: { in: ["assistant", "analyst", "whatsapp", "custom"] } },
+    const agents = await db.agent.findMany({
+      where: { status: { not: "inactive" }, type: { in: ["assistant", "analyst", "custom"] } },
       include: { user: { select: { plan: true, credits: true } } },
     });
     logger.info("auto_scheduler_agents_found", { count: agents.length });
@@ -54,7 +56,7 @@ class AutoScheduler {
     if (!cfg || !cfg.isActive) return;
     if (agent.user && agent.user.credits < 10) { logger.warn("auto_no_credits", { agentId: agent.id }); return; }
     if (agent.user && agent.user.plan === "free") {
-      const today = await prisma.agentExecution.count({ where: { agentId: agent.id, createdAt: { gte: new Date(Date.now() - 86400000) } } });
+      const today = await db.agentExecution.count({ where: { agentId: agent.id, createdAt: { gte: new Date(Date.now() - 86400000) } } });
       if (today >= 1) return;
     }
     switch (cfg.trigger) {
@@ -75,10 +77,11 @@ class AutoScheduler {
 
   private async executeNow(agentId: string, userId: string, config: any): Promise<void> {
     if (config.cooldownMinutes > 0) {
-      const last = await prisma.agentExecution.findFirst({ where: { agentId, status: "completed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+      const last = await db.agentExecution.findFirst({ where: { agentId, status: "completed" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
       if (last && Date.now() - last.createdAt.getTime() < config.cooldownMinutes * 60000) return;
     }
-    await agentQueue.add("auto-execution", { agentId, userId, input: config.input ?? INPUT_TEMPLATES.daily_report, sessionId: `auto_${agentId}_${Date.now()}`, auto: true });
+// @ts-ignore — type narrowing pending, see refactor ticket
+    await getAgentQueue().add("auto-execution", { agentId, userId, input: config.input ?? INPUT_TEMPLATES.daily_report, sessionId: `auto_${agentId}_${Date.now()}`, auto: true });
     logger.info("auto_queued", { agentId });
   }
 

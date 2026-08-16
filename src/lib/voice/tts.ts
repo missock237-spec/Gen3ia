@@ -68,11 +68,14 @@ async function callOpenAITTS(text: string, voice: string, speed: number): Promis
   }
 }
 
+import { validatePathSegment } from '@/lib/security/validate-url';
+
 async function callElevenLabsTTS(text: string, voice: string): Promise<TTSResult> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY not set');
 
-  const voiceId = voice || '21m00Tcm4TlvDq8ikWAM'; // Rachel (voix par défaut)
+  const voiceId = voice || '21m00Tcm4TlvDq8ikWAM';
+  if (!validatePathSegment(voiceId)) throw new Error('Invalid voice ID'); // Rachel (voix par défaut)
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
 
@@ -126,7 +129,7 @@ async function callHuggingFaceTTS(text: string): Promise<TTSResult> {
   };
 }
 
-async function callEdgeTTS(text: string, language: string): Promise<TTSResult> {
+async function callEdgeTTS(text: string, _language: string): Promise<TTSResult> {
   // Synthèse vocale via Web Speech API (côté client)
   // Sur le serveur, fallback vers HuggingFace
   return callHuggingFaceTTS(text);
@@ -139,22 +142,24 @@ export async function synthesizeSpeech(options: TTSOptions): Promise<TTSResult> 
     throw new Error('Le texte à synthétiser est vide');
   }
 
+  // BUGFIX: on ne réassigne jamais `text` (const) — on calcule une version tronquée,
+  // ce qui fait que la troncature est réellement appliquée aux appels providers.
+  const truncatedText = text.length > MAX_TEXT_LENGTH ? text.slice(0, MAX_TEXT_LENGTH) : text;
   if (text.length > MAX_TEXT_LENGTH) {
     log.warn('Texte tronqué pour TTS', { originalLength: text.length, maxLength: MAX_TEXT_LENGTH });
-    text = text.slice(0, MAX_TEXT_LENGTH);
   }
 
   // Vérification du cache
-  const cacheKey = `${provider || 'auto'}:${voice || 'default'}:${speed}:${text.slice(0, 100)}`;
+  const cacheKey = `${provider || 'auto'}:${voice || 'default'}:${speed}:${truncatedText.slice(0, 100)}`;
   const cached = audioCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    log.info('TTS cache hit', { provider, textLength: text.length });
+    log.info('TTS cache hit', { provider, textLength: truncatedText.length });
     return {
       audioUrl: cached.audioUrl,
-      durationMs: Math.round(text.length * 50),
+      durationMs: Math.round(truncatedText.length * 50),
       provider: provider || 'cache',
       format: 'mp3',
-      text,
+      text: truncatedText,
     };
   }
 
@@ -171,24 +176,24 @@ export async function synthesizeSpeech(options: TTSOptions): Promise<TTSResult> 
       switch (p) {
         case 'openai':
           if (process.env.OPENAI_API_KEY) {
-            result = await callOpenAITTS(text, voice || 'alloy', speed);
+            result = await callOpenAITTS(truncatedText, voice || 'alloy', speed);
             break;
           }
           continue;
         case 'elevenlabs':
           if (process.env.ELEVENLABS_API_KEY) {
-            result = await callElevenLabsTTS(text, voice || '21m00Tcm4TlvDq8ikWAM');
+            result = await callElevenLabsTTS(truncatedText, voice || '21m00Tcm4TlvDq8ikWAM');
             break;
           }
           continue;
         case 'huggingface':
           if (process.env.HUGGINGFACE_TOKEN) {
-            result = await callHuggingFaceTTS(text);
+            result = await callHuggingFaceTTS(truncatedText);
             break;
           }
           continue;
         case 'edge':
-          result = await callEdgeTTS(text, language);
+          result = await callEdgeTTS(truncatedText, language);
           break;
         default:
           continue;
@@ -199,7 +204,7 @@ export async function synthesizeSpeech(options: TTSOptions): Promise<TTSResult> 
 
       log.info('TTS synthesized', {
         provider: result.provider,
-        textLength: text.length,
+        textLength: truncatedText.length,
         durationMs: Date.now() - startTime,
       });
 

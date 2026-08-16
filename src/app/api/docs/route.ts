@@ -5,8 +5,11 @@
 // ============================================================
 import { NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
 
+
+
+
+export const dynamic = "force-dynamic";
 const apiDocs = {
   openapi: "3.0.3",
   info: {

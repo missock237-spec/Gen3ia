@@ -2,7 +2,7 @@
 // GENOVA SDK — Client TypeScript pour integrateurs tiers
 // ============================================================
 // API complete : agents, workflows, images, videos, audio,
-// WhatsApp, paiements, supervision
+// paiements, supervision
 // ============================================================
 
 const GENOVA_API_BASE = process.env.GENOVA_API_URL ?? "https://genova.app/api";
@@ -70,13 +70,6 @@ class GenovaClient {
     return this.request("POST", "/api/audio/generate", params);
   }
 
-  async sendWhatsAppMessage(params: { to: string; text: string }) {
-    return this.request("POST", "/api/whatsapp/send", { type: "text", ...params });
-  }
-
-  async sendWhatsAppMedia(params: { to: string; type: "image" | "video" | "audio" | "document"; mediaUrl: string; caption?: string }) {
-    return this.request("POST", "/api/whatsapp/send", params);
-  }
 
   async getSubscriptionPlans() {
     return this.request("GET", "/api/payments/plans", undefined);

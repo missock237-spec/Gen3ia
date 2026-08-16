@@ -1,200 +1,141 @@
-/**
- * WhatsApp Webhook — Réception des messages entrants (Cloud API Meta)
- *
- * GET  → Vérification du webhook (Meta challenge)
- * POST → Réception des messages entrants
- *
- * Validation HMAC sécurisée pour garantir l'authenticité des requêtes Meta.
- */
-
 import { NextRequest, NextResponse } from 'next/server';
+import { whatsapp } from '@/lib/whatsapp-engine';
 import { createLogger } from '@/lib/logger';
-import { handleWebhookIncomingMessage } from '@/lib/whatsapp-auto-responder';
+import { db } from '@/lib/db';
 
-const log = createLogger('whatsapp-webhook');
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-/**
- * Vérifie la signature HMAC SHA256 d'une requête Meta
- * pour garantir qu'elle provient bien de WhatsApp.
- */
-function verifyMetaSignature(
-  payload: string,
-  signatureHeader: string | null,
-  appSecret: string
-): boolean {
-  if (!signatureHeader || !appSecret) return false;
-
-  try {
-    // Format: sha256=... ou sha256=...,sha256=...
-    const expectedSignatures = signatureHeader
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.startsWith('sha256='))
-      .map((s) => s.replace('sha256=', ''));
-
-    if (expectedSignatures.length === 0) return false;
-
-    // Utiliser l'API Web Crypto
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(appSecret);
-    const messageData = encoder.encode(payload);
-
-    // Comme Web Crypto est asynchrone et peut varier selon l'environnement,
-    // on utilise une méthode compatible Edge/Node
-    const crypto = globalThis.crypto || (require('crypto') as typeof import('crypto'));
-
-    if (typeof crypto.subtle?.digest === 'function' || typeof crypto.createHash === 'function') {
-      // Fallback: on accepte la requête si le header est présent
-      // (la vérification réelle HMAC sera faite dans un middleware dédié)
-      return true;
-    }
-
-    return expectedSignatures.length > 0;
-  } catch {
-    return false;
-  }
-}
+const logger = createLogger('whatsapp-webhook-api');
 
 /**
- * GET /api/whatsapp/webhook
- * Vérification du webhook par Meta lors de la configuration
+ * GET - Point d'entrée pour la vérification initiale du Webhook Meta WhatsApp.
+ * Meta effectue une requête GET avec :
+ * - hub.mode = 'subscribe'
+ * - hub.verify_token = le jeton WHATSAPP_VERIFY_TOKEN défini
+ * - hub.challenge = une chaîne aléatoire à renvoyer sous forme de texte brut avec HTTP 200.
  */
 export async function GET(request: NextRequest) {
-  const mode = request.nextUrl.searchParams.get('hub.mode');
-  const token = request.nextUrl.searchParams.get('hub.verify_token');
-  const challenge = request.nextUrl.searchParams.get('hub.challenge');
+  try {
+    const { searchParams } = new URL(request.url);
+    const mode = searchParams.get('hub.mode');
+    const token = searchParams.get('hub.verify_token');
+    const challenge = searchParams.get('hub.challenge');
 
-  const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN;
-
-  if (mode === 'subscribe' && token === expectedToken && challenge) {
-    log.info('Webhook verified successfully by Meta');
-    return new NextResponse(challenge, {
-      status: 200,
-      headers: { 'Content-Type': 'text/plain' },
+    logger.info('Tentative de vérification du Webhook WhatsApp par Meta', {
+      mode,
+      hasChallenge: Boolean(challenge),
     });
+
+    const verifiedChallenge = whatsapp.verifyWebhook(mode, challenge, token);
+
+    if (verifiedChallenge) {
+      // Renvoi impératif de la chaîne challenge avec status 200 et type text/plain
+      return new Response(verifiedChallenge, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+      });
+    }
+
+    logger.warn('Échec de validation du Webhook WhatsApp : jeton ou paramètres invalides');
+    return NextResponse.json(
+      { error: 'Échec de vérification du Webhook Meta WhatsApp. Jeton invalide.' },
+      { status: 403 }
+    );
+  } catch (err) {
+    logger.error('Erreur serveur lors de la vérification du Webhook', { error: err });
+    return NextResponse.json(
+      { error: 'Erreur interne du serveur lors de la vérification' },
+      { status: 500 }
+    );
   }
-
-  log.warn('Webhook verification failed', {
-    mode,
-    tokenMatch: token === expectedToken,
-    hasChallenge: !!challenge,
-  });
-
-  return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 }
 
 /**
- * POST /api/whatsapp/webhook
- * Réception des messages entrants depuis WhatsApp Cloud API
+ * POST - Point d'entrée pour la réception des évènements WhatsApp (messages entrants, statuts).
+ * Contexte Africain (Cameroun) :
+ * Les réseaux mobiles Orange / MTN subissent parfois des latences élevées.
+ * Meta exige un retour HTTP 200 rapide (< 3s) sous peine de retrier indéfiniment les notifications.
+ * Nous enregistrons donc les messages de manière asynchrone et les transmettons à l'Agent OS Engine.
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const payload = await request.json();
 
-    // Validation HMAC de la signature Meta
-    const signature = request.headers.get('x-hub-signature-256');
-    const appSecret = process.env.WHATSAPP_API_TOKEN || '';
+    // Traitement et normalisation via le moteur WhatsApp
+    const { messages, contacts, statuses } = whatsapp.receiveWebhook(payload);
 
-    if (!verifyMetaSignature(JSON.stringify(body), signature, appSecret)) {
-      log.warn('Invalid webhook signature, rejecting request');
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-    }
-
-    // Extraction des messages depuis l'objet Meta
-    const entry = body?.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    const messages = value?.messages;
-    const metadata = value?.metadata;
-
-    if (!messages || messages.length === 0) {
-      // Statut ou notification (pas un message) — réponse 200 OK obligatoire
-      return NextResponse.json({ success: true });
-    }
-
-    // Traiter chaque message
-    for (const msg of messages) {
-      const from = msg.from as string;
-      const msgType = msg.type as string;
-      const msgId = msg.id as string;
-      const timestamp = msg.timestamp as number;
-
-      let text = '';
-      let hasMedia = false;
-      let mediaType: string | undefined;
-
-      switch (msgType) {
-        case 'text':
-          text = msg.text?.body ?? '';
-          break;
-        case 'audio':
-          hasMedia = true;
-          mediaType = 'audio';
-          text = '[Message audio reçu]';
-          break;
-        case 'image':
-          hasMedia = true;
-          mediaType = 'image';
-          text = msg.image?.caption ?? '[Image reçue]';
-          break;
-        case 'video':
-          hasMedia = true;
-          mediaType = 'video';
-          text = msg.video?.caption ?? '[Vidéo reçue]';
-          break;
-        case 'document':
-          hasMedia = true;
-          mediaType = 'document';
-          text = msg.document?.caption ?? '[Document reçu]';
-          break;
-        case 'button':
-          text = msg.button?.text ?? msg.button?.payload ?? '[Réponse bouton]';
-          break;
-        case 'interactive':
-          text = msg.interactive?.button_reply?.id ??
-                 msg.interactive?.list_reply?.id ??
-                 '[Réponse interactive]';
-          break;
-        case 'order':
-          text = '[Commande reçue]';
-          break;
-        case 'system':
-          text = msg.system?.body ?? '[Message système]';
-          break;
-        default:
-          text = `[Message type: ${msgType}]`;
-      }
-
-      log.info('WhatsApp message received via webhook', {
-        from,
-        type: msgType,
-        hasText: text.length > 0,
-        hasMedia,
-        msgId,
-      });
-
-      // Envoyer à l'auto-responder IA (fire-and-forget)
-      handleWebhookIncomingMessage({
-        from,
-        text,
-        timestamp,
-        messageId: msgId,
-        senderName: metadata?.display_phone_number,
-      }).catch((err) => {
-        log.error('Auto-responder error for webhook message', {
-          from,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    }
-
-    // Réponse 200 obligatoire pour Meta (sinon il renvoie le message en boucle)
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    log.error('Webhook processing error', {
-      error: error instanceof Error ? error.message : String(error),
+    logger.info('Notification de Webhook WhatsApp reçue', {
+      receivedMessages: messages.length,
+      receivedStatuses: statuses.length,
     });
-    // Toujours retourner 200 pour éviter les re-soumissions Meta
-    return NextResponse.json({ success: true });
+
+    // Stockage et transmission des messages reçus aux agents Gen3ia
+    const processPromises = messages.map(async (msg) => {
+      try {
+        const contact = contacts.find((c) => c.wa_id === msg.from);
+        const senderName = contact?.profile?.name || 'Inconnu';
+
+        // 1. Sauvegarde dans la collection Firestore / DB des messages reçus
+        const savedMessageRecord = {
+          messageId: msg.id,
+          from: msg.from,
+          senderName,
+          to: msg.to || '',
+          text: msg.text?.body || '',
+          type: msg.type,
+          timestamp: msg.timestamp ? new Date(Number(msg.timestamp) * 1000).toISOString() : new Date().toISOString(),
+          status: 'received',
+          source: 'whatsapp_cloud_api',
+          rawPayload: msg.raw,
+          createdAt: new Date().toISOString(),
+        };
+
+        // Sauvegarde principale dans les logs de conversation WhatsApp
+        await (db as any).collection('whatsapp_incoming_messages').add(savedMessageRecord);
+
+        // 2. Transmettre le message à l'Agent OS Gen3ia (orchestrateur multi-agents)
+        // Permet à l'agent conversationnel de répondre aux requêtes clients (prix, Mobile Money, dispo produits)
+        if (msg.text?.body) {
+          logger.info('Transmission du message WhatsApp à l’Agent Engine OS', {
+            from: msg.from,
+            textPreview: msg.text.body.slice(0, 50),
+          });
+
+          // Stockage dans l'historique de conversation de l'agent
+          await (db as any).collection('agent_conversations').add({
+            channel: 'whatsapp',
+            senderPhone: msg.from,
+            userMessage: msg.text.body,
+            status: 'pending_agent_response',
+            createdAt: new Date().toISOString(),
+          });
+        }
+      } catch (saveErr) {
+        logger.error('Erreur lors du traitement / stockage du message WhatsApp entrant', {
+          messageId: msg.id,
+          error: saveErr,
+        });
+      }
+    });
+
+    // On attend le traitement local sans bloquer la réponse Meta si possible
+    await Promise.allSettled(processPromises);
+
+    // Meta requiert un retour HTTP 200 OK
+    return NextResponse.json({
+      status: 'ok',
+      processedMessages: messages.length,
+      processedStatuses: statuses.length,
+    });
+  } catch (err) {
+    logger.error('Erreur serveur lors de la réception du Webhook WhatsApp', { error: err });
+    // Même en cas d'erreur de parsing local, on retourne 200 OK à Meta pour ne pas bloquer la queue webhook de Facebook
+    return NextResponse.json(
+      { status: 'error', error: err instanceof Error ? err.message : 'Erreur inconnue' },
+      { status: 200 }
+    );
   }
 }
