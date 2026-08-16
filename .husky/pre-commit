@@ -1,4 +1,47 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
 
-npx lint-staged
+# ============================================================
+# Husky pre-commit hook — Gen3ia
+# Exécute lint-staged avant chaque commit + protection secrets
+# ============================================================
+
+echo "🔍 Pre-commit: Vérification automatique..."
+
+# BLOQUE LES FICHIERS .env* (hors .env.example)
+BLOCKED_ENV_FILES=$(git diff --cached --name-only | grep -E '^\.env(\.|$)' | grep -v '^\.env\.example$' || true)
+if [ -n "$BLOCKED_ENV_FILES" ]; then
+  echo "❌ SECURITE: Tentative de commiter des fichiers .env secrets !"
+  echo "   Fichiers bloqués:"
+  echo "$BLOCKED_ENV_FILES"
+  echo "   Ne commitez JAMAIS vos variables d'environnement. Utilisez un gestionnaire de secrets."
+  exit 1
+fi
+
+# Lint-staged : prettier + eslint + vitest --related
+npx lint-staged --no-stash
+if [ $? -ne 0 ]; then
+  echo "❌ Les fichiers staged ne passent pas la validation"
+  exit 1
+fi
+
+# Vérification rapide des secrets en dur
+# Bloque les commits contenant des clés API
+PATTERNS='(sk_live_|sk_test_|sb_live_|sb_test_|AIza[A-Za-z0-9_-]{35}|ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}|hf_[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{40,}|whsec_[A-Za-z0-9]{16,})'
+git diff --cached --name-only | while read file; do
+  if [ -f "$file" ] && grep -Eq "$PATTERNS" "$file" 2>/dev/null; then
+    echo "❌ $file: contient des secrets/clés API en dur !"
+    echo "   Utilisez des variables d'environnement à la place."
+    exit 1
+  fi
+done
+
+# Vérifie qu'aucun commit ne contient des marqueurs de conflit Git
+CONFLICT_FILES=$(git diff --cached --name-only | xargs grep -l '^<<<<<<< HEAD$\|^>>>>>>> \|^=======$' 2>/dev/null || true)
+if [ -n "$CONFLICT_FILES" ]; then
+  echo "❌ Conflits de fusion Git non résolus dans:"
+  echo "$CONFLICT_FILES"
+  echo "   Résolvez les conflits avant de commiter."
+  exit 1
+fi
+
+echo "✅ Pre-commit: Validation passée"

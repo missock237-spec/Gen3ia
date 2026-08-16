@@ -1,16 +1,10 @@
-// ============================================================
-// Gen3ia Core — Shared library exports
-// ============================================================
-export { db, prisma } from './db';
-export { createLogger, logger } from './logger';
-export {
-  executeAgentSchema,
-  createAgentSchema,
-  loginSchema,
-  registerSchema,
-} from './validation';
-export { handleApiError, AppError, ErrorCode } from './errors';
-export { rateLimiter } from './rate-limiter';
-export { checkpointManager } from './checkpoint';
-export { supervisor } from './agent/supervisor';
-export { encrypt, decrypt, hashToken } from './security';
+// @gen3ia/core - Point d'entree principal
+
+export * from './errors.js';
+export * from './env-validator.js';
+export * from './logger.js';
+export * from './repositories/index.js';
+export * from './services/index.js';
+export * from './validation.js';
+export { db, prisma, Collections, FirestoreRepository, default } from './db.js';
+export type { FirestoreWhereOp, FirestoreOrderBy, FindOptions, FindUniqueOptions } from './db.js';

@@ -1,8 +1,19 @@
-import { prisma } from '@/lib/db';
+// ============================================================
+// Gen3ia — Collecteur de métriques (buffer → Prisma)
+// FIX : import correct de `prisma` depuis './prisma' (db.ts exporte `db`, pas `prisma`).
+// ============================================================
+import { prisma } from './prisma';
+
+interface MetricEntry {
+  name: string;
+  value: number;
+  tags?: Record<string, unknown>;
+  timestamp: number;
+}
 
 class MetricsCollector {
-  private buffer = [];
-  private flushInterval = null;
+  private buffer: MetricEntry[] = [];
+  private flushInterval: ReturnType<typeof setInterval> | null = null;
   private readonly maxBufferSize = 100;
 
   constructor() {
@@ -11,19 +22,19 @@ class MetricsCollector {
     }
   }
 
-  record(name, value, tags) {
+  record(name: string, value: number, tags?: Record<string, unknown>) {
     this.buffer.push({ name, value, tags, timestamp: Date.now() });
-    if (this.buffer.length >= this.maxBufferSize) this.flush();
+    if (this.buffer.length >= this.maxBufferSize) void this.flush();
   }
 
   async flush() {
     if (this.buffer.length === 0) return;
-    const metrics = [...this.buffer];
+    const entries = [...this.buffer];
     this.buffer = [];
     try {
       await prisma.monitoringEvent.createMany({
-        data: metrics.map(m => ({
-          userId: m.tags?.userId || 'system',
+        data: entries.map(m => ({
+          userId: (m.tags?.userId as string) || 'system',
           eventType: 'metric',
           source: 'backend',
           message: m.name,
@@ -34,16 +45,16 @@ class MetricsCollector {
     } catch { /* silent */ }
   }
 
-  recordApiCall(endpoint, duration, status, userId) {
-    this.record('api.duration', duration, { endpoint, status: String(status) });
-    this.record('api.calls', 1, { endpoint, status: String(status) });
+  recordApiCall(endpoint: string, duration: number, status: number, userId?: string) {
+    this.record('api.duration', duration, { endpoint, status: String(status), ...(userId ? { userId } : {}) });
+    this.record('api.calls', 1, { endpoint, status: String(status), ...(userId ? { userId } : {}) });
   }
 
-  recordAgentAction(action, platform, success) {
+  recordAgentAction(action: string, platform: string, success: boolean) {
     this.record('agent.action', 1, { action, platform, success: String(success) });
   }
 
-  recordAuthEvent(type) {
+  recordAuthEvent(type: string) {
     this.record('auth.event', 1, { type });
   }
 }

@@ -1,7 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { uploadFile, initChunkUpload, uploadChunk, cancelChunkUpload, validateFile } from '@/lib/upload';
-import { createLogger } from '@/lib/logger';
+// ============================================================
+// /api/upload — Upload via Firebase Cloud Storage
+// ============================================================
+//  POST : upload simple (form-data) ou upload par chunks (JSON)
+//  GET  : liste les fichiers stockés dans Cloud Storage
+// ============================================================
 
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  uploadFile,
+  initChunkUpload,
+  uploadChunk,
+  cancelChunkUpload,
+  validateFile,
+} from '@/lib/upload';
+import { createLogger } from '@/lib/logger';
+import { getAdminStorage } from '@/lib/firebase/admin';
+import { getServerSession } from '@/lib/firebase/auth';
+
+export const dynamic = 'force-dynamic';
 const log = createLogger('api-upload');
 
 // ============================================================
@@ -10,13 +26,18 @@ const log = createLogger('api-upload');
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    }
+    const ownerUid = session.user.id;
+
     const contentType = request.headers.get('content-type') || '';
 
     // Upload par chunks (JSON)
     if (contentType.includes('application/json')) {
       const body = await request.json();
 
-      // Initialisation d'un upload par chunks
       if (body.action === 'init') {
         const result = initChunkUpload({
           filename: body.filename,
@@ -29,7 +50,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, ...result }, { status: 201 });
       }
 
-      // Envoi d'un chunk
       if (body.action === 'chunk') {
         const data = Buffer.from(body.data, 'base64');
         const result = await uploadChunk({
@@ -40,13 +60,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, ...result });
       }
 
-      // Annulation
       if (body.action === 'cancel') {
         cancelChunkUpload(body.uploadId);
-        return NextResponse.json({ success: true, message: 'Upload annule' });
+        return NextResponse.json({ success: true, message: 'Upload annulé' });
       }
 
-      return NextResponse.json({ error: 'Action non reconnue. Utilisez init, chunk, ou cancel.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Action non reconnue. Utilisez init, chunk, ou cancel.' },
+        { status: 400 },
+      );
     }
 
     // Upload classique par formulaire
@@ -54,9 +76,13 @@ export async function POST(request: NextRequest) {
     const fileField = formData.get('file') as File | null;
     const subdir = (formData.get('subdir') as string) || 'general';
     const generateThumbnail = formData.get('generateThumbnail') === 'true';
+    const isPublic = formData.get('public') === 'true';
 
     if (!fileField) {
-      return NextResponse.json({ error: 'Aucun fichier fourni. Envoyez un champ "file".' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Aucun fichier fourni. Envoyez un champ "file".' },
+        { status: 400 },
+      );
     }
 
     const validation = validateFile(fileField);
@@ -64,8 +90,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const result = await uploadFile(fileField, subdir, { generateThumbnail });
-    log.info('File uploaded via API', { filename: result.originalName, category: result.category, size: result.size });
+    const result = await uploadFile(fileField, subdir, {
+      generateThumbnail,
+      public: isPublic,
+      ownerUid,
+    });
+    log.info('File uploaded to Cloud Storage', {
+      filename: result.originalName,
+      category: result.category,
+      size: result.size,
+      path: result.path,
+    });
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (err) {
@@ -76,50 +111,50 @@ export async function POST(request: NextRequest) {
 }
 
 // ============================================================
-// GET /api/upload — Lister les fichiers uploades (admin)
+// GET /api/upload — Lister les fichiers dans Cloud Storage
 // ============================================================
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const subdir = searchParams.get('subdir') || '';
-
-    const { readdir, stat } = await import('node:fs/promises');
-    const { join } = await import('node:path');
-    const UPLOAD_DIR = join(process.cwd(), 'public', 'uploads');
-    const targetDir = subdir ? join(UPLOAD_DIR, subdir) : UPLOAD_DIR;
-
-    let files: string[] = [];
-    try {
-      files = await readdir(targetDir);
-    } catch {
-      return NextResponse.json({ success: true, data: [] });
+    const session = await getServerSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const subdir = searchParams.get('subdir') || '';
+    const prefix = subdir ? `uploads/${subdir}/` : 'uploads/';
+
+    const storage = getAdminStorage();
+    const bucket = storage.bucket();
+    const [files] = await bucket.getFiles({ prefix, maxResults: 100, autoPaginate: false });
+
     const fileInfos = await Promise.all(
-      files
-        .filter(f => !f.startsWith('.'))
-        .slice(0, 100)
-        .map(async (filename) => {
-          const filePath = join(targetDir, filename);
-          try {
-            const stats = await stat(filePath);
-            return {
-              filename,
-              size: stats.size,
-              modifiedAt: stats.mtime.toISOString(),
-              url: `/uploads/${subdir ? subdir + '/' : ''}${filename}`,
-            };
-          } catch { return null; }
-        })
+      files.slice(0, 100).map(async (f) => {
+        const [metadata] = await f.getMetadata();
+        return {
+          filename: f.name.split('/').pop() || f.name,
+          path: f.name,
+// @ts-ignore — type narrowing pending, see refactor ticket
+          size: parseInt(metadata.size || '0', 10),
+          mimeType: metadata.contentType || 'application/octet-stream',
+          modifiedAt: metadata.updated || new Date().toISOString(),
+          bucket: bucket.name,
+          url: `https://storage.googleapis.com/${bucket.name}/${f.name}`,
+        };
+      }),
     );
 
     return NextResponse.json({
       success: true,
-      data: fileInfos.filter(Boolean),
+      data: fileInfos,
       path: subdir || '/',
+      storageBucket: bucket.name,
     });
   } catch (err) {
-    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Erreur' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: err instanceof Error ? err.message : 'Erreur' },
+      { status: 500 },
+    );
   }
 }

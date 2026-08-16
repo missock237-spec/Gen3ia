@@ -1,7 +1,15 @@
+// GET/PUT/DELETE /api/billing/subscription
+// SECURITE: withAuth() — gestion d'abonnement, acces utilisateur authentifie
 import { NextRequest, NextResponse } from "next/server";
 import { PLANS } from "@/lib/sebpay";
+import { withAuth, type RouteParams } from "@/lib/with-auth";
 
-export async function GET() {
+
+
+
+
+export const dynamic = "force-dynamic";
+export const GET = withAuth(async () => {
   return NextResponse.json({
     subscription: {
       id: "sub_sebpay_free",
@@ -12,9 +20,13 @@ export async function GET() {
     },
     currentPlan: PLANS.find(p => p.id === "free"),
   });
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 20, windowMs: 60000 },
+});
 
-export async function PUT(request: NextRequest) {
+export const PUT = withAuth(async (request: NextRequest, _ctx: { params?: RouteParams }, _auth) => {
   try {
     const body = await request.json();
     const { planId } = body;
@@ -23,11 +35,19 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
     }
     return NextResponse.json({ message: `Redirection vers SebPay pour ${plan.name}`, plan });
-  } catch (err) {
+  } catch (_err) {
     return NextResponse.json({ error: "Erreur de mise à jour" }, { status: 500 });
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 5, windowMs: 60000 }, // changement de plan : quelques fois/min
+});
 
-export async function DELETE() {
+export const DELETE = withAuth(async () => {
   return NextResponse.json({ message: "Abonnement résilié" });
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 5, windowMs: 60000 },
+});

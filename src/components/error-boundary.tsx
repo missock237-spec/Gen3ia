@@ -65,6 +65,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     // Tentative d'envoi a Sentry si disponible
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Sentry = require('@sentry/nextjs');
       Sentry.captureException?.(error, { extra: { componentStack: errorInfo.componentStack } });
     } catch {}
@@ -172,6 +173,7 @@ export function ErrorProvider({ children }: { children: React.ReactNode }) {
     if (severity === 'critical' || severity === 'high') {
       console.error('[ErrorHandler]', message, error);
       try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const Sentry = require('@sentry/nextjs');
         Sentry.captureException?.(error || new Error(message), {
           level: severity === 'critical' ? 'fatal' : 'error',

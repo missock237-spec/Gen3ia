@@ -15,6 +15,12 @@ export interface TwilioUserConfig {
   isConfigured: boolean;
 }
 
+interface TwilioPhoneNumberPayload {
+  phone_number?: string;
+  sid?: string;
+  capabilities?: Record<string, boolean>;
+}
+
 export class TwilioConfigManager {
   /**
    * Sauvegarde la configuration Twilio d'un utilisateur
@@ -111,10 +117,10 @@ export class TwilioConfigManager {
 
       if (!response.ok) return [];
 
-      const data = await response.json();
-      return (data.incoming_phone_numbers || []).map((num: any) => ({
-        phoneNumber: num.phone_number,
-        phoneNumberSid: num.sid,
+      const data = (await response.json()) as { incoming_phone_numbers?: TwilioPhoneNumberPayload[] };
+      return (data.incoming_phone_numbers || []).map((num: TwilioPhoneNumberPayload) => ({
+        phoneNumber: num.phone_number || '',
+        phoneNumberSid: num.sid || '',
         capabilities: num.capabilities || {},
       }));
     } catch {

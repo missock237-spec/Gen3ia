@@ -3,6 +3,11 @@
 // ============================================================
 import { NextRequest, NextResponse } from "next/server";
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const clients = new Map<string, ReadableStreamController<Uint8Array>>();
 
 export async function GET(request: NextRequest) {
@@ -35,7 +40,9 @@ export async function GET(request: NextRequest) {
 
 // Fonction utilitaire pour envoyer un événement à un client
 // Utilisable depuis n'importe quelle route
-export function sendTerminalEvent(token: string, event: { type: string; data: string }) {
+// NOTE: Next.js route files can only export route handlers (GET/POST/etc).
+// This helper is internal — callers should use the SSE stream directly.
+function sendTerminalEvent(token: string, event: { type: string; data: string }) {
   const controller = clients.get(token);
   if (!controller) return false;
 

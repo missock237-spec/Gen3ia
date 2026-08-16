@@ -1,5 +1,10 @@
 import { beforeAll, afterAll, vi } from 'vitest';
 
+// Pour les tests de composants React (desinstalle si @testing-library/jest-dom absent)
+try {
+  const { default: jestDom } = await import('@testing-library/jest-dom');
+} catch {}
+
 beforeAll(() => {
   process.env.NODE_ENV = 'test';
   process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost:5432/gen3ia_test';

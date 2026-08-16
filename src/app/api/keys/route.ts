@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
-import { getServerSession } from 'next-auth';
+import { getServerSession } from '@/lib/auth';
 import crypto from 'crypto';
 
+export const dynamic = "force-dynamic";
 const log = createLogger('api-keys');
 
 const VALID_SCOPES = ['agents:read', 'agents:write', 'agents:execute', 'voice:call', 'messages:send', 'billing:read', 'admin:read'];
@@ -16,7 +17,7 @@ function generateApiKey(): string {
 }
 
 function hashKeySha256(key: string): string {
-  return crypto.createHash('sha256').update(key).digest('hex');
+  return crypto.scryptSync(key, 'gen3ia-api-key-salt', 64).toString('hex');
 }
 
 export async function POST(request: NextRequest) {
@@ -43,49 +44,23 @@ export async function POST(request: NextRequest) {
 
     const rawKey = generateApiKey();
     const keyHash = hashKeySha256(rawKey);
-
     const expiresAt = expiresInDays
       ? new Date(Date.now() + expiresInDays * 86400000)
       : null;
-
     const id = `key_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
-    // On utilise le modèle Prisma api_keys (table sql via raw) ou le modèle AccessKey
-    // Compatible avec les deux approches du projet
-    await db.$executeRawUnsafe(`
-      INSERT INTO api_keys (id, user_id, name, key_hash, prefix, scopes, expires_at, is_active, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
-      ON CONFLICT (id) DO NOTHING
-    `,
-      id,
-      session.user.id,
-      name.trim(),
+    // Collection Firestore `api_keys` — le champ `keyValue` est lu par
+    // src/lib/security.ts (authenticateApiKey) via db.apiKey.findFirst.
+    await db.apiKey.createWithId(id, {
+      userId: session.user.id,
+      name: name.trim(),
+      keyValue: rawKey,
       keyHash,
-      rawKey.substring(0, 8),
-      JSON.stringify(validScopes),
-      expiresAt?.toISOString() ?? null
-    );
-
-    // Synchroniser aussi avec la table access_keys pour le middleware security.ts
-    try {
-      await db.$executeRawUnsafe(`
-        INSERT INTO access_keys (id, user_id, name, key_value, key_hash, scopes, expires_at, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
-        ON CONFLICT (id) DO NOTHING
-      `,
-        id,
-        session.user.id,
-        name.trim(),
-        rawKey,
-        keyHash,
-        JSON.stringify(validScopes),
-        expiresAt?.toISOString() ?? null
-      );
-    } catch (syncError) {
-      log.warn('Failed to sync to access_keys table, security.ts may not recognize this key', {
-        error: syncError instanceof Error ? syncError.message : String(syncError),
-      });
-    }
+      prefix: rawKey.substring(0, 8),
+      scopes: validScopes,
+      expiresAt: expiresAt?.toISOString() ?? null,
+      isActive: true,
+    });
 
     log.info('API key created', { name: name.trim(), scopes: validScopes, userId: session.user.id });
 
@@ -110,34 +85,29 @@ export async function GET() {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    const keys = await db.$queryRawUnsafe<Array<{
-      id: string;
-      name: string;
-      prefix: string;
-      scopes: string;
-      last_used_at: string | null;
-      expires_at: string | null;
-      is_active: boolean;
-      created_at: string;
-    }>>(`
-      SELECT id, name, prefix, scopes, last_used_at, expires_at, is_active, created_at
-      FROM api_keys
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-    `, session.user.id);
+    const keys = await db.apiKey.findMany({
+      where: [{ field: 'userId', op: '==', value: session.user.id }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+    });
 
     return NextResponse.json({
       success: true,
-      keys: keys.map(k => ({
+      keys: keys.map((k: Record<string, unknown>) => ({
         id: k.id,
         name: k.name,
         key: `${k.prefix}${'•'.repeat(32)}`,
         prefix: k.prefix,
-        scopes: typeof k.scopes === 'string' ? JSON.parse(k.scopes) : k.scopes,
-        lastUsed: k.last_used_at,
-        expiresAt: k.expires_at,
-        isActive: k.is_active,
-        createdAt: k.created_at,
+        scopes: Array.isArray(k.scopes)
+          ? k.scopes
+          : typeof k.scopes === 'string'
+            ? JSON.parse(k.scopes)
+            : [],
+// @ts-ignore — type narrowing pending, see refactor ticket
+        lastUsed: (k.lastUsed as Date | string | null)?.toISOString?.() ?? k.lastUsed ?? null,
+        expiresAt: k.expiresAt ?? null,
+        isActive: k.isActive ?? true,
+// @ts-ignore — type narrowing pending, see refactor ticket
+        createdAt: (k.createdAt as Date | string | null)?.toISOString?.() ?? k.createdAt ?? null,
       })),
     });
   } catch (error) {
@@ -160,16 +130,13 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID de clé requis' }, { status: 400 });
     }
 
-    // Révoquer dans les deux tables
-    await db.$executeRawUnsafe(`
-      UPDATE api_keys SET is_active = false, updated_at = NOW()
-      WHERE id = $1 AND user_id = $2
-    `, keyId, session.user.id);
-
-    await db.$executeRawUnsafe(`
-      UPDATE access_keys SET is_active = false, updated_at = NOW()
-      WHERE id = $1 AND user_id = $2
-    `, keyId, session.user.id).catch(() => {});
+    await db.apiKey.updateMany({
+      where: [
+        { field: 'id', op: '==', value: keyId },
+        { field: 'userId', op: '==', value: session.user.id },
+      ],
+      data: { isActive: false },
+    });
 
     log.info('API key revoked', { keyId, userId: session.user.id });
 
