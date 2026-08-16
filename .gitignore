@@ -10,12 +10,35 @@ dist/
 build/
 *.tsbuildinfo
 
-# Env
+# ============================================================
+# Env — SECURITE CRITIQUE : ne jamais versionner des secrets
+# ============================================================
+# Fichiers de travail locaux
 .env
 .env.local
+.env.development
 .env.development.local
+.env.test
 .env.test.local
+.env.staging
+.env.staging.local
+.env.*.local
+
+# Fichiers production avec secrets réels (toujours ignorer)
 .env.production.local
+.env.production.secret
+
+# Templates versionnés (contiennent uniquement des placeholders)
+# Si vous souhaitez aussi les ignorer, décommentez :
+# .env.production
+# .env.production.validated
+
+# Patterns génériques
+*.env
+!*.env.example
+!.env.example
+docker-compose.*.env
+docker-compose.*.env.local
 
 # IDE
 .vscode/
@@ -48,7 +71,7 @@ npm-debug.log*
 coverage/
 .nyc_output/
 
-# Temp
+# Temp / fichiers de travail (ne pas versionner)
 tmp/
 temp/
 test-*
@@ -57,16 +80,31 @@ keep-*
 start-*
 run-*
 worklog.*
+worklog.md
 schema_backup.*
 test-write.*
 test-api.*
 test-autonomous.*
 test-connectivity.*
 test-whatsapp.*
+fix_package.*
+CI_FIX.md
+FIX_REPORT.md
+WORKFLOWS_FIX.md
+SECURITY_FIXES.md
 
-# Prisma (keep migrations, ignore generated)
+# Prisma
 prisma/migrations/
 !prisma/migrations/migration_lock.toml
 
 # Rust
 target/
+conversations/
+.agents/.env
+.npm/
+__pycache__/
+blobs/
+.vercel
+
+# Turborepo
+.turbo

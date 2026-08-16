@@ -1,21 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-export async function GET(r: NextRequest) {
+import { verify } from 'jsonwebtoken';
+
+
+
+
+
+export const dynamic = "force-dynamic";
+const JWT_SECRET = process.env.AUTH_SECRET;
+
+export async function GET(request: NextRequest) {
   try {
-    const a = r.headers.get('authorization');
-    if (!a?.startsWith('Bearer ')) return NextResponse.json({ error: 'Auth' }, { status: 401 });
-    const { verify } = await import('jsonwebtoken');
-    const d = verify(a.slice(7), process.env.AUTH_SECRET || 's') as any;
-    const tasks = await db.task.findMany({ where: { userId: d.userId }, orderBy: { createdAt: 'desc' }, take: 50 });
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ') || !JWT_SECRET || JWT_SECRET.length < 32) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    }
+    const decoded = verify(authHeader.slice(7), JWT_SECRET) as { userId: string };
+    // Facade Firestore : where/orderBy en tableaux, limit au lieu de take.
+    const tasks = await db.task.findMany({
+      where: [{ field: 'userId', op: '==', value: decoded.userId }],
+      orderBy: [{ field: 'createdAt', direction: 'desc' }],
+      limit: 50,
+    });
     return NextResponse.json(tasks);
   } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }
-export async function POST(r: NextRequest) {
+
+export async function POST(request: NextRequest) {
   try {
-    const b = await r.json();
-    const { title, description, priority, agentId, userId } = b;
-    if (!title || !userId) return NextResponse.json({ error: 'title et userId requis' }, { status: 400 });
-    const t = await db.task.create({ data: { title, description: description || '', priority: priority || 'medium', agentId, userId } });
-    return NextResponse.json(t, { status: 201 });
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ') || !JWT_SECRET || JWT_SECRET.length < 32) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    }
+    const decoded = verify(authHeader.slice(7), JWT_SECRET) as { userId: string };
+    const { title, description, priority, agentId, status } = await request.json();
+    if (!title) return NextResponse.json({ error: 'title requis' }, { status: 400 });
+    const task = await db.task.create({
+      data: { title, description: description || '', priority: priority || 'medium', status: status || 'pending', agentId: agentId || null, userId: decoded.userId },
+    });
+    return NextResponse.json(task, { status: 201 });
   } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
 }

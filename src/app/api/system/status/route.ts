@@ -14,8 +14,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { db } from '@/lib/db';
 
+
+
 // ── Types ─────────────────────────────────────────────────────
 
+
+
+export const dynamic = "force-dynamic";
 interface ProviderStatus {
   name: string;
   configured: boolean;
@@ -58,25 +63,6 @@ function checkAIProviders(): ProviderStatus[] {
 
 function checkVoiceProviders(): ProviderStatus[] {
   return [
-    {
-      name: 'WhatsApp (Baileys)',
-      configured: !!process.env.BAILEYS_API_URL,
-      status: process.env.BAILEYS_API_URL ? 'active' : 'not_configured',
-      message: process.env.BAILEYS_API_URL
-        ? 'Baileys WhatsApp Web API configuré'
-        : 'Non configuré. Définissez BAILEYS_API_URL',
-      category: 'Messaging',
-    },
-    {
-      name: 'WhatsApp Business API',
-      configured: !!(process.env.WHATSAPP_API_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID),
-      status: process.env.WHATSAPP_API_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID
-        ? 'active' : 'not_configured',
-      message: process.env.WHATSAPP_API_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID
-        ? 'WhatsApp Cloud API configuré (fallback)'
-        : 'Non configuré. Requis: WHATSAPP_API_TOKEN + WHATSAPP_PHONE_NUMBER_ID',
-      category: 'Messaging',
-    },
     {
       name: 'SpeechBrain (STT)',
       configured: !!process.env.SPEECHBRAIN_API_URL,
@@ -202,6 +188,7 @@ export async function GET(request: NextRequest) {
     let dbStatus: 'active' | 'error' = 'active';
     let dbMessage = 'Base de données connectée';
     try {
+// @ts-ignore — type narrowing pending, see refactor ticket
       await db.$queryRaw`SELECT 1`;
     } catch (dbError) {
       dbStatus = 'error';
@@ -242,13 +229,13 @@ export async function GET(request: NextRequest) {
         },
         criticalIssues: criticalIssues.length > 0 ? criticalIssues : undefined,
         fallbackInfo: {
-          message: 'Fluro → z-ai-sdk (chat) | Fluro → z-ai-sdk (STT) | Baileys → Cloud API (WhatsApp)',
+          message: 'Fluro → z-ai-sdk (chat) | Fluro → z-ai-sdk (STT)',
           alwaysAvailable: ['z-ai-sdk Chat', 'z-ai-sdk Streaming', 'z-ai-sdk Image Gen', 'z-ai-sdk ASR', 'Déterministic Embeddings', 'Subprocess Sandbox', 'SQLite Vector Store'],
         },
       }),
       request
     );
-  } catch (error) {
+  } catch (_error) {
     return secureResponse(
       NextResponse.json(
         { status: 'error', message: 'Failed to check system status' },

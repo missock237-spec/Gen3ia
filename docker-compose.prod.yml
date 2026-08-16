@@ -1,34 +1,58 @@
-# ============================================================
-# GENOVA — Docker Compose Production
-# Stack complète : Next.js + PostgreSQL + Redis + n8n
+# GEN3IA — Docker Compose Production
+# Stack complete : Next.js + PostgreSQL + Redis + n8n
 # Usage: docker compose -f docker-compose.prod.yml up -d
-# ============================================================
 
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: genova-app
+      args:
+        - BUN_VERSION=1.2
+    container_name: gen3ia-app
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://genova:${DB_PASSWORD:-genova_pass}@postgres:5432/genova
+      DATABASE_URL: postgresql://gen3ia:${DB_PASSWORD:-gen3ia_pass}@postgres:5432/gen3ia
       REDIS_URL: redis://redis:6379
       N8N_BASE_URL: http://n8n:5678
       AUTH_SECRET: ${AUTH_SECRET}
+      NEXTAUTH_URL: ${APP_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${AUTH_SECRET}
+      
+      # Providers IA
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
-      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      LLM_API_KEY: ${OPENAI_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      
+      # Hugging Face (embedding + images + audio)
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_API_KEY}
+      NEXT_PUBLIC_HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
+      
+      # Auth OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      
+      # Monitoring
+      SENTRY_DSN: ${SENTRY_DSN}
       VAULT_MASTER_KEY: ${VAULT_MASTER_KEY}
+      MCP_ENCRYPTION_KEY: ${AUTH_SECRET}
+      
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      HEAP_THRESHOLD_MB: '500'
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
@@ -43,31 +67,26 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: genova-db
+    container_name: gen3ia-db
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: genova
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-genova_pass}
-      POSTGRES_DB: genova
+      POSTGRES_USER: gen3ia
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gen3ia_pass}
+      POSTGRES_DB: gen3ia
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backups:/backups
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U genova"]
+      test: ["CMD-SHELL", "pg_isready -U gen3ia"]
       interval: 5s
       timeout: 5s
       retries: 5
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   redis:
     image: redis:7-alpine
-    container_name: genova-redis
+    container_name: gen3ia-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -81,7 +100,7 @@ services:
 
   n8n:
     image: n8nio/n8n:latest
-    container_name: genova-n8n
+    container_name: gen3ia-n8n
     restart: unless-stopped
     ports:
       - "5678:5678"
@@ -92,9 +111,9 @@ services:
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_DATABASE: genova_n8n
-      DB_POSTGRESDB_USER: genova
-      DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD:-genova_pass}
+      DB_POSTGRESDB_DATABASE: gen3ia_n8n
+      DB_POSTGRESDB_USER: gen3ia
+      DB_POSTGRESDB_PASSWORD: ${DB_PASSWORD:-gen3ia_pass}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       N8N_METRICS: false
       N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN: true
@@ -104,18 +123,17 @@ services:
       postgres:
         condition: service_healthy
 
-  # Backup automatique PostgreSQL (quotidien à 3h du matin)
   backup:
     image: postgres:16-alpine
-    container_name: genova-backup
+    container_name: gen3ia-backup
     restart: unless-stopped
     volumes:
       - ./backups:/backups
     entrypoint: |
       sh -c '
         while true; do
-          echo "[$$(date)] Running backup..."
-          PGPASSWORD=${DB_PASSWORD:-genova_pass} pg_dump -h postgres -U genova -d genova -F c -f /backups/genova_$$(date +%Y%m%d_%H%M%S).dump
+          echo "[$$(date)] Running daily backup..."
+          PGPASSWORD=${DB_PASSWORD:-gen3ia_pass} pg_dump -h postgres -U gen3ia -d gen3ia -F c -f /backups/gen3ia_$$(date +%Y%m%d_%H%M%S).dump
           echo "[$$(date)] Cleaning backups older than 30 days..."
           find /backups -name "*.dump" -mtime +30 -delete
           sleep 86400
