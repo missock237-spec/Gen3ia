@@ -1,141 +1,161 @@
+// ============================================================
+// POST /api/images/generate - Generation d'images via HF
+// SECURITE: withAuth() uniformisé + rate limit + crédits déjà débités
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import {
-  generateImage,
-  getUserImages,
-  MAX_PROMPT_LENGTH,
-  FREE_IMAGE_MODELS,
-} from '@/lib/image-generator';
+import { createLogger } from '@/lib/logger';
+import { db } from '@/lib/db';
+import { withAuth } from '@/lib/with-auth';
+import { queryHF, bufferToBase64 } from '@/lib/huggingface';
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
 
-// ============================================================
-// POST /api/images/generate — Generate an image from a prompt
-// ============================================================
 
-export async function POST(request: NextRequest) {
+
+
+export const dynamic = "force-dynamic";
+const log = createLogger('image-generate');
+
+const MODELS = {
+  'flux': 'black-forest-labs/FLUX.1-dev',
+  'sdxl': 'stabilityai/stable-diffusion-xl-base-1.0',
+  'sd3': 'stabilityai/stable-diffusion-3.5-large',
+  'animagine': 'cagliostrolab/animagine-xl-3.1',
+} as const;
+
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: Promise<any> }, auth) => {
   try {
-    const { auth, error: secError } = await applySecurity(request, {
-      requireAuth: true,
-      rateLimit: { limit: 20, windowMs: 60 * 1000 }, // 20 req/min for image gen
-    });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
     const body = await request.json();
-    const { prompt, model, width, height } = body;
+    const { prompt, model = 'flux', negativePrompt, width = 1024, height = 1024, steps } = body;
 
-    // Validate prompt
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-      return secureResponse(
-        NextResponse.json({ error: 'Prompt is required' }, { status: 400 }),
-        request
-      );
+      return NextResponse.json({ error: 'Prompt requis' }, { status: 400 });
     }
 
-    if (prompt.length > MAX_PROMPT_LENGTH) {
-      return secureResponse(
-        NextResponse.json(
-          { error: `Prompt must be at most ${MAX_PROMPT_LENGTH} characters` },
-          { status: 400 }
-        ),
-        request
-      );
+    if (prompt.length > 2000) {
+      return NextResponse.json({ error: 'Prompt trop long (max 2000 caracteres)' }, { status: 400 });
     }
 
-    // Validate model if provided
-    if (model && !FREE_IMAGE_MODELS[model]) {
-      return secureResponse(
-        NextResponse.json(
-          { error: `Invalid model. Available: ${Object.keys(FREE_IMAGE_MODELS).join(', ')}` },
-          { status: 400 }
-        ),
-        request
-      );
+    const modelId = MODELS[model as keyof typeof MODELS];
+    if (!modelId) {
+      return NextResponse.json({
+        error: `Modele invalide. Modeles disponibles: ${Object.keys(MODELS).join(', ')}`,
+      }, { status: 400 });
     }
 
-    // Validate dimensions if provided
-    if (width !== undefined && (typeof width !== 'number' || width < 1 || width > 2048)) {
-      return secureResponse(
-        NextResponse.json({ error: 'Width must be a number between 1 and 2048' }, { status: 400 }),
-        request
-      );
-    }
-
-    if (height !== undefined && (typeof height !== 'number' || height < 1 || height > 2048)) {
-      return secureResponse(
-        NextResponse.json({ error: 'Height must be a number between 1 and 2048' }, { status: 400 }),
-        request
-      );
-    }
-
-    // Generate the image
-    const result = await generateImage(auth.userId, prompt, {
-      model: model || undefined,
-      width: width || undefined,
-      height: height || undefined,
+    // Verifier credits
+    const user = await db.user.findUnique({
+      where: { id: auth.userId },
+      select: { credits: true, plan: true },
     });
 
-    return secureResponse(
-      NextResponse.json(result, { status: 201 }),
-      request
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to generate image';
-
-    // Rate limit errors get a 429
-    if (message.includes('Rate limit')) {
-      return secureResponse(
-        NextResponse.json({ error: message }, { status: 429 }),
-        request
-      );
+    if (!user) {
+      return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
     }
 
-    return secureResponse(
-      NextResponse.json({ error: message }, { status: 500 }),
-      request
-    );
-  }
-}
-
-// ============================================================
-// GET /api/images/generate — List user's generated images
-// ============================================================
-
-export async function GET(request: NextRequest) {
-  try {
-    const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-    if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
-
-    const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '20', 10);
-    const offset = parseInt(searchParams.get('offset') || '0', 10);
-    const status = searchParams.get('status') || undefined;
-
-    // Validate status filter
-    if (status && !['pending', 'completed', 'failed'].includes(status)) {
-      return secureResponse(
-        NextResponse.json(
-          { error: 'Invalid status filter. Allowed: pending, completed, failed' },
-          { status: 400 }
-        ),
-        request
-      );
+    const costInCredits = model === 'flux' ? 5 : 10;
+    if (user.credits < costInCredits) {
+      return NextResponse.json({
+        error: `Credits insuffisants. Besoin: ${costInCredits}, Solde: ${user.credits}`,
+      }, { status: 402 });
     }
 
-    const result = await getUserImages(auth.userId, { limit, offset, status });
+    // Creer l'enregistrement
+    const generation = await db.imageGeneration.create({
+      data: {
+        userId: auth.userId,
+        prompt,
+        model: modelId,
+        provider: 'huggingface',
+        status: 'processing',
+        width,
+        height,
+        metadata: JSON.stringify({ negativePrompt, steps }),
+      },
+    });
 
-    return secureResponse(
-      NextResponse.json(result),
-      request
-    );
-  } catch {
-    return secureResponse(
-      NextResponse.json({ error: 'Failed to fetch images' }, { status: 500 }),
-      request
-    );
+    log.info('image_generation_started', {
+      generationId: generation.id,
+      model: modelId,
+      promptLength: prompt.length,
+    });
+
+    // Appel HF de maniere asynchrone
+    const hfPayload: Record<string, unknown> = {
+      inputs: prompt,
+      parameters: {
+        width,
+        height,
+        num_inference_steps: steps || (model === 'flux' ? 28 : 30),
+        ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
+      },
+    };
+
+    // On lance l'appel HF sans bloquer la reponse
+    queryHF(modelId, hfPayload)
+      .then(async (response) => {
+        if (!response.ok) {
+          const errText = await response.text().catch(() => 'unknown');
+          await db.imageGeneration.update({
+            where: { id: generation.id },
+            data: {
+              status: 'failed',
+              metadata: JSON.stringify({ error: `HF error (${response.status}): ${errText.slice(0, 500)}` }),
+            },
+          });
+          log.error('image_generation_failed', { generationId: generation.id, error: errText.slice(0, 200) });
+          return;
+        }
+
+        const buffer = await response.arrayBuffer();
+        const base64 = await bufferToBase64(buffer);
+        const dataUrl = `data:image/webp;base64,${base64}`;
+
+        await db.imageGeneration.update({
+          where: { id: generation.id },
+          data: {
+            status: 'completed',
+            imageUrl: dataUrl,
+            costUsd: costInCredits,
+            completedAt: new Date(),
+          },
+        });
+
+        // Debiter les credits
+        await db.user.update({
+          where: { id: auth.userId },
+          data: { credits: { decrement: costInCredits } },
+        });
+
+        log.info('image_generation_completed', {
+          generationId: generation.id,
+          size: buffer.byteLength,
+          cost: costInCredits,
+        });
+      })
+      .catch(async (error) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        await db.imageGeneration.update({
+          where: { id: generation.id },
+          data: { status: 'failed', metadata: JSON.stringify({ error: msg }) },
+        });
+        log.error('image_generation_crashed', { generationId: generation.id, error: msg });
+      });
+
+    return NextResponse.json({
+      success: true,
+      generationId: generation.id,
+      status: 'processing',
+      model: modelId,
+      cost: costInCredits,
+    });
+
+  } catch (error) {
+    log.error('image_generation_route_error', { error: String(error) });
+    return NextResponse.json({ error: 'Erreur interne' }, { status: 500 });
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 10, windowMs: 60000 }, // 10 générations/min max (coûteux)
+});

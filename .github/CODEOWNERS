@@ -1,0 +1,23 @@
+# Propriétaires de code Genova
+
+# Propriétaire principal
+* @missock237-spec
+
+# Modules critiques — revue obligatoire
+/src/lib/ai-router.ts @missock237-spec
+/src/lib/compute/ @missock237-spec
+/src/lib/generation/ @missock237-spec
+/prisma/schema.prisma @missock237-spec
+/src/middleware.ts @missock237-spec
+
+# Sécurité — approbation requise
+/.github/workflows/security.yml @missock237-spec
+/src/lib/secret-vault.ts @missock237-spec
+/src/lib/ssrf-protect.ts @missock237-spec
+/src/lib/sanitize.ts @missock237-spec
+
+# Déploiement — équipe DevOps
+/Dockerfile @missock237-spec
+/docker-compose*.yml @missock237-spec
+/.github/workflows/deploy.yml @missock237-spec
+/.github/workflows/release.yml @missock237-spec
