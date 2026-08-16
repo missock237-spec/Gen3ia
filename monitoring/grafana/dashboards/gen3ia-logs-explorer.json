@@ -1,0 +1,103 @@
+{
+  "title": "Gen3ia - Exploration des Logs (Loki)",
+  "uid": "gen3ia-logs-explorer",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["gen3ia", "logs", "loki"],
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "title": "Volume de logs par service",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "sum(count_over_time({app=\"gen3ia\"}[1h]))",
+        "legendFormat": "Logs/h"
+      }]
+    },
+    {
+      "title": "Taux d'erreur dans les logs",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "targets": [{
+        "expr": "sum(count_over_time({app=\"gen3ia\", level=\"error\"}[1h]))",
+        "legendFormat": "Erreurs/h"
+      }],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 10 }, { "color": "red", "value": 50 }] } }
+      }
+    },
+    {
+      "title": "Warnings (1h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "targets": [{
+        "expr": "sum(count_over_time({app=\"gen3ia\", level=\"warn\"}[1h]))",
+        "legendFormat": "Warnings"
+      }]
+    },
+    {
+      "title": "Services actifs",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "targets": [{
+        "expr": "count(count_over_time({app=\"gen3ia\"}[5m]) > 0)",
+        "legendFormat": "Services"
+      }]
+    },
+    {
+      "title": "Volume de logs par niveau",
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "sum(count_over_time({app=\"gen3ia\", level=\"error\"}[1h]))", "legendFormat": "error" },
+        { "expr": "sum(count_over_time({app=\"gen3ia\", level=\"warn\"}[1h]))", "legendFormat": "warn" },
+        { "expr": "sum(count_over_time({app=\"gen3ia\", level=\"info\"}[1h]))", "legendFormat": "info" },
+        { "expr": "sum(count_over_time({app=\"gen3ia\", level=\"debug\"}[1h]))", "legendFormat": "debug" }
+      ]
+    },
+    {
+      "title": "Logs en temps reel (derniere minute)",
+      "type": "logs",
+      "gridPos": { "h": 6, "w": 8, "x": 4, "y": 4 },
+      "targets": [{
+        "expr": "{app=\"gen3ia\"} |= \"\"",
+        "legendFormat": ""
+      }],
+      "options": {
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true,
+        "prettifyLogs": true
+      }
+    },
+    {
+      "title": "Logs error (24h)",
+      "type": "graph",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 10 },
+      "targets": [{
+        "expr": "sum(count_over_time({app=\"gen3ia\", level=\"error\"}[5m]))",
+        "legendFormat": "Errors"
+      }]
+    },
+    {
+      "title": "Logs par service (heatmap)",
+      "type": "heatmap",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 10 },
+      "targets": [{
+        "expr": "sum(count_over_time({app=\"gen3ia\"}[5m])) by (service)",
+        "legendFormat": "{{service}}"
+      }]
+    },
+    {
+      "title": "Requêtes LogQL rapides",
+      "type": "text",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 16 },
+      "options": {
+        "content": "## Requêtes LogQL utiles\n\n### Tous les logs\n```logql\n{app=\"gen3ia\"}\n```\n\n### Erreurs uniquement\n```logql\n{app=\"gen3ia\", level=\"error\"}\n```\n\n### Logs d'un service specifique\n```logql\n{app=\"gen3ia\", service=\"api-webhooks\"}\n```\n\n### Logs contenant \"crash\" ou \"fail\"\n```logql\n{app=\"gen3ia\"} |= \"crash\" or {app=\"gen3ia\"} |= \"fail\"\n```\n\n### Compter les erreurs par service\n```logql\nsum by (service) (count_over_time({app=\"gen3ia\", level=\"error\"}[1h]))\n```\n\n### Taux d'erreur par minute\n```logql\nrate({app=\"gen3ia\", level=\"error\"}[5m])\n```",
+        "mode": "markdown"
+      }
+    }
+  ]
+}
