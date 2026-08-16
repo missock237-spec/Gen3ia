@@ -111,7 +111,6 @@ const nextConfig = {
       '@whiskeysockets/baileys',
       '@whiskeysockets/baileys/lib/Utils/logger.js',
       '@hapi/boom',
-      'tailwindcss-animate',
       'react-helmet',
     ];
     for (const mod of optionalModules) {
