@@ -1,39 +1,37 @@
 /**
- * POST /api/integrations/[id]/execute — Execute an integration function
- *
- * Executes a specific function from an integration with parameters.
+ * POST /api/integrations/[id]/execute
+ * SECURITE: withAuth() + IDOR corrige (userId du token, pas du body)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getIntegrationExecutor } from '@/lib/integration-engine/executor';
 import { getIntegrationRegistry } from '@/lib/integration-engine/registry';
 import type { ExecutionRequest } from '@/lib/integration-engine/types';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+
+
+
+
+export const dynamic = "force-dynamic";
+export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
-    const { id } = await params;
-    const body = await request.json();
+    const params = ctx.params ? await ctx.params : {};
+    const id = typeof params['id'] === 'string' ? params['id'] : undefined;
+    if (!id) return NextResponse.json({ success: false, error: 'Integration id manquant' }, { status: 400 });
 
-    const { functionId, params: execParams, userId, timeoutMs, priority, fallbackIds } = body;
+    const body = await request.json();
+    const { functionId, params: execParams, timeoutMs, priority, fallbackIds } = body;
 
     if (!functionId) {
-      return NextResponse.json(
-        { success: false, error: 'functionId is required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, error: 'functionId is required' }, { status: 400 });
     }
 
     const registry = getIntegrationRegistry();
     const integration = registry.getById(id);
 
     if (!integration) {
-      return NextResponse.json(
-        { success: false, error: `Integration not found: ${id}` },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, error: `Integration not found: ${id}` }, { status: 404 });
     }
 
     const executor = getIntegrationExecutor();
@@ -42,7 +40,7 @@ export async function POST(
       integrationId: id,
       functionId,
       params: execParams || {},
-      userId: userId || 'anonymous',
+      userId: auth.userId,
       timeoutMs: timeoutMs || undefined,
       priority: priority || 'normal',
     };
@@ -74,4 +72,9 @@ export async function POST(
       { status: 500 },
     );
   }
-}
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 10, windowMs: 60000 },
+  quota: true,
+});
