@@ -30,7 +30,6 @@ import {
 
 const typeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   social_media: Megaphone,
-  whatsapp: MessageCircle,
   browser: Monitor,
   sales: Phone,
   support: MessageSquare,
@@ -43,7 +42,6 @@ const typeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const typeLabels: Record<string, string> = {
   social_media: 'Social Media',
-  whatsapp: 'WhatsApp',
   browser: 'Navigateur',
   sales: 'Commercial',
   support: 'Support',
@@ -56,7 +54,6 @@ const typeLabels: Record<string, string> = {
 
 const typeColors: Record<string, string> = {
   social_media: 'bg-pink-500/10 text-pink-500',
-  whatsapp: 'bg-green-500/10 text-green-500',
   browser: 'bg-sky-500/10 text-sky-500',
   sales: 'bg-amber-500/10 text-amber-500',
   support: 'bg-teal-500/10 text-teal-500',
@@ -87,8 +84,6 @@ const toolIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   social_tiktok: MessageSquare,
   social_linkedin: Linkedin,
   social_post: Megaphone,
-  whatsapp_message: MessageCircle,
-  whatsapp_call: Phone,
   use_api: Zap,
   use_cpu: Cpu,
   use_mvp: Server,
@@ -106,8 +101,6 @@ const toolColors: Record<string, string> = {
   social_tiktok: 'text-white',
   social_linkedin: 'text-blue-400',
   social_post: 'text-orange-500',
-  whatsapp_message: 'text-green-500',
-  whatsapp_call: 'text-green-400',
   use_api: 'text-yellow-500',
   use_cpu: 'text-purple-400',
   use_mvp: 'text-emerald-500',
@@ -154,10 +147,9 @@ export function AgentCard({ agent, onToggle, onDelete, onEdit, onSelect }: Agent
     // ignore
   }
 
-  // Count social accounts and check browser/whatsapp
+  // Count social accounts and check browser
   const socialTools = configTools.filter((t) => t.startsWith('social_'));
   const hasBrowser = configTools.includes('browse_web');
-  const hasWhatsApp = configTools.includes('whatsapp_message') || configTools.includes('whatsapp_call');
 
   // Get enabled permissions from the agent
   const grantedPermissions = agent.permissions?.filter((p) => p.granted).map((p) => p.permission) || [];
@@ -218,12 +210,6 @@ export function AgentCard({ agent, onToggle, onDelete, onEdit, onSelect }: Agent
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <Megaphone className="h-3 w-3 text-pink-500" />
               {socialTools.length} réseau{socialTools.length > 1 ? 'x' : ''}
-            </div>
-          )}
-          {hasWhatsApp && (
-            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <MessageCircle className="h-3 w-3 text-green-500" />
-              WhatsApp
             </div>
           )}
           {hasBrowser && (
