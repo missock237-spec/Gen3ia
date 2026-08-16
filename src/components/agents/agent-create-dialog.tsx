@@ -68,7 +68,6 @@ interface AgentCreateDialogProps {
 
 const agentTypes = [
   { value: 'social_media', label: 'Social Media', icon: Megaphone },
-  { value: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { value: 'browser', label: 'Navigateur', icon: Monitor },
   { value: 'sales', label: 'Commercial', icon: ShoppingCart },
   { value: 'support', label: 'Support', icon: Headphones },
@@ -95,13 +94,6 @@ const toolCategories = [
       { id: 'social_tiktok', label: 'TikTok', icon: Music2, color: 'text-rose-400' },
       { id: 'social_linkedin', label: 'LinkedIn', icon: Linkedin, color: 'text-blue-400' },
       { id: 'social_post', label: 'Publier sur les réseaux', icon: Megaphone, color: 'text-orange-500' },
-    ],
-  },
-  {
-    name: 'WhatsApp',
-    tools: [
-      { id: 'whatsapp_message', label: 'Envoyer des messages', icon: MessageCircle, color: 'text-green-500' },
-      { id: 'whatsapp_call', label: 'Passer des appels', icon: Phone, color: 'text-green-400' },
     ],
   },
   {

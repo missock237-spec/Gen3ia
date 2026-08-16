@@ -197,6 +197,7 @@ async function callAIStream(
         }
       }
 
+// @ts-ignore — type narrowing pending, see refactor ticket
       if (chunk.done) break;
     }
   } catch (err) {

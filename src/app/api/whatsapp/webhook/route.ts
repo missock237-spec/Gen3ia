@@ -1,135 +1,141 @@
-/**
- * WhatsApp Cloud API Webhook Endpoint
- *
- * GET  — Verification endpoint (Meta requires this during setup)
- * POST — Receives incoming messages and status updates from WhatsApp
- *
- * When a message is received, it triggers the auto-responder pipeline
- * with a 10-second delay before the AI agent responds.
- */
-
 import { NextRequest, NextResponse } from 'next/server';
+import { whatsapp } from '@/lib/whatsapp-engine';
 import { createLogger } from '@/lib/logger';
-import { handleWebhookIncomingMessage } from '@/lib/whatsapp-auto-responder';
+import { db } from '@/lib/db';
 
-const log = createLogger('whatsapp-webhook');
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-// ---------------------------------------------------------------------------
-// GET — Webhook verification (required by Meta)
-// ---------------------------------------------------------------------------
+const logger = createLogger('whatsapp-webhook-api');
 
+/**
+ * GET - Point d'entrée pour la vérification initiale du Webhook Meta WhatsApp.
+ * Meta effectue une requête GET avec :
+ * - hub.mode = 'subscribe'
+ * - hub.verify_token = le jeton WHATSAPP_VERIFY_TOKEN défini
+ * - hub.challenge = une chaîne aléatoire à renvoyer sous forme de texte brut avec HTTP 200.
+ */
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const mode = searchParams.get('hub.mode');
-  const token = searchParams.get('hub.verify_token');
-  const challenge = searchParams.get('hub.challenge');
+  try {
+    const { searchParams } = new URL(request.url);
+    const mode = searchParams.get('hub.mode');
+    const token = searchParams.get('hub.verify_token');
+    const challenge = searchParams.get('hub.challenge');
 
-  log.info('Webhook verification request', { mode, token: token ? 'provided' : 'missing' });
+    logger.info('Tentative de vérification du Webhook WhatsApp par Meta', {
+      mode,
+      hasChallenge: Boolean(challenge),
+    });
 
-  // Verify the webhook token matches our configured token
-  const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    const verifiedChallenge = whatsapp.verifyWebhook(mode, challenge, token);
 
-  if (mode === 'subscribe' && token === verifyToken) {
-    log.info('Webhook verified successfully');
-    return new NextResponse(challenge, { status: 200 });
+    if (verifiedChallenge) {
+      // Renvoi impératif de la chaîne challenge avec status 200 et type text/plain
+      return new Response(verifiedChallenge, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain',
+        },
+      });
+    }
+
+    logger.warn('Échec de validation du Webhook WhatsApp : jeton ou paramètres invalides');
+    return NextResponse.json(
+      { error: 'Échec de vérification du Webhook Meta WhatsApp. Jeton invalide.' },
+      { status: 403 }
+    );
+  } catch (err) {
+    logger.error('Erreur serveur lors de la vérification du Webhook', { error: err });
+    return NextResponse.json(
+      { error: 'Erreur interne du serveur lors de la vérification' },
+      { status: 500 }
+    );
   }
-
-  log.warn('Webhook verification failed', {
-    mode,
-    tokenProvided: !!token,
-    expectedToken: verifyToken ? 'configured' : 'not configured',
-  });
-
-  return NextResponse.json({ error: 'Verification failed' }, { status: 403 });
 }
 
-// ---------------------------------------------------------------------------
-// POST — Incoming messages from WhatsApp Cloud API
-// ---------------------------------------------------------------------------
-
+/**
+ * POST - Point d'entrée pour la réception des évènements WhatsApp (messages entrants, statuts).
+ * Contexte Africain (Cameroun) :
+ * Les réseaux mobiles Orange / MTN subissent parfois des latences élevées.
+ * Meta exige un retour HTTP 200 rapide (< 3s) sous peine de retrier indéfiniment les notifications.
+ * Nous enregistrons donc les messages de manière asynchrone et les transmettons à l'Agent OS Engine.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const payload = await request.json();
 
-    log.info('Webhook POST received', {
-      object: body.object,
-      entryCount: body.entry?.length ?? 0,
+    // Traitement et normalisation via le moteur WhatsApp
+    const { messages, contacts, statuses } = whatsapp.receiveWebhook(payload);
+
+    logger.info('Notification de Webhook WhatsApp reçue', {
+      receivedMessages: messages.length,
+      receivedStatuses: statuses.length,
     });
 
-    // Validate this is a WhatsApp webhook event
-    if (body.object !== 'whatsapp_business_account') {
-      log.warn('Invalid webhook object', { object: body.object });
-      return NextResponse.json({ status: 'ignored' }, { status: 200 });
-    }
+    // Stockage et transmission des messages reçus aux agents Gen3ia
+    const processPromises = messages.map(async (msg) => {
+      try {
+        const contact = contacts.find((c) => c.wa_id === msg.from);
+        const senderName = contact?.profile?.name || 'Inconnu';
 
-    // Process each entry
-    for (const entry of body.entry ?? []) {
-      for (const change of entry.changes ?? []) {
-        const value = change.value;
+        // 1. Sauvegarde dans la collection Firestore / DB des messages reçus
+        const savedMessageRecord = {
+          messageId: msg.id,
+          from: msg.from,
+          senderName,
+          to: msg.to || '',
+          text: msg.text?.body || '',
+          type: msg.type,
+          timestamp: msg.timestamp ? new Date(Number(msg.timestamp) * 1000).toISOString() : new Date().toISOString(),
+          status: 'received',
+          source: 'whatsapp_cloud_api',
+          rawPayload: msg.raw,
+          createdAt: new Date().toISOString(),
+        };
 
-        // Process incoming messages
-        if (value?.messages && Array.isArray(value.messages)) {
-          for (const message of value.messages) {
-            // Skip messages from the business account
-            if (message.from_me) continue;
+        // Sauvegarde principale dans les logs de conversation WhatsApp
+        await (db as any).collection('whatsapp_incoming_messages').add(savedMessageRecord);
 
-            const text = message.text?.body
-              || message.image?.caption
-              || message.document?.caption
-              || message.video?.caption
-              || null;
+        // 2. Transmettre le message à l'Agent OS Gen3ia (orchestrateur multi-agents)
+        // Permet à l'agent conversationnel de répondre aux requêtes clients (prix, Mobile Money, dispo produits)
+        if (msg.text?.body) {
+          logger.info('Transmission du message WhatsApp à l’Agent Engine OS', {
+            from: msg.from,
+            textPreview: msg.text.body.slice(0, 50),
+          });
 
-            if (!text) {
-              log.debug('Non-text webhook message, skipping auto-response', {
-                type: message.type,
-                from: message.from,
-              });
-              continue;
-            }
-
-            log.info('Processing webhook message', {
-              from: message.from,
-              type: message.type,
-              messageId: message.id,
-            });
-
-            // Trigger auto-responder with 10-second delay
-            handleWebhookIncomingMessage({
-              from: message.from,
-              text,
-              timestamp: parseInt(message.timestamp, 10) || Date.now(),
-              messageId: message.id,
-              senderName: message.profile?.name,
-            }).catch((err) => {
-              log.error('Webhook auto-responder error', {
-                error: err instanceof Error ? err.message : String(err),
-              });
-            });
-          }
+          // Stockage dans l'historique de conversation de l'agent
+          await (db as any).collection('agent_conversations').add({
+            channel: 'whatsapp',
+            senderPhone: msg.from,
+            userMessage: msg.text.body,
+            status: 'pending_agent_response',
+            createdAt: new Date().toISOString(),
+          });
         }
-
-        // Log status updates (delivered, read, etc.)
-        if (value?.statuses && Array.isArray(value.statuses)) {
-          for (const status of value.statuses) {
-            log.info('Message status update', {
-              messageId: status.id,
-              status: status.status,
-              recipient: status.recipient_id,
-              timestamp: status.timestamp,
-            });
-          }
-        }
+      } catch (saveErr) {
+        logger.error('Erreur lors du traitement / stockage du message WhatsApp entrant', {
+          messageId: msg.id,
+          error: saveErr,
+        });
       }
-    }
-
-    // Always return 200 quickly — Meta expects fast acknowledgment
-    return NextResponse.json({ status: 'received' }, { status: 200 });
-  } catch (error) {
-    log.error('Webhook POST processing error', {
-      error: error instanceof Error ? error.message : String(error),
     });
 
-    // Still return 200 to prevent Meta from retrying
-    return NextResponse.json({ status: 'error' }, { status: 200 });
+    // On attend le traitement local sans bloquer la réponse Meta si possible
+    await Promise.allSettled(processPromises);
+
+    // Meta requiert un retour HTTP 200 OK
+    return NextResponse.json({
+      status: 'ok',
+      processedMessages: messages.length,
+      processedStatuses: statuses.length,
+    });
+  } catch (err) {
+    logger.error('Erreur serveur lors de la réception du Webhook WhatsApp', { error: err });
+    // Même en cas d'erreur de parsing local, on retourne 200 OK à Meta pour ne pas bloquer la queue webhook de Facebook
+    return NextResponse.json(
+      { status: 'error', error: err instanceof Error ? err.message : 'Erreur inconnue' },
+      { status: 200 }
+    );
   }
 }

@@ -1,0 +1,59 @@
+# ============================================================
+# Gen3ia — Prometheus Configuration
+# ============================================================
+# Collecte les métriques depuis l'app Gen3ia, Node Exporter
+# et cAdvisor pour une vue complète du système.
+# ============================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# Alerting (optionnel — configurer alertmanager)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Règles d'alerting
+rule_files: []
+
+scrape_configs:
+  # === Gen3ia API Metrics ===
+  - job_name: 'gen3ia'
+    metrics_path: '/api/metrics'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['host.docker.internal:3000']
+        labels:
+          service: 'gen3ia-api'
+          env: 'production'
+
+  # === Gen3ia Terminal Metrics ===
+  - job_name: 'gen3ia-terminal'
+    metrics_path: '/api/terminal/metrics'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:3000']
+        labels:
+          service: 'gen3ia-terminal'
+
+  # === Node Exporter (système) ===
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'system'
+
+  # === cAdvisor (Docker) ===
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'docker'
+
+  # === Prometheus auto ===
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
