@@ -1,45 +1,50 @@
-import { NextRequest, NextResponse } from "next/server";
-import { initiatePayment, CREDIT_PACKAGES } from "@/lib/sebpay";
+import { NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 export async function GET() {
-  const balance = 500;
-  return NextResponse.json({
-    balance,
-    isUnlimited: false,
-    packages: CREDIT_PACKAGES.map(p => ({
-      ...p,
-      pricePerCredit: parseFloat((p.price / p.credits).toFixed(4)),
-    })),
-    history: [],
-  });
-}
-
-export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { packageId, phone, operator } = body;
-
-    const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
-    if (!pkg) {
-      return NextResponse.json({ error: "Pack de crédits invalide" }, { status: 400 });
+    const session = await getServerSession();
+    if (!session?.user.id) {
+      return NextResponse.json({ error: 'Non authentifie' }, { status: 401 });
     }
 
-    const reference = `GENOVA-CREDIT-${packageId}-${Date.now()}`;
-    const payment = await initiatePayment({
-      amount: pkg.price,
-      currency: process.env.SEBPAY_DEFAULT_CURRENCY || "XAF",
-      phone: phone || "",
-      operator: operator || (process.env.SEBPAY_DEFAULT_OPERATOR as any) || "MTN",
-      description: `${pkg.name} - ${pkg.credits} crédits Genova AI`,
-      reference,
-      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/billing/webhook`,
-    });
+    const [lastTx, history, totalSpentAgg] = await Promise.all([
+      prisma.creditTransaction.findFirst({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.creditTransaction.findMany({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      prisma.creditTransaction.aggregate({
+        where: { userId: session.user.id, type: 'spend' },
+        _sum: { amount: true },
+      }),
+    ]);
 
-    return NextResponse.json({ payment, package: pkg, reference });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erreur d'achat" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      balance: lastTx?.balance || 0,
+// @ts-ignore — type narrowing pending, see refactor ticket
+      totalSpent: Math.abs(totalSpentAgg._sum.amount || 0),
+      history: history.map(tx => ({
+        id: tx.id,
+        amount: tx.amount,
+        balance: tx.balance,
+        type: tx.type,
+        description: tx.description,
+        createdAt: tx.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error('GET /billing/credits error:', error);
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }

@@ -1,225 +1,122 @@
-/**
- * SebPay Africa - Service de paiement Mobile Money
- * API REST pour intégration des paiements Mobile Money dans 15 pays africains
- * 
- * Endpoint de test: https://sandbox.sebpay.africa/api/v1
- * Documentation: https://sebpay.africa/docs
- */
+// ============================================================
+// SEBPAY -> CHARIOW ADAPTER
+// L'ancien provider SebPay est supprimé. Tous les paiements passent
+// désormais par Chariow (https://chariow.dev).
+// Ce module conserve l'API historique (sebpay, PLANS, SUBSCRIPTION_PLANS,
+// initiatePayment, SebPayService) pour ne pas casser les imports existants,
+// mais délègue réellement à Chariow.
+// ============================================================
 
-interface SebPayConfig {
-  apiKey: string;
-  secretKey: string;
-  environment: 'sandbox' | 'production';
-  webhookSecret: string;
+import { chariow } from "@/lib/payment/chariow";
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  priceUSD: number;
+  credits: number;
+  maxAgents: number;
+  maxWorkflows: number;
+  maxTokensPerMonth: number;
+  features: string[];
+  popular?: boolean;
 }
 
-interface SebPayPaymentRequest {
+export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
+  { id: "free", name: "Free", price: 0, priceUSD: 0, credits: 10, maxAgents: 1, maxWorkflows: 1, maxTokensPerMonth: 100_000, features: ["1 agent IA", "1 workflow", "100K tokens/mois", "Support communautaire"] },
+  { id: "starter", name: "Starter", price: 5000, priceUSD: 9.99, credits: 1000, maxAgents: 10, maxWorkflows: 10, maxTokensPerMonth: 1_000_000, features: ["10 agents IA", "10 workflows", "1M tokens/mois", "Memoire persistante", "Outils web"] },
+  { id: "pro", name: "Pro", price: 15000, priceUSD: 29.99, credits: 5000, maxAgents: 50, maxWorkflows: -1, maxTokensPerMonth: 5_000_000, features: ["50 agents IA", "Workflows illimites", "5M tokens/mois", "File d'attente prioritaire", "Webhooks sortants"], popular: true },
+  { id: "enterprise", name: "Enterprise", price: 50000, priceUSD: 99.99, credits: 25000, maxAgents: -1, maxWorkflows: -1, maxTokensPerMonth: 25_000_000, features: ["Agents illimites", "Workflows illimites", "25M tokens/mois", "Support dedie 24/7", "SLA garanti", "Deploiement prive"] },
+];
+
+export interface SebPayPaymentRequest {
   amount: number;
   currency: string;
-  phone: string;
-  operator: 'MTN' | 'ORANGE' | 'MOOV' | 'EXPRESSU' | 'AIRTEL' | 'FREEMONEY' | 'WAVE';
+  phone?: string;
+  operator?: string;
   description: string;
   reference: string;
   callbackUrl?: string;
   redirectUrl?: string;
+  customerEmail?: string;
+  customerName?: string;
 }
 
-interface SebPayPaymentResponse {
-  status: 'pending' | 'success' | 'failed';
-  transactionId: string;
-  reference: string;
+export interface SebPayPaymentResponse {
+  success: boolean;
+  transactionId?: string;
   paymentUrl?: string;
-  message: string;
+  status?: string;
+  message?: string;
 }
 
-interface SebPayTransaction {
-  id: string;
-  reference: string;
-  amount: number;
-  currency: string;
-  phone: string;
-  operator: string;
-  status: 'pending' | 'success' | 'failed' | 'cancelled';
-  description: string;
-  createdAt: string;
-  updatedAt: string;
-  fees?: number;
-}
+export class SebPayService {
+  /**
+   * Initie un paiement. Adaptateur -> Chariow.
+   * Le productId est déduit du reference (plan) ou via la variable d'env générique.
+   */
+  async initiatePayment(request: SebPayPaymentRequest): Promise<SebPayPaymentResponse> {
+    try {
+      const productId =
+        process.env[`CHARIOW_PRODUCT_PLAN_${request.description?.split(' ')[1]?.toUpperCase() || 'PRO'}`] ||
+        process.env.CHARIOW_PRODUCT_DEFAULT ||
+        '';
 
-let config: SebPayConfig = {
-  apiKey: process.env.SEBPAY_API_KEY || '',
-  secretKey: process.env.SEBPAY_SECRET_KEY || '',
-  environment: (process.env.SEBPAY_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
-  webhookSecret: process.env.SEBPAY_WEBHOOK_SECRET || '',
-};
+      if (!productId) {
+        return { success: false, message: "Produit Chariow non configuré (CHARIOW_PRODUCT_DEFAULT)" };
+      }
 
-export function configureSebPay(newConfig: Partial<SebPayConfig>) {
-  config = { ...config, ...newConfig };
-}
+      const checkout = await chariow.initiateCheckout({
+        productId,
+        customerEmail: request.customerEmail,
+        customerName: request.customerName,
+        metadata: {
+          userId: request.reference.split('_')[1] || '',
+          type: 'plan',
+          reference: request.reference,
+          amount: String(request.amount),
+          currency: request.currency,
+        },
+        successUrl: request.redirectUrl || request.callbackUrl,
+        cancelUrl: request.callbackUrl,
+      });
 
-function getBaseUrl(): string {
-  return config.environment === 'production'
-    ? 'https://api.sebpay.africa/v1'
-    : 'https://sandbox-api.sebpay.africa/v1';
-}
-
-function getHeaders(): HeadersInit {
-  return {
-    'Content-Type': 'application/json',
-    'X-Api-Key': config.apiKey,
-    'X-Secret-Key': config.secretKey,
-  };
-}
-
-/**
- * Initier un paiement Mobile Money via SebPay
- */
-export async function initiatePayment(
-  payment: SebPayPaymentRequest
-): Promise<SebPayPaymentResponse> {
-  const response = await fetch(`${getBaseUrl()}/payments`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify({
-      amount: payment.amount,
-      currency: payment.currency || 'XAF',
-      phone: payment.phone,
-      operator: payment.operator,
-      description: payment.description,
-      reference: payment.reference,
-      callback_url: payment.callbackUrl,
-      redirect_url: payment.redirectUrl,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Payment initiation failed' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+      return {
+        success: true,
+        transactionId: checkout.saleId || request.reference,
+        paymentUrl: checkout.checkoutUrl,
+        status: checkout.step === 'payment' ? 'pending' : checkout.step,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
-  return response.json();
-}
-
-/**
- * Vérifier le statut d'une transaction
- */
-export async function checkTransactionStatus(
-  transactionId: string
-): Promise<SebPayTransaction> {
-  const response = await fetch(`${getBaseUrl()}/payments/${transactionId}`, {
-    headers: getHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch transaction: ${response.status}`);
+  async checkPaymentStatus(transactionId: string): Promise<SebPayPaymentResponse> {
+    try {
+      const { status, sale } = await chariow.getSaleStatus(transactionId);
+      return { success: status === 'completed', status, transactionId };
+    } catch (error) {
+      return { success: false, message: String(error) };
+    }
   }
 
-  return response.json();
-}
+  verifyWebhookSignature(payload: string, signature: string): boolean {
+    return chariow.verifyWebhookSignature(payload, signature);
+  }
 
-/**
- * Vérifier la signature d'un webhook SebPay
- */
-export function verifyWebhookSignature(
-  payload: string,
-  signature: string
-): boolean {
-  try {
-    const crypto = require('crypto');
-    const expected = crypto
-      .createHmac('sha256', config.webhookSecret)
-      .update(payload)
-      .digest('hex');
-    return expected === signature;
-  } catch {
-    return false;
+  async handleWebhook(payload: any): Promise<void> {
+    await chariow.handleWebhook(payload);
   }
 }
 
-/**
- * Plans Genova avec prix en FCFA (XAF)
- */
-export const PLANS = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: 0,
-    currency: 'XAF',
-    interval: 'month',
-    credits: 100,
-    features: [
-      { name: '2 AI Agents', included: true },
-      { name: '100 credits/month', included: true },
-      { name: 'Basic agent tools', included: true },
-      { name: '3 scheduled tasks', included: true },
-      { name: 'Advanced guardrails', included: false },
-      { name: 'Web monitors', included: false },
-      { name: 'Priority support', included: false },
-    ],
-  },
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: 5000,
-    currency: 'XAF',
-    interval: 'month',
-    credits: 1000,
-    featured: true,
-    features: [
-      { name: '5 AI Agents', included: true },
-      { name: '1,000 credits/month', included: true },
-      { name: 'All agent tools', included: true },
-      { name: '10 scheduled tasks', included: true },
-      { name: '5 web monitors', included: true },
-      { name: 'Advanced guardrails', included: true },
-      { name: 'Priority support', included: false },
-    ],
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: 15000,
-    currency: 'XAF',
-    interval: 'month',
-    credits: 5000,
-    highlighted: true,
-    badge: 'Populaire',
-    features: [
-      { name: '20 AI Agents', included: true },
-      { name: '5,000 credits/month', included: true },
-      { name: 'All tools + advanced', included: true },
-      { name: '50 scheduled tasks', included: true },
-      { name: '25 web monitors', included: true },
-      { name: 'Auto-reports', included: true },
-      { name: 'Priority support', included: true },
-    ],
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 50000,
-    currency: 'XAF',
-    interval: 'month',
-    credits: -1,
-    badge: 'Meilleur Rapport Qualité/Prix',
-    features: [
-      { name: 'Unlimited Agents', included: true },
-      { name: 'Unlimited credits', included: true },
-      { name: 'All tools & features', included: true },
-      { name: 'Unlimited tasks', included: true },
-      { name: 'SSO & SAML', included: true },
-      { name: 'Custom integrations', included: true },
-      { name: 'SLA guarantee', included: true },
-    ],
-  },
-];
+export const sebpay = new SebPayService();
 
-/**
- * Packs de crédits SebPay
- */
-export const CREDIT_PACKAGES = [
-  { id: 'credits_500', name: 'Petit Pack', credits: 500, price: 2500, currency: 'XAF' },
-  { id: 'credits_2000', name: 'Pack Standard', credits: 2000, price: 9000, currency: 'XAF' },
-  { id: 'credits_5000', name: 'Gros Pack', credits: 5000, price: 20000, currency: 'XAF' },
-  { id: 'credits_10000', name: 'Pack Pro', credits: 10000, price: 35000, currency: 'XAF' },
-];
+/** Alias: billing routes import PLANS from @/lib/sebpay */
+export const PLANS = SUBSCRIPTION_PLANS;
+
+/** Re-export initiatePayment as a standalone function for convenience */
+export const initiatePayment = sebpay.initiatePayment.bind(sebpay);
