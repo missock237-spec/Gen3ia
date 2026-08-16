@@ -18,6 +18,8 @@ import { AgentManager } from '@/lib/agent-engine/agent-manager';
 import { executeAgentLoop } from '@/lib/agent-engine/execution-loop';
 import { SandboxManager, getSandboxManager } from '@/lib/tools/sandbox';
 import { getStreamManager, StreamManager } from '@/lib/streaming';
+import { registerServiceTools } from '@/lib/agent-engine/register-service-tools';
+import { registerSaaSAutomationTools } from '@/lib/saas-automation/agent-tools';
 
 // Singleton instance
 let engineInstance: GenovaEngine | null = null;
@@ -50,6 +52,10 @@ export function initializeAgentEngine(): GenovaEngine {
   toolRegistry.register(databaseTool);
   toolRegistry.register(filesystemTool);
   toolRegistry.register(codeExecutorTool);
+  // Register service tools (GitHub, Gmail, Slack, etc.)
+  registerServiceTools(toolRegistry);
+  // Register SaaS automation tools (account linking, action execution, templates)
+  registerSaaSAutomationTools(toolRegistry);
 
   // Create job queue
   const jobQueue = new JobQueue(3);
@@ -213,3 +219,30 @@ export type {
   GraphEventCallback,
   PersistedGraphState,
 } from '@/lib/agent-engine/state-graph';
+
+// ============================================================
+// Checkpoint Manager — sauvegarde et reprise d'exécution
+// ============================================================
+export { CheckpointManager, checkpointManager } from '@/lib/agent-engine/checkpoint-manager';
+export type { CheckpointState } from '@/lib/agent-engine/checkpoint-manager';
+
+// ============================================================
+// SMS Engine — alertes par SMS (Twilio)
+// ============================================================
+export { sendSmsAlert, sendDirectSms, isSmsConfigured } from '@/lib/sms-engine';
+export type { SmsAlertInput, SmsMessage, SmsSeverity } from '@/lib/sms-engine';
+
+// ============================================================
+// Enhanced Agent Engine — v2 components
+// ============================================================
+export { CircuitBreaker, circuitBreaker } from '@/lib/agent-engine/circuit-breaker';
+export type { CircuitState, CircuitBreakerConfig } from '@/lib/agent-engine/circuit-breaker';
+
+export { RetryStrategy, networkRetry, apiRetry, llmRetry } from '@/lib/agent-engine/retry-strategy';
+export type { RetryConfig, RetryResult } from '@/lib/agent-engine/retry-strategy';
+
+export { ParallelCoordinator, CoordinatorError, PlanValidationError, TaskTimeoutError } from '@/lib/agent-engine/parallel-coordinator';
+export type { CoordinationResult, CoordinatorOptions, TaskNode, TaskErrorType } from '@/lib/agent-engine/parallel-coordinator';
+
+export { AgentEventBus, agentEventBus, createStepCallback } from '@/lib/agent-engine/streaming-callbacks';
+export type { AgentEvent, AgentEventType, CostTracker } from '@/lib/agent-engine/streaming-callbacks';

@@ -1,0 +1,65 @@
+{
+  "title": "Gen3ia - API & Webhooks",
+  "uid": "gen3ia-api-webhooks",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["gen3ia", "api", "webhooks"],
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "title": "Requetes API",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
+      "targets": [{ "expr": "gen3ia_executions_total", "legendFormat": "Requetes" }]
+    },
+    {
+      "title": "Cles API actives",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
+      "targets": [{ "expr": "gen3ia_api_keys_total", "legendFormat": "Cles" }]
+    },
+    {
+      "title": "Taux d erreur",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
+      "targets": [{ "expr": "(gen3ia_failed_executions_total / gen3ia_executions_total) * 100", "legendFormat": "%" }],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "title": "Webhooks",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
+      "targets": [{ "expr": "gen3ia_webhooks_total", "legendFormat": "Total" }]
+    },
+    {
+      "title": "Requetes par minute",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 4 },
+      "targets": [{ "expr": "rate(gen3ia_executions_total[5m])", "legendFormat": "req/min" }]
+    },
+    {
+      "title": "Erreurs recentes",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 4 },
+      "targets": [{ "expr": "gen3ia_recent_errors_total", "legendFormat": "Erreurs" }]
+    },
+    {
+      "title": "Services status",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 12 },
+      "targets": [{ "expr": "up", "legendFormat": "{{job}}" }]
+    },
+    {
+      "title": "Conversations",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 6, "y": 12 },
+      "targets": [{ "expr": "gen3ia_conversations_total", "legendFormat": "Total" }]
+    },
+    {
+      "title": "Workflows",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 9, "y": 12 },
+      "targets": [{ "expr": "gen3ia_workflows_total", "legendFormat": "Total" }]
+    }
+  ]
+}

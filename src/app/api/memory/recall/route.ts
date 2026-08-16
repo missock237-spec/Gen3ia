@@ -1,55 +1,30 @@
+// POST /api/memory/recall — Rappel de memoires d'un agent
+// SECURITE: withAuth() + correction IDOR (userId du token, pas du body) + rate limit
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity, secureResponse } from '@/lib/security';
-import { recall, getConversationContext, getPreferenceContext } from '@/lib/memory/contextual-recall';
+import { db } from '@/lib/db';
+import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-export async function OPTIONS(request: NextRequest) {
-  const { error } = await applySecurity(request);
-  if (error) return error;
-  return new NextResponse(null, { status: 204 });
-}
 
-export async function POST(request: NextRequest) {
-  const { auth, error: secError } = await applySecurity(request, { requireAuth: true });
-  if (secError || !auth) return secError || NextResponse.json({ error: 'Auth required' }, { status: 401 });
 
+
+
+export const dynamic = "force-dynamic";
+export const POST = withAuth(async (r: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {
-    const body = await request.json();
-    const { action } = body;
+    const b = await r.json();
+    const { query, category } = b;
+    if (!query) return NextResponse.json({ error: 'query requis' }, { status: 400 });
 
-    if (action === 'recall') {
-      const { query, agentId, limit, minScore, includeCategories, excludeCategories } = body;
-      if (!query) {
-        return secureResponse(NextResponse.json({ error: 'Query is required' }, { status: 400 }), request);
-      }
-      const memories = await recall({
-        query,
-        userId: auth.userId,
-        agentId,
-        limit,
-        minScore,
-        includeCategories,
-        excludeCategories,
-      });
-      return secureResponse(NextResponse.json({ memories }), request);
-    }
-
-    if (action === 'conversationContext') {
-      const { message, agentId } = body;
-      if (!message) {
-        return secureResponse(NextResponse.json({ error: 'Message is required' }, { status: 400 }), request);
-      }
-      const context = await getConversationContext(auth.userId, message, agentId);
-      return secureResponse(NextResponse.json({ context }), request);
-    }
-
-    if (action === 'preferenceContext') {
-      const context = await getPreferenceContext(auth.userId);
-      return secureResponse(NextResponse.json({ context }), request);
-    }
-
-    return secureResponse(NextResponse.json({ error: 'Invalid action. Use: recall, conversationContext, preferenceContext' }, { status: 400 }), request);
-  } catch {
-    const res = NextResponse.json({ error: 'Failed to recall memories' }, { status: 500 });
-    return secureResponse(res, request);
-  }
-}
+    // SECURITY: userId vient du token, jamais du body (previent IDOR)
+    const memories = await db.agentMemory.findMany({
+      where: { userId: auth.userId, ...(category ? { category } : {}), content: { contains: query, mode: 'insensitive' } },
+      orderBy: { relevance: 'desc' },
+      take: 10,
+    });
+    return NextResponse.json(memories);
+  } catch { return NextResponse.json({ error: 'Erreur' }, { status: 500 }); }
+}, {
+  requireAuth: true,
+  roles: ['user'],
+  rateLimit: { limit: 30, windowMs: 60000 },
+});

@@ -1,0 +1,58 @@
+# Auto-labeling des PRs selon les fichiers modifiés
+
+# Infrastructure & CI
+'.github/*':
+  - changed-files:
+      - any-glob-to-any-file: '.github/**/*'
+
+'ci':
+  - changed-files:
+      - any-glob-to-any-file: '.github/workflows/*'
+
+'docker':
+  - changed-files:
+      - any-glob-to-any-file: ['Dockerfile*', 'docker-compose*', '.dockerignore']
+
+'documentation':
+  - changed-files:
+      - any-glob-to-any-file: ['*.md', 'docs/**/*']
+
+'frontend':
+  - changed-files:
+      - any-glob-to-any-file: ['src/app/**/*', 'src/components/**/*', 'src/hooks/**/*']
+
+'api':
+  - changed-files:
+      - any-glob-to-any-file: 'src/app/api/**/*'
+
+'backend':
+  - changed-files:
+      - any-glob-to-any-file: ['src/lib/**/*', 'src/services/**/*']
+
+'database':
+  - changed-files:
+      - any-glob-to-any-file: 'prisma/**/*'
+
+'payment':
+  - changed-files:
+      - any-glob-to-any-file: ['src/lib/sebpay*', 'src/lib/billing/**/*', 'src/app/api/billing/**/*', 'src/app/api/payments/**/*']
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: 'src/__tests__/**/*'
+
+'security':
+  - changed-files:
+      - any-glob-to-any-file: ['src/lib/secret-vault*', 'src/lib/secure*', 'src/lib/security*', '.github/workflows/security*']
+
+'agent':
+  - changed-files:
+      - any-glob-to-any-file: ['src/lib/agent*', 'src/app/api/agent*', 'packages/agent-engine/**/*']
+
+'translation':
+  - changed-files:
+      - any-glob-to-any-file: 'src/i18n/**/*'
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file: ['package.json', 'pnpm-lock*', 'bun.lock*']
