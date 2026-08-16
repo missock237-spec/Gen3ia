@@ -8,6 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createBrowserAutomationEngine, type ActionType } from '@/lib/browser/browser-automation';
 
+
+
+
+
+export const dynamic = "force-dynamic";
 const VALID_ACTION_TYPES: ActionType[] = [
   'navigate', 'click', 'type', 'scroll', 'screenshot',
   'extract', 'fill_form', 'wait', 'hover', 'select',

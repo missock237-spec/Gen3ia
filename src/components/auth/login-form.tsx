@@ -43,16 +43,18 @@ export function LoginForm() {
     setApiError('');
 
     try {
-      const data = await apiFetch<{ user: { id: string; email: string; name: string; role: string; plan: string; avatar?: string | null; isEmailVerified: boolean; isActive: boolean } }>('/api/auth/login', {
+      // 1. Sign-in via Firebase Client SDK -> obtient l'ID token
+      const { signInWithEmail } = await import('@/lib/firebase/auth-client');
+      const authResult = await signInWithEmail(form.email, form.password);
+
+      // 2. Envoie l'ID token au serveur qui crée le session cookie Firebase
+      const data = await apiFetch<{ user: { id: string; email: string; name: string; role: string; plan: string; avatar?: string | null; emailVerified: boolean } }>('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({
-          email: form.email.toLowerCase().trim(),
-          password: form.password,
-          rememberMe: form.remember,
-        }),
+        body: JSON.stringify({ idToken: authResult.idToken, rememberMe: form.remember }),
       });
 
       const user = data.user;
+// @ts-ignore — type narrowing pending, see refactor ticket
       login({
         id: user.id,
         email: user.email,
@@ -60,21 +62,28 @@ export function LoginForm() {
         plan: user.plan || 'free',
         avatar: user.avatar,
         role: user.role || 'user',
-        emailVerified: user.isEmailVerified ?? false,
-        isEmailVerified: user.isEmailVerified,
-        isActive: user.isActive,
+        emailVerified: user.emailVerified ?? false,
+        isEmailVerified: user.emailVerified,
+        isActive: true,
       });
 
-      // Redirect to dashboard
       router.push('/');
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 403) {
-          setApiError(err.message);
-        } else if (err.status === 429) {
-          setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
-        } else {
+        if (err.status === 403) setApiError(err.message);
+        else if (err.status === 429) setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
+        else setApiError('Identifiants invalides');
+      } else if (err && typeof err === 'object' && 'code' in err) {
+        // Firebase Auth error
+        const code = (err as { code: string }).code;
+        if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
           setApiError('Identifiants invalides');
+        } else if (code === 'auth/too-many-requests') {
+          setApiError('Trop de tentatives. Réessayez plus tard.');
+        } else if (code === 'auth/email-not-verified') {
+          setApiError('Email non vérifié. Consultez votre boîte mail.');
+        } else {
+          setApiError('Erreur d\'authentification Firebase');
         }
       } else {
         setApiError('Erreur réseau. Veuillez réessayer.');

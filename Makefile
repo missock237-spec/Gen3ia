@@ -1,70 +1,135 @@
-.PHONY: help dev build test lint audit security db-push db-migrate db-reset db-seed seed reset docker-up docker-down docker-prod clean install
+# ============================================================
+# Gen3ia — Makefile DX
+# Raccourcis pour les commandes quotidiennes
+# ============================================================
 
-help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "\\033[36m%-20s\\033[0m %s\\n", $$1, $$2}'
+.ONESHELL:
+SHELL := /bin/bash
 
-install: ## Install dependencies
-	bun install
+.PHONY: help dev dev:seed build start lint test test:unit test:coverage test:watch \
+	test:e2e db:generate db:push db:seed db:studio db:reset \
+	docker:up docker:down docker:dev docker:dev:down \
+	docker:prod docker:logs reset clean format docs:api security:audit
 
-dev: ## Start dev server
-	bun run dev
+help: ## Affiche cette aide
+	@grep -E '^[a-zA-Z_/-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-25s\033[0m %s\n", $$1, $$2}'
 
-build: ## Build production
-	bun run build
+# === Développement ===
 
-test: ## Run unit tests
-	bun run test
+dev: ## Lance le serveur de développement (http://localhost:3000)
+	npm run dev
 
-test-watch: ## Run tests in watch mode
-	bun run test:watch
+dev:seed: ## Lance le serveur + seed de la base de données
+	npm run db:seed && npm run dev
 
-test-e2e: ## Run Playwright e2e tests
-	bun run test:e2e
+# === Build ===
 
-lint: ## Run linter
-	bun run lint
+build: ## Build de production (Next.js standalone)
+	npm run build
 
-audit: ## Run security audit
-	bun run audit
+start: ## Lance le serveur de production
+	npm start
 
-security: ## Run full security scan
-	bun run security:audit
+# === Tests ===
 
-db-push:
-	bun run db:push
+test: ## Lance tous les tests
+	npm test
 
-db-migrate:
-	bun run db:migrate
+test:unit: ## Tests unitaires uniquement
+	npm run test:unit
 
-db-reset:
-	bun run db:reset
+test:coverage: ## Tests avec rapport de couverture
+	npm run test:coverage
 
-db-studio:
-	bun run db:studio
+test:watch: ## Tests en mode watch
+	npm run test:watch
 
-seed:
-	bun run db:seed
+test:e2e: ## Tests E2E Playwright
+	npm run test:e2e
 
-reset: ## Full reset (DB + node_modules)
-	bun run db:reset
-	rm -rf node_modules .next
-	bun install
+# === Base de données ===
 
-docker-up:
-	docker compose up -d
+db:generate: ## Génère le client Prisma
+	npx prisma generate
 
-docker-down:
+db:push: ## Push le schéma Prisma vers la base
+	npx prisma db push
+
+db:seed: ## Seed la base avec des données de test
+	npx tsx prisma/seed.ts
+
+db:studio: ## Ouvre Prisma Studio (GUI base de données)
+	npx prisma studio
+
+db:reset: ## Reset complet : drop + push + seed
+	npx prisma db push --force-reset && npx tsx prisma/seed.ts
+
+db:migrate: ## Crée et applique une migration Prisma
+	npx prisma migrate dev
+
+# === Docker ===
+
+docker:up: ## Lance la stack de production (app + postgres + redis + qdrant)
+	docker compose up -d --build
+
+docker:down: ## Arrête la stack de production
 	docker compose down
 
-docker-prod:
-	docker compose -f docker-compose.prod.yml up -d --build
+docker:dev: ## Lance les services de dev (postgres + redis + qdrant uniquement)
+	docker compose -f docker-compose.dev.yml up -d
 
-docker-logs:
+docker:dev:down: ## Arrête les services de dev
+	docker compose -f docker-compose.dev.yml down
+
+docker:dev:reset: ## Reset complet des données de dev (supprime les volumes)
+	docker compose -f docker-compose.dev.yml down -v
+
+docker:prod: ## Lance la stack de production avec build
+	docker compose -f docker-compose.yml up -d --build
+
+docker:logs: ## Affiche les logs de tous les conteneurs
 	docker compose logs -f
 
-clean:
-	rm -rf .next node_modules
+# === Qualité ===
+
+lint: ## Vérifie le lint (ESLint)
+	npm run lint
+
+lint:fix: ## Corrige automatiquement le lint
+	npm run lint:fix
+
+format: ## Formate le code (Prettier)
+	npm run format
+
+format:check: ## Vérifie le formatage
+	npm run format:check
+
+typecheck: ## Vérifie les types TypeScript
+	npm run typecheck
+
+# === Documentation ===
+
+docs:api: ## Génère la spec OpenAPI (public/openapi.json)
+	npm run docs:api
+
+# === Sécurité ===
+
+security:audit: ## Audit de sécurité (npm audit)
+	npm audit
+
+security:all: ## Audit complet (npm + tests de sécurité)
+	npm audit
+
+# === Maintenance ===
+
+clean: ## Nettoie les builds et caches
+	rm -rf .next node_modules coverage
 	find . -name "*.pid" -delete
 
-coverage:
-	bun x vitest run --coverage
+reset: clean install db:reset ## Reset complet (clean + install + db)
+
+install: ## Installe les dépendances
+	npm install
+
+update: ## Met à jour les dépendances
+	npm update

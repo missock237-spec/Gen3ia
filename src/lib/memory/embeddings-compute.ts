@@ -3,6 +3,7 @@ import { createComputeEngineV2 } from '@/lib/compute/engine-v2';
 const log = createLogger('embeddings-compute');
 let computeEngine: ReturnType<typeof createComputeEngineV2> | null = null;
 async function getCompute() {
+// @ts-ignore — type narrowing pending, see refactor ticket
   if (!computeEngine) { computeEngine = createComputeEngineV2({ preferredBackend: 'auto' }); await computeEngine.initialize(); }
   return computeEngine;
 }

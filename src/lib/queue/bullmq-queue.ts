@@ -1,23 +1,10 @@
 /**
  * BullMQ Job Queue — Production-ready Redis-backed job queue for Genova.AI
  *
- * Replaces the in-memory JobQueue with a distributed, persistent BullMQ system
- * that survives server restarts and scales across processes.
- *
  * Queues:
- *   ai:image  — Image generation (120s timeout, 3 concurrent workers)
- *   ai:video  — Video generation (600s timeout, 2 concurrent workers)
- *   ai:long   — Long-running AI calls (300s timeout, 5 concurrent workers)
- *
- * Features:
- *   - Redis-backed persistence via ioredis
- *   - Job priorities: critical (1), high (2), normal (3), low (4)
- *   - Exponential backoff retries (max 3)
- *   - Progress tracking (0-100%)
- *   - Job deduplication by userId+prompt hash
- *   - Per-user rate limiting
- *   - Queue health checks
- *   - Graceful shutdown
+ *   ai-image  — Image generation
+ *   ai-video  — Video generation
+ *   ai-long   — Long-running AI calls
  */
 
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
@@ -38,15 +25,13 @@ export enum JobPriority {
   LOW = 4,
 }
 
-export type QueueName = 'ai:image' | 'ai:video' | 'ai:long';
+// NOTE: BullMQ does NOT allow ':' in queue names — use '-' instead
+export type QueueName = 'ai-image' | 'ai-video' | 'ai-long';
 
 export interface BaseJobPayload {
   userId: string;
-  /** Unique deduplication key (auto-generated if not provided) */
   dedupKey?: string;
-  /** Priority level (defaults to NORMAL) */
   priority?: JobPriority;
-  /** Custom job ID (for deduplication) */
   jobId?: string;
 }
 
@@ -127,24 +112,24 @@ interface QueueConfig {
 }
 
 const QUEUE_CONFIGS: Record<QueueName, QueueConfig> = {
-  'ai:image': {
-    name: 'ai:image',
+  'ai-image': {
+    name: 'ai-image',
     concurrency: 3,
     timeoutMs: 120_000,
     maxRetries: 3,
     backoffType: 'exponential',
     backoffDelayMs: 2_000,
   },
-  'ai:video': {
-    name: 'ai:video',
+  'ai-video': {
+    name: 'ai-video',
     concurrency: 2,
     timeoutMs: 600_000,
     maxRetries: 3,
     backoffType: 'exponential',
     backoffDelayMs: 5_000,
   },
-  'ai:long': {
-    name: 'ai:long',
+  'ai-long': {
+    name: 'ai-long',
     concurrency: 5,
     timeoutMs: 300_000,
     maxRetries: 3,
@@ -158,15 +143,15 @@ const QUEUE_CONFIGS: Record<QueueName, QueueConfig> = {
 // ---------------------------------------------------------------------------
 
 const USER_RATE_LIMITS: Record<QueueName, { maxJobs: number; windowMs: number }> = {
-  'ai:image': { maxJobs: 20, windowMs: 60 * 60 * 1000 },       // 20 images/hour
-  'ai:video': { maxJobs: 5, windowMs: 60 * 60 * 1000 },         // 5 videos/hour
-  'ai:long':  { maxJobs: 30, windowMs: 60 * 60 * 1000 },        // 30 long AI calls/hour
+  'ai-image': { maxJobs: 20, windowMs: 60 * 60 * 1000 },
+  'ai-video': { maxJobs: 5, windowMs: 60 * 60 * 1000 },
+  'ai-long':  { maxJobs: 30, windowMs: 60 * 60 * 1000 },
 };
 
 const RATE_LIMIT_PREFIX = 'genova:ratelimit:';
 
 // ---------------------------------------------------------------------------
-// Redis Connection
+// Redis Connection — Lazy (only connects at runtime, not build time)
 // ---------------------------------------------------------------------------
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -176,7 +161,7 @@ let sharedConnection: Redis | null = null;
 function getRedisConnection(): Redis {
   if (!sharedConnection || sharedConnection.status === 'end') {
     sharedConnection = new Redis(REDIS_URL, {
-      maxRetriesPerRequest: null, // BullMQ requires this
+      maxRetriesPerRequest: null,
       enableReadyCheck: false,
       retryStrategy(times) {
         const delay = Math.min(times * 500, 10_000);
@@ -196,7 +181,6 @@ function getRedisConnection(): Redis {
   return sharedConnection;
 }
 
-/** Create a separate Redis connection for subscribers (BullMQ requirement) */
 function getSubscriberConnection(): Redis {
   return new Redis(REDIS_URL, {
     maxRetriesPerRequest: null,
@@ -214,20 +198,36 @@ function generateDedupKey(queueName: QueueName, userId: string, payload: AnyJobP
 }
 
 // ---------------------------------------------------------------------------
-// BullMQQueue — Core queue manager
+// BullMQQueue — Core queue manager (lazy initialization)
 // ---------------------------------------------------------------------------
 
 export class BullMQQueue {
   private queues: Map<QueueName, Queue> = new Map();
   private workers: Map<QueueName, Worker> = new Map();
   private queueEvents: Map<QueueName, QueueEvents> = new Map();
-  private connection: Redis;
+  private connection: Redis | null = null;
   private isShuttingDown = false;
+  private initialized = false;
 
   constructor() {
+    // Defer initialization to runtime — do NOT connect at build time
+    if (process.env.NEXT_PHASE !== 'phase-production-build') {
+      this.initialize();
+    }
+  }
+
+  private initialize(): void {
+    if (this.initialized) return;
+    this.initialized = true;
     this.connection = getRedisConnection() as unknown as Redis;
     this.initializeQueues();
     this.registerSignalHandlers();
+  }
+
+  private ensureInitialized(): void {
+    if (!this.initialized) {
+      this.initialize();
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -236,13 +236,12 @@ export class BullMQQueue {
 
   private initializeQueues(): void {
     for (const [name, config] of Object.entries(QUEUE_CONFIGS) as [QueueName, QueueConfig][]) {
-      // Create the queue
       const queue = new Queue(name, {
         connection: this.connection as any,
         defaultJobOptions: {
-          removeOnComplete: { count: 1000 },     // Keep last 1000 completed jobs
-          removeOnFail: { count: 5000 },          // Keep last 5000 failed jobs
-          attempts: config.maxRetries + 1,        // First attempt + retries
+          removeOnComplete: { count: 1000 },
+          removeOnFail: { count: 5000 },
+          attempts: config.maxRetries + 1,
           backoff: {
             type: config.backoffType,
             delay: config.backoffDelayMs,
@@ -252,7 +251,6 @@ export class BullMQQueue {
 
       this.queues.set(name, queue);
 
-      // Create queue events listener
       const events = new QueueEvents(name, {
         connection: getSubscriberConnection() as any,
       });
@@ -303,6 +301,8 @@ export class BullMQQueue {
       jobId?: string;
     },
   ): Promise<string> {
+    this.ensureInitialized();
+
     if (this.isShuttingDown) {
       throw new Error('Queue is shutting down — cannot accept new jobs');
     }
@@ -314,7 +314,6 @@ export class BullMQQueue {
 
     const config = QUEUE_CONFIGS[queueName];
 
-    // Rate limit check
     const rateLimitOk = await this.checkRateLimit(queueName, payload.userId);
     if (!rateLimitOk.allowed) {
       throw new Error(
@@ -322,7 +321,6 @@ export class BullMQQueue {
       );
     }
 
-    // Deduplication check
     const dedupKey = options?.jobId || payload.jobId || generateDedupKey(queueName, payload.userId, payload as AnyJobPayload);
     const existingJob = await queue.getJob(dedupKey);
     if (existingJob && !['completed', 'failed'].includes(await existingJob.getState())) {
@@ -341,7 +339,6 @@ export class BullMQQueue {
       },
     });
 
-    // Track rate limit
     await this.incrementRateLimit(queueName, payload.userId);
 
     log.info(`Job added`, {
@@ -362,6 +359,8 @@ export class BullMQQueue {
     queueName: QueueName,
     processor: (job: Job<AnyJobPayload, JobResult>) => Promise<JobResult>,
   ): Worker<AnyJobPayload, JobResult> {
+    this.ensureInitialized();
+
     const config = QUEUE_CONFIGS[queueName];
     const queue = this.queues.get(queueName);
     if (!queue) {
@@ -371,10 +370,9 @@ export class BullMQQueue {
     const worker = new Worker<AnyJobPayload, JobResult>(queueName, processor, {
       connection: this.connection as any,
       concurrency: config.concurrency,
-      lockDuration: config.timeoutMs + 30_000, // Lock longer than timeout
+      lockDuration: config.timeoutMs + 30_000,
     });
 
-    // Worker-level event listeners
     worker.on('completed', (job) => {
       log.info(`Worker completed job`, {
         queue: queueName,
@@ -424,6 +422,8 @@ export class BullMQQueue {
   // -------------------------------------------------------------------------
 
   async getJobStatus(jobId: string, queueName?: QueueName): Promise<JobStatusResult | null> {
+    this.ensureInitialized();
+
     const queues = queueName
       ? [[queueName, this.queues.get(queueName)!] as [QueueName, Queue]]
       : (Array.from(this.queues.entries()) as [QueueName, Queue][]);
@@ -458,6 +458,8 @@ export class BullMQQueue {
   // -------------------------------------------------------------------------
 
   async getQueueStats(): Promise<QueueStats[]> {
+    this.ensureInitialized();
+
     const stats: QueueStats[] = [];
 
     const entries = Array.from(this.queues.entries());
@@ -510,10 +512,12 @@ export class BullMQQueue {
     queues: QueueStats[];
     uptime: number;
   }> {
+    this.ensureInitialized();
+
     let redisStatus: 'connected' | 'disconnected' | 'error' = 'disconnected';
 
     try {
-      if (this.connection.status === 'ready') {
+      if (this.connection && this.connection.status === 'ready') {
         await this.connection.ping();
         redisStatus = 'connected';
       }
@@ -537,6 +541,8 @@ export class BullMQQueue {
   // -------------------------------------------------------------------------
 
   async cancelJob(jobId: string, queueName?: QueueName): Promise<boolean> {
+    this.ensureInitialized();
+
     const queues = queueName
       ? [[queueName, this.queues.get(queueName)!] as [QueueName, Queue]]
       : (Array.from(this.queues.entries()) as [QueueName, Queue][]);
@@ -550,7 +556,6 @@ export class BullMQQueue {
           log.info(`Job cancelled`, { jobId, state });
           return true;
         }
-        // Active or stalled jobs cannot be simply removed
         log.warn(`Cannot cancel job in state: ${state}`, { jobId });
         return false;
       }
@@ -569,13 +574,12 @@ export class BullMQQueue {
     userId: string,
   ): Promise<{ allowed: boolean; remaining: number }> {
     const limit = USER_RATE_LIMITS[queueName];
-    if (!limit) return { allowed: true, remaining: Infinity };
+    if (!limit || !this.connection) return { allowed: true, remaining: Infinity };
 
     const key = `${RATE_LIMIT_PREFIX}${queueName}:${userId}`;
     try {
       const current = await this.connection.incr(key);
       if (current === 1) {
-        // First request in window — set TTL
         await this.connection.pexpire(key, limit.windowMs);
       }
       const remaining = Math.max(0, limit.maxJobs - current);
@@ -588,9 +592,8 @@ export class BullMQQueue {
     }
   }
 
-  private async incrementRateLimit(queueName: QueueName, userId: string): Promise<void> {
+  private async incrementRateLimit(_queueName: QueueName, _userId: string): Promise<void> {
     // Already incremented in checkRateLimit via incr
-    // This method exists for future explicit increment if check and increment are separated
   }
 
   // -------------------------------------------------------------------------
@@ -598,6 +601,7 @@ export class BullMQQueue {
   // -------------------------------------------------------------------------
 
   async pauseQueue(queueName: QueueName): Promise<void> {
+    this.ensureInitialized();
     const queue = this.queues.get(queueName);
     if (queue) {
       await queue.pause();
@@ -606,6 +610,7 @@ export class BullMQQueue {
   }
 
   async resumeQueue(queueName: QueueName): Promise<void> {
+    this.ensureInitialized();
     const queue = this.queues.get(queueName);
     if (queue) {
       await queue.resume();
@@ -614,10 +619,11 @@ export class BullMQQueue {
   }
 
   // -------------------------------------------------------------------------
-  // Drain / Obliterate Queue (admin operations)
+  // Drain Queue
   // -------------------------------------------------------------------------
 
   async drainQueue(queueName: QueueName): Promise<void> {
+    this.ensureInitialized();
     const queue = this.queues.get(queueName);
     if (queue) {
       await queue.drain();
@@ -637,7 +643,6 @@ export class BullMQQueue {
 
     const shutdownPromises: Promise<void>[] = [];
 
-    // Close workers first (wait for current jobs to finish)
     for (const [name, worker] of Array.from(this.workers.entries())) {
       shutdownPromises.push(
         worker.close(true).then(() => {
@@ -646,7 +651,6 @@ export class BullMQQueue {
       );
     }
 
-    // Close queue events
     for (const [name, events] of Array.from(this.queueEvents.entries())) {
       shutdownPromises.push(
         events.close().then(() => {
@@ -655,7 +659,6 @@ export class BullMQQueue {
       );
     }
 
-    // Close queues
     for (const [name, queue] of Array.from(this.queues.entries())) {
       shutdownPromises.push(
         queue.close().then(() => {
@@ -670,9 +673,8 @@ export class BullMQQueue {
       log.error('Error during shutdown', { error: err instanceof Error ? err.message : String(err) });
     }
 
-    // Close shared Redis connection
     try {
-      await this.connection.quit();
+      if (this.connection) await this.connection.quit();
     } catch {
       // Ignore — connection might already be closed
     }
@@ -685,6 +687,7 @@ export class BullMQQueue {
   // -------------------------------------------------------------------------
 
   private registerSignalHandlers(): void {
+    if (typeof process === 'undefined') return;
     const shutdown = async (signal: string) => {
       log.info(`Received ${signal}, initiating graceful shutdown...`);
       await this.shutdown();
@@ -711,13 +714,13 @@ export class BullMQQueue {
     return this.queueEvents.get(queueName);
   }
 
-  get redisConnection(): Redis {
+  get redisConnection(): Redis | null {
     return this.connection;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Singleton
+// Singleton — Lazy
 // ---------------------------------------------------------------------------
 
 let bullMQInstance: BullMQQueue | null = null;

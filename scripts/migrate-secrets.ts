@@ -82,39 +82,8 @@ async function migrateUserResources() {
   return { updated, skipped, total: resources.length }
 }
 
-async function migrateWhatsAppConfigs() {
-  const configs = await db.whatsAppConfig.findMany({
-    select: {
-      id: true,
-      apiToken: true,
-    },
-  })
-
-  let updated = 0
-  let skipped = 0
-
-  for (const config of configs) {
-    if (!config.apiToken || looksEncrypted(config.apiToken)) {
-      skipped++
-      continue
-    }
-
-    if (!DRY_RUN) {
-      await db.whatsAppConfig.update({
-        where: { id: config.id },
-        data: {
-          apiToken: encryptSecret(config.apiToken),
-        },
-      })
-    }
-
-    updated++
-  }
-
-  return { updated, skipped, total: configs.length }
-}
-
 async function main() {
+  // eslint-disable-next-line no-console
   console.log(
     DRY_RUN
       ? 'Starting secret migration in DRY_RUN mode...'
@@ -123,25 +92,29 @@ async function main() {
 
   const social = await migrateSocialAccounts()
   const resources = await migrateUserResources()
-  const whatsapp = await migrateWhatsAppConfigs()
 
+  // eslint-disable-next-line no-console
   console.log('')
+  // eslint-disable-next-line no-console
   console.log('Migration summary:')
+  // eslint-disable-next-line no-console
   console.log('------------------')
+  // eslint-disable-next-line no-console
   console.log(
     `SocialAccount     total=${social.total} updated=${social.updated} skipped=${social.skipped}`
   )
+  // eslint-disable-next-line no-console
   console.log(
     `UserResource      total=${resources.total} updated=${resources.updated} skipped=${resources.skipped}`
   )
-  console.log(
-    `WhatsAppConfig    total=${whatsapp.total} updated=${whatsapp.updated} skipped=${whatsapp.skipped}`
-  )
+  // eslint-disable-next-line no-console
   console.log('')
 
   if (DRY_RUN) {
+    // eslint-disable-next-line no-console
     console.log('No database changes were written.')
   } else {
+    // eslint-disable-next-line no-console
     console.log('Secret migration completed successfully.')
   }
 }
