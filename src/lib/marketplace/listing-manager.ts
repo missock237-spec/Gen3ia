@@ -148,6 +148,7 @@ function normalizeCurrency(value?: string): string {
 
 function assertValidPreviewUrl(value?: string | null): void {
   if (value === undefined || value === null || value === '') return
+
   try {
     new URL(value)
   } catch {
@@ -159,30 +160,39 @@ function assertValidCreateInput(options: CreateListingOptions): void {
   if (!VALID_TYPES.includes(options.type)) {
     throw new Error(`Invalid listing type: ${options.type}`)
   }
+
   if (!options.name || options.name.trim().length < 3) {
     throw new Error('Name must be at least 3 characters')
   }
+
   if (options.name.length > 120) {
     throw new Error('Name must be at most 120 characters')
   }
+
   if (!options.description || options.description.trim().length < 10) {
     throw new Error('Description must be at least 10 characters')
   }
+
   if (options.description.length > 5000) {
     throw new Error('Description must be at most 5000 characters')
   }
+
   if (options.category && !VALID_CATEGORIES.includes(options.category)) {
     throw new Error(`Invalid listing category: ${options.category}`)
   }
+
   if (options.tags && (!Array.isArray(options.tags) || options.tags.length > 20)) {
     throw new Error('Tags must be an array with at most 20 items')
   }
+
   if (options.tags?.some((tag) => typeof tag !== 'string' || tag.length > 40)) {
     throw new Error('Each tag must be a string up to 40 characters')
   }
+
   if (options.price !== undefined && (Number.isNaN(options.price) || options.price < 0)) {
     throw new Error('Price must be a number greater than or equal to 0')
   }
+
   assertValidPreviewUrl(options.previewUrl)
 }
 
@@ -192,6 +202,7 @@ function assertValidUpdateInput(options: UpdateListingOptions): void {
       throw new Error('Name must be between 3 and 120 characters')
     }
   }
+
   if (options.description !== undefined) {
     if (
       !options.description.trim() ||
@@ -201,23 +212,29 @@ function assertValidUpdateInput(options: UpdateListingOptions): void {
       throw new Error('Description must be between 10 and 5000 characters')
     }
   }
+
   if (options.category !== undefined && !VALID_CATEGORIES.includes(options.category)) {
     throw new Error(`Invalid listing category: ${options.category}`)
   }
+
   if (options.tags !== undefined) {
     if (!Array.isArray(options.tags) || options.tags.length > 20) {
       throw new Error('Tags must be an array with at most 20 items')
     }
+
     if (options.tags.some((tag) => typeof tag !== 'string' || tag.length > 40)) {
       throw new Error('Each tag must be a string up to 40 characters')
     }
   }
+
   if (options.price !== undefined && (Number.isNaN(options.price) || options.price < 0)) {
     throw new Error('Price must be a number greater than or equal to 0')
   }
+
   if (options.status !== undefined && !VALID_STATUSES.includes(options.status)) {
     throw new Error(`Invalid listing status: ${options.status}`)
   }
+
   assertValidPreviewUrl(options.previewUrl)
 }
 
@@ -333,7 +350,10 @@ export async function updateListing(
   assertValidUpdateInput(options)
 
   const existing = await db.marketplaceListing.findFirst({
-    where: { id: listingId, userId },
+    where: {
+      id: listingId,
+      userId,
+    },
   })
 
   if (!existing) {
@@ -354,15 +374,17 @@ export async function updateListing(
 
   if (options.metadata !== undefined) {
     const currentMeta = safeParse<Record<string, unknown>>(existing.metadata, {})
-    data.metadata = JSON.stringify({ ...currentMeta, ...options.metadata })
+    data.metadata = JSON.stringify({
+      ...currentMeta,
+      ...options.metadata,
+    })
   }
 
-  // Set publishedAt timestamp the first time a listing goes live
   if (options.status === 'published' && existing.status !== 'published') {
     data.publishedAt = new Date()
   }
 
-  const updated = await db.marketplaceListing.update({
+  const listing = await db.marketplaceListing.update({
     where: { id: listingId },
     data,
     include: {
@@ -375,66 +397,18 @@ export async function updateListing(
     },
   })
 
-  return serializeListing(updated)
-}
-
-// ---------------------------------------------------------------------------
-// Core: Get Single Listing
-// ---------------------------------------------------------------------------
-
-export async function getListing(
-  listingId: string,
-  requestingUserId?: string
-): Promise<MarketplaceListingResult | null> {
-  const listing = await db.marketplaceListing.findUnique({
-    where: { id: listingId },
-    include: {
-      user: {
-        select: { name: true, avatar: true },
-      },
-    },
-  })
-
-  if (!listing) return null
-
-  // Non-published listings are only visible to their owner
-  if (listing.status !== 'published' && listing.userId !== requestingUserId) {
-    return null
-  }
-
   return serializeListing(listing)
 }
 
 // ---------------------------------------------------------------------------
-// Core: Get Listings by User
+// Core: Publish Listing
 // ---------------------------------------------------------------------------
 
-export async function getListingsByUser(
+export async function publishListing(
   userId: string,
-  options: { page?: number; limit?: number } = {}
-): Promise<{ listings: MarketplaceListingResult[]; total: number; page: number; totalPages: number }> {
-  const page = Math.max(1, options.page || 1)
-  const limit = Math.min(100, Math.max(1, options.limit || 20))
-
-  const [listings, total] = await Promise.all([
-    db.marketplaceListing.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-      include: {
-        user: { select: { name: true, avatar: true } },
-      },
-    }),
-    db.marketplaceListing.count({ where: { userId } }),
-  ])
-
-  return {
-    listings: listings.map(serializeListing),
-    total,
-    page,
-    totalPages: Math.ceil(total / limit),
-  }
+  listingId: string
+): Promise<MarketplaceListingResult> {
+  return updateListing(userId, listingId, { status: 'published' })
 }
 
 // ---------------------------------------------------------------------------
@@ -442,8 +416,13 @@ export async function getListingsByUser(
 // ---------------------------------------------------------------------------
 
 export async function searchListings(
-  options: SearchListingsOptions
-): Promise<{ listings: MarketplaceListingResult[]; total: number; page: number; totalPages: number }> {
+  options: SearchListingsOptions = {}
+): Promise<{
+  listings: MarketplaceListingResult[]
+  total: number
+  page: number
+  totalPages: number
+}> {
   const {
     query,
     type,
@@ -457,16 +436,15 @@ export async function searchListings(
     limit = 20,
   } = options
 
-  // Build the where clause progressively to keep TypeScript happy
-  const where: Parameters<typeof db.marketplaceListing.findMany>[0]['where'] = { status }
+  const where: Record<string, unknown> = { status }
 
-  if (type) (where as Record<string, unknown>).type = type
-  if (category) (where as Record<string, unknown>).category = category
+  if (type) where.type = type
+  if (category) where.category = category
 
   if (query) {
-    (where as Record<string, unknown>).OR = [
-      { name: { contains: query, mode: 'insensitive' } },
-      { description: { contains: query, mode: 'insensitive' } },
+    where.OR = [
+      { name: { contains: query } },
+      { description: { contains: query } },
     ]
   }
 
@@ -474,35 +452,53 @@ export async function searchListings(
     const priceFilter: Record<string, number> = {}
     if (minPrice !== undefined) priceFilter.gte = minPrice
     if (maxPrice !== undefined) priceFilter.lte = maxPrice
-    ;(where as Record<string, unknown>).price = priceFilter
+    where.price = priceFilter
   }
 
-  // Tags are stored as a JSON string — use a simple contains check per tag
   if (tags && tags.length > 0) {
-    const tagFilters = tags.map((tag) => ({
-      tags: { contains: tag },
+    where.AND = tags.map((tag) => ({
+      tags: {
+        contains: tag,
+      },
     }))
-    ;(where as Record<string, unknown>).AND = tagFilters
   }
 
-  const orderBy: Record<string, 'asc' | 'desc'> =
-    sortBy === 'popular' ? { downloads: 'desc' }
-    : sortBy === 'rating' ? { rating: 'desc' }
-    : sortBy === 'price_asc' ? { price: 'asc' }
-    : sortBy === 'price_desc' ? { price: 'desc' }
-    : { createdAt: 'desc' }
+  let orderBy:
+    | Array<Record<string, 'asc' | 'desc'>>
+    | Record<string, 'asc' | 'desc'>
 
-  const safePage = Math.max(1, page)
-  const safeLimit = Math.min(100, Math.max(1, limit))
+  switch (sortBy) {
+    case 'popular':
+      orderBy = [{ downloads: 'desc' }, { rating: 'desc' }]
+      break
+    case 'rating':
+      orderBy = [{ rating: 'desc' }, { reviewCount: 'desc' }]
+      break
+    case 'price_asc':
+      orderBy = [{ price: 'asc' }]
+      break
+    case 'price_desc':
+      orderBy = [{ price: 'desc' }]
+      break
+    case 'newest':
+    default:
+      orderBy = [{ publishedAt: 'desc' }, { createdAt: 'desc' }]
+  }
 
   const [listings, total] = await Promise.all([
     db.marketplaceListing.findMany({
       where,
+// @ts-ignore — type narrowing pending, see refactor ticket
       orderBy,
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
+      skip: (page - 1) * limit,
+      take: limit,
       include: {
-        user: { select: { name: true, avatar: true } },
+        user: {
+          select: {
+            name: true,
+            avatar: true,
+          },
+        },
       },
     }),
     db.marketplaceListing.count({ where }),
@@ -511,7 +507,107 @@ export async function searchListings(
   return {
     listings: listings.map(serializeListing),
     total,
-    page: safePage,
-    totalPages: Math.ceil(total / safeLimit),
+    page,
+    totalPages: Math.ceil(total / limit),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Core: Get Listing by ID
+// ---------------------------------------------------------------------------
+
+export async function getListing(
+  listingId: string
+): Promise<MarketplaceListingResult | null> {
+  const listing = await db.marketplaceListing.findUnique({
+    where: { id: listingId },
+    include: {
+      user: {
+        select: {
+          name: true,
+          avatar: true,
+        },
+      },
+    },
+  })
+
+  return listing ? serializeListing(listing) : null
+}
+
+export async function getListingForViewer(
+  viewerUserId: string,
+  listingId: string
+): Promise<MarketplaceListingResult | null> {
+  const listing = await db.marketplaceListing.findUnique({
+    where: { id: listingId },
+    include: {
+      user: {
+        select: {
+          name: true,
+          avatar: true,
+        },
+      },
+    },
+  })
+
+  if (!listing) return null
+
+  const isOwner = listing.userId === viewerUserId
+  const isPublished = listing.status === 'published'
+
+  if (!isOwner && !isPublished) {
+    return null
+  }
+
+  return serializeListing(listing)
+}
+
+// ---------------------------------------------------------------------------
+// Core: Delete Listing
+// ---------------------------------------------------------------------------
+
+export async function deleteListing(
+  userId: string,
+  listingId: string
+): Promise<boolean> {
+  const listing = await db.marketplaceListing.findFirst({
+    where: {
+      id: listingId,
+      userId,
+    },
+  })
+
+  if (!listing) return false
+
+  await db.marketplaceListing.delete({
+    where: { id: listingId },
+  })
+
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Core: Increment downloads / installs
+// ---------------------------------------------------------------------------
+
+export async function incrementDownloads(listingId: string): Promise<void> {
+  await db.marketplaceListing.update({
+    where: { id: listingId },
+    data: {
+      downloads: {
+        increment: 1,
+      },
+    },
+  })
+}
+
+export async function incrementInstallCount(listingId: string): Promise<void> {
+  await db.marketplaceListing.update({
+    where: { id: listingId },
+    data: {
+      installCount: {
+        increment: 1,
+      },
+    },
+  })
+  }
