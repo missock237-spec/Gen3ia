@@ -14,23 +14,29 @@ export interface AuthState {
   user: User | null;
   hydrate: () => Promise<void>;
   validateSession: () => Promise<boolean>;
-  logout: () => void;
+  /** Resets local state AND calls POST /api/auth/logout server-side. */
+  logout: () => Promise<void>;
   /** Legacy alias for hydrate — fetch session and populate user. */
   login: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  isAuthenticated: true,
-  isLoading: false,
+  // Sécurité: jamais authentifié par défaut. isLoading=true jusqu'à hydrate()
+  // pour que l'UI affiche un loader plutôt que le dashboard pendant la vérif.
+  isAuthenticated: false,
+  isLoading: true,
   user: null,
   hydrate: async () => {
     try {
-      const res = await fetch('/api/auth/session');
+      // Utilise /api/auth/me (route existante). /api/auth/session n'existe pas
+      // et renvoyait 404 → hydrate échouait silencieusement à chaque appel.
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         if (data?.user) {
           set({
             isAuthenticated: true,
+            isLoading: false,
             user: {
               id: data.user.id,
               email: data.user.email,
@@ -39,18 +45,29 @@ export const useAuthStore = create<AuthState>((set) => ({
               role: data.user.role || 'user',
             },
           });
+          return;
         }
       }
-    } catch {}
-    set({ isLoading: false });
+      // Pas de session ou réponse non-OK → utilisateur non authentifié
+      set({ isAuthenticated: false, isLoading: false, user: null });
+    } catch (e) {
+      // Erreur réseau/serveur → non authentifié (pas de fuite du dashboard)
+      console.error('[auth/store] hydrate failed:', e);
+      set({ isAuthenticated: false, isLoading: false, user: null });
+    }
   },
   validateSession: async () => {
     try {
-      const res = await fetch('/api/auth/session');
-      return res.ok;
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      return res.ok && !!(await res.json()).user;
     } catch { return false; }
   },
-  logout: () => set({ isAuthenticated: false, user: null }),
+  logout: async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    set({ isAuthenticated: false, isLoading: false, user: null });
+  },
   login: async () => {
     // Legacy alias — delegates to hydrate
     await useAuthStore.getState().hydrate();
