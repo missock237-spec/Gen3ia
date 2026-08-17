@@ -1,12 +1,17 @@
 // ============================================================
-// Gen3ia — Service Worker v1
+// Gen3ia — Service Worker v2
 // ============================================================
 //  Cache-first pour assets statiques (économise la data)
 //  Network-first pour API (données fraîches si connecté)
 //  Background sync pour les exécutions d'agents en attente
+//
+//  v2 — bump pour invalider les caches navigateur après le fix
+//  auth store (T17) + middleware (T18). Les navigateurs qui ont
+//  déjà le SW v1 en cache vont: charger le nouveau SW → activate
+//  → supprimer les caches v1 → re-fetch les pages/API fraîches.
 // ============================================================
 
-const CACHE_VERSION = 'gen3ia-v1';
+const CACHE_VERSION = 'gen3ia-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 
@@ -94,13 +99,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation : fallback vers la page hors-ligne
+  // Navigation : network-first (pas cache-first) pour éviter de servir
+  // une vieille version du HTML/index. Le fallback cache n'est utilisé
+  // qu'en cas de panne réseau. Pour les assets /_next/static/* (qui sont
+  // hashés par build), le cache-first reste sûr (cf. sw logic ci-dessus).
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
+          // Si la réponse est OK, on met en cache pour fallback offline
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
+          }
           return response;
         })
         .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
