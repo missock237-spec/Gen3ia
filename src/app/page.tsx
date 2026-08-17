@@ -48,7 +48,7 @@ function AppContent() {
   useEffect(() => {
     const handleUnauthorized = () => {
       validatedRef.current = false;
-      logout();
+      void logout();
     };
     window.addEventListener('auth:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
