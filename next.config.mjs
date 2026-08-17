@@ -24,12 +24,18 @@ const securityHeaders = [
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
 ];
 
-// ——— Redirections permanentes (301) ———
+// ——— Redirections temporaires (307) — pas permanentes (307) ———
+// IMPORTANT: on utilise 307 (Temporary Redirect) et NON 308 (Permanent)
+// pour éviter que le navigateur ne cache la redirection côté client.
+// Avec 308, un navigateur qui a visité la page ne repasse plus par le
+// serveur et applique la redirection à vie, même si on la supprime
+// ensuite. 307 force une vérification serveur à chaque fois.
 const redirects = () => [
-  { source: '/home', destination: '/', permanent: true },
-  { source: '/login', destination: '/auth/signin', permanent: true },
-  { source: '/signup', destination: '/auth/signup', permanent: true },
-  { source: '/dashboard/app', destination: '/dashboard', permanent: true },
+  { source: '/home', destination: '/', permanent: false },
+  // /login, /signup, /dashboard/app retirés — les routes natives existent:
+  // /login (src/app/(auth)/login/page.tsx) et /dashboard (src/app/(dashboard)/...)
+  // Les rediriger vers /auth/signin (qui n'existe pas) causait un 404 après 308.
+  { source: '/dashboard/app', destination: '/dashboard', permanent: false },
 ];
 
 const nextConfig = {
@@ -72,8 +78,30 @@ const nextConfig = {
     return [
       { source: '/:path*', headers: securityHeaders },
       {
+        // Assets statiques Next.js: hashés par build → cache immutable.
+        // Le hash change à chaque build, donc si le navigateur a une vieille
+        // version en cache, il la utilisera mais le HTML demandera les
+        // nouveaux hashes → pas de stale bug.
         source: '/_next/static/(.*)',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        // HTML: ne JAMAIS cacher — sinon le navigateur sert une vieille
+        // version sans re-demander le serveur. Sans ce header, Vercel
+        // ajoute déjà "cache-control: public, max-age=0, must-revalidate"
+        // ce qui force une revalidation. On l'explicite ici pour être sûr.
+        source: '/',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+        ],
+      },
+      {
+        // /sw.js: ne JAMAIS cacher — sinon le navigateur garde un vieux SW
+        // qui sert du vieux contenu. Le SW lui-même gère le cache applicatif.
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+        ],
       },
     ];
   },
