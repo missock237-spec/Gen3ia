@@ -48,6 +48,12 @@ const PUBLIC_PATHS = [
   '/api/auth/reset-password',
   '/api/auth/verify-email',
   '/api/auth/send-verification',
+  // /api/auth/me est publique : un client non authentifié doit pouvoir
+  // demander "est-ce que j'ai une session?" pour décider d'afficher le
+  // dashboard ou la landing. La route retourne { user: null } si pas de
+  // session valide — ce qui est une réponse publique, pas une fuite.
+  '/api/auth/me',
+  '/api/auth/session',
   '/api/health',
   '/api/health/features',
   '/api/register',
