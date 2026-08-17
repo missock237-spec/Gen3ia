@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthStore, useAppStore } from '@/lib/store';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppHeader } from '@/components/layout/app-header';
@@ -19,40 +19,71 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import HardTechLanding from '@/components/landing/hardtech-landing';
 
 function AppContent() {
-  const { isAuthenticated, isLoading, hydrate, validateSession, logout } = useAuthStore();
-  const { currentView, fetchApprovalCount } = useAppStore();
+  // Sélecteurs zustand INDIVIDUELS (retournent des références stables)
+  // → évite les re-rendus infinis dus à un objet déstructuré recréé à chaque rendu.
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const hydrate = useAuthStore((s) => s.hydrate);
+  const validateSession = useAuthStore((s) => s.validateSession);
+  const logout = useAuthStore((s) => s.logout);
+
+  const currentView = useAppStore((s) => s.currentView);
+  const fetchApprovalCount = useAppStore((s) => s.fetchApprovalCount);
+
   const hydratedRef = useRef(false);
   const validatedRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // --- Fix 2 : logs debug pour hydrate() ---
+  // Trace l'exécution et les erreurs de hydrate() côté navigateur.
   useEffect(() => {
     if (!hydratedRef.current) {
       hydratedRef.current = true;
-      hydrate().catch((err: Error) => {
-        setLoadError(err.message || 'Erreur de chargement');
-      });
+      hydrate()
+        .then(() => {
+          console.log('[gen3ia] hydrate OK');
+        })
+        .catch((err: Error) => {
+          console.error('[gen3ia] hydrate error:', err);
+          setLoadError(err?.message || 'Erreur de chargement');
+        });
     }
   }, [hydrate]);
 
+  // --- Fix 2 : logs debug pour validateSession() ---
+  // Trace les erreurs de validateSession() côté navigateur.
   useEffect(() => {
     if (isAuthenticated && !validatedRef.current && !loadError) {
       validatedRef.current = true;
-      validateSession().then(valid => {
-        if (valid) fetchApprovalCount();
-      }).catch(() => {
-        setLoadError('Session expirée, veuillez vous reconnecter');
-      });
+      validateSession()
+        .then((valid) => {
+          if (valid) {
+            console.log('[gen3ia] validateSession OK — session active');
+            fetchApprovalCount().catch((err) => {
+              console.warn('[gen3ia] fetchApprovalCount failed:', err);
+            });
+          } else {
+            console.warn('[gen3ia] validateSession : session expirée');
+            setLoadError('Session expirée, veuillez vous reconnecter');
+          }
+        })
+        .catch((err) => {
+          console.error('[gen3ia] validateSession error:', err);
+          setLoadError('Session expirée, veuillez vous reconnecter');
+        });
     }
   }, [isAuthenticated, loadError, validateSession, fetchApprovalCount]);
 
+  // --- Fix 4 : logout est stable (zustand), callback stable aussi ---
+  const handleUnauthorized = useCallback(() => {
+    validatedRef.current = false;
+    void logout();
+  }, [logout]);
+
   useEffect(() => {
-    const handleUnauthorized = () => {
-      validatedRef.current = false;
-      void logout();
-    };
     window.addEventListener('auth:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
-  }, [logout]);
+  }, [handleUnauthorized]);
 
   if (loadError) {
     return (
