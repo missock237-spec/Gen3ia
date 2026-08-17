@@ -23,7 +23,16 @@ export type AuditAction =
   | 'BUDGET_EXCEEDED'
   | 'SECURITY_ALERT'
   | 'CODE_EXECUTED'
-  | 'ADMIN_ACTION';
+  | 'ADMIN_ACTION'
+  // Evolution Engine actions
+  | 'EVOLUTION_TRIGGERED'
+  | 'EVOLUTION_FAILED'
+  | 'EVOLUTION_CRASH_RECOVERED'
+  | 'EVOLUTION_HUMAN_APPROVED'
+  | 'EVOLUTION_PR_OPENED'
+  | 'EVOLUTION_PR_MERGED'
+  | 'EVOLUTION_ROLLBACK_PERFORMED'
+  | 'EVOLUTION_SAFETY_BLOCKED';
 
 export type AuditSeverity = 'info' | 'warning' | 'error' | 'critical';
 
