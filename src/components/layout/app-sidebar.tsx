@@ -95,7 +95,7 @@ export function AppSidebar() {
           </div>
         )}
         <button
-          onClick={logout}
+          onClick={() => { void logout(); }}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-destructive transition-colors"
           title="Déconnexion"
         >
