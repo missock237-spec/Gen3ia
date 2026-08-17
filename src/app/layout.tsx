@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import './globals.css';
@@ -88,9 +89,25 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  // ============================================================
+  // T24 — Propagation du nonce CSP aux scripts inline
+  // ============================================================
+  //  Le middleware (src/middleware.ts) génère un nonce par requête
+  //  et le place dans l'header "x-nonce". Next.js 15 App Router
+  //  propage automatiquement le nonce passé à <html nonce={...}>
+  //  vers TOUS les scripts inline générés par Next.js (notamment
+  //  les buffers RSC __next_f.push([...]) et les scripts de
+  //  preload). Sans cette propagation, la CSP bloque ces scripts
+  //  en production → React ne peut pas hydrater l'HTML SSR →
+  //  le spinner "Chargement de Gen3ia..." reste bloqué indéfiniment.
+  // ============================================================
+  const nonce = (await headers()).get('x-nonce') ?? '';
+
   return (
-    <html lang="fr" suppressHydrationWarning>
+    <html lang="fr" nonce={nonce} suppressHydrationWarning>
       <head>
         <link rel="me" href={siteConfig.githubUrl} />
         <link rel="author" href={`${siteUrl}/about`} />
@@ -109,6 +126,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Toaster richColors position="top-right" />
         </ThemeProvider>
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
