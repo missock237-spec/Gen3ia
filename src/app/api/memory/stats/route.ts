@@ -5,10 +5,6 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createLogger } from '@/lib/logger';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('memory-stats');
 

@@ -7,9 +7,6 @@ import {
   updateSecureUserResource,
 } from '@/lib/secure-user-resource';
 
-
-
-
 export const dynamic = "force-dynamic";
 function parseConfig(config: string) {
   try {

@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAgentEngine } from '@/lib/agent-engine';
 import { applySecurity, secureResponse } from '@/lib/security';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {

@@ -6,10 +6,6 @@ import { audioGenerator } from "@/lib/audio-generator";
 import { logger } from "@/lib/logger";
 import { withAuth, type RouteParams } from "@/lib/with-auth";
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {

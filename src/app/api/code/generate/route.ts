@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const ALLOWED_LANGUAGES = ['javascript','typescript','python','html','css','jsx','tsx','sql','bash','json','yaml','markdown'];
 

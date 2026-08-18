@@ -5,10 +5,6 @@
 import { NextResponse } from 'next/server';
 import { getServerStatus } from '@/lib/ai-integration-server';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {

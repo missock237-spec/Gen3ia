@@ -8,10 +8,6 @@ import { NextRequest } from 'next/server';
 import { getVoiceAgentEngine } from '@/lib/voice/voice-agent';
 import { db } from '@/lib/db';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {

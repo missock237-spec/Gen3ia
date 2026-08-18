@@ -9,10 +9,6 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { db } from '@/lib/db';
 import { encryptAuthConfig, getMCPClientManager } from '@/lib/connectors/mcp-client';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(
   request: NextRequest,

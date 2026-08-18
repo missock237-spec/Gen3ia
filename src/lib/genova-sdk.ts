@@ -70,7 +70,6 @@ class GenovaClient {
     return this.request("POST", "/api/audio/generate", params);
   }
 
-
   async getSubscriptionPlans() {
     return this.request("GET", "/api/payments/plans", undefined);
   }

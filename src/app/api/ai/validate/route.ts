@@ -6,10 +6,6 @@ import { createAIRouter } from '@/lib/ai-router';
 import { db } from '@/lib/db';
 import { applySecurity } from '@/lib/security';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('ai-validate');
 

@@ -12,10 +12,6 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getServerSession } from '@/lib/auth';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('authorizations');
 

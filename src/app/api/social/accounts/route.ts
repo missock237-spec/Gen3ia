@@ -3,10 +3,6 @@ import { db } from '@/lib/db';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createSecureSocialAccount } from '@/lib/secure-social-account';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const VALID_PLATFORMS = ['youtube', 'facebook', 'instagram', 'tiktok', 'linkedin'];
 

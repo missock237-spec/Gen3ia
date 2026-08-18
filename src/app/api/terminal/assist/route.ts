@@ -8,10 +8,6 @@ import { terminalAssistant } from '@/lib/terminal-assistant';
 import { applySecurity } from '@/lib/security';
 import { createLogger } from '@/lib/logger';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('api-terminal-assist');
 

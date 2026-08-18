@@ -5,10 +5,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getIntegrationRegistry } from '@/lib/integration-engine/registry';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(
   request: NextRequest,

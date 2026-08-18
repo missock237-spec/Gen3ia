@@ -23,6 +23,16 @@
 //    - evolutionLog        -> 'evolution_logs'
 //    - selfImprovement     -> 'evolution_self_improvements'
 //    - metaEvaluation      -> 'evolution_meta_evaluations'
+//
+//  T28 — Nouveaux modules (Nvidia-rivant) :
+//    - modelRegistryEntry  -> 'model_registry_entries'
+//    - trainingDataset     -> 'training_datasets'
+//    - trainingRun         -> 'training_runs'
+//    - gpuNode             -> 'gpu_nodes'
+//    - gpuJob              -> 'gpu_jobs'
+//    - kgEntity            -> 'kg_entities'
+//    - kgRelation          -> 'kg_relations'
+//    - kgChunk             -> 'kg_chunks'
 // ============================================================
 import {
   db as baseDb,
@@ -57,11 +67,23 @@ const evolution = {
   metaEvaluation: makeRepo('evolution_meta_evaluations'),
 } as const;
 
+const t28 = {
+  modelRegistryEntry: makeRepo('model_registry_entries'),
+  trainingDataset: makeRepo('training_datasets'),
+  trainingRun: makeRepo('training_runs'),
+  gpuNode: makeRepo('gpu_nodes'),
+  gpuJob: makeRepo('gpu_jobs'),
+  kgEntity: makeRepo('kg_entities'),
+  kgRelation: makeRepo('kg_relations'),
+  kgChunk: makeRepo('kg_chunks'),
+} as const;
+
 export const dbExt = {
   ...baseDb,
   aiCost: baseDb.aICost,
   ...legacy,
   ...evolution,
+  ...t28,
 } as const;
 
 export const db = dbExt;

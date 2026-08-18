@@ -7,10 +7,6 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { createLogger } from '@/lib/logger';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('api-workflow-collaborators');
 

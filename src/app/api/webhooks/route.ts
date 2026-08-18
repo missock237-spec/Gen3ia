@@ -4,10 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { webhookEngine } from '@/lib/webhook-engine';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });

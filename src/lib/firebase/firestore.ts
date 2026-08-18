@@ -38,7 +38,6 @@ import {
 
 import { getAdminDb } from './admin';
 
-
 // ============================================================
 // Transaction context — exposes a subset of Firestore Transaction
 // ============================================================

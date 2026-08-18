@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dashboardService } from "@/lib/dashboard";
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(request) {
   try {

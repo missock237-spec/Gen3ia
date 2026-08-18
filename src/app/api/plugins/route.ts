@@ -4,10 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { pluginSDK } from '@/lib/plugin-sdk';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });

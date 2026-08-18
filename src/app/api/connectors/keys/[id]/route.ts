@@ -8,10 +8,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getAccessKeyManager } from '@/lib/connectors/access-key-manager';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(
   request: NextRequest,

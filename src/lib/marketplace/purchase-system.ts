@@ -1,47 +1,67 @@
 /**
- * Purchase System — Marketplace purchases
+ * Purchase System — Marketplace purchases (SEBPAY)
  *
- * Business rules:
- * - Seller chooses the price
- * - Platform commission = 25%
- * - Seller revenue = 75%
- * - Free listings are allowed when price = 0
- * - Paid listings are completed after Stripe webhook confirmation
+ * RÈGLES BUSINESS (T28 — Migration Stripe → Sebpay):
+ *   - Le vendeur choisit son prix
+ *   - Commission plateforme = 20% (constante MARKETPLACE_COMMISSION_RATE)
+ *   - Part vendeur        = 80% (constante MARKETPLACE_SELLER_RATE)
+ *   - Listings gratuits (price = 0) sont permis → pas de commission
+ *   - Les achats payants passent par Sebpay Mobile Money
+ *   - Sur confirmation webhook Sebpay → AUTO-PAYOUT 80% au créateur
+ *
+ *  Compatibilité API historique :
+ *   - purchaseListing(opts)            — conserve la même signature
+ *   - finalizeMarketplaceStripePurchase — RENOMMÉE en finalizeMarketplaceSebpayPurchase
+ *     (l'ancien nom est conservé comme alias pour compat)
+ *   - verifyAccess                     — inchangé
+ *   - getPurchaseHistory               — inchangé
  */
 
-import { db } from '@/lib/db'
-import Stripe from 'stripe'
+import { db } from '@/lib/db';
+import {
+  sebpayMarketplace,
+  MARKETPLACE_COMMISSION_RATE,
+  MARKETPLACE_SELLER_RATE,
+  type SebpayCurrency,
+} from '@/lib/payment/sebpay';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface PurchaseOptions {
-  listingId: string
-  userId: string
+  listingId: string;
+  userId: string;
+  /** Phone MoMo du buyer (requis si listing payant) */
+  phone?: string;
+  /** Provider MoMo préféré (mtn, orange, wave, ...) */
+  provider?: string;
+  customerEmail?: string;
+  customerName?: string;
 }
 
 export interface PurchaseResult {
-  id: string
-  listingId: string
-  userId: string
-  price: number
-  currency: string
-  status: string
-  metadata: Record<string, unknown>
-  createdAt: Date
+  id: string;
+  listingId: string;
+  userId: string;
+  price: number;
+  currency: string;
+  status: string;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
   listing?: {
-    name: string
-    type: string
-    config: Record<string, unknown>
-  }
+    name: string;
+    type: string;
+    config: Record<string, unknown>;
+  };
 }
 
 export interface MarketplaceCheckoutResult {
-  mode: 'free' | 'stripe'
-  purchase?: PurchaseResult
-  checkoutUrl?: string
-  sessionId?: string
+  /** 'free' pour listings gratuits, 'sebpay' sinon */
+  mode: 'free' | 'sebpay';
+  purchase?: PurchaseResult;
+  checkoutUrl?: string;
+  transactionId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,89 +70,37 @@ export interface MarketplaceCheckoutResult {
 
 function safeParse<T>(json: string, fallback: T): T {
   try {
-    return JSON.parse(json) as T
+    return JSON.parse(json) as T;
   } catch {
-    return fallback
+    return fallback;
   }
 }
 
 function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100
-}
-
-function toStripeAmount(value: number): number {
-  return Math.round(value * 100)
-}
-
-function getStripe(): Stripe {
-  const key = process.env.STRIPE_SECRET_KEY
-  if (!key) {
-    throw new Error('STRIPE_SECRET_KEY environment variable is not set')
-  }
-
-  return new Stripe(key, {
-    typescript: true,
-  })
+  return Math.round(value * 100) / 100;
 }
 
 function getAppUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 }
 
-function normalizeCurrency(value: string): string {
-  return value.trim().toLowerCase()
-}
-
-async function getOrCreateStripeCustomerForMarketplace(userId: string): Promise<string> {
-  const existingSubscription = await db.subscription.findFirst({
-    where: {
-      userId,
-      stripeCustomerId: { not: null },
-    },
-    select: {
-      stripeCustomerId: true,
-    },
-  })
-
-  if (existingSubscription?.stripeCustomerId) {
-    return existingSubscription.stripeCustomerId
-  }
-
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: {
-      email: true,
-      name: true,
-    },
-  })
-
-  if (!user) {
-    throw new Error(`User not found: ${userId}`)
-  }
-
-  const customer = await getStripe().customers.create({
-    email: user.email,
-    name: user.name,
-    metadata: { userId },
-  })
-
-  return customer.id
+function normalizeCurrency(value: string): SebpayCurrency {
+  const c = value.trim().toUpperCase();
+  if (['XAF', 'XOF', 'CDF', 'EUR', 'USD'].includes(c)) return c as SebpayCurrency;
+  return 'XAF';
 }
 
 async function getListingOrThrow(listingId: string) {
   const listing = await db.marketplaceListing.findUnique({
     where: { id: listingId },
-  })
-
+  });
   if (!listing) {
-    throw new Error('Listing not found')
+    throw new Error('Listing not found');
   }
-
   if (listing.status !== 'published') {
-    throw new Error('Listing is not available for purchase')
+    throw new Error('Listing is not available for purchase');
   }
-
-  return listing
+  return listing;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,16 +108,17 @@ async function getListingOrThrow(listingId: string) {
 // ---------------------------------------------------------------------------
 
 export async function purchaseListing(
-  options: PurchaseOptions
+  options: PurchaseOptions,
 ): Promise<MarketplaceCheckoutResult> {
-  const { listingId, userId } = options
+  const { listingId, userId } = options;
 
-  const listing = await getListingOrThrow(listingId)
+  const listing = await getListingOrThrow(listingId);
 
   if (listing.userId === userId) {
-    throw new Error('Cannot purchase your own listing')
+    throw new Error('Cannot purchase your own listing');
   }
 
+  // Si l'utilisateur a déjà acheté → retourne l'achat existant
   const existingPurchase = await db.marketplacePurchase.findUnique({
     where: {
       userId_listingId: {
@@ -157,7 +126,7 @@ export async function purchaseListing(
         userId,
       },
     },
-  })
+  });
 
   if (existingPurchase) {
     return {
@@ -167,45 +136,46 @@ export async function purchaseListing(
         listingId: existingPurchase.listingId,
         userId: existingPurchase.userId,
         price: existingPurchase.price,
-        currency: existingPurchase.currency,
+        currency: (listing.currency as string) || 'XAF',
         status: existingPurchase.status,
-        metadata: safeParse<Record<string, unknown>>(existingPurchase.metadata, {}),
+        metadata: safeParse<Record<string, unknown>>(existingPurchase.metadata as string, {}),
         createdAt: existingPurchase.createdAt,
         listing: {
           name: listing.name,
           type: listing.type,
-          config: safeParse<Record<string, unknown>>(listing.config, {}),
+          config: safeParse<Record<string, unknown>>(listing.config as string, {}),
         },
       },
-    }
+    };
   }
 
-  const salePrice = roundMoney(Number(listing.price || 0))
-  const platformCommission = roundMoney(salePrice * 0.25)
-  const sellerRevenue = roundMoney(salePrice - platformCommission)
+  const salePrice = roundMoney(Number(listing.price || 0));
+  const platformCommission = roundMoney(salePrice * MARKETPLACE_COMMISSION_RATE);
+  const sellerRevenue = roundMoney(salePrice * MARKETPLACE_SELLER_RATE);
+  const currency = normalizeCurrency((listing.currency as string) || 'XAF');
 
-  // Free claim
+  // ─── Free claim (price = 0) ─────────────────────────────────────────
   if (salePrice <= 0) {
     const metadata = {
       type: 'free',
-      commissionRate: 0.25,
-      sellerRate: 0.75,
+      commissionRate: MARKETPLACE_COMMISSION_RATE,
+      sellerRate: MARKETPLACE_SELLER_RATE,
       sellerUserId: listing.userId,
-      sellerRevenue,
-      platformCommission,
+      sellerRevenue: 0,
+      platformCommission: 0,
       claimedAt: new Date().toISOString(),
-    }
+    };
 
     const purchase = await db.marketplacePurchase.create({
       data: {
         listingId,
         userId,
         price: 0,
-        currency: listing.currency,
+        currency,
         status: 'completed',
         metadata: JSON.stringify(metadata),
       },
-    })
+    });
 
     await db.marketplaceListing.update({
       where: { id: listingId },
@@ -213,7 +183,7 @@ export async function purchaseListing(
         downloads: { increment: 1 },
         installCount: { increment: 1 },
       },
-    })
+    });
 
     return {
       mode: 'free',
@@ -221,171 +191,222 @@ export async function purchaseListing(
         id: purchase.id,
         listingId: purchase.listingId,
         userId: purchase.userId,
-        price: purchase.price,
-        currency: purchase.currency,
-        status: purchase.status,
+        price: 0,
+        currency,
+        status: 'completed',
         metadata,
         createdAt: purchase.createdAt,
         listing: {
           name: listing.name,
           type: listing.type,
-          config: safeParse<Record<string, unknown>>(listing.config, {}),
+          config: safeParse<Record<string, unknown>>(listing.config as string, {}),
         },
       },
-    }
+    };
   }
 
-  // Paid checkout
-  const stripe = getStripe()
-  const customerId = await getOrCreateStripeCustomerForMarketplace(userId)
-
-  // Récupérer le compte Stripe Connect du vendeur
-  const seller = await db.user.findUnique({
-    where: { id: listing.userId },
-    select: { stripeConnectAccountId: true, stripeConnectOnboarded: true },
-  })
-
-  const hasConnectedSeller = !!(
-    seller?.stripeConnectAccountId && seller.stripeConnectOnboarded
-  )
-
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    mode: 'payment',
-    payment_method_types: ['card'],
-    line_items: [
-      {
-        price_data: {
-          currency: normalizeCurrency(listing.currency),
-          product_data: {
-            name: listing.name,
-            description: listing.description,
-          },
-          unit_amount: toStripeAmount(salePrice),
-        },
-        quantity: 1,
-      },
-    ],
-    // Destination charge : Stripe route automatiquement 75% vers le vendeur
-    // et garde 25% (application_fee_amount) sur le compte plateforme.
-    // Ne s'applique que si le vendeur a terminé l'onboarding Connect.
-    ...(hasConnectedSeller
-      ? {
-          payment_intent_data: {
-            application_fee_amount: toStripeAmount(platformCommission),
-            transfer_data: {
-              destination: seller!.stripeConnectAccountId!,
-            },
-          },
-        }
-      : {}),
-    success_url: `${getAppUrl()}?marketplace=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${getAppUrl()}?marketplace=cancel`,
-    metadata: {
-      type: 'marketplace_purchase',
-      listingId,
-      buyerUserId: userId,
-      sellerUserId: listing.userId,
-      listingPrice: String(salePrice),
-      currency: listing.currency,
-      platformCommission: String(platformCommission),
-      sellerRevenue: String(sellerRevenue),
-      commissionRate: '0.25',
-      sellerRate: '0.75',
-      sellerConnected: String(hasConnectedSeller),
-    },
-  })
-
-  return {
-    mode: 'stripe',
-    checkoutUrl: session.url || '',
-    sessionId: session.id,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Core: Finalize Stripe marketplace purchase from webhook
-// ---------------------------------------------------------------------------
-
-export async function finalizeMarketplaceStripePurchase(
-  session: Stripe.Checkout.Session
-): Promise<void> {
-  if (session.metadata?.type !== 'marketplace_purchase') {
-    return
+  // ─── Paid checkout (SEBPAY) ─────────────────────────────────────────
+  if (!sebpayMarketplace.isConfigured()) {
+    throw new Error(
+      'SEBPAY_API_KEY non configuré — impossible de traiter les paiements marketplace. ' +
+      'Définissez SEBPAY_API_KEY dans les variables d\'environnement.',
+    );
   }
 
-  const listingId = session.metadata.listingId
-  const userId = session.metadata.buyerUserId
-  const sellerUserId = session.metadata.sellerUserId
-
-  if (!listingId || !userId || !sellerUserId) {
-    throw new Error('Missing marketplace Stripe metadata')
+  if (!options.phone) {
+    throw new Error('Téléphone Mobile Money requis pour un achat marketplace payant.');
   }
 
-  const listing = await getListingOrThrow(listingId)
-
-  const existingPurchase = await db.marketplacePurchase.findUnique({
-    where: {
-      userId_listingId: {
-        listingId,
-        userId,
-      },
-    },
-  })
-
-  if (existingPurchase) {
-    return
-  }
-
-  const salePrice = roundMoney(Number(session.metadata.listingPrice || listing.price || 0))
-  const platformCommission = roundMoney(
-    Number(session.metadata.platformCommission || salePrice * 0.25)
-  )
-  const sellerRevenue = roundMoney(
-    Number(session.metadata.sellerRevenue || salePrice - platformCommission)
-  )
-
-  const sellerConnected = session.metadata?.sellerConnected === 'true'
-
-  const metadata = {
-    type: 'paid',
-    stripeSessionId: session.id,
-    stripePaymentIntentId:
-      typeof session.payment_intent === 'string'
-        ? session.payment_intent
-        : session.payment_intent?.id || null,
-    commissionRate: 0.25,
-    sellerRate: 0.75,
-    sellerUserId,
-    sellerRevenue,
-    platformCommission,
-    sellerConnected,
-    paidAt: new Date().toISOString(),
-  }
-
-  await db.marketplacePurchase.create({
+  const purchase = await db.marketplacePurchase.create({
     data: {
       listingId,
       userId,
       price: salePrice,
-      currency: listing.currency,
+      currency,
+      status: 'pending',
+      metadata: JSON.stringify({
+        type: 'pending_sebpay',
+        commissionRate: MARKETPLACE_COMMISSION_RATE,
+        sellerRate: MARKETPLACE_SELLER_RATE,
+        sellerUserId: listing.userId,
+        sellerRevenue,
+        platformCommission,
+        buyerPhone: options.phone,
+        buyerProvider: options.provider || 'orange',
+      }),
+    },
+  });
+
+  const reference = `mkt_${purchase.id}`;
+  const callbackUrl = `${getAppUrl()}/api/marketplace/webhook`;
+  const redirectUrl = `${getAppUrl()}/marketplace/success?purchaseId=${purchase.id}`;
+  const description = `Achat Gen3ia: ${listing.name} (listing ${listingId.slice(0, 8)})`;
+
+  const result = await sebpayMarketplace.initiatePayment({
+    amount: salePrice,
+    currency,
+    phone: options.phone,
+    provider: (options.provider || 'orange') as never,
+    reference,
+    description,
+    callbackUrl,
+    redirectUrl,
+    customerEmail: options.customerEmail,
+    customerName: options.customerName,
+    metadata: {
+      type: 'marketplace_purchase',
+      listingId,
+      purchaseId: purchase.id,
+      buyerId: userId,
+      sellerId: listing.userId,
+      salePrice: String(salePrice),
+      currency,
+      platformCommission: String(platformCommission),
+      sellerRevenue: String(sellerRevenue),
+      commissionRate: String(MARKETPLACE_COMMISSION_RATE),
+      sellerRate: String(MARKETPLACE_SELLER_RATE),
+    },
+  });
+
+  if (!result.success) {
+    // Marquer l'achat comme failed
+    await db.marketplacePurchase.update({
+      where: { id: purchase.id },
+      data: {
+        status: 'failed',
+        metadata: JSON.stringify({
+          ...(safeParse<Record<string, unknown>>(purchase.metadata as string, {})),
+          sebpayError: result.message || 'unknown',
+        }),
+      },
+    });
+    throw new Error(`Échec d'initiation du paiement Sebpay: ${result.message || 'unknown'}`);
+  }
+
+  // Mettre à jour l'achat avec l'ID de transaction Sebpay
+  await db.marketplacePurchase.update({
+    where: { id: purchase.id },
+    data: {
+      metadata: JSON.stringify({
+        ...(safeParse<Record<string, unknown>>(purchase.metadata as string, {})),
+        sebpayTransactionId: result.transactionId,
+        sebpayPaymentUrl: result.paymentUrl,
+      }),
+    },
+  });
+
+  return {
+    mode: 'sebpay',
+    checkoutUrl: result.paymentUrl || '',
+    transactionId: result.transactionId,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Core: Finalize marketplace Sebpay purchase from webhook
+// ---------------------------------------------------------------------------
+
+export async function finalizeMarketplaceSebpayPurchase(payload: {
+  reference: string;
+  transactionId: string;
+  status: string;
+  amount?: number;
+}): Promise<void> {
+  // La référence Gen3ia est "mkt_<purchaseId>"
+  const refMatch = payload.reference.match(/^mkt_(.+)$/);
+  if (!refMatch) {
+    return; // Not a marketplace purchase
+  }
+  const purchaseId = refMatch[1];
+
+  const purchase = await db.marketplacePurchase.findUnique({
+    where: { id: purchaseId },
+  });
+  if (!purchase) {
+    throw new Error(`Marketplace purchase not found: ${purchaseId}`);
+  }
+  if (purchase.status === 'completed') {
+    return; // Already finalized
+  }
+
+  const listing = await getListingOrThrow(purchase.listingId);
+  const salePrice = roundMoney(Number(payload.amount ?? purchase.price ?? 0));
+  const sellerRevenue = roundMoney(salePrice * MARKETPLACE_SELLER_RATE);
+  const platformCommission = roundMoney(salePrice * MARKETPLACE_COMMISSION_RATE);
+
+  const existingMetadata = safeParse<Record<string, unknown>>(purchase.metadata as string, {});
+  const metadata = {
+    ...existingMetadata,
+    type: 'paid',
+    sebpayTransactionId: payload.transactionId,
+    sebpayReference: payload.reference,
+    commissionRate: MARKETPLACE_COMMISSION_RATE,
+    sellerRate: MARKETPLACE_SELLER_RATE,
+    sellerUserId: listing.userId,
+    sellerRevenue,
+    platformCommission,
+    paidAt: new Date().toISOString(),
+  };
+
+  // Marquer l'achat comme completed + montant net + commission
+  await db.marketplacePurchase.update({
+    where: { id: purchaseId },
+    data: {
       status: 'completed',
-      metadata: JSON.stringify(metadata),
+      price: salePrice,
       sellerRevenue,
       platformCommission,
-      // 'transferred' = Stripe a routé les fonds au vendeur via destination charge
-      // 'platform_held' = vendeur pas encore onboardé, fonds restent sur la plateforme
-      transferStatus: sellerConnected ? 'transferred' : 'platform_held',
+      transferStatus: 'pending_payout',
+      metadata: JSON.stringify(metadata),
     },
-  })
+  });
 
+  // Incrémenter le compteur d'installations
   await db.marketplaceListing.update({
-    where: { id: listingId },
+    where: { id: purchase.listingId },
     data: {
       downloads: { increment: 1 },
       installCount: { increment: 1 },
+      revenue: { increment: sellerRevenue },
     },
-  })
+  });
+
+  // Incrémenter les earnings du créateur
+  await db.user.update({
+    where: { id: listing.userId },
+    data: { creatorEarnings: { increment: sellerRevenue } },
+  });
+
+  // Déclencher AUTO-PAYOUT 80% au créateur via Sebpay
+  await sebpayMarketplace.triggerSellerPayout({
+    sellerId: listing.userId,
+    purchaseId,
+    listingId: purchase.listingId,
+    amount: sellerRevenue,
+    currency: normalizeCurrency((purchase.currency as string) || 'XAF'),
+  });
+}
+
+// Compat: ancien nom utilisé par d'anciens webhooks Stripe.
+// Redirige vers finalizeMarketplaceSebpayPurchase en ignorants les fields Stripe-spécifiques.
+export async function finalizeMarketplaceStripePurchase(
+  sessionLike: { metadata?: Record<string, unknown> | null; payment_intent?: unknown; id?: string },
+): Promise<void> {
+  const meta = sessionLike?.metadata ?? null;
+  if (!meta) return;
+  if (meta.type !== 'marketplace_purchase') return;
+
+  const purchaseId = String(meta.purchaseId || '');
+  const reference = String(meta.reference || `mkt_${purchaseId}`);
+  const transactionId = String(sessionLike?.id || sessionLike?.payment_intent || reference);
+  const status = 'completed';
+
+  return finalizeMarketplaceSebpayPurchase({
+    reference,
+    transactionId,
+    status,
+    amount: meta.salePrice ? Number(meta.salePrice) : undefined,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +415,7 @@ export async function finalizeMarketplaceStripePurchase(
 
 export async function verifyAccess(
   userId: string,
-  listingId: string
+  listingId: string,
 ): Promise<boolean> {
   const listing = await db.marketplaceListing.findUnique({
     where: { id: listingId },
@@ -402,11 +423,11 @@ export async function verifyAccess(
       userId: true,
       status: true,
     },
-  })
+  });
 
-  if (!listing) return false
-  if (listing.status !== 'published') return false
-  if (listing.userId === userId) return true
+  if (!listing) return false;
+  if (listing.status !== 'published') return false;
+  if (listing.userId === userId) return true;
 
   const purchase = await db.marketplacePurchase.findUnique({
     where: {
@@ -418,9 +439,9 @@ export async function verifyAccess(
     select: {
       status: true,
     },
-  })
+  });
 
-  return !!purchase && purchase.status === 'completed'
+  return !!purchase && purchase.status === 'completed';
 }
 
 // ---------------------------------------------------------------------------
@@ -429,15 +450,15 @@ export async function verifyAccess(
 
 export async function getPurchaseHistory(
   userId: string,
-  options: { page?: number; limit?: number } = {}
+  options: { page?: number; limit?: number } = {},
 ): Promise<{
-  purchases: PurchaseResult[]
-  total: number
-  page: number
-  totalPages: number
+  purchases: PurchaseResult[];
+  total: number;
+  page: number;
+  totalPages: number;
 }> {
-  const page = Math.max(1, options.page || 1)
-  const limit = Math.min(100, Math.max(1, options.limit || 20))
+  const page = Math.max(1, options.page || 1);
+  const limit = Math.min(100, Math.max(1, options.limit || 20));
 
   const [purchases, total] = await Promise.all([
     db.marketplacePurchase.findMany({
@@ -458,7 +479,7 @@ export async function getPurchaseHistory(
     db.marketplacePurchase.count({
       where: { userId },
     }),
-  ])
+  ]);
 
   return {
     purchases: purchases.map((p) => ({
@@ -468,16 +489,21 @@ export async function getPurchaseHistory(
       price: p.price,
       currency: p.currency,
       status: p.status,
-      metadata: safeParse<Record<string, unknown>>(p.metadata, {}),
+      metadata: safeParse<Record<string, unknown>>(p.metadata as string, {}),
       createdAt: p.createdAt,
-      listing: {
-        name: p.listing.name,
-        type: p.listing.type,
-        config: safeParse<Record<string, unknown>>(p.listing.config, {}),
-      },
+      listing: p.listing
+        ? {
+            name: (p.listing as { name: string }).name,
+            type: (p.listing as { type: string }).type,
+            config: safeParse<Record<string, unknown>>(
+              (p.listing as { config: string }).config,
+              {},
+            ),
+          }
+        : undefined,
     })),
     total,
     page,
     totalPages: Math.ceil(total / limit),
-  }
+  };
 }

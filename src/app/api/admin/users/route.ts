@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { getAllUsers, searchUsers, getUserById, updateUserPlan, toggleUserActive, updateUserRole, deleteUser, isAdminRole, logAdminAction } from '@/lib/admin';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 async function verifyAdmin(request: NextRequest) {
   const session = await getServerSession();

@@ -71,14 +71,25 @@ const PROVIDER_CONFIGS: Record<LLMProvider, ProviderConfig> = {
     name: 'groq',
     apiKey: process.env.GROQ_API_KEY || '',
     baseUrl: 'https://api.groq.com/openai/v1',
-    defaultModel: 'mixtral-8x7b-32768',
+    defaultModel: 'llama-3.3-70b-versatile',
     models: {
-      'mixtral-8x7b-32768': { input: 0.27, output: 0.27 },
+      'llama-3.3-70b-versatile': { input: 0.59, output: 0.79 },
       'llama-3.1-70b-versatile': { input: 0.59, output: 0.79 },
-      'llama-3.1-8b-instant': { input: 0.07, output: 0.07 },
+      'llama-3.1-8b-instant': { input: 0.05, output: 0.08 },
+      'llama-3.2-1b-preview': { input: 0.04, output: 0.04 },
+      'llama-3.2-3b-preview': { input: 0.06, output: 0.06 },
+      'llama-3.2-11b-vision-preview': { input: 0.59, output: 0.79 },
+      'llama-3.2-90b-vision-preview': { input: 0.59, output: 0.79 },
+      'mixtral-8x7b-32768': { input: 0.24, output: 0.24 },
+      'gemma2-9b-it': { input: 0.20, output: 0.20 },
+      'deepseek-r1-distill-llama-70b': { input: 0.75, output: 0.99 },
+      'qwen-2.5-coder-32b': { input: 0.29, output: 0.39 },
+      'qwen-2.5-72b-instruct': { input: 0.79, output: 0.79 },
     },
-    weight: 60,
-    timeout: 30000,
+    // Boosté : Groq est notre provider PREFFÉRÉ pour la réflexion agent.
+    // Latence ~150 tokens/s, throughput très élevé, gratuit pour beaucoup de modèles.
+    weight: 200,
+    timeout: 30_000,
   },
   openrouter: {
     name: 'openrouter',
@@ -109,3 +120,9 @@ export function getActiveProviders(): ProviderConfig[] {
 export function isProviderAvailable(name: LLMProvider): boolean {
   return !!PROVIDER_CONFIGS[name]?.apiKey;
 }
+
+export function getProviderConfig(name: LLMProvider): ProviderConfig | null {
+  return PROVIDER_CONFIGS[name] ?? null;
+}
+
+export const PROVIDER_NAMES: LLMProvider[] = ['openai', 'anthropic', 'groq', 'openrouter', 'huggingface'];

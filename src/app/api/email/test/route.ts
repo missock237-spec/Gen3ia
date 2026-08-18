@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { verifyConnection, getEmailConfig, sendEmail } from '@/lib/email/sender';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {

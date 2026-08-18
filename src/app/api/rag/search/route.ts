@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hybridSearch } from "@/lib/rag/hybrid-search";
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {

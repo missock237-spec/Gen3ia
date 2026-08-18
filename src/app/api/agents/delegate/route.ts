@@ -3,10 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { agentDelegation } from '@/lib/agent-delegation';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });

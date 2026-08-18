@@ -7,10 +7,6 @@ import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('ai-orchestrate');
 

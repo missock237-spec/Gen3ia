@@ -4,10 +4,6 @@
 import { NextResponse } from "next/server";
 import { SUBSCRIPTION_PLANS } from "@/lib/sebpay";
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET() {
   return NextResponse.json({

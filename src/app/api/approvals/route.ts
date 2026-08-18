@@ -7,10 +7,6 @@ import { createLogger } from '@/lib/logger';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getPendingConsents, approveConsent, denyConsent } from '@/lib/agent-engine/consent-manager';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('approvals');
 

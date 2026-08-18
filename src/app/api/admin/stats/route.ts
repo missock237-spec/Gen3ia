@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPlatformStats, getRevenueStats, getAdminLogs, isAdminRole } from '@/lib/admin';
 import { verifyAccessToken } from '@/lib/auth';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');

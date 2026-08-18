@@ -30,8 +30,6 @@ export async function GET(request: NextRequest) {
     if (action === 'verify') {
       const listingId = searchParams.get('listingId')
 
-
-
       if (!listingId) {
         return secureResponse(
           NextResponse.json({ error: 'listingId required' }, { status: 400 }),
@@ -81,14 +79,18 @@ export async function POST(request: NextRequest) {
     const result = await purchaseListing({
       listingId,
       userId: auth.userId,
+      phone: body.phone,
+      provider: body.provider,
+      customerEmail: body.customerEmail,
+      customerName: body.customerName,
     })
 
-    if (result.mode === 'stripe') {
+    if (result.mode === 'sebpay') {
       return secureResponse(
         NextResponse.json(
           {
-            mode: 'stripe',
-            sessionId: result.sessionId,
+            mode: 'sebpay',
+            transactionId: result.transactionId,
             checkoutUrl: result.checkoutUrl,
           },
           { status: 200 }

@@ -7,10 +7,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createAvatarEngine, type AvatarExpression } from '@/lib/avatars/avatar-engine';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const VALID_EXPRESSIONS: AvatarExpression[] = [
   'neutral', 'happy', 'sad', 'angry', 'surprised',

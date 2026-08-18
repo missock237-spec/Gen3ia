@@ -1,14 +1,27 @@
 // ============================================================
 // CREATOR PAYOUTS — Monétisation des créateurs marketplace
 // Commissions, reversements automatiques, historique
+// ------------------------------------------------------------
+// T28 — Migration 15% → 20% commission, 85% → 80% vendeur.
+// Les payouts marketplace utilisent désormais le client Sebpay
+// marketplace dédié (src/lib/payment/sebpay.ts), distinct de Chariow
+// (qui reste utilisé pour les abonnements et crédits).
 // ============================================================
 
 import { prisma } from '@/lib/prisma';
 import { createLogger } from '@/lib/logger';
 import { sebpay } from '@/lib/sebpay';
+import {
+  sebpayMarketplace,
+  MARKETPLACE_COMMISSION_RATE,
+  MARKETPLACE_SELLER_RATE,
+} from '@/lib/payment/sebpay';
 
 const log = createLogger('creator-payouts');
-const PLATFORM_COMMISSION = 0.15; // 15% plateforme
+/** Commission plateforme (20%) — alignée avec purchase-system.ts */
+const PLATFORM_COMMISSION = MARKETPLACE_COMMISSION_RATE;
+/** Part vendeur (80%) — alignée avec purchase-system.ts */
+const SELLER_REVENUE_RATE = MARKETPLACE_SELLER_RATE;
 
 export class CreatorPayoutService {
   async registerCreator(userId: string): Promise<void> {
@@ -16,10 +29,15 @@ export class CreatorPayoutService {
     log.info('creator_registered', { userId: userId.slice(0, 8) });
   }
 
+  /**
+   * Enregistre une vente marketplace (post-paiement buyer).
+   * Calcule la part vendeur (80%) et la commission plateforme (20%).
+   */
   async recordSale(listingId: string, buyerId: string, amount: number): Promise<{ creatorEarns: number; platformFees: number }> {
     const listing = await prisma.marketplaceListing.findUnique({ where: { id: listingId }, select: { userId: true, price: true, commissionRate: true, revenue: true } });
     if (!listing) throw new Error('Listing not found');
 
+    // Commission du listing peut surcharger le défaut (0.20) si l'admin l'a défini
     const commission = listing.commissionRate || PLATFORM_COMMISSION;
     const platformFees = Math.round(amount * commission);
     const creatorEarns = amount - platformFees;
@@ -67,9 +85,15 @@ export class CreatorPayoutService {
       listings,
       payouts,
       commissionRate: PLATFORM_COMMISSION,
+      sellerRate: SELLER_REVENUE_RATE,
     };
   }
 
+  /**
+   * Demande de retrait manuel créateur (le cas échéant — l'auto-payout
+   * est déjà déclenché par Sebpay sur chaque achat). Sert pour les
+   * montants accumulés ou les listings antérieurs à la T28.
+   */
   async requestPayout(params: { userId: string; amount: number; phone: string; operator: string }) {
     const user = await prisma.user.findUnique({
       where: { id: params.userId },
@@ -102,6 +126,10 @@ export class CreatorPayoutService {
     return payout;
   }
 
+  /**
+   * Traite un payout créateur via le client Sebpay marketplace dédié.
+   * (Avant T28, utilisait l'adapter Chariow via src/lib/sebpay.ts)
+   */
   async processPayout(payoutId: string) {
     const payout = await prisma.creatorPayout.findUnique({ where: { id: payoutId } });
     if (!payout || payout.status !== 'pending') return;
@@ -112,27 +140,67 @@ export class CreatorPayoutService {
     });
 
     try {
-      const result = await sebpay.initiatePayment({
+      // Tenter le client marketplace Sebpay en premier (auto-payout).
+      const result = await sebpayMarketplace.initiatePayout({
         amount: payout.amount,
         currency: 'XAF',
         phone: payout.phone || '',
-        operator: payout.operator || 'ORANGE_MONEY',
-        description: `Paiement créateur: ${payout.amount} FCFA`,
-        reference: `payout_${payout.id}`,
+        provider: (payout.operator || 'orange') as never,
+        reference: `creator_payout_${payoutId}`,
+        description: `Retrait créateur Gen3ia: ${payout.amount} FCFA`,
+        metadata: {
+          userId: payout.userId,
+          payoutId,
+          type: 'creator_payout',
+        },
         callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/marketplace/webhook`,
       });
 
       await prisma.creatorPayout.update({
         where: { id: payoutId },
-        data: { status: result.success ? 'paid' : 'failed', transactionId: result.transactionId || undefined, processedAt: new Date() },
+        data: {
+          status: result.success ? 'paid' : 'failed',
+          transactionId: result.transactionId || undefined,
+          processedAt: new Date(),
+        },
       });
 
-      log.info('payout_processed', { payoutId, success: result.success });
-    } catch (_error) {
-      await prisma.creatorPayout.update({
-        where: { id: payoutId },
-        data: { status: 'failed' },
+      log.info('payout_processed', {
+        payoutId,
+        success: result.success,
+        transactionId: result.transactionId,
       });
+    } catch (error) {
+      // Fallback: legacy adapter (Chariow via src/lib/sebpay.ts) — utilisé si
+      // le client marketplace Sebpay n'est pas configuré (SEBPAY_API_KEY absent).
+      log.warn('marketplace_sebpay_unavailable_fallback_legacy', {
+        error: error instanceof Error ? error.message : '',
+      });
+      try {
+        const legacy = await sebpay.initiatePayment({
+          amount: payout.amount,
+          currency: 'XAF',
+          phone: payout.phone || '',
+          operator: payout.operator || 'ORANGE_MONEY',
+          description: `Retrait créateur Gen3ia: ${payout.amount} FCFA`,
+          reference: `payout_${payout.id}`,
+          callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/marketplace/webhook`,
+        });
+        await prisma.creatorPayout.update({
+          where: { id: payoutId },
+          data: {
+            status: legacy.success ? 'paid' : 'failed',
+            transactionId: legacy.transactionId || undefined,
+            processedAt: new Date(),
+          },
+        });
+        log.info('payout_processed_legacy', { payoutId, success: legacy.success });
+      } catch (_e) {
+        await prisma.creatorPayout.update({
+          where: { id: payoutId },
+          data: { status: 'failed' },
+        });
+      }
     }
   }
 }

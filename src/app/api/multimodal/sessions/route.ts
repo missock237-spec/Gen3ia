@@ -8,10 +8,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { createMultimodalSessionManager, type MultimodalType } from '@/lib/multimodal';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const VALID_TYPES: MultimodalType[] = ['vision', 'webcam', 'screen_share', 'audio', 'multimodal'];
 

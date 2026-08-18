@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from '@/lib/auth';
 import { executeCommand } from "@/lib/terminal-sandbox";
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const session = await getServerSession();

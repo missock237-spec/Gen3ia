@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verify } from 'jsonwebtoken';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const JWT_SECRET = process.env.AUTH_SECRET;
 

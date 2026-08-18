@@ -4,10 +4,6 @@
 import { NextResponse } from 'next/server';
 import { FEATURES, getOperationalFeatures } from '@/lib/features-registry';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET() {
   const operational = getOperationalFeatures();

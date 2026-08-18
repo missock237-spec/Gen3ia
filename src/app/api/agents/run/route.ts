@@ -30,10 +30,6 @@ try {
   checkJailbreak = (_input: string) => ({ safe: true, score: 0, reason: "safety-module-not-available" });
 }
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('agent-run');
 const MAX_ITERATIONS = 25;

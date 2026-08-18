@@ -8,10 +8,6 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { db } from '@/lib/db';
 import { encryptAuthConfig } from '@/lib/connectors/mcp-client';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);

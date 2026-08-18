@@ -5,10 +5,6 @@ import { createAIRouter } from '@/lib/ai-router';
 import { getMemoryContext, learnFromInteraction } from '@/lib/agent-memory';
 import { checkTokenLimit } from '@/lib/usage-limits';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);

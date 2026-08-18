@@ -44,7 +44,6 @@ const styles = `
   }
 `;
 
-
 interface AdCampaign {
   id: string;
   name: string;

@@ -9,10 +9,6 @@ import { withAuth, type RouteParams } from '@/lib/with-auth';
 import { createAIRouter } from '@/lib/ai-router';
 import { db } from '@/lib/db';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('ai-server');
 

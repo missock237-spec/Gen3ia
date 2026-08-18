@@ -3,10 +3,6 @@ import { getServerSession } from '@/lib/auth';
 import { refreshExpiredTokens, refreshSingleToken } from '@/lib/oauth/token-refresher';
 import { prisma } from '@/lib/prisma';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function POST() {
   try {

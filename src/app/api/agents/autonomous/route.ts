@@ -5,10 +5,6 @@ import { createLogger } from '@/lib/logger';
 import { applySecurity } from '@/lib/security';
 import { agentAutonomous } from '@/lib/agent-autonomous';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('api-agents-autonomous');
 

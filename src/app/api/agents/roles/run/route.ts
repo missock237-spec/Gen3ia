@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { roleSwarm } from "@/lib/roles";
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {

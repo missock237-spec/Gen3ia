@@ -7,9 +7,6 @@ import {
   listSecureUserResources,
 } from '@/lib/secure-user-resource';
 
-
-
-
 export const dynamic = "force-dynamic";
 const VALID_TYPES = ['cpu', 'api', 'mvp', 'database', 'storage'];
 

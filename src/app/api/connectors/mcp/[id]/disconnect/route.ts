@@ -7,10 +7,6 @@ import { applySecurity, secureResponse } from '@/lib/security';
 import { getMCPClientManager } from '@/lib/connectors/mcp-client';
 import { db } from '@/lib/db';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function POST(
   request: NextRequest,

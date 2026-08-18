@@ -6,7 +6,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, type FirestoreWhereOp } from '@/lib/firebase/firestore';
 import { applySecurity } from '@/lib/security';
 
-
 export const dynamic = "force-dynamic";
 
 /** Convertit un filtre {champ: valeur} en tableau d'opérateurs Firestore. */

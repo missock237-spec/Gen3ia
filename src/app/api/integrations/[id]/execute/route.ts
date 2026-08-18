@@ -9,10 +9,6 @@ import { getIntegrationRegistry } from '@/lib/integration-engine/registry';
 import type { ExecutionRequest } from '@/lib/integration-engine/types';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteParams }, auth) => {
   try {

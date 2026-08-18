@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRelayStatus, relayChat, relaySynthesizeSpeech, relayGenerateImage, relayGenerateVideo, relayGenerateAudio } from '@/lib/relay/relay-router';
 import { createLogger } from '@/lib/logger';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('api-relay');
 

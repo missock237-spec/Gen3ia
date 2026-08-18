@@ -11,10 +11,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity, secureResponse } from '@/lib/security';
 import { getWorkflow, updateWorkflow, deleteWorkflow, activateWorkflow, deactivateWorkflow } from '@/lib/n8n-client';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function OPTIONS() {
   return new NextResponse(null, {

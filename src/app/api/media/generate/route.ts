@@ -5,10 +5,6 @@ import { hfGeneration } from '@/lib/media';
 import { createLogger } from '@/lib/logger';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('api-media');
 

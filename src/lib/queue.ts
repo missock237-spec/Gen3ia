@@ -139,7 +139,6 @@ export async function addDocumentJob(data: DocumentJobData): Promise<Job> {
   });
 }
 
-
 // ============================================================
 // Queue Monitor
 // ============================================================

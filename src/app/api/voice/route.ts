@@ -4,10 +4,6 @@ import { getAuthenticatedUser } from '@/lib/session';
 import { db } from '@/lib/db';
 import { errorResponse, successResponse, ErrorCode, handleApiError } from '@/lib/api-error';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {

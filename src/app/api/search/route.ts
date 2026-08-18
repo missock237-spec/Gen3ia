@@ -3,10 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity } from '@/lib/security';
 import { searchEngine } from '@/lib/search-engine';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });

@@ -4,10 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { applySecurity } from '@/lib/security';
 import { dataAnalyst } from '@/lib/data-analyst';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const { auth, error } = await applySecurity(request, { requireAuth: true });

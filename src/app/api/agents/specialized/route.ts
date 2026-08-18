@@ -5,10 +5,6 @@ import { applySecurity } from '@/lib/security';
 import { agentSpecialization } from '@/lib/agent-specialization';
 import { createLogger } from '@/lib/logger';
 
-
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('api-agents-specialized');
 

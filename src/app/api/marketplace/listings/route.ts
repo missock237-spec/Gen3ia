@@ -56,8 +56,6 @@ export async function GET(request: NextRequest) {
     const rawSort = searchParams.get('sort') || 'newest'
     const rawTags = searchParams.getAll('tag')
 
-
-
     const page = parsePositiveInt(searchParams.get('page'), 1, 100000)
     const limit = parsePositiveInt(searchParams.get('limit'), 20, 100)
     const minPriceRaw = searchParams.get('minPrice')

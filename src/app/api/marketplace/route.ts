@@ -5,9 +5,6 @@ import { createLogger } from '@/lib/logger';
 import { withAuth, type RouteParams } from '@/lib/with-auth';
 import type { FirestoreWhereOp, FirestoreOrderBy } from '@/lib/firebase/firestore';
 
-
-
-
 export const dynamic = "force-dynamic";
 const log = createLogger('marketplace');
 
