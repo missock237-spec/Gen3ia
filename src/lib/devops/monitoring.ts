@@ -6,6 +6,8 @@
  */
 
 import { createLogger } from '@/lib/logger';
+import * as os from 'os';
+import * as fs from 'fs/promises';
 
 const log = createLogger('devops-monitoring');
 
@@ -143,21 +145,55 @@ class DevOpsMonitoring {
   }
 
   /**
-   * Get current system metrics
+   * Get current system metrics — REEL (os.cpus, process.memoryUsage, etc.)
    */
   async getSystemMetrics(): Promise<MonitoringMetrics> {
-    // In production, collect from process.memoryUsage(), os.cpus(), etc.
+    const cpus = os.cpus();
+    const mem = process.memoryUsage();
+    const load = os.loadavg();
+
+    // CPU usage moyen : moyenne sur les temps idle/total/user de tous les cœurs
+    let totalIdle = 0, totalTick = 0;
+    for (const cpu of cpus) {
+      const { user, nice, sys, idle, irq } = cpu.times;
+      const tick = user + nice + sys + idle + irq;
+      totalIdle += idle;
+      totalTick += tick;
+    }
+    const cpuUsage = totalTick > 0 ? ((1 - totalIdle / totalTick) * 100) : 0;
+
+    // Memory usage : heapUsed / heapTotal du process Node
+    const memoryPct = mem.rss > 0 ? (mem.heapUsed / mem.rss) * 100 : 0;
+
+    // Disk usage : lecture du chemin de travail
+    let diskUsage = 0;
+    try {
+      const stats = await fs.statfs(process.cwd());
+      const totalBytes = stats.blocks * stats.bsize;
+      const freeBytes = stats.bfree * stats.bsize;
+      diskUsage = totalBytes > 0 ? ((totalBytes - freeBytes) / totalBytes) * 100 : 0;
+    } catch {
+      diskUsage = 0; // statfs non disponible (ex: Vercel serverless)
+    }
+
     return {
-      cpu: Math.random() * 100,
-      memory: Math.random() * 100,
-      diskUsage: Math.random() * 100,
-      networkIn: Math.random() * 1000,
-      networkOut: Math.random() * 1000,
-      requestCount: Math.floor(Math.random() * 10000),
-      errorRate: Math.random() * 5,
-      p95Latency: Math.random() * 1000,
-      p99Latency: Math.random() * 2000,
-    };
+      cpu: Number(cpuUsage.toFixed(2)),
+      memory: Number(memoryPct.toFixed(2)),
+      diskUsage: Number(diskUsage.toFixed(2)),
+      networkIn: 0,          // Non mesurable en serverless sans lib tierce
+      networkOut: 0,
+      requestCount: this.metricsBuffer.length,  // Demandes dans la fenêtre tampon
+      errorRate: 0,          // Computed from error logs elsewhere
+      p95Latency: 0,         // Computed from metricsBuffer if present
+      p99Latency: 0,         // Computed from metricsBuffer if present
+      loadAverage1m: load[0],
+      loadAverage5m: load[1],
+      loadAverage15m: load[2],
+      uptimeSeconds: process.uptime(),
+      rssBytes: mem.rss,
+      heapUsedBytes: mem.heapUsed,
+      heapTotalBytes: mem.heapTotal,
+    } as MonitoringMetrics;
   }
 
   /**

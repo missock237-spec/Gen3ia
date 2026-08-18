@@ -413,25 +413,20 @@ class AgentOrchestrator {
         return { ...fallbackResult.data, simulated: false };
       }
 
-      // Fallback to simulated response if all LLM calls fail — MARKED explicitly
-      log.warn('LLM call failed, using simulated response', { agent: agent.name, role: agent.role });
-      await new Promise(r => setTimeout(r, 100));
-      return {
-        content: `[SIMULATION] ${agent.name} (${agent.role}) — LLM indisponible. Réponse de fallback:\nAnalyse basée sur le prompt: ${prompt.slice(0, 200)}...`,
-        cost: 0,
-        tokens: 0,
-        simulated: true,
-      };
+      // Tous les appels LLM ont échoué — erreur explicite.
+      // Avant : retournait une fausse réponse "[SIMULATION] ..." qui pouvait être
+      // confondue avec une vraie sortie LLM et facturée à l'utilisateur.
+      const errMsg = `[orchestrator] Échec de tous les appels LLM pour ${agent.name} (${agent.role}).`;
+      log.error('LLM call failed — throwing error', {
+        agent: agent.name, role: agent.role,
+      });
+      throw new Error(errMsg);
     } catch (error) {
-      // Final fallback — simulated response, MARKED explicitly
-      log.warn('HyperAgent integration failed, falling back to simulated', { error: String(error) });
-      await new Promise(r => setTimeout(r, 100));
-      return {
-        content: `[SIMULATION] ${agent.name} (${agent.role}) — Erreur HyperAgent. Réponse de fallback:\nAnalyse basée sur le prompt: ${prompt.slice(0, 200)}...`,
-        cost: 0,
-        tokens: 0,
-        simulated: true,
-      };
+      // Erreur finale — propager l'erreur au lieu de retourner une fausse réponse.
+      log.error('HyperAgent integration failed — throwing', { error: String(error) });
+      throw new Error(
+        `[orchestrator] Erreur HyperAgent pour ${agent.name} (${agent.role}): ${String(error)}`
+      );
     }
   }
 

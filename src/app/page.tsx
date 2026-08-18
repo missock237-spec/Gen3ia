@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthStore, useAppStore } from '@/lib/store';
+import { hardReload, diagnoseServiceWorker } from '@/lib/client-cache-reset';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppHeader } from '@/components/layout/app-header';
 import { DashboardView } from '@/components/dashboard/dashboard-view';
@@ -14,45 +15,123 @@ import { AnalyticsView } from '@/components/analytics/analytics-view';
 import BillingPage from './(dashboard)/billing/page';
 import DevelopersPage from './(dashboard)/developers/page';
 import { ThemeProvider } from 'next-themes';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import HardTechLanding from '@/components/landing/hardtech-landing';
 
+// T23 : délai avant d'afficher l'UI "chargement bloqué" (12s).
+// Au-delà de ce délai avec isLoading=true, on propose à l'utilisateur
+// de vider le cache + SW et de recharger.
+const STUCK_LOADING_TIMEOUT_MS = 12_000;
+
 function AppContent() {
-  const { isAuthenticated, isLoading, hydrate, validateSession, logout } = useAuthStore();
-  const { currentView, fetchApprovalCount } = useAppStore();
+  // Sélecteurs zustand INDIVIDUELS (retournent des références stables)
+  // → évite les re-rendus infinis dus à un objet déstructuré recréé à chaque rendu.
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const hydrate = useAuthStore((s) => s.hydrate);
+  const validateSession = useAuthStore((s) => s.validateSession);
+  const logout = useAuthStore((s) => s.logout);
+
+  const currentView = useAppStore((s) => s.currentView);
+  const fetchApprovalCount = useAppStore((s) => s.fetchApprovalCount);
+
   const hydratedRef = useRef(false);
   const validatedRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // T23 : détection du chargement bloqué (pour afficher le bouton reset)
+  const [isStuck, setIsStuck] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [swInfo, setSwInfo] = useState<string | null>(null);
 
+  // --- Fix 2 : logs debug pour hydrate() ---
+  // Trace l'exécution et les erreurs de hydrate() côté navigateur.
   useEffect(() => {
     if (!hydratedRef.current) {
       hydratedRef.current = true;
-      hydrate().catch((err: Error) => {
-        setLoadError(err.message || 'Erreur de chargement');
-      });
+      hydrate()
+        .then(() => {
+          console.log('[gen3ia] hydrate OK');
+        })
+        .catch((err: Error) => {
+          console.error('[gen3ia] hydrate error:', err);
+          setLoadError(err?.message || 'Erreur de chargement');
+        });
     }
   }, [hydrate]);
 
+  // --- Fix 2 : logs debug pour validateSession() ---
+  // Trace les erreurs de validateSession() côté navigateur.
   useEffect(() => {
     if (isAuthenticated && !validatedRef.current && !loadError) {
       validatedRef.current = true;
-      validateSession().then(valid => {
-        if (valid) fetchApprovalCount();
-      }).catch(() => {
-        setLoadError('Session expirée, veuillez vous reconnecter');
-      });
+      validateSession()
+        .then((valid) => {
+          if (valid) {
+            console.log('[gen3ia] validateSession OK — session active');
+            fetchApprovalCount().catch((err) => {
+              console.warn('[gen3ia] fetchApprovalCount failed:', err);
+            });
+          } else {
+            console.warn('[gen3ia] validateSession : session expirée');
+            setLoadError('Session expirée, veuillez vous reconnecter');
+          }
+        })
+        .catch((err) => {
+          console.error('[gen3ia] validateSession error:', err);
+          setLoadError('Session expirée, veuillez vous reconnecter');
+        });
     }
   }, [isAuthenticated, loadError, validateSession, fetchApprovalCount]);
 
+  // --- T23 : timer qui affiche l'UI de secours si isLoading reste true ---
+  // Le timer est nettoyé dès que isLoading passe à false.
   useEffect(() => {
-    const handleUnauthorized = () => {
-      validatedRef.current = false;
-      void logout();
-    };
+    if (!isLoading) {
+      setIsStuck(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      // Toujours en loading après 12s → proposer le reset
+      setIsStuck(true);
+      // Diagnostique le SW pour afficher des infos utiles
+      diagnoseServiceWorker().then((info) => {
+        if (info.hasSW) {
+          setSwInfo(`${info.scriptURL} (scope: ${info.scope})`);
+        } else {
+          setSwInfo('Aucun SW actif');
+        }
+      });
+    }, STUCK_LOADING_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
+
+  // --- T23 : handler pour le bouton "Vider le cache et recharger" ---
+  const handleHardReload = useCallback(async () => {
+    setResetting(true);
+    console.log('[gen3ia] Hard reload requested by user');
+    try {
+      await hardReload({ bypassCache: true, includeStorage: false });
+    } catch (err) {
+      console.error('[gen3ia] Hard reload failed:', err);
+      // Fallback : reload simple
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    }
+    // NB : hardReload redirige la page, donc setResetting(false) n'a pas besoin d'être appelé
+  }, []);
+
+  // --- Fix 4 : logout est stable (zustand), callback stable aussi ---
+  const handleUnauthorized = useCallback(() => {
+    validatedRef.current = false;
+    void logout();
+  }, [logout]);
+
+  useEffect(() => {
     window.addEventListener('auth:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
-  }, [logout]);
+  }, [handleUnauthorized]);
 
   if (loadError) {
     return (
@@ -72,11 +151,60 @@ function AppContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">
-          {isLoading ? 'Chargement de Gen3ia...' : 'Redirection vers la connexion...'}
-        </p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 p-4">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">
+            {isStuck
+              ? 'Le chargement prend plus de temps que prévu…'
+              : 'Chargement de Gen3ia...'}
+          </p>
+        </div>
+
+        {isStuck && (
+          <div className="max-w-md w-full rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-2">
+                <p className="text-sm font-medium text-foreground">
+                  Chargement bloqué
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Un Service Worker obsolète ou un cache périmé peut empêcher
+                  l&apos;application de démarrer. Vider le cache et recharger
+                  la page devrait résoudre le problème.
+                </p>
+                {swInfo && (
+                  <p className="text-[10px] text-muted-foreground/70 font-mono break-all">
+                    SW actif : {swInfo}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={handleHardReload}
+                disabled={resetting}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {resetting ? 'Réinitialisation…' : 'Vider le cache et recharger'}
+              </button>
+              <button
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.reload();
+                  }
+                }}
+                disabled={resetting}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Recharger simplement
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
