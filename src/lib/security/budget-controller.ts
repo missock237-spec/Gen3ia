@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma';
 
 interface AgentBudget {
   agentId: string;
+  userId: string;   // propriétaire de l'agent (pour admin free-tier check)
+  plan: string;      // plan du propriétaire (free/pro/enterprise/admin)
   dailyActions: number;
   dailyTokens: number;
   dailyCost: number;
@@ -71,6 +73,8 @@ async function getAgentBudget(agentId: string): Promise<AgentBudget> {
 
   const budget: AgentBudget = {
     agentId,
+    userId: agent.userId,
+    plan,
     dailyActions,
 // @ts-ignore — type narrowing pending, see refactor ticket
     dailyTokens: dailyTokens._sum.tokensUsed || 0,
@@ -91,6 +95,19 @@ async function getAgentBudget(agentId: string): Promise<AgentBudget> {
 export async function checkBudget(agentId: string): Promise<BudgetCheck> {
   try {
     const budget = await getAgentBudget(agentId);
+
+    // ADMIN FREE-TIER OVERRIDE :
+    // Si l'agent appartient à un compte admin master (isGen3iaAdminFreeTier=true),
+    // tous les quotas/budgets sont illimités — toutes les fonctionnalités du
+    // projet sont gratuites pour ce compte.
+    try {
+      const { isUidAdminFreeTier } = await import('@/lib/admin-account');
+      if (await isUidAdminFreeTier(budget.userId)) {
+        return { allowed: true, budget };
+      }
+    } catch {
+      // admin-account module failed to load — fall through to normal checks
+    }
 
     if (budget.dailyActions >= budget.maxDailyActions) {
       return {

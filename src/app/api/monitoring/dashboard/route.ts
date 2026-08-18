@@ -1,12 +1,43 @@
 // ============================================================
 // MONITORING DASHBOARD — Métriques en temps réel
 // ============================================================
+//  SÉCURITÉ (hardened) :
+//  - Layer 1 (middleware) : admin-only sur /api/monitoring/*
+//  - Layer 2 (cette route) : applySecurity() → verifySessionCookie(true)
+//    vérifie cryptographiquement le cookie Firebase + custom claims.
+// ============================================================
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { applySecurity } from "@/lib/security";
+
+
+
 
 export const dynamic = "force-dynamic";
-export async function GET() {
+
+export async function OPTIONS(request: NextRequest) {
+  const { error } = await applySecurity(request);
+  if (error) return error;
+  return new NextResponse(null, { status: 204 });
+}
+
+export async function GET(request: NextRequest) {
+  // Layer 2 — vérification cryptographique Firebase (server runtime).
+  const { auth, error: secError } = await applySecurity(request, {
+    requireAuth: true,
+    requireRole: "admin",
+  });
+  if (secError || !auth) {
+    return (
+      secError ||
+      NextResponse.json(
+        { error: "Accès réservé aux administrateurs" },
+        { status: 403 },
+      )
+    );
+  }
+
   try {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());

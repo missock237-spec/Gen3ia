@@ -1,17 +1,52 @@
 // ============================================================
 // SSE — Événements temps réel pour le Terminal
 // ============================================================
+//  SÉCURITÉ (hardened) :
+//  - Layer 1 (middleware) : admin-only sur /api/terminal/*
+//  - Layer 2 (cette route) : applySecurity() → verifySessionCookie(true)
+//    vérifie cryptographiquement le cookie Firebase + custom claims.
+//  - Le paramètre ?token= historique est ignoré : seule la session Firebase
+//    admin permet d'ouvrir un stream SSE.
+// ============================================================
 import { NextRequest, NextResponse } from "next/server";
+import { applySecurity } from "@/lib/security";
+
+
+
 
 export const dynamic = "force-dynamic";
 const clients = new Map<string, ReadableStreamController<Uint8Array>>();
 
+export async function OPTIONS(request: NextRequest) {
+  const { error } = await applySecurity(request);
+  if (error) return error;
+  return new NextResponse(null, { status: 204 });
+}
+
 export async function GET(request: NextRequest) {
-  const token = request.nextUrl.searchParams.get("token") || "anonymous";
+  // Layer 2 — vérification cryptographique Firebase (server runtime).
+  // Le ?token= historique est ignoré — seul un cookie de session Firebase
+  // admin valide (signature vérifiée) ouvre un stream.
+  const { auth, error: secError } = await applySecurity(request, {
+    requireAuth: true,
+    requireRole: "admin",
+  });
+  if (secError || !auth) {
+    return (
+      secError ||
+      NextResponse.json(
+        { error: "Accès réservé aux administrateurs" },
+        { status: 403 },
+      )
+    );
+  }
+
+  // Identifiant unique de connexion = UID admin + timestamp
+  const connectionId = `${auth.userId}:${Date.now()}`;
 
   const stream = new ReadableStream({
     start(controller) {
-      clients.set(token, controller);
+      clients.set(connectionId, controller);
 
       // Envoyer un message de connexion
       const encoder = new TextEncoder();
@@ -19,7 +54,7 @@ export async function GET(request: NextRequest) {
 
       // Nettoyer à la déconnexion
       request.signal.addEventListener("abort", () => {
-        clients.delete(token);
+        clients.delete(connectionId);
       });
     },
   });
@@ -38,8 +73,8 @@ export async function GET(request: NextRequest) {
 // Utilisable depuis n'importe quelle route
 // NOTE: Next.js route files can only export route handlers (GET/POST/etc).
 // This helper is internal — callers should use the SSE stream directly.
-function sendTerminalEvent(token: string, event: { type: string; data: string }) {
-  const controller = clients.get(token);
+function sendTerminalEvent(connectionId: string, event: { type: string; data: string }) {
+  const controller = clients.get(connectionId);
   if (!controller) return false;
 
   try {
@@ -47,7 +82,7 @@ function sendTerminalEvent(token: string, event: { type: string; data: string })
     controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`));
     return true;
   } catch {
-    clients.delete(token);
+    clients.delete(connectionId);
     return false;
   }
 }

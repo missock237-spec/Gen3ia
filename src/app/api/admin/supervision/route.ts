@@ -1,14 +1,26 @@
 // ============================================================
 // GET /api/admin/supervision — Dashboard admin temps réel
 // ============================================================
-// Interface d'administration pour superviser tous les agents
-// en cours, voir les logs en direct, et forcer l'arrêt d'un
-// agent défaillant.
+//  Interface d'administration pour superviser tous les agents
+//  en cours, voir les logs en direct, et forcer l'arrêt d'un
+//  agent défaillant.
+//
+//  SÉCURITÉ (hardened) :
+//  - Layer 1 (middleware) : exige un session cookie + payload role=admin
+//    (Edge-only, vérif crypto reportée en Layer 2)
+//  - Layer 2 (cette route) : applySecurity() appelle
+//    getAdminAuth().verifySessionCookie(sessionCookie, true) — vérif
+//    cryptographique Firebase + custom claims réels (pas forgeables).
+//  - Aucune donnée n'est retournée sans rôle admin vérifié côté serveur.
 // ============================================================
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { applySecurity } from "@/lib/security";
+
+
+
 
 export const dynamic = "force-dynamic";
 interface SupervisionData {
@@ -50,7 +62,32 @@ interface SupervisionData {
   };
 }
 
-export async function GET() {
+export async function OPTIONS(request: NextRequest) {
+  const { error } = await applySecurity(request);
+  if (error) return error;
+  return new NextResponse(null, { status: 204 });
+}
+
+export async function GET(request: NextRequest) {
+  // Layer 2 — vérification cryptographique Firebase (server runtime).
+  // Le middleware Edge ne peut que décoder le JWT sans vérifier la signature
+  // (firebase-admin n'est pas Edge-safe) ; on doit donc re-valider ici.
+  // applySecurity() appelle getAdminAuth().verifySessionCookie(sessionCookie, true)
+  // qui vérifie signature + expiration + révocation via Firebase Admin SDK.
+  const { auth, error: secError } = await applySecurity(request, {
+    requireAuth: true,
+    requireRole: "admin",
+  });
+  if (secError || !auth) {
+    return (
+      secError ||
+      NextResponse.json(
+        { success: false, error: "Accès réservé aux administrateurs" },
+        { status: 403 },
+      )
+    );
+  }
+
   try {
     const [
       activeExecutions,
@@ -138,6 +175,7 @@ export async function GET() {
     };
 
     logger.info("admin_supervision_fetched", {
+      adminId: auth.userId,
       agentsCount: agents.length,
       activeExecs: activeExecutions,
       pendingApprovals: pendingApprovalsCount,
@@ -146,6 +184,7 @@ export async function GET() {
     return NextResponse.json({ success: true, data });
   } catch (error) {
     logger.error("admin_supervision_error", {
+      adminId: auth.userId,
       error: error instanceof Error ? error.message : String(error),
     });
     return NextResponse.json(

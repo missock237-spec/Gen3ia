@@ -1,20 +1,24 @@
 /**
  * GET /api/metrics — Prometheus Metrics Endpoint
- * 
+ *
  * Exposes application metrics for Prometheus/Grafana scraping
- * 
- * Security:
- * - Protected by API key (METRICS_API_KEY env var)
- * - Or admin authentication
- * - Or localhost in development
- * 
+ *
+ * Security (hardened) :
+ * - Layer 1 (middleware) : admin-only sur /api/metrics/*
+ * - Layer 2 (cette route) :
+ *   1. API key via METRICS_API_KEY env var (scraping Prometheus sans session)
+ *   2. Session cookie Firebase vérifiée cryptographiquement via applySecurity()
+ *      + custom claim role=admin (authentification navigateur admin)
+ *   3. Localhost en développement (scraping local sans clé)
+ * - Aucune métrique n'est exposée sans l'un de ces trois pré-requis.
+ *
  * Covers: agents, executions, credits, webhooks, errors, performance
  */
 
 import { NextResponse, NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { applySecurity } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 
@@ -22,25 +26,28 @@ export const dynamic = "force-dynamic";
  * Verify access to metrics endpoint
  */
 async function verifyMetricsAccess(request: NextRequest): Promise<boolean> {
-  // Check API key
+  // 1. Check API key (server-to-server scraping)
   const apiKey = request.headers.get("x-api-key");
   const expectedKey = process.env.METRICS_API_KEY;
-  
+
   if (apiKey && expectedKey && apiKey === expectedKey) {
     return true;
   }
 
-  // Check admin auth
+  // 2. Check admin auth via Firebase session cookie (cryptographic verification)
   try {
-    const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
-    if (token && token.role === "admin") {
+    const { auth } = await applySecurity(request, {
+      requireAuth: true,
+      requireRole: "admin",
+    });
+    if (auth?.role === "admin") {
       return true;
     }
   } catch (_e) {
     // Token verification failed
   }
 
-  // Allow localhost in development
+  // 3. Allow localhost in development
   if (process.env.NODE_ENV === "development") {
     const host = request.headers.get("host") || "";
     if (host.startsWith("127.0.0.1") || host.startsWith("localhost")) {

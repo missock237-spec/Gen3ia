@@ -196,8 +196,24 @@ export async function addCredits(input: AddCreditsInput): Promise<{
 /**
  * Get current credit balance for a user
  * Returns -1 for unlimited plans
+ *
+ * ADMIN FREE-TIER OVERRIDE :
+ * Si l'UID est un compte admin master (reconnu via isUidAdminFreeTier),
+ * retourne -1 (illimité) sans toucher au solde réel. Les actions de
+ * l'admin ne consomment jamais de crédits — toutes les fonctionnalités
+ * du projet sont gratuites pour ce compte.
  */
 export async function getCreditBalance(userId: string): Promise<number> {
+  // Admin free-tier bypass — short-circuit billing checks
+  try {
+    const { isUidAdminFreeTier } = await import('@/lib/admin-account');
+    if (await isUidAdminFreeTier(userId)) {
+      return -1; // Unlimited
+    }
+  } catch {
+    // If admin-account module fails to load, fall through to normal path.
+  }
+
   // Check subscription for unlimited plans
   const subscription = await db.subscription.findFirst({
     where: [
