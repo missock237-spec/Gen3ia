@@ -1,8 +1,23 @@
+// Email — envoi d'emails via Resend API (SDK)
+// En production, RESEND_API_KEY doit être défini (déjà configuré sur Vercel).
+// En dev sans clé, le système fonctionne en mode "mock" (log console uniquement).
+
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY || '');
-const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@gen3ia.ai';
-const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Gen3ia';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const FROM_EMAIL = process.env.EMAIL_FROM
+  || process.env.SMTP_FROM_EMAIL
+  || 'onboarding@resend.dev';
+const FROM_NAME = process.env.EMAIL_FROM_NAME
+  || process.env.SMTP_FROM_NAME
+  || 'Gen3ia';
+
+// Instance Resend initialisée paresseusement (évite de planter en dev sans clé)
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) _resend = new Resend(RESEND_API_KEY);
+  return _resend;
+}
 
 interface EmailOptions {
   to: string | string[];
@@ -15,6 +30,13 @@ interface EmailOptions {
     content: string;
     contentType?: string;
   }>;
+}
+
+interface EmailResult {
+  success: boolean;
+  id?: string;
+  error?: string;
+  provider?: 'resend' | 'mock';
 }
 
 function baseHtml(content: string): string {
@@ -47,21 +69,21 @@ function baseHtml(content: string): string {
     </div>
     <div class="footer">
       <p>© ${new Date().getFullYear()} Gen3ia. Tous droits réservés.</p>
-      <p><a href="{{unsubscribe_url}}">Se désabonner</a></p>
     </div>
   </div>
 </body>
 </html>`;
 }
 
-export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; id?: string; error?: string }> {
-  if (!process.env.RESEND_API_KEY) {
-    console.log(`[Email Mock] À: ${options.to} | Sujet: ${options.subject}`);
-    return { success: true, id: 'mock_' + Date.now() };
+export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
+  // Mode mock : pas de clé Resend configurée → on logge uniquement
+  if (!RESEND_API_KEY) {
+    console.log(`[Email Mock] À: ${Array.isArray(options.to) ? options.to.join(',') : options.to} | Sujet: ${options.subject}`);
+    return { success: true, id: 'mock_' + Date.now(), provider: 'mock' };
   }
 
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${FROM_NAME} <${FROM_EMAIL}>`,
       to: Array.isArray(options.to) ? options.to : [options.to],
       subject: options.subject,
@@ -73,13 +95,17 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
 
     if (error) {
       console.error('[Email Error]:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message || JSON.stringify(error), provider: 'resend' };
     }
 
-    return { success: true, id: data?.id };
+    return { success: true, id: data?.id, provider: 'resend' };
   } catch (err) {
     console.error('[Email Exception]:', err);
-    return { success: false, error: err instanceof Error ? err.message : 'Erreur d\'envoi' };
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Erreur d\'envoi',
+      provider: 'resend',
+    };
   }
 }
 
@@ -143,4 +169,16 @@ export async function sendInvoiceEmail(email: string, amount: number, currency: 
       <p>Date : ${new Date().toLocaleDateString('fr-FR')}</p>
     `),
   });
+}
+
+// Diagnostic — vérifie l'état du système email
+export function getEmailDiagnostics() {
+  return {
+    provider: RESEND_API_KEY ? 'resend' : 'mock',
+    apiKeyConfigured: !!RESEND_API_KEY,
+    apiKeyPrefix: RESEND_API_KEY ? RESEND_API_KEY.slice(0, 6) + '…' : null,
+    fromEmail: FROM_EMAIL,
+    fromName: FROM_NAME,
+    appUrl: process.env.NEXT_PUBLIC_APP_URL || null,
+  };
 }
