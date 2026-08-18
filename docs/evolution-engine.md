@@ -306,7 +306,7 @@ Toutes les routes sont admin-only, rate-limited, validées Zod, et auditées. Le
 Exemple de déclenchement :
 
 ```bash
-curl -X POST https://gen3ia.vercel.app/api/evolution \
+curl -X POST https://gen3ia.online/api/evolution \
   -H "Cookie: gen3ia_session=..." \
   -H "Content-Type: application/json" \
   -d '{"scope":"agents","motivation":"fix null reference in invocation"}'
