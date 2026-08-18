@@ -223,8 +223,14 @@ export async function middleware(request: NextRequest) {
 
   const apiKey = request.headers.get('x-api-key');
   const hasBearer = request.headers.get('authorization')?.startsWith('Bearer ');
+  // X-Cron-Secret : autorise les checks automatisés (cron jobs, monitoring,
+  // /api/email/test) à appeler des routes /api/* sans session utilisateur.
+  // Sécurisé par CRON_SECRET côté serveur — le client doit connaître la valeur.
+  const cronSecret = process.env.CRON_SECRET;
+  const cronHeader = request.headers.get('x-cron-secret');
+  const hasValidCronSecret = !!(cronSecret && cronHeader && cronHeader === cronSecret);
 
-  if (!session && !apiKey && !hasBearer) {
+  if (!session && !apiKey && !hasBearer && !hasValidCronSecret) {
     const unauthRes = NextResponse.json(
       { error: 'Authentification requise' },
       { status: 401, headers: response.headers }
