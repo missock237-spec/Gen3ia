@@ -236,14 +236,37 @@ export async function getRevenueStats() {
   today.setHours(0, 0, 0, 0);
   const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-  // Placeholder pour les stats de revenus (à connecter à SebPay)
+  // Revenus réels : agrégation des factures payées via Prisma
+  const [totalAgg, monthlyAgg, paidUsersCount, totalUsersCount, monthlyTxCount, totalTxCount] = await Promise.all([
+    prisma.invoice.aggregate({
+      _sum: { amount: true },
+      _count: { _all: true },
+      where: { status: 'paid' },
+    }),
+    prisma.invoice.aggregate({
+      _sum: { amount: true },
+      _count: { _all: true },
+      where: { status: 'paid', paidAt: { gte: thisMonth } },
+    }),
+    prisma.user.count({ where: { plan: { not: 'free' } } }),
+    prisma.user.count(),
+    prisma.invoice.count({ where: { status: 'paid', paidAt: { gte: thisMonth } } }),
+    prisma.invoice.count({ where: { status: 'paid' } }),
+  ]);
+
+  const totalRevenue = (totalAgg._sum && (totalAgg._sum as Record<string, number>).amount) ?? 0;
+  const monthlyRevenue = (monthlyAgg._sum && (monthlyAgg._sum as Record<string, number>).amount) ?? 0;
+  const conversionRate = totalUsersCount > 0
+    ? (paidUsersCount / totalUsersCount) * 100
+    : 0;
+
   return {
-    totalRevenue: 0,
-    monthlyRevenue: 0,
-    totalTransactions: 0,
-    monthlyTransactions: 0,
-    paidUsers: 0,
-    conversionRate: 0,
+    totalRevenue,
+    monthlyRevenue,
+    totalTransactions: totalTxCount,
+    monthlyTransactions: monthlyTxCount,
+    paidUsers: paidUsersCount,
+    conversionRate: Number(conversionRate.toFixed(2)),
   };
 }
 
