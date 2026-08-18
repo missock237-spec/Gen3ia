@@ -65,21 +65,15 @@ export const LANGUAGE_KEYWORDS: Record<SupportedLanguage, string[]> = {
   ],
 };
 
-// In-memory persistent profile storage for the mock layer
-const profileStore = new Map<string, LanguageProfile>();
+// Persistent storage for language profiles — uses FirestoreRepository directly
+// (collection 'language_profiles' — Prisma shim n'expose pas ce modèle par défaut).
+import { FirestoreRepository } from '@/lib/firebase/firestore';
+import { createLogger } from '@/lib/logger';
 
-// Mock Firebase / Firestore pattern as required
-const db = {
-  collection: (_name: string) => ({
-    add: async (_data: any) => ({ id: 'mock-' + Date.now() }),
-    get: async () => ({ docs: [] }),
-    where: () => ({ get: async () => ({ docs: [] }) }),
-    doc: (_id: string) => ({
-      update: async (_data: any) => undefined,
-      get: async () => ({ exists: false }),
-    }),
-  }),
-};
+const log = createLogger('agent-i18n');
+
+const profileStore = new Map<string, LanguageProfile>();
+const profileRepo = new FirestoreRepository<LanguageProfile & { id: string }>('language_profiles');
 
 export class LanguageDetector {
   /**
@@ -245,7 +239,15 @@ export class LanguageDetector {
     };
 
     profileStore.set(userId, updatedProfile);
-    await db.collection('language_profiles').doc(userId).update(updatedProfile);
+    try {
+      await profileRepo.upsert({
+        where: { id: userId },
+        create: { id: userId, ...updatedProfile } as any,
+        update: { ...updatedProfile } as any,
+      });
+    } catch (err) {
+      log.error('language_profiles.upsert failed', { userId, error: String(err) });
+    }
   }
 }
 

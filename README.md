@@ -181,7 +181,7 @@ FIREBASE_PRIVATE_KEY=...
 
 # Paiements & OAuth
 CHARIOW_API_KEY=...
-NEXT_PUBLIC_APP_URL=https://gen3ia.vercel.app
+NEXT_PUBLIC_APP_URL=https://gen3ia.online
 ```
 
 Voir `.env.example` pour la liste complete (40+ variables).

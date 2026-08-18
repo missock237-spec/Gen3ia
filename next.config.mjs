@@ -126,7 +126,9 @@ const nextConfig = {
 
   webpack: (config) => {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
-    config.resolve.alias['z-ai-web-dev-sdk'] = path.join(__dirname, 'src/lib/__stubs__/z-ai-web-dev-sdk.ts');
+    // NOTE: z-ai-web-dev-sdk alias REMOVED — real package now installed via npm.
+    // Was: alias to src/lib/__stubs__/z-ai-web-dev-sdk.ts (returned fake responses).
+    // Now: bundler resolves to node_modules/z-ai-web-dev-sdk (real ZAI SDK).
     config.resolve.alias['./agent-safety.node'] = false;
     config.resolve.alias['agent-safety.node'] = false;
     // Workspace package — resolve to source (avoids needing workspace:* dependency

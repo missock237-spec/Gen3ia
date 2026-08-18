@@ -8,7 +8,7 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('watchdog-agent');
 
-export type WatchSourceType = 'rss' | 'web_page' | 'twitter' | 'linkedin' | 'news_api' | 'google_trends' | 'custom_api' | 'reddit' | 'github_trending';
+export type WatchSourceType = 'rss' | 'atom' | 'web_page' | 'twitter' | 'linkedin' | 'news_api' | 'google_trends' | 'custom_api' | 'reddit' | 'github_trending';
 export type AlertChannel = 'email' | 'slack' | 'webhook' | 'telegram' | 'in_app';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
@@ -44,41 +44,87 @@ export interface TrendReport {
   recommendations: string[];
 }
 
-const SAMPLE_SOURCES: WatchSource[] = [
+// Sources RSS réelles — les URLs publiques fonctionnent sans clé API.
+// Pour des sources payantes (Twitter, newsapi.org), l'utilisateur doit fournir
+// des credentials via env vars.
+const DEFAULT_SOURCES: WatchSource[] = [
   { id: 'techcrunch', name: 'TechCrunch AI', type: 'rss', url: 'https://techcrunch.com/tag/artificial-intelligence/feed/', keywords: ['IA', 'AI', 'agent', 'LLM', 'GPT', 'autonomous'], interval: 60, isActive: true },
-  { id: 'github_trends', name: 'GitHub Trending', type: 'github_trending', url: 'https://github.com/trending/typescript', keywords: ['gen3ia', 'agent', 'automation'], interval: 120, isActive: true },
-  { id: 'twitter_ai', name: 'Twitter AI News', type: 'twitter', url: 'https://x.com/search?q=AI+agents', keywords: ['AI agents', 'autonomous', 'LLM'], interval: 30, isActive: true },
-  { id: 'reddit_r_ai', name: 'Reddit r/artificial', type: 'reddit', url: 'https://www.reddit.com/r/artificial/.rss', keywords: ['agent', 'AI', 'breakthrough'], interval: 60, isActive: true },
-  { id: 'google_news', name: 'Google News IA', type: 'news_api', url: 'https://newsapi.org/v2/everything?q=AI+agents', keywords: ['AI agents', 'agentic', 'orchestration'], interval: 180, isActive: true },
+  { id: 'reddit_r_ai', name: 'Reddit r/artificial', type: 'rss', url: 'https://www.reddit.com/r/artificial/.rss', keywords: ['agent', 'AI', 'breakthrough'], interval: 60, isActive: true },
 ];
 
 export class WatchdogAgent {
+  /**
+   * Récupère le contenu d'une source RSS et cherche les keywords.
+   * Remplace le `Math.random() > 0.7` qui générait des fausses alertes.
+   */
   async checkSource(source: WatchSource): Promise<WatchAlert[]> {
     const alerts: WatchAlert[] = [];
 
+    if (source.type !== 'rss' && source.type !== 'atom') {
+      // Types non-RSS (twitter, github_trending, news_api) nécessitent une intégration
+      // authentifiée — on skip au lieu de générer du faux contenu.
+      return alerts;
+    }
+
+    let xml = '';
+    try {
+      const resp = await fetch(source.url, {
+        headers: { 'User-Agent': 'Gen3ia-Watchdog/1.0' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) {
+        log.warn('watchdog_fetch_failed', { source: source.id, status: resp.status });
+        return alerts;
+      }
+      xml = await resp.text();
+    } catch (err) {
+      log.warn('watchdog_fetch_error', { source: source.id, error: String(err) });
+      return alerts;
+    }
+
+    // Extraction basique des <item> RSS / <entry> Atom.
+    // Pour une solution plus robuste, utiliser fast-xml-parser (déjà dans node_modules).
+    const items: { title: string; link: string; description?: string; pubDate?: string }[] = [];
+    const itemRe = /<(?:item|entry)[\s\S]*?<\/(?:item|entry)>/gi;
+    const matches = xml.match(itemRe) || [];
+    for (const m of matches.slice(0, 50)) { // cap à 50 items par scan
+      const title = (m.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]?.trim() || '';
+      const link = (m.match(/<link[^>]*>([\s\S]*?)<\/link>/i) || [])[1]?.trim()
+        || (m.match(/<link[^>]*href="([^"]+)"/i) || [])[1]?.trim()
+        || '';
+      const description = (m.match(/<description[^>]*>([\s\S]*?)<\/description>/i) || [])[1]?.trim();
+      const pubDate = (m.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i) || [])[1]?.trim()
+        || (m.match(/<published[^>]*>([\s\S]*?)<\/published>/i) || [])[1]?.trim();
+      if (title) items.push({ title, link, description, pubDate });
+    }
+
+    // Pour chaque keyword configuré, parcourir les items et alerter si match.
     for (const keyword of source.keywords) {
-      const matched = Math.random() > 0.7;
-      if (matched) {
-        alerts.push({
-          id: 'alert_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-          sourceId: source.id,
-          sourceName: source.name,
-          title: 'Nouvelle mention de "' + keyword + '" detectee',
-          summary: 'Un article concernant "' + keyword + '" a ete trouve sur ' + source.name + '. Cette information pourrait etre pertinente pour votre veille.',
-          url: source.url,
-          severity: Math.random() > 0.8 ? 'critical' : Math.random() > 0.5 ? 'warning' : 'info',
-          keywords: [keyword],
-          sentiment: Math.random() > 0.6 ? 'positif' : Math.random() > 0.3 ? 'neutre' : 'negatif',
-          engagement: Math.floor(Math.random() * 1000),
-          detectedAt: new Date(),
-        });
+      const kwLower = keyword.toLowerCase();
+      for (const item of items) {
+        const haystack = `${item.title} ${item.description || ''}`.toLowerCase();
+        if (haystack.includes(kwLower)) {
+          alerts.push({
+            id: 'alert_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+            sourceId: source.id,
+            sourceName: source.name,
+            title: item.title,
+            summary: (item.description || '').slice(0, 280) || `Mention de "${keyword}" sur ${source.name}`,
+            url: item.link || source.url,
+            severity: 'info',
+            keywords: [keyword],
+            sentiment: 'neutre', // calcul du sentiment réel via NLP non-inclus
+            engagement: 0,      // non-dispo via RSS
+            detectedAt: new Date(),
+          });
+        }
       }
     }
 
     return alerts;
   }
 
-  async scanAll(sources: WatchSource[] = SAMPLE_SOURCES): Promise<WatchAlert[]> {
+  async scanAll(sources: WatchSource[] = DEFAULT_SOURCES): Promise<WatchAlert[]> {
     const allAlerts: WatchAlert[] = [];
     log.info('watchdog_scan_started', { sources: sources.length });
 
@@ -95,7 +141,7 @@ export class WatchdogAgent {
     return allAlerts;
   }
 
-  generateTrendReport(alerts: WatchAlert[], sources: WatchSource[] = SAMPLE_SOURCES): TrendReport {
+  generateTrendReport(alerts: WatchAlert[], sources: WatchSource[] = DEFAULT_SOURCES): TrendReport {
     const wordCount: Record<string, number> = {};
     const sourceCount: Record<string, number> = {};
 
@@ -145,7 +191,7 @@ export class WatchdogAgent {
   }
 
   getAvailableSources(): WatchSource[] {
-    return SAMPLE_SOURCES;
+    return DEFAULT_SOURCES;
   }
 }
 
