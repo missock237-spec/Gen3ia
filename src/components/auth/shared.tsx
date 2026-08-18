@@ -345,6 +345,159 @@ export function FeaturesPanel() {
   );
 }
 
+// ─── OAUTH BUTTONS (Google + GitHub via Firebase popup) ──────────────────────
+
+interface OAuthButtonsProps {
+  /** 'login' appelle POST /api/auth/login, 'register' appelle POST /api/auth/register */
+  mode: 'login' | 'register';
+  disabled?: boolean;
+  onError?: (msg: string) => void;
+  onSuccess?: () => void;
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
+    </svg>
+  );
+}
+
+function GithubIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden="true">
+      <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.866-.014-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.071 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.087.636-1.337-2.22-.253-4.555-1.111-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0022 12c0-5.523-4.477-10-10-10z" />
+    </svg>
+  );
+}
+
+/**
+ * OAuthButtons — boutons "Continuer avec Google" / "Continuer avec GitHub".
+ *
+ * Flux intégral (sans simplification) :
+ *   1. signInWithPopup côté client (Firebase Client SDK) -> obtient un idToken
+ *   2. POST /api/auth/{login|register} avec { idToken, name? }
+ *   3. Le serveur crée le session cookie Firebase (httpOnly, 14 jours)
+ *      et synchronise le profil Firestore.
+ *   4. onSuccess() — le parent peut appeler login()/hydrate() pour
+ *      peupler le store d'auth depuis /api/auth/me, puis rediriger.
+ *
+ * Gestion d'erreur Firebase (codes auth/*) traduits en français.
+ */
+export function OAuthButtons({ mode, disabled, onError, onSuccess }: OAuthButtonsProps) {
+  const [loadingProvider, setLoadingProvider] = useState<null | 'google' | 'github'>(null);
+
+  const translateFirebaseError = (code: string): string => {
+    switch (code) {
+      case 'auth/popup-closed-by-user':
+        return 'Fenêtre fermée avant la fin de la connexion.';
+      case 'auth/popup-blocked':
+        return 'Le popup a été bloqué par le navigateur. Autorisez les popups puis réessayez.';
+      case 'auth/cancelled-popup-request':
+        return 'Connexion annulée.';
+      case 'auth/operation-not-allowed':
+        return "Ce fournisseur n'est pas activé. Contactez l'administrateur.";
+      case 'auth/account-exists-with-different-credential':
+        return 'Un compte existe déjà avec cet email via un autre fournisseur.';
+      case 'auth/unauthorized-domain':
+        return "Ce domaine n'est pas autorisé dans la console Firebase.";
+      case 'auth/network-request-failed':
+        return 'Erreur réseau. Vérifiez votre connexion.';
+      case 'auth/internal-error':
+        return 'Erreur interne Firebase. Réessayez.';
+      default:
+        return 'Erreur d\'authentification. Réessayez.';
+    }
+  };
+
+  const handleOAuth = async (provider: 'google' | 'github') => {
+    if (disabled || loadingProvider) return;
+    setLoadingProvider(provider);
+    try {
+      // 1. signIn côté client (Firebase Client SDK) -> idToken
+      const { signInWithGoogle, signInWithGithub } = await import('@/lib/firebase/auth-client');
+      const authResult = provider === 'google'
+        ? await signInWithGoogle()
+        : await signInWithGithub();
+
+      // 2. POST l'idToken au serveur qui pose le session cookie
+      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          idToken: authResult.idToken,
+          ...(mode === 'register' && authResult.displayName
+            ? { name: authResult.displayName }
+            : {}),
+        }),
+      });
+
+      if (!res.ok) {
+        let msg = 'Erreur lors de la connexion.';
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch {}
+        onError?.(msg);
+        return;
+      }
+
+      // 3. Le serveur a posé le cookie httpOnly + synchronisé Firestore.
+      //    Le parent hydrate le store via login() puis redirige.
+      onSuccess?.();
+    } catch (err) {
+      if (err && typeof err === 'object' && 'code' in err) {
+        const code = (err as { code: string }).code;
+        onError?.(translateFirebaseError(code));
+      } else if (err instanceof Error) {
+        onError?.(err.message);
+      } else {
+        onError?.('Erreur inconnue. Réessayez.');
+      }
+    } finally {
+      setLoadingProvider(null);
+    }
+  };
+
+  const isDisabled = disabled || loadingProvider !== null;
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <button
+        type="button"
+        onClick={() => handleOAuth('google')}
+        disabled={isDisabled}
+        className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-700/60 bg-slate-900/60 hover:bg-slate-800/80 hover:border-slate-600 text-slate-200 text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loadingProvider === 'google' ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <GoogleIcon />
+        )}
+        Google
+      </button>
+      <button
+        type="button"
+        onClick={() => handleOAuth('github')}
+        disabled={isDisabled}
+        className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-700/60 bg-slate-900/60 hover:bg-slate-800/80 hover:border-slate-600 text-slate-200 text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loadingProvider === 'github' ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <GithubIcon />
+        )}
+        GitHub
+      </button>
+    </div>
+  );
+}
+
 // ─── ICONS (re-exported from lucide-react for convenience) ───────────────────
 
 export { Mail, User as UserIcon, Lock, Eye, EyeOff, Check, X, ArrowLeft, ShieldCheck, Loader2 };

@@ -10,11 +10,10 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { apiFetch, ApiError } from '@/lib/api';
 import { AuthLayout } from './auth-layout';
-import { InputField, PasswordInput, Alert, AuthButton, Mail, UserIcon } from './shared';
+import { InputField, PasswordInput, Alert, AuthButton, Mail, UserIcon, OAuthButtons } from './shared';
 
 export function LoginForm() {
   const router = useRouter();
-  const { login } = useAuthStore();
 
   const [form, setForm] = useState({ email: '', password: '', remember: false });
   const [errors, setErrors] = useState<Record<string, string | null>>({});
@@ -54,17 +53,20 @@ export function LoginForm() {
       });
 
       const user = data.user;
-// @ts-ignore — type narrowing pending, see refactor ticket
-      login({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        plan: user.plan || 'free',
-        avatar: user.avatar,
-        role: user.role || 'user',
-        emailVerified: user.emailVerified ?? false,
-        isEmailVerified: user.emailVerified,
-        isActive: true,
+      // Le store d'auth n'expose pas de setter "setUser", mais on peut
+      // peupler directement l'état via setState puis rediriger — le session
+      // cookie Firebase posé par le serveur garantit que les requêtes suivantes
+      // seront authentifiées. hydrate() confirmera au prochain chargement.
+      useAuthStore.setState({
+        isAuthenticated: true,
+        isLoading: false,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          plan: user.plan || 'free',
+          role: user.role || 'user',
+        },
       });
 
       router.push('/');
@@ -91,10 +93,31 @@ export function LoginForm() {
     } finally {
       setLoading(false);
     }
-  }, [form, login, router]);
+  }, [form, router]);
 
   return (
     <AuthLayout title="Bon retour" subtitle="Connectez-vous à votre espace Genova">
+      {/* OAuth — Google + GitHub via Firebase (popup) */}
+      <div className="space-y-3">
+        <OAuthButtons
+          mode="login"
+          disabled={loading}
+          onError={(msg) => setApiError(msg)}
+          onSuccess={() => {
+            // La route /api/auth/login a posé le session cookie Firebase.
+            // On hydrate le store d'auth (lit le cookie via GET /api/auth/me)
+            // puis on redirige vers le dashboard.
+            void useAuthStore.getState().hydrate();
+            router.push('/');
+          }}
+        />
+        <div className="flex items-center gap-3 my-4">
+          <div className="h-px flex-1 bg-slate-700/40"></div>
+          <span className="text-xs text-slate-500 uppercase tracking-wider">ou</span>
+          <div className="h-px flex-1 bg-slate-700/40"></div>
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <Alert type="error" message={apiError} />
 
