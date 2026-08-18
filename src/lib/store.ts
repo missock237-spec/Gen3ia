@@ -8,6 +8,31 @@ export interface User {
   role: string;
 }
 
+// ============================================================
+// Fix T23 — Timeout sur fetch /api/auth/me
+// ============================================================
+//  Avant : si le fetch ne répondait jamais (SW bloqué, réseau
+//  instable, cold start Vercel > 30s), `isLoading` restait `true`
+//  indéfiniment → spinner "Chargement de Gen3ia..." bloqué.
+//
+//  Maintenant : un AbortController tue le fetch après 10s et
+//  déclenche le path "non authentifié" (isLoading=false).
+// ============================================================
+const HYDRATE_TIMEOUT_MS = 10_000;
+
+async function fetchWithTimeout(
+  url: string,
+  opts: { credentials?: RequestCredentials } = {},
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HYDRATE_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -28,9 +53,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   hydrate: async () => {
     try {
-      // Utilise /api/auth/me (route existante). /api/auth/session n'existe pas
-      // et renvoyait 404 → hydrate échouait silencieusement à chaque appel.
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      // T23 : timeout 10s via AbortController. Si le fetch pend (SW bloqué,
+      // réseau mort, etc.), on sort en isLoading=false plutôt que de rester
+      // bloqué sur le spinner indéfiniment.
+      const res = await fetchWithTimeout('/api/auth/me', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         if (data?.user) {
@@ -51,14 +77,17 @@ export const useAuthStore = create<AuthState>((set) => ({
       // Pas de session ou réponse non-OK → utilisateur non authentifié
       set({ isAuthenticated: false, isLoading: false, user: null });
     } catch (e) {
-      // Erreur réseau/serveur → non authentifié (pas de fuite du dashboard)
-      console.error('[auth/store] hydrate failed:', e);
+      // T23 : AbortError (timeout) OU erreur réseau → non authentifié
+      // (pas de fuite du dashboard), mais on logge pour le debug.
+      const err = e as Error;
+      const reason = err?.name === 'AbortError' ? 'timeout' : 'network';
+      console.error(`[auth/store] hydrate failed (${reason}):`, err?.message || err);
       set({ isAuthenticated: false, isLoading: false, user: null });
     }
   },
   validateSession: async () => {
     try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      const res = await fetchWithTimeout('/api/auth/me', { credentials: 'include' });
       return res.ok && !!(await res.json()).user;
     } catch { return false; }
   },
