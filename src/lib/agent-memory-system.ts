@@ -2,6 +2,11 @@
  * Agent Memory Persistence & Context Injection System
  */
 
+import { prisma } from '@/lib/prisma';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('agent-memory-system');
+
 export enum MemoryTier {
   PERSISTENT = 'PERSISTENT',
   SESSION = 'SESSION',
@@ -41,24 +46,52 @@ export interface MemoryContext {
   userMessage?: string;
 }
 
-// Mock Firestore Pattern per requirement
-const db = {
-  collection: (_name: string) => ({
-    add: async (_data: any) => ({ id: 'mock-' + Date.now() }),
-    get: async () => ({ docs: [] as unknown[] }),
-    where: () => ({
-      get: async () => ({ docs: [] as unknown[] }),
-      limit: () => ({
-        get: async () => ({ docs: [] as unknown[] }),
-      }),
+// Helpers de mapping entre AgentMemory (interface locale) et prisma.agentMemory
+// (qui ne stocke que { agentId, userId, category, content, metadata, importance, expiresAt, createdAt }).
+function serializeMem(m: Omit<AgentMemory, 'relevanceScore'>) {
+  return {
+    agentId: m.agentId,
+    userId: m.userId,
+    category: m.category || MemoryCategory.FACT,
+    content: `${m.key}: ${m.value}`,
+    importance: m.confidence,
+    metadata: JSON.stringify({
+      tier: m.tier || MemoryTier.PERSISTENT,
+      key: m.key,
+      value: m.value,
+      updatedAt: m.updatedAt,
+      lastAccessedAt: m.lastAccessedAt,
+      accessCount: m.accessCount,
+      tags: Array.isArray(m.tags) ? m.tags : [],
     }),
-    doc: (_id: string) => ({
-      delete: async () => undefined,
-      update: async (_data: any) => undefined,
-      get: async () => ({ exists: false }),
-    }),
-  }),
-};
+  };
+}
+
+function deserializeMem(doc: Record<string, unknown>): AgentMemory {
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = typeof doc.metadata === 'string' ? JSON.parse(doc.metadata) : (doc.metadata as Record<string, unknown>) || {};
+  } catch {
+    meta = {};
+  }
+  const content = (doc.content as string) || '';
+  const [key, ...rest] = content.split(/:(.+)/);
+  return {
+    id: doc.id as string,
+    agentId: doc.agentId as string,
+    userId: doc.userId as string,
+    tier: (meta.tier as MemoryTier) || MemoryTier.PERSISTENT,
+    category: (doc.category as MemoryCategory) || MemoryCategory.FACT,
+    key: (meta.key as string) ?? key,
+    value: (meta.value as string) ?? rest.join(':').trim(),
+    confidence: typeof doc.importance === 'number' ? doc.importance : 1.0,
+    createdAt: (doc.createdAt as string) || new Date().toISOString(),
+    updatedAt: (meta.updatedAt as string) || (doc.createdAt as string) || new Date().toISOString(),
+    lastAccessedAt: (meta.lastAccessedAt as string) || (doc.createdAt as string) || new Date().toISOString(),
+    accessCount: typeof meta.accessCount === 'number' ? meta.accessCount : 0,
+    tags: Array.isArray(meta.tags) ? meta.tags : [],
+  };
+}
 
 export class AgentMemorySystem {
   private memoryStore: Map<string, AgentMemory> = new Map();
@@ -88,7 +121,21 @@ export class AgentMemorySystem {
     };
 
     this.memoryStore.set(id, newMemory);
-    await db.collection('agent_memories').add(newMemory);
+    try {
+      await prisma.agentMemory.create({
+        data: {
+          id,
+          agentId: newMemory.agentId,
+          userId: newMemory.userId,
+          category: newMemory.category,
+          content: serializeMem(newMemory).content,
+          importance: newMemory.confidence,
+          metadata: serializeMem(newMemory).metadata,
+        } as any,
+      });
+    } catch (err) {
+      log.error('agentMemory.create failed', { error: String(err), agentId: newMemory.agentId });
+    }
 
     return newMemory;
   }
@@ -135,11 +182,17 @@ export class AgentMemorySystem {
           stored.lastAccessedAt = now;
           stored.updatedAt = now;
           this.memoryStore.set(mem.id, stored);
-          await db.collection('agent_memories').doc(mem.id).update({
-            accessCount: stored.accessCount,
-            lastAccessedAt: now,
-            updatedAt: now,
-          });
+          try {
+            await prisma.agentMemory.update({
+              where: { id: mem.id },
+              data: {
+                importance: stored.confidence,
+                metadata: serializeMem(stored).metadata,
+              } as any,
+            });
+          } catch (err) {
+            log.error('agentMemory.update failed', { id: mem.id, error: String(err) });
+          }
         }
       }
     }
@@ -207,7 +260,11 @@ export class AgentMemorySystem {
    */
   async forget(memoryId: string): Promise<void> {
     this.memoryStore.delete(memoryId);
-    await db.collection('agent_memories').doc(memoryId).delete();
+    try {
+      await prisma.agentMemory.delete({ where: { id: memoryId } });
+    } catch (err) {
+      log.error('agentMemory.delete failed', { id: memoryId, error: String(err) });
+    }
   }
 
   /**
@@ -227,7 +284,17 @@ export class AgentMemorySystem {
     };
 
     this.memoryStore.set(id, updated);
-    await db.collection('agent_memories').doc(id).update(updates);
+    try {
+      await prisma.agentMemory.update({
+        where: { id },
+        data: {
+          importance: updated.confidence,
+          metadata: serializeMem(updated).metadata,
+        } as any,
+      });
+    } catch (err) {
+      log.error('agentMemory.update failed', { id, error: String(err) });
+    }
   }
 
   /**

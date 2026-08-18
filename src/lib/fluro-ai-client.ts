@@ -14,7 +14,7 @@
  * the self-hosted stack as the primary execution path.
  */
 
-import ZAI from '@/lib/__stubs__/z-ai-web-dev-sdk';
+import ZAI from 'z-ai-web-dev-sdk';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('fluro-ai');

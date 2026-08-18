@@ -8,6 +8,8 @@
 
 import { db } from '@/lib/db';
 import { createAvatarEngine, type AvatarConfig, type AvatarExpression, type AvatarRenderFrame } from './avatar-engine';
+import { callLLM } from '@/lib/llm/gateway';
+import { LLMMessage } from '@/lib/llm/provider';
 import { createTTSEngine } from '@/lib/voice';
 
 // ============================================================
@@ -283,40 +285,39 @@ export class AvatarSessionEngine {
     inputText: string,
     language?: string
   ): Promise<{ text: string; expression: AvatarExpression }> {
-    // Simple response generation logic
-    // In production, this would call an LLM
-    const lowerInput = inputText.toLowerCase();
+    // Vrai appel LLM via le gateway (au lieu du keyword matching codé en dur).
+    // Système prompt pour produire des réponses courtes + emotions attendues.
+    const systemPrompt = `Tu es un avatar conversationnel Gen3ia. Réponds en ${language || 'français'} avec une seule phrase courte (max 25 mots) et naturelle.
+À la fin de ta réponse, ajoute sur une nouvelle ligne un tag [emotion:XXX] parmi : neutral, happy, sad, listening, thinking, speaking, laugh, wink, surprised.
+Exemple : Bonjour, ravi de te voir ! [emotion:happy]`;
+
+    const messages: LLMMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: inputText },
+    ];
 
     let text: string;
     let expression: AvatarExpression = 'neutral';
 
-    if (lowerInput.includes('hello') || lowerInput.includes('hi') || lowerInput.includes('hey')) {
-      text = 'Hello! Nice to meet you. How can I help you today?';
-      expression = 'happy';
-    } else if (lowerInput.includes('how are you')) {
-      text = "I'm doing great, thanks for asking! How about you?";
-      expression = 'happy';
-    } else if (lowerInput.includes('sad') || lowerInput.includes('sorry') || lowerInput.includes('bad')) {
-      text = "I'm sorry to hear that. Is there anything I can do to help?";
+    try {
+      const result = await callLLM(
+        { messages, model: 'gpt-4o-mini', maxTokens: 200, temperature: 0.7 },
+        { tag: 'avatar-session' }
+      );
+      text = result.content || "Désolé, je n'ai pas de réponse pour le moment.";
+      // Extraire le tag [emotion:XXX] s'il est présent
+      const match = text.match(/\[emotion:(\w+)\]/i);
+      if (match) {
+        const exp = match[1].toLowerCase();
+        if (['neutral', 'happy', 'sad', 'listening', 'thinking', 'speaking', 'laugh', 'wink', 'surprised'].includes(exp)) {
+          expression = exp as AvatarExpression;
+        }
+        text = text.replace(/\[emotion:\w+\]/i, '').trim();
+      }
+    } catch (err) {
+      // LLM indisponible — fallback minimal mais MARQUÉ comme tel (plus de fausse réponse "Hello nice to meet you").
+      text = "(Réponse indisponible — service LLM non configuré)";
       expression = 'sad';
-    } else if (lowerInput.includes('angry') || lowerInput.includes('frustrated')) {
-      text = 'I understand your frustration. Let me help you with that.';
-      expression = 'listening';
-    } else if (lowerInput.includes('thank')) {
-      text = "You're welcome! Happy to help!";
-      expression = 'happy';
-    } else if (lowerInput.includes('joke') || lowerInput.includes('funny')) {
-      text = "Here's something fun: Why don't scientists trust atoms? Because they make up everything!";
-      expression = 'laugh';
-    } else if (lowerInput.includes('?')) {
-      text = "That's a great question! Let me think about that for a moment.";
-      expression = 'thinking';
-    } else if (lowerInput.includes('bye') || lowerInput.includes('goodbye')) {
-      text = 'Goodbye! It was nice talking with you. See you soon!';
-      expression = 'wink';
-    } else {
-      text = `I understand you said: "${inputText}". Let me help you with that.`;
-      expression = 'speaking';
     }
 
     return { text, expression };

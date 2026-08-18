@@ -5,6 +5,8 @@ import { Worker, Queue, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { createLogger } from '@/lib/logger';
 import { db } from '@/lib/db';
+import { callLLM } from '@/lib/llm/gateway';
+import { LLMMessage } from '@/lib/llm/provider';
 // P4 — Config worker dynamique par agent (scalabilité roadmap qualité).
 import { getWorkerConfig, desiredWorkers } from '@/lib/worker-dynamic-config';
 // P2 — Initialisation OpenTelemetry au démarrage du worker (contexte serveur).
@@ -107,18 +109,37 @@ const autoWorker = new Worker<AutoJobData>('agent-execution', async (job: Job<Au
   const startTime = Date.now();
 
   try {
-    // Execution simulee (remplacer par appel LLM reel)
-    await new Promise((r) => setTimeout(r, 2000));
-    const duration = Date.now() - startTime;
+    // Vrai appel LLM via le gateway (au lieu d'un setTimeout + Math.random).
+    const messages: LLMMessage[] = [
+      { role: 'system', content: agent.systemPrompt || `Tu es ${agent.name}, un assistant Gen3ia.` },
+      { role: 'user', content: `${agent.name} — exécution périodique (${new Date().toISOString()}).` },
+    ];
 
-    const tokenCount = Math.floor(Math.random() * 400) + 100;
+    const llmResult = await callLLM(
+      {
+        messages,
+        model: agent.model || 'gpt-4o-mini',
+        maxTokens: agent.maxTokens || 1024,
+        temperature: agent.temperature ?? 0.7,
+      },
+      { tag: 'auto-worker' }
+    );
+
+    const duration = Date.now() - startTime;
+    const tokenCount = llmResult.tokens || 0;
     const cost = tokenCount * 0.000002;
 
     await db.agentExecution.update({
       where: { id: execLog.id },
       data: {
         status: 'completed',
-        output: JSON.stringify({ output: `[Auto] ${agent.name} - execution periodique`, tokens: tokenCount, duration }),
+        output: JSON.stringify({
+          output: llmResult.content,
+          tokens: tokenCount,
+          duration,
+          model: llmResult.model,
+          provider: llmResult.provider,
+        }),
         totalTokens: tokenCount,
         estimatedCost: cost,
         durationMs: duration,

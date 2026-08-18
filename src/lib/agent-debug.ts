@@ -278,9 +278,10 @@ export class AgentDebugger {
       (r) => (r.agentId === agentId || !agentId) && (r.userId === userId || !userId)
     );
 
-    if (existing.length === 0 && agentId) {
-      this.seedSampleRuns(agentId, userId);
-    }
+    // Plus de seedSampleRuns — auparavant cette méthode injectait 2 fausses runs
+    // "sample-1" et "sample-2" avec des traces factices (LLM_CALL gpt-4o,
+    // TOOL_CALL query_sales_db retournant recordsFound:142, totalRevenue:1250000…)
+    // ce qui affichait des données de debug fabriquées aux utilisateurs.
 
     const runs = Array.from(this.runs.values())
       .filter((r) => (!agentId || r.agentId === agentId) && (!userId || r.userId === userId))

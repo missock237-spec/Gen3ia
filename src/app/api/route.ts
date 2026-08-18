@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
 
-
-
-
 export const dynamic = "force-dynamic";
 export async function GET() {
   return NextResponse.json({
@@ -19,7 +16,7 @@ export async function GET() {
       '/api/ai','/api/ai-server','/api/multi-agent','/api/observability',
       '/api/fluro','/api/approvals','/api/avatars','/api/guardrails',
       '/api/workspaces','/api/health','/api/events','/api/keys','/api/upload',
-      '/api/search','/api/relay','/api/playground','/api/terminal','/api/export',
+      '/api/search','/api/relay','/api/terminal','/api/export',
       '/api/feedback','/api/docs','/api/webhooks','/api/audio','/api/payments',
       '/api/ads','/api/affiliate','/api/advertising','/api/skills',
     ],
