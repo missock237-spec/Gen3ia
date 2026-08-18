@@ -78,6 +78,8 @@ const ADMIN_ROUTES = [
   '/api/metrics/',
   '/api/monitoring/',
   '/api/system/',
+  // Evolution Engine — privileged: only admins can trigger/rollback/approve
+  '/api/evolution/',
 ];
 
 // Routes sensibles (LLM coûteux) : vérifiées par withAuth (couche 2).

@@ -38,37 +38,33 @@ export interface WidgetConfig {
 }
 
 const SAMPLE_DATASETS: Record<string, { name: string; columns: string[]; rows: Record<string, any>[] }> = {
-  sales: {
-    name: 'Ventes',
-    columns: ['date','produit','montant','region','vendeur'],
-    rows: [
-      {date:'2026-01',produit:'SaaS Pro',montant:15000,region:'Douala',vendeur:'Alice'},
-      {date:'2026-01',produit:'SaaS Starter',montant:5000,region:'Yaounde',vendeur:'Bob'},
-      {date:'2026-02',produit:'SaaS Pro',montant:18000,region:'Douala',vendeur:'Alice'},
-      {date:'2026-02',produit:'Enterprise',montant:50000,region:'Bafoussam',vendeur:'Charlie'},
-      {date:'2026-03',produit:'SaaS Pro',montant:16500,region:'Douala',vendeur:'Alice'},
-      {date:'2026-03',produit:'SaaS Starter',montant:6000,region:'Yaounde',vendeur:'Bob'},
-    ],
-  },
-  users: {
-    name: 'Utilisateurs',
-    columns: ['date','nouveaux','actifs','payants','taux_conversion'],
-    rows: [
-      {date:'2026-01',nouveaux:120,actifs:450,payants:45,taux_conversion:0.10},
-      {date:'2026-02',nouveaux:145,actifs:510,payants:58,taux_conversion:0.11},
-      {date:'2026-03',nouveaux:168,actifs:580,payants:72,taux_conversion:0.12},
-    ],
-  },
-  support: {
-    name: 'Support',
-    columns: ['date','tickets','resolus','satisfaction','temps_moyen'],
-    rows: [
-      {date:'2026-01',tickets:230,resolus:210,satisfaction:4.2,temps_moyen:180},
-      {date:'2026-02',tickets:195,resolus:188,satisfaction:4.5,temps_moyen:145},
-      {date:'2026-03',tickets:210,resolus:205,satisfaction:4.4,temps_moyen:160},
-    ],
-  },
+  // Plus de datasets factices — l'utilisateur doit connecter ses propres datasets
+  // via l'interface /dashboard/data-analyst. Voir `loadDatasetFromDB` plus bas.
 };
+
+// Charge un dataset réel depuis la base (collection 'Dataset' du shim Prisma).
+// Chaque Dataset stocke : { id, name, description, source, schemaInfo (JSON),
+// sampleData (JSON), rowCount, status, userId, tags }.
+async function loadDatasetFromDB(datasetId: string, userId?: string): Promise<{ name: string; columns: string[]; rows: Record<string, any>[] } | null> {
+  try {
+    const where: Record<string, unknown> = { id: datasetId };
+    if (userId) where.userId = userId;
+    const ds: any = await prisma.dataset.findUnique({ where });
+    if (!ds) return null;
+    let columns: string[] = [];
+    try {
+      columns = JSON.parse(ds.schemaInfo || '[]');
+    } catch { columns = []; }
+    let rows: Record<string, any>[] = [];
+    try {
+      rows = JSON.parse(ds.sampleData || '[]');
+    } catch { rows = []; }
+    return { name: ds.name || datasetId, columns, rows };
+  } catch (err) {
+    log.error('loadDatasetFromDB failed', { datasetId, error: String(err) });
+    return null;
+  }
+}
 
 export class DataAnalystEngine {
   /**
@@ -103,7 +99,16 @@ export class DataAnalystEngine {
     answer: string; query: string; result: QueryResult | null;
     chartConfig: ChartConfig | null; explanation: string;
   }> {
-    const dataset = SAMPLE_DATASETS[datasetId] || SAMPLE_DATASETS['sales'];
+    const dataset = (await loadDatasetFromDB(datasetId)) || SAMPLE_DATASETS[datasetId];
+    if (!dataset) {
+      return {
+        answer: `Dataset "${datasetId}" introuvable. Veuillez connecter un dataset via /dashboard/data-analyst.`,
+        query: '',
+        result: null,
+        chartConfig: null,
+        explanation: 'Aucun dataset connecté',
+      };
+    }
     const columns = dataset.columns;
     const allRows = dataset.rows;
     const q = question.toLowerCase();

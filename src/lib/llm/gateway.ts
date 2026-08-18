@@ -53,8 +53,7 @@ async function callProvider(
       'Authorization': `Bearer ${provider.apiKey}`,
     },
     body: JSON.stringify(body),
-// @ts-ignore — type narrowing pending, see refactor ticket
-    signal: request.signal || AbortSignal.timeout(request.timeout || provider.timeout),
+    signal: (request as { signal?: AbortSignal; timeout?: number }).signal || AbortSignal.timeout((request as { timeout?: number }).timeout || provider.timeout),
   });
 
   if (!response.ok) {
@@ -86,8 +85,7 @@ async function callProvider(
 export async function callLLM(request: LLMRequest, options: GatewayCallOptions = {}): Promise<LLMResponse> {
   // 1. Vérifier le cache
   if (!options.noCache) {
-// @ts-ignore — type narrowing pending, see refactor ticket
-    const cacheKey = LLMCache.generateKey(request.messages, request.model || '');
+    const cacheKey = llmCacheKey(request.messages, request.model || '');
     const cached = await llmCache.get(cacheKey);
     if (cached) {
       log.info('llm_cache_hit', { tag: options.tag });
@@ -114,17 +112,14 @@ export async function callLLM(request: LLMRequest, options: GatewayCallOptions =
     : getActiveProviders();
 
   if (activeProviders.length === 0) {
-    // Fallback: réponse simulée pour le développement
-    log.warn('llm_no_provider', { tag: options.tag });
-    const lastMsg = request.messages[request.messages.length - 1]?.content || '';
-    return {
-      content: `[Mode démo] Réponse simulée pour : "${lastMsg.slice(0, 100)}"`,
-      tokens: 50,
-      provider: 'huggingface',
-      model: 'demo-mode',
-      latencyMs: 0,
-      cached: false,
-    };
+    // Aucun provider LLM configuré — erreur explicite (au lieu de retourner
+    // une fausse réponse "Mode démo" qui pouvait être confondue avec une vraie).
+    log.error('llm_no_provider', { tag: options.tag });
+    throw new Error(
+      '[llm/gateway] Aucun provider LLM configuré. ' +
+      'Définir au moins une clé API (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.) ' +
+      'ou configurer un provider via /api/admin/llm.'
+    );
   }
 
   // 3. Tenter chaque provider avec retry
@@ -137,8 +132,7 @@ export async function callLLM(request: LLMRequest, options: GatewayCallOptions =
 
         // 4. Sauvegarder dans le cache
         if (!options.noCache) {
-// @ts-ignore — type narrowing pending, see refactor ticket
-          const cacheKey = LLMCache.generateKey(request.messages, result.model);
+          const cacheKey = llmCacheKey(request.messages, result.model);
           await llmCache.set(cacheKey, {
             content: result.content,
             tokens: result.tokens,
@@ -188,4 +182,19 @@ export async function callLLM(request: LLMRequest, options: GatewayCallOptions =
  */
 export function getLLMCacheStats() {
   return llmCache.getStats();
+}
+
+/**
+ * Génère une clé de cache stable pour une séquence de messages + modèle.
+ * Utilise un hash JSON des messages (rôle + contenu) concaténé avec le modèle.
+ */
+function llmCacheKey(messages: LLMMessage[], model: string): string {
+  const payload = JSON.stringify({ messages, model });
+  let hash = 0;
+  for (let i = 0; i < payload.length; i++) {
+    const c = payload.charCodeAt(i);
+    hash = ((hash << 5) - hash) + c;
+    hash = hash & hash; // Convert to 32-bit int
+  }
+  return `llm:${model}:${hash}`;
 }

@@ -144,22 +144,11 @@ export const SCOPE_DEFINITIONS: Record<PermissionScope, ScopeDefinition> = {
   },
 };
 
-// Firestore mock pattern as specified in system instructions
-const db = {
-  collection: (_name: string) => ({
-    add: async (_data: any) => ({ id: 'mock-' + Date.now() }),
-    get: async () => ({ docs: [] as unknown[] }),
-    where: () => ({
-      get: async () => ({ docs: [] as unknown[] }),
-      limit: () => ({ get: async () => ({ docs: [] as unknown[] }) }),
-    }),
-    doc: (_id: string) => ({
-      delete: async () => undefined,
-      update: async (_data: any) => undefined,
-      get: async () => ({ exists: false }),
-    }),
-  }),
-};
+// Real persistence via Prisma shim (Firestore-backed) — agentPermission + agentActionLog collections
+import { prisma } from '@/lib/prisma';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('agent-permissions');
 
 export class PermissionManager {
   private grants: AgentPermissionGrant[] = [];
@@ -221,11 +210,31 @@ export class PermissionManager {
     );
     if (existingIdx !== -1) {
       this.grants[existingIdx].revokedAt = new Date();
-      await db.collection('grants').doc(this.grants[existingIdx].id).update({ revokedAt: new Date() });
+      try {
+        await prisma.agentPermission.update({
+          where: { id: this.grants[existingIdx].id },
+          data: { revokedAt: new Date() } as any,
+        });
+      } catch (err) {
+        log.error('agentPermission.update (revoke previous) failed', { id: this.grants[existingIdx].id, error: String(err) });
+      }
     }
 
     this.grants.push(grant);
-    await db.collection('grants').add(grant);
+    try {
+      await prisma.agentPermission.create({
+        data: {
+          id: grant.id,
+          agentId: grant.agentId,
+          userId: grant.userId,
+          scopes: JSON.stringify(grant.scopes),
+          grantedAt: grant.grantedAt,
+          expiresAt: grant.expiresAt ?? null,
+        } as any,
+      });
+    } catch (err) {
+      log.error('agentPermission.create failed', { agentId: grant.agentId, error: String(err) });
+    }
 
     return grant;
   }
@@ -235,7 +244,14 @@ export class PermissionManager {
     for (const grant of this.grants) {
       if (grant.agentId === agentId && grant.userId === userId && !grant.revokedAt) {
         grant.revokedAt = now;
-        await db.collection('grants').doc(grant.id).update({ revokedAt: now });
+        try {
+          await prisma.agentPermission.update({
+            where: { id: grant.id },
+            data: { revokedAt: now } as any,
+          });
+        } catch (err) {
+          log.error('agentPermission.update (revoke) failed', { id: grant.id, error: String(err) });
+        }
       }
     }
   }
@@ -426,7 +442,18 @@ export class AuditLogger {
     };
 
     this.auditLogs.unshift(fullEntry);
-    await db.collection('audit_logs').add(fullEntry);
+    try {
+      await prisma.agentActionLog.create({
+        data: {
+          agentId: fullEntry.agentId,
+          userId: fullEntry.userId,
+          action: fullEntry.action,
+          metadata: JSON.stringify(fullEntry),
+        } as any,
+      });
+    } catch (err) {
+      log.error('agentActionLog.create failed', { agentId: fullEntry.agentId, error: String(err) });
+    }
   }
 
   public async getAuditLog(
