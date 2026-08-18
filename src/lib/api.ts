@@ -49,7 +49,19 @@ export async function apiFetch<T = unknown>(
   });
 
   if (response.status === 401) {
-    throw new ApiError('Authentication required', 401);
+    // Préserve le message serveur quand il y en a un (ex: /api/auth/login
+    // et /api/auth/register renvoient 401 avec { error: "ID token invalide
+    // ou expiré" }). On ne remplace le message par 'Authentication required'
+    // que si le serveur n'a pas fourni de détail, pour ne pas casser le
+    // comportement des autres routes qui s'appuient sur ce message par défaut.
+    let errorData: unknown;
+    try {
+      errorData = await response.json();
+    } catch {
+      errorData = null;
+    }
+    const serverMessage = (errorData as { error?: string } | null)?.error;
+    throw new ApiError(serverMessage || 'Authentication required', 401);
   }
 
   if (!response.ok) {
