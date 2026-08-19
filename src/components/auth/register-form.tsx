@@ -7,9 +7,10 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/lib/store';
 import { apiFetch, ApiError } from '@/lib/api';
 import { AuthLayout } from './auth-layout';
-import { InputField, PasswordInput, PasswordStrengthIndicator, Alert, AuthButton, Mail, UserIcon, getStrength, PASSWORD_RULES } from './shared';
+import { InputField, PasswordInput, PasswordStrengthIndicator, Alert, AuthButton, Mail, UserIcon, OAuthButtons, getStrength, PASSWORD_RULES } from './shared';
 
 function validateEmail(email: string): string | null {
   if (!email) return "L'adresse email est requise";
@@ -135,6 +136,24 @@ export function RegisterForm() {
 
   return (
     <AuthLayout title="Créer un compte" subtitle="Rejoignez la plateforme Genova AI OS">
+      {/* OAuth — Google + GitHub via Firebase (popup) */}
+      <div className="space-y-3">
+        <OAuthButtons
+          mode="register"
+          disabled={loading}
+          onError={(msg) => setApiError(msg)}
+          onSuccess={() => {
+            void useAuthStore.getState().hydrate();
+            router.push('/');
+          }}
+        />
+        <div className="flex items-center gap-3 my-4">
+          <div className="h-px flex-1 bg-slate-700/40"></div>
+          <span className="text-xs text-slate-500 uppercase tracking-wider">ou</span>
+          <div className="h-px flex-1 bg-slate-700/40"></div>
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <Alert type="error" message={apiError} />
         <Alert type="success" message={success} />
