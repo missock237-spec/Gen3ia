@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 /* ------------------------------------------------------------------ */
 /*  Petit SVG schema de circuit (remplace le cerveau)                  */
@@ -363,9 +364,7 @@ export default function HardTechLanding() {
       <header className="sticky top-0 z-40 border-b border-[#1C1E22] bg-[#0A0A0B]/85 backdrop-blur">
         <div className="mx-auto max-w-7xl px-5 sm:px-8 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <span className="grid place-items-center h-9 w-9 rounded-md border border-[#00F5FF]/40 bg-[#0E0F11] text-[#00F5FF]">
-              <Circuit className="h-5 w-5" />
-            </span>
+            <Image src="/logo.png" alt="Gen3ia" width={36} height={36} className="h-9 w-9 rounded-md" priority />
             <span className="font-semibold tracking-tight">gen3ia</span>
             <span className="hardtech-data text-[0.6rem] text-muted-foreground hidden sm:inline">v2.4 · rust-core</span>
           </Link>

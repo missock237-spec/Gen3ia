@@ -50,7 +50,7 @@ function baseHtml(content: string): string {
     .container { max-width: 600px; margin: 0 auto; padding: 24px; }
     .card { background: #ffffff; border-radius: 12px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .logo { text-align: center; margin-bottom: 24px; }
-    .logo img { width: 48px; height: 48px; }
+    .logo img { width: 64px; height: 64px; border-radius: 12px; }
     h1 { font-size: 20px; font-weight: 700; color: #09090b; margin: 0 0 8px 0; }
     p { font-size: 14px; line-height: 1.6; color: #52525b; margin: 0 0 16px 0; }
     .btn { display: inline-block; padding: 12px 24px; background: #7c3aed; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-size: 14px; font-weight: 600; margin: 8px 0; }
@@ -63,7 +63,7 @@ function baseHtml(content: string): string {
 </head>
 <body>
   <div class="container">
-    <div class="logo">🔮</div>
+    <div class="logo"><img src="${(process.env.NEXT_PUBLIC_APP_URL || 'https://gen3ia.online') + '/logo.png'}" alt="Gen3ia" /></div>
     <div class="card">
       ${content}
     </div>

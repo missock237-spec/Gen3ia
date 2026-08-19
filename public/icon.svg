@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Gen3ia logo — hexagone néon avec cristal central -->
+  <rect width="512" height="512" fill="#0A0A0B"/>
+  <!-- Cadre hexagonal -->
+  <polygon
+    points="256,32 444,140 444,372 256,480 68,372 68,140"
+    fill="none"
+    stroke="#00F5FF"
+    stroke-width="14"
+    stroke-linejoin="round"
+    filter="url(#glow)"
+  />
+  <!-- Cristal central (polygone étoilé) -->
+  <polygon
+    points="256,128 304,200 380,200 312,260 340,352 256,304 172,352 200,260 132,200 208,200"
+    fill="none"
+    stroke="#00F5FF"
+    stroke-width="10"
+    stroke-linejoin="round"
+    filter="url(#glow)"
+  />
+  <!-- Lignes intérieures pointes -->
+  <line x1="256" y1="128" x2="256" y2="304" stroke="#00F5FF" stroke-width="3" opacity="0.6"/>
+  <line x1="304" y1="200" x2="200" y2="260" stroke="#00F5FF" stroke-width="3" opacity="0.6"/>
+  <line x1="380" y1="200" x2="340" y2="352" stroke="#00F5FF" stroke-width="3" opacity="0.6"/>
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+</svg>

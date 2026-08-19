@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAppStore, useAuthStore } from '@/lib/store';
@@ -45,10 +46,14 @@ export function AppSidebar() {
     >
       {/* Logo */}
       <div className="flex items-center justify-between p-4 border-b border-border">
-        {!collapsed && (
+        {!collapsed ? (
           <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-            <Sparkles className="h-5 w-5 text-primary" />
+            <Image src="/logo.png" alt="Gen3ia" width={32} height={32} className="h-8 w-8 rounded-lg" priority />
             <span>Gen3ia</span>
+          </Link>
+        ) : (
+          <Link href="/" className="flex items-center justify-center">
+            <Image src="/logo.png" alt="Gen3ia" width={32} height={32} className="h-8 w-8 rounded-lg" priority />
           </Link>
         )}
         <button

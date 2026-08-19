@@ -20,7 +20,7 @@ const description = siteConfig.description;
 export const viewport: Viewport = {
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#0A0A0B' },
+    { media: '(prefers-color-scheme: dark)', color: '#00F5FF' },
   ],
   colorScheme: 'dark light',
   width: 'device-width',
