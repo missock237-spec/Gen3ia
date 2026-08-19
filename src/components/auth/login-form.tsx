@@ -7,7 +7,6 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/lib/store';
 import { apiFetch, ApiError } from '@/lib/api';
 import { AuthLayout } from './auth-layout';
 import { InputField, PasswordInput, Alert, AuthButton, Mail, UserIcon, OAuthButtons } from './shared';
@@ -56,24 +55,9 @@ export function LoginForm() {
         body: JSON.stringify({ idToken: authResult.idToken, rememberMe: form.remember }),
       });
 
-      const user = data.user;
-      // Le store d'auth n'expose pas de setter "setUser", mais on peut
-      // peupler directement l'état via setState puis rediriger — le session
-      // cookie Firebase posé par le serveur garantit que les requêtes suivantes
-      // seront authentifiées. hydrate() confirmera au prochain chargement.
-      useAuthStore.setState({
-        isAuthenticated: true,
-        isLoading: false,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          plan: user.plan || 'free',
-          role: user.role || 'user',
-        },
-      });
-
-      router.push('/');
+      // Le serveur a posé le cookie httpOnly de session Firebase.
+      // Rechargement complet pour que le store hydrate le cookie.
+      window.location.href = '/';
     } catch (err) {
       if (err instanceof ApiError) {
         // Erreurs renvoyées par le serveur (POST /api/auth/login)
@@ -157,11 +141,9 @@ export function LoginForm() {
           disabled={loading}
           onError={(msg) => setApiError(msg)}
           onSuccess={() => {
-            // La route /api/auth/login a posé le session cookie Firebase.
-            // On hydrate le store d'auth (lit le cookie via GET /api/auth/me)
-            // puis on redirige vers le dashboard.
-            void useAuthStore.getState().hydrate();
-            router.push('/');
+            // La route a posé le cookie de session Firebase.
+            // Rechargement complet pour lire le cookie et afficher le dashboard.
+            window.location.href = '/';
           }}
         />
         <div className="flex items-center gap-3 my-4">

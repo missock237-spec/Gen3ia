@@ -30,11 +30,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Vérifie l'idToken côté serveur (Admin SDK) et récupère l'utilisateur.
-    //    verifyIdToken fait verifyIdToken(idToken, true) + getUser(uid).
+    //    verifyIdToken fait 3 tentatives avec retry + délai cold start.
     const user = await verifyIdToken(idToken);
     if (!user) {
+      console.error('[auth/login] verifyIdToken returned null for token length:', idToken?.length);
       return NextResponse.json(
-        { error: 'ID token invalide ou expiré' },
+        { error: 'Session invalide. Veuillez réessayer.' },
         { status: 401 },
       );
     }

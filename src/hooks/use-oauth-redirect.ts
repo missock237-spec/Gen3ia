@@ -69,9 +69,10 @@ export function useOAuthRedirect({ onError }: UseOAuthRedirectOptions = {}) {
         return;
       }
 
-      // Succès — hydrate le store et redirige
-      await useAuthStore.getState().hydrate();
-      router.push('/');
+      // Succès — recharge complet pour lire le nouveau cookie de session
+      // (router.push ne suffit pas car le cookie n'est pas visible
+      // dans le store zustand avant un rechargement)
+      window.location.href = '/';
     } catch (err) {
       console.error('[useOAuthRedirect] Error:', err);
       onError?.('Erreur lors de la connexion via ' + oauthProvider + '.');

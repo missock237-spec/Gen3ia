@@ -183,25 +183,39 @@ export async function getCurrentUser(): Promise<Gen3iaUser | null> {
 
 /**
  * Vérifie un ID token Firebase (pour les appels client->API avec Authorization: Bearer).
- * Si checkRevoked=true échoue (fréquent sur tokens frais ou désynchronisation
- * d'horloge), on retente avec checkRevoked=false.
+ *
+ * Stratégie de retry (3 tentatives) :
+ *   1. verifyIdToken(idToken, true)  — vérif signature + révocation
+ *   2. verifyIdToken(idToken, false) — vérif signature sans révocation
+ *      (tokens frais, révocation pas encore propagée, cold start)
+ *   3. Pause 1s + verifyIdToken(idToken, false) — cold start Vercel
+ *      (le SDK doit télécharger les clés publiques Google)
  */
 export async function verifyIdToken(idToken: string): Promise<Gen3iaUser | null> {
-  try {
-    const auth = getAdminAuth();
-    let decoded = await auth.verifyIdToken(idToken, true).catch(async () => {
-      // Retry sans checkRevoked si le premier appel échoue.
-      // Cela arrive quand : token frais, révocation pas encore propagée,
-      // ou légère désynchronisation d'horloge.
-      return auth.verifyIdToken(idToken, false);
-    });
-    const user = await auth.getUser(decoded.uid);
-    return toGen3iaUser(user);
-  } catch (err) {
-    console.error('[verifyIdToken] Failed to verify token:',
-      err instanceof Error ? `${err.message} (${err.constructor.name})` : String(err));
-    return null;
+  const auth = getAdminAuth();
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const checkRevoked = attempt === 1;
+      const decoded = await auth.verifyIdToken(idToken, checkRevoked);
+      const user = await auth.getUser(decoded.uid);
+      return toGen3iaUser(user);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errCode = err instanceof Error ? err.constructor.name : 'Unknown';
+      console.error(`[verifyIdToken] Attempt ${attempt}/3 failed:`, errMsg, `(${errCode})`);
+
+      // Dernière tentative échouée → abandonner
+      if (attempt === 3) {
+        console.error('[verifyIdToken] All 3 attempts failed. Token length:', idToken?.length);
+        return null;
+      }
+
+      // Pause avant le retry (cold start Vercel : le SDK télécharge les clés JWKS)
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
   }
+  return null;
 }
 
 // ============================================================

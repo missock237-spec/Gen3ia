@@ -147,8 +147,9 @@ export function RegisterForm() {
           disabled={loading}
           onError={(msg) => setApiError(msg)}
           onSuccess={() => {
-            void useAuthStore.getState().hydrate();
-            router.push('/');
+            // La route a posé le cookie de session Firebase.
+            // Rechargement complet pour lire le cookie et afficher le dashboard.
+            window.location.href = '/';
           }}
         />
         <div className="flex items-center gap-3 my-4">
