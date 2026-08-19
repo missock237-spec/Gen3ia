@@ -72,22 +72,71 @@ export function LoginForm() {
       router.push('/');
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 403) setApiError(err.message);
-        else if (err.status === 429) setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
-        else setApiError('Identifiants invalides');
-      } else if (err && typeof err === 'object' && 'code' in err) {
-        // Firebase Auth error
-        const code = (err as { code: string }).code;
-        if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
-          setApiError('Identifiants invalides');
-        } else if (code === 'auth/too-many-requests') {
-          setApiError('Trop de tentatives. Réessayez plus tard.');
-        } else if (code === 'auth/email-not-verified') {
-          setApiError('Email non vérifié. Consultez votre boîte mail.');
+        // Erreurs renvoyées par le serveur (POST /api/auth/login)
+        if (err.status === 401) {
+          // ID token invalide ou expiré
+          setApiError('Session invalide. Veuillez réessayer.');
+        } else if (err.status === 403) {
+          setApiError(err.message || 'Accès refusé.');
+        } else if (err.status === 429) {
+          setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
+        } else if (err.status === 500) {
+          console.error('[login] Server error:', err.message);
+          setApiError('Erreur serveur temporaire. Veuillez réessayer dans un instant.');
         } else {
-          setApiError('Erreur d\'authentification Firebase');
+          setApiError(err.message || 'Identifiants invalides');
+        }
+      } else if (err && typeof err === 'object' && 'code' in err) {
+        // Firebase Auth error — traduction complète des codes connus
+        const firebaseErr = err as { code: string; message?: string };
+        const code = firebaseErr.code;
+        console.error('[login] Firebase error:', code, firebaseErr.message);
+
+        const firebaseErrorMap: Record<string, string> = {
+          // Identifiants invalides / utilisateur inexistant
+          'auth/invalid-credential': 'Identifiants invalides. Vérifiez votre email et mot de passe.',
+          'auth/wrong-password': 'Mot de passe incorrect.',
+          'auth/user-not-found': 'Aucun compte trouvé avec cet email.',
+          'auth/user-disabled': 'Ce compte a été désactivé. Contactez le support.',
+
+          // Trop de tentatives
+          'auth/too-many-requests': 'Trop de tentatives. Réessayez plus tard ou réinitialisez votre mot de passe.',
+
+          // Email non vérifié
+          'auth/email-not-verified': 'Email non vérifié. Consultez votre boîte mail pour le lien de vérification.',
+
+          // Configuration Firebase
+          'auth/configuration-not-found': 'Erreur de configuration Firebase. Contactez l\'administrateur.',
+          'auth/invalid-api-key': 'Erreur de configuration. Contactez l\'administrateur.',
+          'auth/app-not-authorized': 'Application non autorisée. Contactez l\'administrateur.',
+          'auth/invalid-tenant-id': 'Erreur de configuration multi-tenant. Contactez l\'administrateur.',
+
+          // Domaine non autorisé
+          'auth/unauthorized-domain': 'Ce domaine n\'est pas autorisé pour la connexion.',
+
+          // Méthode non activée
+          'auth/operation-not-allowed': 'La connexion par email/mot de passe n\'est pas activée.',
+
+          // Réseau
+          'auth/network-request-failed': 'Erreur réseau. Vérifiez votre connexion internet.',
+
+          // Erreurs internes
+          'auth/internal-error': 'Erreur interne. Veuillez réessayer.',
+          'auth/invalid-email': 'Format d\'email invalide.',
+        };
+
+        const mappedMessage = firebaseErrorMap[code];
+        if (mappedMessage) {
+          setApiError(mappedMessage);
+        } else {
+          // Code inconnu — afficher un message générique avec le code pour le debug
+          console.error('[login] Unhandled Firebase error code:', code, firebaseErr);
+          setApiError('Erreur de connexion. Si le problème persiste, contactez le support.');
         }
       } else {
+        // Erreur non-Firebase (ex: erreur d\'import dynamique, config manquante)
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[login] Unexpected error:', msg);
         setApiError('Erreur réseau. Veuillez réessayer.');
       }
     } finally {

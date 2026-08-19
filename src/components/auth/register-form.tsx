@@ -88,21 +88,41 @@ export function RegisterForm() {
       setForm({ name: '', email: '', password: '', confirm: '', terms: false });
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 429) setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
-        else setApiError(err.message || "Erreur lors de l'inscription");
+        if (err.status === 409) setApiError('Cet email est déjà utilisé.');
+        else if (err.status === 429) setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
+        else if (err.status === 500) {
+          console.error('[register] Server error:', err.message);
+          setApiError('Erreur serveur temporaire. Veuillez réessayer dans un instant.');
+        } else setApiError(err.message || "Erreur lors de l'inscription");
       } else if (err && typeof err === 'object' && 'code' in err) {
-        // Firebase Auth error
-        const code = (err as { code: string }).code;
-        if (code === 'auth/email-already-in-use') {
-          setApiError('Cet email est déjà utilisé');
-        } else if (code === 'auth/weak-password') {
-          setApiError('Mot de passe trop faible');
-        } else if (code === 'auth/invalid-email') {
-          setApiError('Email invalide');
+        const firebaseErr = err as { code: string; message?: string };
+        const code = firebaseErr.code;
+        console.error('[register] Firebase error:', code, firebaseErr.message);
+
+        const firebaseErrorMap: Record<string, string> = {
+          'auth/email-already-in-use': 'Cet email est déjà utilisé.',
+          'auth/weak-password': 'Mot de passe trop faible.',
+          'auth/invalid-email': 'Format d\'email invalide.',
+          'auth/invalid-credential': 'Identifiants invalides.',
+          'auth/configuration-not-found': 'Erreur de configuration Firebase. Contactez l\'administrateur.',
+          'auth/invalid-api-key': 'Erreur de configuration. Contactez l\'administrateur.',
+          'auth/app-not-authorized': 'Application non autorisée. Contactez l\'administrateur.',
+          'auth/operation-not-allowed': 'La connexion par email/mot de passe n\'est pas activée.',
+          'auth/network-request-failed': 'Erreur réseau. Vérifiez votre connexion internet.',
+          'auth/too-many-requests': 'Trop de tentatives. Réessayez plus tard.',
+          'auth/internal-error': 'Erreur interne. Veuillez réessayer.',
+        };
+
+        const mappedMessage = firebaseErrorMap[code];
+        if (mappedMessage) {
+          setApiError(mappedMessage);
         } else {
-          setApiError('Erreur lors de la création du compte');
+          console.error('[register] Unhandled Firebase error code:', code, firebaseErr);
+          setApiError('Erreur lors de la création du compte. Si le problème persiste, contactez le support.');
         }
       } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[register] Unexpected error:', msg);
         setApiError('Erreur réseau. Veuillez réessayer.');
       }
     } finally {

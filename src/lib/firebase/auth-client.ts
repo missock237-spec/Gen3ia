@@ -21,7 +21,7 @@ import {
   type UserCredential,
 } from 'firebase/auth';
 
-import { getFirebaseAuth } from '@/lib/firebase/client';
+import { getFirebaseAuth, isFirebaseClientConfigured, getFirebaseInitError } from '@/lib/firebase/client';
 
 export interface AuthResult {
   uid: string;
@@ -45,10 +45,30 @@ async function buildAuthResult(cred: UserCredential): Promise<AuthResult> {
 }
 
 /**
+ * Vérifie que Firebase est correctement configuré côté client.
+ * Lance une erreur descriptive si la config est manquante ou si
+ * l'initialisation a échoué.
+ */
+function assertFirebaseReady(): void {
+  const initErr = getFirebaseInitError();
+  if (initErr) {
+    throw { code: 'auth/configuration-not-found', message: initErr };
+  }
+  const configCheck = isFirebaseClientConfigured();
+  if (!configCheck.ok) {
+    throw {
+      code: 'auth/configuration-not-found',
+      message: `Configuration Firebase manquante: ${configCheck.missing.join(', ')}`,
+    };
+  }
+}
+
+/**
  * Connexion par email + mot de passe.
  * Retourne un ID token à envoyer au serveur (POST /api/auth/login).
  */
 export async function signInWithEmail(email: string, password: string): Promise<AuthResult> {
+  assertFirebaseReady();
   const auth = getFirebaseAuth();
   const cred = await signInWithEmailAndPassword(auth, email.toLowerCase().trim(), password);
   return buildAuthResult(cred);
@@ -65,6 +85,7 @@ export async function signUpWithEmail(
   password: string,
   displayName?: string,
 ): Promise<AuthResult> {
+  assertFirebaseReady();
   const auth = getFirebaseAuth();
   const cred = await createUserWithEmailAndPassword(auth, email.toLowerCase().trim(), password);
   if (displayName) {
@@ -79,6 +100,7 @@ export async function signUpWithEmail(
  * Connexion Google via popup.
  */
 export async function signInWithGoogle(): Promise<AuthResult> {
+  assertFirebaseReady();
   const auth = getFirebaseAuth();
   const provider = new GoogleAuthProvider();
   const cred = await signInWithPopup(auth, provider);
@@ -89,6 +111,7 @@ export async function signInWithGoogle(): Promise<AuthResult> {
  * Connexion GitHub via popup.
  */
 export async function signInWithGithub(): Promise<AuthResult> {
+  assertFirebaseReady();
   const auth = getFirebaseAuth();
   const provider = new GithubAuthProvider();
   const cred = await signInWithPopup(auth, provider);

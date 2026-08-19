@@ -391,26 +391,21 @@ export function OAuthButtons({ mode, disabled, onError, onSuccess }: OAuthButton
   const [loadingProvider, setLoadingProvider] = useState<null | 'google' | 'github'>(null);
 
   const translateFirebaseError = (code: string): string => {
-    switch (code) {
-      case 'auth/popup-closed-by-user':
-        return 'Fenêtre fermée avant la fin de la connexion.';
-      case 'auth/popup-blocked':
-        return 'Le popup a été bloqué par le navigateur. Autorisez les popups puis réessayez.';
-      case 'auth/cancelled-popup-request':
-        return 'Connexion annulée.';
-      case 'auth/operation-not-allowed':
-        return "Ce fournisseur n'est pas activé. Contactez l'administrateur.";
-      case 'auth/account-exists-with-different-credential':
-        return 'Un compte existe déjà avec cet email via un autre fournisseur.';
-      case 'auth/unauthorized-domain':
-        return "Ce domaine n'est pas autorisé dans la console Firebase.";
-      case 'auth/network-request-failed':
-        return 'Erreur réseau. Vérifiez votre connexion.';
-      case 'auth/internal-error':
-        return 'Erreur interne Firebase. Réessayez.';
-      default:
-        return 'Erreur d\'authentification. Réessayez.';
-    }
+    const map: Record<string, string> = {
+      'auth/popup-closed-by-user': 'Fenêtre fermée avant la fin de la connexion.',
+      'auth/popup-blocked': 'Le popup a été bloqué par le navigateur. Autorisez les popups puis réessayez.',
+      'auth/cancelled-popup-request': 'Connexion annulée.',
+      'auth/operation-not-allowed': "Ce fournisseur n'est pas activé. Contactez l'administrateur.",
+      'auth/account-exists-with-different-credential': 'Un compte existe déjà avec cet email via un autre fournisseur.',
+      'auth/unauthorized-domain': "Ce domaine n'est pas autorisé dans la console Firebase.",
+      'auth/network-request-failed': 'Erreur réseau. Vérifiez votre connexion.',
+      'auth/internal-error': 'Erreur interne Firebase. Réessayez.',
+      'auth/configuration-not-found': 'Erreur de configuration Firebase. Contactez l\'administrateur.',
+      'auth/invalid-api-key': 'Erreur de configuration. Contactez l\'administrateur.',
+      'auth/app-not-authorized': 'Application non autorisée. Contactez l\'administrateur.',
+      'auth/too-many-requests': 'Trop de tentatives. Réessayez plus tard.',
+    };
+    return map[code] || 'Erreur d\'authentification. Réessayez.';
   };
 
   const handleOAuth = async (provider: 'google' | 'github') => {

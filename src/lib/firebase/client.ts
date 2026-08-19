@@ -106,6 +106,30 @@ export async function getFirebaseAnalytics(): Promise<Analytics | null> {
 }
 
 // ---------------------------------------------------------------
+// Validation de la configuration Firebase côté client.
+// Détecte les variables NEXT_PUBLIC_* manquantes AVANT toute tentative
+// d'authentification, pour fournir un message d'erreur clair au lieu
+// d'une erreur cryptique Firebase.
+// ---------------------------------------------------------------
+export function isFirebaseClientConfigured(): { ok: boolean; missing: string[] } {
+  const required: Array<{ key: string; value: string | undefined }> = [
+    { key: 'NEXT_PUBLIC_FIREBASE_API_KEY', value: firebaseConfig.apiKey },
+    { key: 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN', value: firebaseConfig.authDomain },
+    { key: 'NEXT_PUBLIC_FIREBASE_PROJECT_ID', value: firebaseConfig.projectId },
+    { key: 'NEXT_PUBLIC_FIREBASE_APP_ID', value: firebaseConfig.appId },
+  ];
+  const missing = required.filter(r => !r.value).map(r => r.key);
+  return { ok: missing.length === 0, missing };
+}
+
+let _initError: string | null = null;
+
+/** Retourne l'erreur d'initialisation Firebase si elle s'est produite. */
+export function getFirebaseInitError(): string | null {
+  return _initError;
+}
+
+// ---------------------------------------------------------------
 // Initialisation EAGER (Fix 3) :
 // On force l'app + l'auth à s'initialiser dès le chargement du module
 // pour qu'aucun autre service Firebase (Firestore, Storage, Messaging,
@@ -114,9 +138,17 @@ export async function getFirebaseAnalytics(): Promise<Analytics | null> {
 // ---------------------------------------------------------------
 if (typeof window !== 'undefined') {
   try {
-    getFirebaseApp();
-    getFirebaseAuth();
+    // Vérifier la config avant d'initialiser
+    const configCheck = isFirebaseClientConfigured();
+    if (!configCheck.ok) {
+      _initError = `Configuration Firebase manquante: ${configCheck.missing.join(', ')}`;
+      console.error('[firebase/client]', _initError);
+    } else {
+      getFirebaseApp();
+      getFirebaseAuth();
+    }
   } catch (err) {
+    _initError = err instanceof Error ? err.message : 'Erreur d\'initialisation Firebase';
     console.error('[firebase/client] eager init failed:', err);
   }
 }
