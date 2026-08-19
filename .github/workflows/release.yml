@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version semver (ex: 0.12.0). Si vide, auto-increment patch.'
+        required: false
+        type: string
+      changelog:
+        description: 'Notes de version (optionnel). Si vide, auto-généré depuis les commits.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Determine version
+        id: version
+        run: |
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "version=$INPUT_VERSION" >> $GITHUB_OUTPUT
+          else
+            CURRENT=$(cat VERSION | tr -d '[:space:]')
+            # Incrementer le patch (X.Y.Z -> X.Y.Z+1)
+            MAJOR=$(echo $CURRENT | cut -d. -f1)
+            MINOR=$(echo $CURRENT | cut -d. -f2)
+            PATCH=$(echo $CURRENT | cut -d. -f3)
+            NEW_PATCH=$((PATCH + 1))
+            echo "version=$MAJOR.$MINOR.$NEW_PATCH" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Trouver le tag précédent
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')
+          
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log ${PREV_TAG}..HEAD --pretty=format:'- %s (%h)' --no-merges 2>/dev/null)
+          else
+            CHANGES=$(git log --pretty=format:'- %s (%h)' --no-merges -20 2>/dev/null)
+          fi
+          
+          INPUT_CL="${{ github.event.inputs.changelog }}"
+          if [ -n "$INPUT_CL" ]; then
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "$INPUT_CL" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "## Changements" >> $GITHUB_OUTPUT
+            echo '' >> $GITHUB_OUTPUT
+            echo "$CHANGES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update VERSION file
+        run: |
+          echo "${{ steps.version.outputs.version }}" > VERSION
+          echo "Updated VERSION to ${{ steps.version.outputs.version }}"
+
+      - name: Update CHANGELOG.md
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DATE=$(date '+%Y-%m-%d')
+          CL="${{ steps.changelog.outputs.changelog }}"
+          
+          # Créer l'entrée de changelog
+          ENTRY="## [$VERSION] - $DATE\n\n$CL\n\n"
+          
+          # Préfixer le fichier CHANGELOG.md
+          if [ -f CHANGELOG.md ]; then
+            echo -e "$ENTRY$(cat CHANGELOG.md)" > CHANGELOG.md
+          else
+            echo -e "# Changelog\n\n$ENTRY" > CHANGELOG.md
+          fi
+          
+          echo "Updated CHANGELOG.md"
+
+      - name: Update package.json
+        run: |
+          npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION CHANGELOG.md package.json
+          git commit -m "release: v${{ steps.version.outputs.version }}" || echo "No changes to commit"
+          git push origin main
+
+      - name: Create Git Tag
+        run: |
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "v${{ steps.version.outputs.version }}"
+          body: "${{ steps.changelog.outputs.changelog }}"
+          generate_release_notes: true
+          draft: false
+          prerelease: false

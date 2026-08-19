@@ -7,6 +7,7 @@ import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { siteConfig } from '@/lib/seo/config';
 import { ErrorBoundary, ErrorProvider } from '@/components/error-boundary';
+import { UpdateBannerClient } from '@/components/update-banner-client';
 
 // geist package provides the font variables directly
 const geistSans = GeistSans;
@@ -124,19 +125,8 @@ export default async function RootLayout({
             </ErrorBoundary>
           </ErrorProvider>
           <Toaster richColors position="top-right" />
+          <UpdateBannerClient />
         </ThemeProvider>
-        <script
-          nonce={nonce}
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js').catch(() => {});
-                });
-              }
-            `,
-          }}
-        />
       </body>
     </html>
   );

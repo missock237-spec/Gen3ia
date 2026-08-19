@@ -1,41 +1,41 @@
 // ============================================================
-// Gen3ia — Service Worker v3
+// Gen3ia — Service Worker v4
 // ============================================================
 //  Cache-first pour assets statiques HASHÉS (/_next/static/*)
-//  Network-first pour navigation HTML ET fetch('/') (données fraîches)
-//  Network-first pour API (données fraîches si connecté)
+//  Network-first pour navigation HTML et API
+//  TTL: 24h static, 5min API
 //  Background sync pour les exécutions d'agents en attente
-//  TTL: 24h pour static, 5min pour API — évite le cache "indéfiniment"
+//  NOTIFICATION de mise à jour via postMessage au client
 //
-//  v3 — fixe le bug v2 où '/' était traité comme un asset statique
-//  (cache-first) au lieu d'une navigation (network-first). Cela
-//  signifiait qu'après la première visite, le HTML de '/' était
-//  servi depuis le cache sans jamais repasser par le serveur —
-//  le "T17 fix" n'était jamais livré aux utilisateurs ayant SW v2.
-//  v3 supprime les caches v2 et applique network-first sur toutes
-//  les navigations et fetch('/') explicites.
+//  v4 — ajoute le canal de communication SW <-> client pour
+//  l'auto-update. Quand un nouveau SW est installé, il notifie
+//  toutes les tabs ouvertes via postMessage({ type: 'SW_UPDATE_AVAILABLE' }).
+//  Le client peut alors afficher une bannière "Mise à jour disponible".
+//
+//  La CACHE_VERSION est dynamiquement injectée par prebuild.js
+//  à chaque build (gen3ia-v<version>-<gitSha>), garantissant que
+//  chaque déploiement invalide les anciens caches.
 // ============================================================
 
-const CACHE_VERSION = 'gen3ia-v3';
+const CACHE_VERSION = 'gen3ia-v3'; // Sera remplacé par prebuild.js
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 
-// TTL en millisecondes
-const STATIC_TTL_MS = 24 * 60 * 60 * 1000; // 24h pour assets statiques
-const API_TTL_MS = 5 * 60 * 1000;           // 5min pour API (offline fallback)
+const STATIC_TTL_MS = 24 * 60 * 60 * 1000;
+const API_TTL_MS = 5 * 60 * 1000;
 
-// Assets à pré-cacher au démarrage (uniquement ceux qui sont stables)
 const PRECACHE_URLS = ['/manifest.json', '/icon-192.png', '/icon-512.png'];
 
-// --- INSTALL : pré-cacher les assets essentiels (pas le HTML) ---
+// --- INSTALL : pré-cacher + notifier les clients ---
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS).catch(() => {}))
   );
-  self.skipWaiting(); // Mise à jour immédiate
+  // NE PAS appeler skipWaiting() ici — laisser le client décider
+  // quand activer le nouveau SW via la bannière de mise à jour.
 });
 
-// --- ACTIVATE : nettoyer les vieux caches (v1, v2, ...) ---
+// --- ACTIVATE : nettoyer les vieux caches ---
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -49,11 +49,29 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// --- Communication SW <-> Client ---
+// Quand le client demande d'activer le nouveau SW en attente
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+
+  // Le client demande les infos de version du SW
+  if (event.data?.type === 'GET_SW_VERSION') {
+    event.ports[0]?.postMessage({
+      type: 'SW_VERSION',
+      cacheVersion: CACHE_VERSION,
+      state: self.serviceWorker?.state || 'unknown',
+    });
+    return;
+  }
+});
+
 // --- Helpers : cache avec TTL ---
 async function getCachedWithTtl(cache, request, ttlMs) {
   const cached = await cache.match(request);
   if (!cached) return null;
-  // Lire la date de mise en cache depuis l'en-tête ajouté
   const cachedAt = cached.headers.get('x-sw-cached-at');
   if (cachedAt) {
     const age = Date.now() - parseInt(cachedAt, 10);
@@ -66,7 +84,6 @@ async function getCachedWithTtl(cache, request, ttlMs) {
 }
 
 async function putWithTimestamp(cache, request, response) {
-  // Cloner et ajouter un en-tête de date pour le TTL
   const clone = response.clone();
   const headers = new Headers(clone.headers);
   headers.set('x-sw-cached-at', String(Date.now()));
@@ -74,16 +91,28 @@ async function putWithTimestamp(cache, request, response) {
   await cache.put(request, cachedResponse);
 }
 
+// Notifier toutes les tabs qu'une mise à jour est disponible
+function notifyClientsUpdateAvailable() {
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    for (const client of clients) {
+      client.postMessage({
+        type: 'SW_UPDATE_AVAILABLE',
+        cacheVersion: CACHE_VERSION,
+      });
+    }
+  });
+}
+
 // --- FETCH : stratégies de cache ---
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Ignorer les requêtes non-GET
   if (request.method !== 'GET') return;
-
-  // Ignorer les WebSocket
   if (request.url.startsWith('ws://') || request.url.startsWith('wss://')) return;
+
+  // Ne pas intercepter la requête de version (toujours fraîche)
+  if (url.pathname === '/api/app-version') return;
 
   // API : network-first avec fallback cache TTL
   if (url.pathname.startsWith('/api/')) {
@@ -97,7 +126,6 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         } catch (err) {
-          // Fallback : cache (si pas expiré) ou réponse offline
           const cache = await caches.open(API_CACHE);
           const cached = await getCachedWithTtl(cache, request, API_TTL_MS);
           if (cached) return cached;
@@ -111,9 +139,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Assets statiques Next.js HASHÉS : cache-first (sûr car le hash change à chaque build)
-  // IMPORTANT : on ne match PAS '/' ici — c'est du HTML, pas un asset statique.
-  if (url.pathname.match(/\/_next\/static\/.*\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|eot)$/)) {
+  // Assets statiques Next.js HASHÉS : cache-first
+  if (url.pathname.match(/\/\_next\/static\/.*\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|eot)$/)) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(STATIC_CACHE);
@@ -121,12 +148,9 @@ self.addEventListener('fetch', (event) => {
         if (cached) return cached;
         try {
           const response = await fetch(request);
-          if (response.ok) {
-            await putWithTimestamp(cache, request, response);
-          }
+          if (response.ok) await putWithTimestamp(cache, request, response);
           return response;
         } catch (err) {
-          // Pas de fallback offline pour les assets non-cached — l'app ne peut pas fonctionner
           return new Response('Offline', { status: 503 });
         }
       })()
@@ -134,7 +158,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Assets publics (favicon, icon.svg, manifest) : cache-first avec TTL
+  // Assets publics : cache-first avec TTL
   if (url.pathname.match(/\.(png|jpg|jpeg|svg|ico|woff2?|ttf|eot)$/) && !url.pathname.startsWith('/_next/')) {
     event.respondWith(
       (async () => {
@@ -143,9 +167,7 @@ self.addEventListener('fetch', (event) => {
         if (cached) return cached;
         try {
           const response = await fetch(request);
-          if (response.ok) {
-            await putWithTimestamp(cache, request, response);
-          }
+          if (response.ok) await putWithTimestamp(cache, request, response);
           return response;
         } catch (err) {
           return new Response('Offline', { status: 503 });
@@ -155,22 +177,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Toutes les autres requêtes GET (navigations HTML, fetch('/'), fetch('/login'), ...) :
-  // NETWORK-FIRST. Le navigateur repasse toujours par le serveur pour obtenir
-  // la dernière version du HTML — fallback cache UNIQUEMENT en cas de panne réseau.
+  // Navigations HTML : NETWORK-FIRST
   if (request.method === 'GET') {
     event.respondWith(
       (async () => {
         try {
           const response = await fetch(request);
           if (response.ok && request.mode === 'navigate') {
-            // Mettre en cache le HTML pour fallback offline
             const cache = await caches.open(STATIC_CACHE);
             await putWithTimestamp(cache, request, response);
           }
           return response;
         } catch (err) {
-          // Fallback : cache HTML (si pas expiré) ou racine
           const cache = await caches.open(STATIC_CACHE);
           const cached = await getCachedWithTtl(cache, request, STATIC_TTL_MS);
           if (cached) return cached;
@@ -183,7 +201,7 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// --- BACKGROUND SYNC : exécutions d'agents en attente ---
+// --- BACKGROUND SYNC ---
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-agent-executions') {
     event.waitUntil(syncQueuedExecutions());
@@ -197,22 +215,19 @@ async function syncQueuedExecutions() {
     for (const key of keys) {
       const response = await cache.match(key);
       const body = await response.json();
-      // Rejouer la requête
       const result = await fetch(key.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (result.ok) {
-        await cache.delete(key);
-      }
+      if (result.ok) await cache.delete(key);
     }
   } catch (err) {
     console.error('[SW] sync failed:', err);
   }
 }
 
-// --- PUSH : notifications ---
+// --- PUSH ---
 self.addEventListener('push', (event) => {
   const payload = event.data ? event.data.json() : { title: 'Gen3ia', body: 'Notification' };
   event.waitUntil(
