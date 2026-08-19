@@ -4,16 +4,22 @@
 //  Utilitaires pour les composants React côté client.
 //  Logique : signIn côté client -> obtention ID token -> POST au
 //  serveur qui crée le session cookie Firebase.
+//
+//  Mobile support : signInWithRedirect est utilisé sur mobile
+//  (où les popups sont mal supportés). Le résultat est capturé
+//  via getRedirectResult au retour sur la page.
 // ============================================================
 
 'use client';
 
 import {
   createUserWithEmailAndPassword,
+  getRedirectResult,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
   updateProfile,
   GoogleAuthProvider,
@@ -42,6 +48,20 @@ async function buildAuthResult(cred: UserCredential): Promise<AuthResult> {
     emailVerified: cred.user.emailVerified,
     idToken,
   };
+}
+
+/**
+ * Détecte si l'appareil est mobile (tactile + petit écran).
+ * Sur mobile, les popups OAuth sont souvent bloqués ou se ferment
+ * immédiatement — il faut utiliser signInWithRedirect à la place.
+ */
+export function isMobileDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isMobileUA = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(ua);
+  const isSmallScreen = window.innerWidth < 768;
+  return (hasTouchScreen && isMobileUA) || (hasTouchScreen && isSmallScreen);
 }
 
 /**
@@ -97,25 +117,68 @@ export async function signUpWithEmail(
 }
 
 /**
- * Connexion Google via popup.
+ * Connexion Google — popup sur desktop, redirect sur mobile.
  */
 export async function signInWithGoogle(): Promise<AuthResult> {
   assertFirebaseReady();
   const auth = getFirebaseAuth();
   const provider = new GoogleAuthProvider();
+
+  if (isMobileDevice()) {
+    // Sur mobile, on redirige vers la page d'autorisation Google.
+    // Le résultat est récupéré via getRedirectResult() au retour.
+    await signInWithRedirect(auth, provider);
+    // signInWithRedirect ne revient jamais ici (la page se recharge),
+    // mais TypeScript exige un retour. On lance pour satisfaire le type.
+    throw { code: 'auth/redirect', message: 'Redirection en cours...' };
+  }
+
   const cred = await signInWithPopup(auth, provider);
   return buildAuthResult(cred);
 }
 
 /**
- * Connexion GitHub via popup.
+ * Connexion GitHub — popup sur desktop, redirect sur mobile.
  */
 export async function signInWithGithub(): Promise<AuthResult> {
   assertFirebaseReady();
   const auth = getFirebaseAuth();
   const provider = new GithubAuthProvider();
+
+  if (isMobileDevice()) {
+    await signInWithRedirect(auth, provider);
+    throw { code: 'auth/redirect', message: 'Redirection en cours...' };
+  }
+
   const cred = await signInWithPopup(auth, provider);
   return buildAuthResult(cred);
+}
+
+/**
+ * Récupère le résultat d'une authentification par redirect (mobile).
+ * À appeler au chargement des pages /login et /register.
+ * Retourne null s'il n'y a pas de résultat de redirect en attente.
+ */
+export async function resolveOAuthRedirect(): Promise<AuthResult | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const auth = getFirebaseAuth();
+    const result = await getRedirectResult(auth);
+    if (!result) return null;
+    return buildAuthResult(result);
+  } catch (err) {
+    // Erreurs connues de redirect — on loggue mais on ne crash pas
+    if (err && typeof err === 'object' && 'code' in err) {
+      const code = (err as { code: string }).code;
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return null; // L'utilisateur a annulé, pas une erreur technique
+      }
+      console.error('[auth] getRedirectResult error:', code, err);
+    } else {
+      console.error('[auth] getRedirectResult error:', err);
+    }
+    return null;
+  }
 }
 
 /**

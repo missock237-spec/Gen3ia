@@ -11,6 +11,7 @@ import { useAuthStore } from '@/lib/store';
 import { apiFetch, ApiError } from '@/lib/api';
 import { AuthLayout } from './auth-layout';
 import { InputField, PasswordInput, PasswordStrengthIndicator, Alert, AuthButton, Mail, UserIcon, OAuthButtons, getStrength, PASSWORD_RULES } from './shared';
+import { useOAuthRedirect } from '@/hooks/use-oauth-redirect';
 
 function validateEmail(email: string): string | null {
   if (!email) return "L'adresse email est requise";
@@ -40,6 +41,9 @@ export function RegisterForm() {
   const [apiError, setApiError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Capture le résultat OAuth redirect (mobile)
+  useOAuthRedirect({ onError: (msg) => setApiError(msg) });
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));

@@ -377,13 +377,12 @@ function GithubIcon() {
 /**
  * OAuthButtons — boutons "Continuer avec Google" / "Continuer avec GitHub".
  *
- * Flux intégral (sans simplification) :
- *   1. signInWithPopup côté client (Firebase Client SDK) -> obtient un idToken
- *   2. POST /api/auth/{login|register} avec { idToken, name? }
- *   3. Le serveur crée le session cookie Firebase (httpOnly, 14 jours)
- *      et synchronise le profil Firestore.
- *   4. onSuccess() — le parent peut appeler login()/hydrate() pour
- *      peupler le store d'auth depuis /api/auth/me, puis rediriger.
+ * Desktop : signInWithPopup (popup) -> idToken -> POST serveur.
+ * Mobile  : signInWithRedirect -> la page se recharge ->
+ *           useEffect détecte getRedirectResult -> POST serveur.
+ *
+ * Le mode ('login' | 'register') est stocké dans sessionStorage
+ * avant le redirect mobile pour savoir quelle route appeler au retour.
  *
  * Gestion d'erreur Firebase (codes auth/*) traduits en français.
  */
@@ -408,46 +407,67 @@ export function OAuthButtons({ mode, disabled, onError, onSuccess }: OAuthButton
     return map[code] || 'Erreur d\'authentification. Réessayez.';
   };
 
+  /**
+   * Envoie l'idToken au serveur pour créer le session cookie.
+     * Utilisé après popup (desktop) ou redirect (mobile).
+   */
+  const sendTokenToServer = async (idToken: string, displayName?: string | null) => {
+    const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        idToken,
+        ...(mode === 'register' && displayName ? { name: displayName } : {}),
+      }),
+    });
+
+    if (!res.ok) {
+      let msg = 'Erreur lors de la connexion.';
+      try {
+        const body = await res.json();
+        if (body?.error) msg = body.error;
+      } catch {}
+      onError?.(msg);
+      return false;
+    }
+    return true;
+  };
+
   const handleOAuth = async (provider: 'google' | 'github') => {
     if (disabled || loadingProvider) return;
     setLoadingProvider(provider);
     try {
+      // Stocke le mode pour le redirect mobile (récupéré au retour)
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('oauth_mode', mode);
+        sessionStorage.setItem('oauth_provider', provider);
+      }
+
       // 1. signIn côté client (Firebase Client SDK) -> idToken
-      const { signInWithGoogle, signInWithGithub } = await import('@/lib/firebase/auth-client');
+      const { signInWithGoogle, signInWithGithub, isMobileDevice } = await import('@/lib/firebase/auth-client');
+
+      // Sur mobile, signInWithRedirect ne revient jamais ici (la page se recharge)
+      if (isMobileDevice()) {
+        if (provider === 'google') await signInWithGoogle();
+        else await signInWithGithub();
+        // Ne pas exécuter le code ci-dessous après un redirect
+        return;
+      }
+
       const authResult = provider === 'google'
         ? await signInWithGoogle()
         : await signInWithGithub();
 
-      // 2. POST l'idToken au serveur qui pose le session cookie
-      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          idToken: authResult.idToken,
-          ...(mode === 'register' && authResult.displayName
-            ? { name: authResult.displayName }
-            : {}),
-        }),
-      });
-
-      if (!res.ok) {
-        let msg = 'Erreur lors de la connexion.';
-        try {
-          const body = await res.json();
-          if (body?.error) msg = body.error;
-        } catch {}
-        onError?.(msg);
-        return;
-      }
-
-      // 3. Le serveur a posé le cookie httpOnly + synchronisé Firestore.
-      //    Le parent hydrate le store via login() puis redirige.
-      onSuccess?.();
+      // 2. POST l'idToken au serveur (desktop : on a le résultat immédiatement)
+      const ok = await sendTokenToServer(authResult.idToken, authResult.displayName);
+      if (ok) onSuccess?.();
     } catch (err) {
       if (err && typeof err === 'object' && 'code' in err) {
         const code = (err as { code: string }).code;
+        // Ne pas afficher d'erreur pour le redirect mobile (c'est normal)
+        if (code === 'auth/redirect') return;
         onError?.(translateFirebaseError(code));
       } else if (err instanceof Error) {
         onError?.(err.message);

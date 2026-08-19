@@ -11,6 +11,7 @@ import { useAuthStore } from '@/lib/store';
 import { apiFetch, ApiError } from '@/lib/api';
 import { AuthLayout } from './auth-layout';
 import { InputField, PasswordInput, Alert, AuthButton, Mail, UserIcon, OAuthButtons } from './shared';
+import { useOAuthRedirect } from '@/hooks/use-oauth-redirect';
 
 export function LoginForm() {
   const router = useRouter();
@@ -19,6 +20,9 @@ export function LoginForm() {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [apiError, setApiError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Capture le résultat OAuth redirect (mobile)
+  useOAuthRedirect({ onError: (msg) => setApiError(msg) });
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));

@@ -183,14 +183,23 @@ export async function getCurrentUser(): Promise<Gen3iaUser | null> {
 
 /**
  * Vérifie un ID token Firebase (pour les appels client->API avec Authorization: Bearer).
+ * Si checkRevoked=true échoue (fréquent sur tokens frais ou désynchronisation
+ * d'horloge), on retente avec checkRevoked=false.
  */
 export async function verifyIdToken(idToken: string): Promise<Gen3iaUser | null> {
   try {
     const auth = getAdminAuth();
-    const decoded = await auth.verifyIdToken(idToken, true);
+    let decoded = await auth.verifyIdToken(idToken, true).catch(async () => {
+      // Retry sans checkRevoked si le premier appel échoue.
+      // Cela arrive quand : token frais, révocation pas encore propagée,
+      // ou légère désynchronisation d'horloge.
+      return auth.verifyIdToken(idToken, false);
+    });
     const user = await auth.getUser(decoded.uid);
     return toGen3iaUser(user);
-  } catch {
+  } catch (err) {
+    console.error('[verifyIdToken] Failed to verify token:',
+      err instanceof Error ? `${err.message} (${err.constructor.name})` : String(err));
     return null;
   }
 }
