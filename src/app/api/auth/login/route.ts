@@ -6,10 +6,11 @@
 //    1. Le client appelle signInWithEmailAndPassword (Firebase Client SDK)
 //       ou signInWithPopup (Google/GitHub) -> obtient un idToken.
 //    2. POST cette route avec l'idToken -> le serveur :
-//       a. vérifie l'idToken via Admin SDK (verifyIdToken)
-//       b. crée le session cookie Firebase (httpOnly, 14 jours)
-//       c. upsert le profil étendu dans Firestore (miroir de Firebase Auth)
-//       d. renvoie l'utilisateur normalisé { id, email, name, plan, role, ... }
+//       a. verifie l'idToken via Admin SDK (verifyIdToken)
+//       b. verifie que le profil Firestore existe (seuls les inscrits)
+//       c. cree le session cookie Firebase (httpOnly, 14 jours)
+//       d. met a jour les champs volatils dans Firestore
+//       e. renvoie l'utilisateur normalise { id, email, name, plan, role, ... }
 //  Side-effect: positionne le cookie `gen3ia_session` (httpOnly, 14 jours).
 // ============================================================
 
@@ -29,47 +30,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'idToken manquant' }, { status: 400 });
     }
 
-    // 1. Vérifie l'idToken côté serveur (Admin SDK) et récupère l'utilisateur.
-    //    verifyIdToken fait 3 tentatives avec retry + délai cold start.
+    // 1. Verifie l'idToken cote serveur (Admin SDK) et recupere l'utilisateur.
+    //    verifyIdToken fait 3 tentatives avec retry + delai cold start.
     const user = await verifyIdToken(idToken);
     if (!user) {
       console.error('[auth/login] verifyIdToken returned null for token length:', idToken?.length);
       return NextResponse.json(
-        { error: 'Session invalide. Veuillez réessayer.' },
+        { error: 'Session invalide. Veuillez reessayer.' },
         { status: 401 },
       );
     }
 
-    // 2. Positionne le cookie de session Firebase (httpOnly, 14 jours).
-    //    Indépendant du résultat du upsert Firestore ci-dessous.
-    await setSessionCookie(idToken);
-
-    // 3. Synchronise le profil Firestore (miroir étendu de Firebase Auth).
-    //    - Si l'utilisateur existe déjà (re-login), on met à jour les champs
-    //      volatiles (lastActiveAt, avatar, emailVerified).
-    //    - Sinon on crée le profil (utile pour les OAuth first-login qui
-    //      passent par /api/auth/login au lieu de /api/auth/register).
+    // 2. Verifie que l'utilisateur existe dans la base Firestore.
+    //    Seuls les utilisateurs reellement inscrits (passes par /register
+    //    ou crees par l'admin) peuvent se connecter.
     const now = new Date();
     const fallbackName = user.displayName || user.email?.split('@')[0] || 'Utilisateur';
+    let profile: Record<string, unknown> | null = null;
     try {
-      await db.user.upsert({
+      profile = await db.user.findUnique({ where: { id: user.uid } }) as Record<string, unknown> | null;
+    } catch (profileErr) {
+      console.error('[auth/login] profile fetch failed:', profileErr);
+    }
+
+    if (!profile) {
+      console.warn('[auth/login] No Firestore profile for:', user.uid, user.email);
+      return NextResponse.json(
+        { error: 'Aucun compte trouve. Veuillez creer un compte avant de vous connecter.' },
+        { status: 403 },
+      );
+    }
+
+    // Verifie que le compte est actif
+    if (profile.isActive === false) {
+      return NextResponse.json(
+        { error: 'Ce compte a ete desactive. Contactez le support.' },
+        { status: 403 },
+      );
+    }
+
+    // 3. Positionne le cookie de session Firebase (httpOnly, 14 jours).
+    await setSessionCookie(idToken);
+
+    // 4. Met a jour les champs volatils (lastActiveAt, avatar, emailVerified).
+    try {
+      await db.user.update({
         where: { id: user.uid },
-        create: {
-          id: user.uid,
-          uid: user.uid,
-          email: user.email || '',
-          name: fallbackName,
-          avatar: user.photoURL || null,
-          emailVerified: user.emailVerified,
-          plan: 'free',
-          role: (user.customClaims?.role as string) || 'user',
-          credits: 0,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-          lastActiveAt: now,
-        },
-        update: {
+        data: {
           email: user.email || '',
           name: user.displayName || undefined,
           avatar: user.photoURL || undefined,
@@ -78,21 +85,11 @@ export async function POST(req: NextRequest) {
           updatedAt: now,
         },
       });
-    } catch (upsertErr) {
-      // Le login ne doit pas échouer si Firestore est indisponible.
-      // Le cookie de session est déjà posé ; l'utilisateur est authentifié.
-      console.error('[auth/login] Firestore upsert failed (non-fatal):', upsertErr);
+    } catch (updateErr) {
+      console.error('[auth/login] Firestore update failed (non-fatal):', updateErr);
     }
 
-    // 4. Récupère le profil étendu pour renvoyer `plan`/`credits`/`isActive`.
-    let profile: Record<string, unknown> | null = null;
-    try {
-      profile = await db.user.findUnique({ where: { id: user.uid } }) as Record<string, unknown> | null;
-    } catch (profileErr) {
-      console.error('[auth/login] profile fetch failed (non-fatal):', profileErr);
-    }
-
-    // 5. Réponse normalisée — doit inclure tous les champs attendus par le
+    // 5. Reponse normalisee — doit inclure tous les champs attendus par le
     //    client (LoginForm) : id, email, name, plan, role, avatar, emailVerified.
     return NextResponse.json({
       user: {
@@ -114,7 +111,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('[auth/login] Error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Erreur d\'authentification' },
+      { error: error instanceof Error ? error.message : "Erreur d'authentification" },
       { status: 500 },
     );
   }

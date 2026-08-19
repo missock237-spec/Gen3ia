@@ -89,8 +89,9 @@ export function RegisterForm() {
         }),
       });
 
-      setSuccess('Compte créé ! Un email de vérification vous a été envoyé.');
-      setForm({ name: '', email: '', password: '', confirm: '', terms: false });
+      // Le serveur a posé le cookie de session Firebase.
+      // Rechargement complet pour que le store hydrate et affiche le dashboard.
+      window.location.href = '/';
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 409) setApiError('Cet email est déjà utilisé.');

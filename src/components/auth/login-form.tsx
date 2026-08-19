@@ -65,12 +65,12 @@ export function LoginForm() {
           // ID token invalide ou expiré
           setApiError('Session invalide. Veuillez réessayer.');
         } else if (err.status === 403) {
-          setApiError(err.message || 'Accès refusé.');
+          setApiError(err.message || 'Acces refuse.');
         } else if (err.status === 429) {
           setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
         } else if (err.status === 500) {
           console.error('[login] Server error:', err.message);
-          setApiError('Erreur serveur temporaire. Veuillez réessayer dans un instant.');
+          setApiError('Erreur serveur temporaire. Veuillez reessayer dans un instant.');
         } else {
           setApiError(err.message || 'Identifiants invalides');
         }
