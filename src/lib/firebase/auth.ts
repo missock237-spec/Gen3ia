@@ -294,10 +294,15 @@ export async function sendPasswordResetEmail(
 ): Promise<void> {
   const auth = getAdminAuth();
   const link = await auth.generatePasswordResetLink(email, settings);
-  // L'envoi de l'email est délégué au module @/lib/email (Resend/SMTP)
-// @ts-ignore — type narrowing pending, see refactor ticket
-  const { sendPasswordResetEmail: sendEmail } = await import('@/lib/email/auth-emails');
-  await sendEmail(email, link);
+  // L'envoi de l'email est délégué au module @/lib/email/auth-emails (Resend/SMTP)
+  const { sendPasswordResetLink } = await import('@/lib/email/auth-emails');
+  // Récupérer le displayName depuis Firebase, ou utiliser la partie locale de l'email
+  let displayName = email.split('@')[0];
+  try {
+    const user = await auth.getUserByEmail(email);
+    if (user.displayName) displayName = user.displayName;
+  } catch { /* utilisateur non trouvé, on garde le fallback */ }
+  await sendPasswordResetLink(email, displayName, link);
 }
 
 export async function sendEmailVerificationLink(
@@ -308,9 +313,9 @@ export async function sendEmailVerificationLink(
   const link = await auth.generateEmailVerificationLink(uid, settings);
   const user = await auth.getUser(uid);
   if (!user.email) throw new Error('Utilisateur sans email');
-// @ts-ignore — type narrowing pending, see refactor ticket
-  const { sendVerificationEmail } = await import('@/lib/email/auth-emails');
-  await sendVerificationEmail(user.email, link);
+  const { sendVerificationLink } = await import('@/lib/email/auth-emails');
+  const displayName = user.displayName || user.email.split('@')[0];
+  await sendVerificationLink(user.email, displayName, link);
 }
 
 // ============================================================
