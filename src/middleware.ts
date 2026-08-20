@@ -1,23 +1,49 @@
-// ============================================================
-// Gen3ia — Middleware de sécurité (deny-by-default) — Firebase
-// ============================================================
-//  Règle : TOUTE route /api/* est protégée SAUF celles
-//  explicitement listées comme publiques (route par route).
-//
-//  SÉCURITÉ :
-//  - Layer 1 (ce middleware) : exige UNE forme d'auth (session cookie
-//    Firebase OU présence x-api-key/bearer qui seront VALIDES en couche 2
-//    withAuth).
-//  - Les routes ADMIN exigent TOUJOURS le rôle 'admin' (custom claim
-//    Firebase Auth), jamais court-circuité par une api key non validée.
-//
-//  HEADERS DE SÉCURITÉ :
-//  - CSP durcie (nonce per-request) via src/lib/csp.ts
-//  - HSTS, COOP, COEP, CORP, Permissions-Policy, etc. via src/lib/security-headers.ts
-//  - Un nonce unique est généré par requête et propagé à Next.js via
-//    l'header de requête "x-nonce" (Next.js l'applique automatiquement à
-//    ses <script> inline).
-// ============================================================
+// ✅ CODE CORRIGÉ — Implémenter le middleware
+import { NextRequest, NextResponse } from 'next/server';
+import { getSessionCookieFromRequest } from '@/lib/firebase/auth';
+
+// Routes publiques qui ne nécessitent pas d'authentification
+const PUBLIC_ROUTES = [
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email',
+  '/api/auth/send-verification',
+];
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  
+  // Headers de sécurité sur toutes les réponses
+  const response = NextResponse.next();
+  applySecurityHeaders(response);
+  
+  // Skip pour les routes publiques
+  if (PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
+    return response;
+  }
+  
+  // Vérifier l'authentification pour les autres routes /api/*
+  if (pathname.startsWith('/api/')) {
+    const sessionCookie = getSessionCookieFromRequest(req);
+    const authHeader = req.headers.get('authorization');
+    const apiKey = req.headers.get('x-api-key');
+    
+    if (!sessionCookie && !authHeader && !apiKey) {
+      return NextResponse.json(
+        { error: 'Authentification requise' },
+        { status: 401 }
+      );
+    }
+  }
+  
+  return response;
+}
+
+export const config = {
+  matcher: ['/api/:path*'],
+};
 import { SESSION_COOKIE_NAME } from '@/lib/firebase/config';
 import { generateCspNonce, buildCspHeader } from '@/lib/csp';
 import { getSecurityHeaders } from '@/lib/security-headers';
