@@ -94,18 +94,24 @@ export async function createSessionCookie(idToken: string): Promise<string> {
  * Positionne le cookie de session dans la réponse HTTP.
  * À appeler côté serveur (API route / Server Action).
  */
-export async function setSessionCookie(idToken: string): Promise<void> {
-  const sessionCookie = await createSessionCookie(idToken);
+export async function setSessionCookie(idToken: string, rememberMe?: boolean): Promise<void> {
   const cookieStore = await cookies();
-
+  const maxAge = rememberMe 
+    ? SESSION_COOKIE_MAX_AGE // 14 jours si "se souvenir de moi"
+    : SESSION_COOKIE_MAX_AGE_SHORT; // 24 heures sinon (à définir dans config.ts)
+  
+  const sessionCookie = await createSessionCookie(idToken);
   cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'development' ? 'lax' : 'lax',
+    sameSite: 'lax',
     path: '/',
-    maxAge: SESSION_COOKIE_MAX_AGE,
+    maxAge,
   });
 }
+
+// Dans config.ts, ajouter :
+export const SESSION_COOKIE_MAX_AGE_SHORT = 60 * 60 * 24; // 24 heures
 
 /**
  * Invalide le cookie de session (logout).
