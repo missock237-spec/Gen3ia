@@ -151,9 +151,24 @@ export function useOAuthRedirect({ onError }: UseOAuthRedirectOptions = {}) {
       const { resolveOAuthRedirect } = await import('@/lib/firebase/auth-client');
       const authResult = await resolveOAuthRedirect();
 
-      if (!authResult) {
-        // getRedirectResult() a retourne null.
-        // Causes possibles : domaine non autorise Firebase, popup annule,
+      // ✅ CODE CORRIGÉ — Vérifier si le cookie de session existe déjà
+if (!authResult) {
+  // Vérifier si l'utilisateur est déjà connecté (cookie de session)
+  try {
+    const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+    if (meRes.ok) {
+      const meData = await meRes.json();
+      if (meData.user) {
+        // Déjà connecté — rediriger vers le dashboard
+        window.location.href = '/';
+        return;
+      }
+    }
+  } catch {}
+  
+  onError?.(`Connexion ${providerLabel} annulée ou échouée.`);
+  return;
+}
         // ou erreur Firebase interceptee en silence.
         console.error('[useOAuthRedirect] getRedirectResult returned null');
         onError?.(`Connexion ${providerLabel} annulee ou echouee. Verifiez que le domaine est autorise dans Firebase Console.`);
