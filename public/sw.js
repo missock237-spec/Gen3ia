@@ -17,7 +17,7 @@
 //  chaque déploiement invalide les anciens caches.
 // ============================================================
 
-const CACHE_VERSION = 'gen3ia-v3'; // Sera remplacé par prebuild.js
+const CACHE_VERSION = 'gen3ia-v5'; // Incrémenté pour forcer la mise à jour (auth cache fix)
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 
@@ -113,6 +113,10 @@ self.addEventListener('fetch', (event) => {
 
   // Ne pas intercepter la requête de version (toujours fraîche)
   if (url.pathname === '/api/app-version') return;
+
+  // Ne JAMAIS mettre en cache les routes d'authentification.
+  // /api/auth/me doit toujours refleter l'etat reel de la session.
+  if (url.pathname.startsWith('/api/auth/')) return;
 
   // API : network-first avec fallback cache TTL
   if (url.pathname.startsWith('/api/')) {
