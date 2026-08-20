@@ -96,14 +96,13 @@ export async function createSessionCookie(idToken: string): Promise<string> {
  * À appeler côté serveur (API route).
  */
 export async function setSessionCookie(idToken: string): Promise<void> {
-  const cookieStore = await cookies();
-  const sessionCookie = await createSessionCookie(idToken);
   cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: SESSION_COOKIE_MAX_AGE,
+  httpOnly: true,
+  secure: true,
+  sameSite: process.env.NODE_ENV === "development" ? "none" : "lax",
+  path: "/",
+  maxAge: SESSION_COOKIE_MAX_AGE,
+})
   });
 }
 
