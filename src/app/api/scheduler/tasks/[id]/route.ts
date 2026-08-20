@@ -48,7 +48,7 @@ export async function GET(
   } catch (err) {
     return secureResponse(
       NextResponse.json(
-        { error: 'Failed to fetch task', details: err instanceof Error ? err.message : 'Unknown error' },
+        { error: 'Failed to fetch task' },
         { status: 500 }
       ),
       request
@@ -129,7 +129,7 @@ export async function PUT(
   } catch (err) {
     return secureResponse(
       NextResponse.json(
-        { error: 'Failed to update task', details: err instanceof Error ? err.message : 'Unknown error' },
+        { error: 'Failed to update task' },
         { status: 500 }
       ),
       request
@@ -185,7 +185,7 @@ export async function DELETE(
   } catch (err) {
     return secureResponse(
       NextResponse.json(
-        { error: 'Failed to delete task', details: err instanceof Error ? err.message : 'Unknown error' },
+        { error: 'Failed to delete task' },
         { status: 500 }
       ),
       request

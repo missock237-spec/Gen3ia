@@ -23,7 +23,7 @@ export const POST = withAuth(async (request: NextRequest, ctx: { params?: RouteP
       knowledge: knowledge.map(k => ({ content: k.entry.content, category: k.entry.category, source: k.entry.source, relevance: k.entry.relevance, score: k.score, matchType: k.matchType })),
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Erreur lors de la recherche' }, { status: 500 });
+    return NextResponse.json({ error: 'Erreur lors de la recherche' }, { status: 500 });
   }
 }, {
   requireAuth: true,

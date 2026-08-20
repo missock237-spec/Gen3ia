@@ -10,6 +10,6 @@ export async function GET(request) {
     if (!userId) return NextResponse.json({ error: "userId requis" }, { status: 400 });
     return NextResponse.json(await dashboardService.getRealtimeStats(userId, hours));
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: "Erreur" }, { status: 500 });
   }
 }

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     return secureResponse(
       NextResponse.json(
-        { error: 'Failed to fetch tasks', details: err instanceof Error ? err.message : 'Unknown error' },
+        { error: 'Failed to fetch tasks' },
         { status: 500 }
       ),
       request
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     return secureResponse(
       NextResponse.json(
-        { error: 'Failed to create task', details: err instanceof Error ? err.message : 'Unknown error' },
+        { error: 'Failed to create task' },
         { status: 500 }
       ),
       request

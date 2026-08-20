@@ -83,7 +83,10 @@ export class SecretVault {
       log.warn('VAULT_MASTER_KEY not set — deriving from NEXTAUTH_SECRET. Set VAULT_MASTER_KEY for proper secret isolation.');
     } else {
       // Last resort: deterministic key (NOT secure — development only)
-      key = crypto.createHash('sha256').update('genova-vault-dev-key-do-not-use-in-production').digest();
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('VAULT_MASTER_KEY and NEXTAUTH_SECRET are both required in production');
+      }
+      key = crypto.createHash('sha256').update('dev-vault-key-insecure-never-in-production').digest();
       log.error('No VAULT_MASTER_KEY or NEXTAUTH_SECRET set — using insecure development key. NEVER use this in production!');
     }
 

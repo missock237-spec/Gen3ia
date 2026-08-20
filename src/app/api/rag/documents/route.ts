@@ -13,6 +13,6 @@ export async function GET(request: NextRequest) {
 
     return secureResponse(NextResponse.json({ documents }), request);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Erreur serveur' }, { status: 500 });
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }

@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[API] Image upscaling error:', error);
     return NextResponse.json(
-      { error: 'Image upscaling failed', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Image upscaling failed' },
       { status: 500 }
     );
   }

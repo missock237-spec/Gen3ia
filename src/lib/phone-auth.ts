@@ -30,7 +30,14 @@ const OTP_MAX_ATTEMPTS = 3;
 const OTP_SEND_RATE_LIMIT_PER_HOUR = 5;
 
 // Clé secrète pour hasher les codes OTP
-const OTP_HASH_SECRET = process.env.OTP_HASH_SECRET || 'gen3ia-otp-secret-change-in-prod';
+function getOtpHashSecret(): string {
+  const secret = process.env.OTP_HASH_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('OTP_HASH_SECRET environment variable is required in production');
+  }
+  return 'dev-otp-secret-not-for-production';
+}
 
 /**
  * Génère un code OTP à 6 chiffres.
@@ -45,7 +52,7 @@ function generateOtpCode(): string {
  * Hash un code OTP pour le stockage (jamais en clair).
  */
 function hashOtp(code: string): string {
-  return createHmac('sha256', OTP_HASH_SECRET).update(code).digest('hex');
+  return createHmac('sha256', getOtpHashSecret()).update(code).digest('hex');
 }
 
 /**

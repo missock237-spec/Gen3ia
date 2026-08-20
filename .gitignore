@@ -27,11 +27,8 @@ build/
 # Fichiers production avec secrets réels (toujours ignorer)
 .env.production.local
 .env.production.secret
-
-# Templates versionnés (contiennent uniquement des placeholders)
-# Si vous souhaitez aussi les ignorer, décommentez :
-# .env.production
-# .env.production.validated
+.env.production
+.env.production.validated
 
 # Patterns génériques
 *.env
