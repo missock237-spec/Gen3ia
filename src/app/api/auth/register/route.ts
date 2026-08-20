@@ -172,10 +172,8 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-  console.error('[auth/register] Error:', error);
-  // Rollback : ... On n'a pas acces au uid ici, donc on ne peut pas rollback.
-  return NextResponse.json({ error: ... }, { status: 500 });
-  } 
+    console.error('[auth/register] Error:', error);
+    return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erreur lors de l'inscription" },
       { status: 500 },
     );
