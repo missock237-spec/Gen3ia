@@ -100,8 +100,11 @@ export async function setSessionCookie(idToken: string): Promise<void> {
   const sessionCookie = await createSessionCookie(idToken);
   cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    // The v0 preview runs in a cross-site iframe. In development the
+    // session cookie must be usable in that iframe, otherwise login returns
+    // success but /api/auth/me immediately sees an anonymous user.
+    secure: true,
+    sameSite: process.env.NODE_ENV === 'development' ? 'none' : 'lax',
     path: '/',
     maxAge: SESSION_COOKIE_MAX_AGE,
   });

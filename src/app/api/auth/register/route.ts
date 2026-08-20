@@ -27,7 +27,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  let firebaseUserCreated = false;
+  let firebaseUid: string | null = null;
+  let profileCreated = false;
+  let creditsCreated = false;
 
   try {
     const body = await req.json().catch(() => null);
@@ -51,8 +53,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Marque que l'utilisateur Firebase existe (pour le rollback)
-    firebaseUserCreated = true;
+    // Conserve l'UID afin de pouvoir nettoyer toute création partielle.
+    firebaseUid = user.uid;
 
     // 2. Cree le profil etendu Firestore — BLOQUANT.
     //    Le login refuse tout utilisateur sans profil Firestore (403),
@@ -88,6 +90,7 @@ export async function POST(req: NextRequest) {
           updatedAt: now,
         },
       });
+      profileCreated = true;
     } catch (profileErr) {
       console.error('[auth/register] Firestore profile creation FAILED (BLOCKING):', profileErr);
       // Rollback : supprimer l'utilisateur Firebase
@@ -112,6 +115,7 @@ export async function POST(req: NextRequest) {
           createdAt: now,
           updatedAt: now,
         });
+        creditsCreated = true;
       }
     } catch (creditErr) {
       console.error('[auth/register] Credit creation FAILED (BLOCKING):', creditErr);
@@ -153,7 +157,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Reponse normalisee.
-    firebaseUserCreated = false; // Succes — pas de rollback
+    firebaseUid = null; // Succès — pas de rollback
     return NextResponse.json({
       user: {
         id: user.uid,
@@ -173,12 +177,19 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('[auth/register] Error:', error);
-    // Rollback : si on a cree l'utilisateur Firebase mais qu'une erreur
-    // inattendue a frappe avant la fin, le supprimer.
-    // (On n'a pas acces au uid ici, donc on ne peut pas rollback.
-    // Le nettoyage se fera manuellement ou via un cron.)
+    // Nettoie les créations partielles pour éviter qu'un email soit
+    // enregistré dans Firebase alors que l'inscription a échoué.
+    if (firebaseUid) {
+      if (creditsCreated) {
+        try { await db.credit.delete({ where: { id: `credit_${firebaseUid}` } }); } catch {}
+      }
+      if (profileCreated) {
+        try { await db.user.delete({ where: { id: firebaseUid } }); } catch {}
+      }
+      await rollbackFirebaseUser(firebaseUid);
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erreur lors de l'inscription" },
+      { error: "Erreur lors de l'inscription. Veuillez réessayer." },
       { status: 500 },
     );
   }
