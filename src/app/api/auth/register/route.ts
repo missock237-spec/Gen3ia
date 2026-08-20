@@ -172,12 +172,10 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[auth/register] Error:', error);
-    // Rollback : si on a cree l'utilisateur Firebase mais qu'une erreur
-    // inattendue a frappe avant la fin, le supprimer.
-    // (On n'a pas acces au uid ici, donc on ne peut pas rollback.
-    // Le nettoyage se fera manuellement ou via un cron.)
-    return NextResponse.json(
+  console.error('[auth/register] Error:', error);
+  // Rollback : ... On n'a pas acces au uid ici, donc on ne peut pas rollback.
+  return NextResponse.json({ error: ... }, { status: 500 });
+  } 
       { error: error instanceof Error ? error.message : "Erreur lors de l'inscription" },
       { status: 500 },
     );
