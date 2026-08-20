@@ -1,4 +1,5 @@
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getApps } from 'firebase-admin/app';
 import { getAdminDb } from './firebase/admin';
 
 export interface AgentCostRecord {
@@ -60,7 +61,9 @@ function getDbSafe(): Firestore | null {
     return getAdminDb();
   } catch {
     try {
-      return getFirestore(undefined, process.env.FIREBASE_DATABASE_ID || 'gen3ia');
+      const app = getApps()[0];
+      if (app) return getFirestore(app, process.env.FIREBASE_DATABASE_ID || 'gen3ia');
+      return null;
     } catch {
       return null;
     }
