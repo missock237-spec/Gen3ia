@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
+import { getServerSession } from '@/lib/auth';
 import { getAdEngine } from '@/lib/advertising/ad-engine';
 import { logger } from '@/lib/logger';
 
@@ -13,10 +13,11 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest) {
   try {
-    const token = await getToken({ req: request });
-    if (!token?.sub) {
+    const session = await getServerSession();
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userIdFromSession = session.user.id;
 
     const { impressionId, userId, _adType } = await request.json();
 
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user ownership
-    if (userId && userId !== token.sub) {
+    if (userId && userId !== userIdFromSession) {
       return NextResponse.json(
         { error: 'User mismatch' },
         { status: 403 }
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       '/api/advertising/record-click',
       200,
       0,
-      token.sub
+      userIdFromSession
     );
 
     return NextResponse.json({
