@@ -96,7 +96,7 @@ export async function createSessionCookie(idToken: string): Promise<string> {
  * À appeler côté serveur (API route).
  */
 export async function setSessionCookie(idToken: string): Promise<void> {
-  cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
+  cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {   // ❌ cookieStore et sessionCookie n'existent pas
   httpOnly: true,
   secure: true,
   sameSite: process.env.NODE_ENV === "development" ? "none" : "lax",
@@ -105,8 +105,7 @@ export async function setSessionCookie(idToken: string): Promise<void> {
 })
   });
 }
-
-/**
+}/**
  * Invalide le cookie de session (logout).
  */
 export async function clearSessionCookie(): Promise<void> {
