@@ -61,11 +61,11 @@ export function rateLimit(req: NextRequest): NextResponse | null {
 /**
  * CORS middleware
  */
-export function cors(req: NextRequest): NextRequest {
-  const allowedOrigins = [
-    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-    'https://app.gen3ia.com',
-  ];
+const allowedOrigins = [
+  process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+  process.env.NEXT_PUBLIC_APP_URL_PRODUCTION, // Variable d'environnement
+  ...(process.env.ADDITIONAL_CORS_ORIGINS?.split(',') || []),
+].filter(Boolean);
 
   const origin = req.headers.get('origin');
   const isAllowed = allowedOrigins.includes(origin || '');
