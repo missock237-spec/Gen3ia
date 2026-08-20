@@ -3,16 +3,32 @@
  * 
  * Rate limiting, CORS, CSP headers, input validation, CSRF protection
  */
-
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { createLogger } from '@/lib/logger';
 
-const log = createLogger('security-middleware');
+const AUTH_RATE_LIMIT = 5; // 5 tentatives
+const AUTH_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 1000;
-const rateLimitStore: Map<string, { count: number; resetTime: number }> = new Map();
+export async function authRateLimit(req: NextRequest, identifier: string): Promise<NextResponse | null> {
+  // En production, utiliser Redis (Upstash) pour persistance
+  const key = `auth_rate:${identifier}`;
+  
+  // Implémentation avec Redis :
+  const redis = await import('@/lib/redis').then(m => m.getRedisClient());
+  const current = await redis.incr(key);
+  
+  if (current === 1) {
+    await redis.expire(key, Math.floor(AUTH_WINDOW_MS / 1000));
+  }
+  
+  if (current > AUTH_RATE_LIMIT) {
+    return NextResponse.json(
+      { error: 'Trop de tentatives. Réessayez dans 15 minutes.' },
+      { status: 429 }
+    );
+  }
+  
+  return null;
+}
 
 /**
  * Rate limiting middleware
