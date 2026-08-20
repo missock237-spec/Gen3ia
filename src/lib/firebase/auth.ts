@@ -106,7 +106,8 @@ export async function setSessionCookie(idToken: string): Promise<void> {
     maxAge: SESSION_COOKIE_MAX_AGE,
   });
 }
- }/**
+
+/**
  * Invalide le cookie de session (logout).
  */
 export async function clearSessionCookie(): Promise<void> {
