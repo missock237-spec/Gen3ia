@@ -1,5 +1,5 @@
 /**
- * GENOVA AI OS — Login Form
+ * GEN3IA OS — Login Form
  * Email + password login with rememberMe and forgot password link.
  */
 
@@ -54,6 +54,14 @@ export function LoginForm() {
         method: 'POST',
         body: JSON.stringify({ idToken: authResult.idToken, rememberMe: form.remember }),
       });
+      await fetch("/api/auth/login", {
+  method: "POST",
+  credentials: "include",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ idToken }),
+})
 
       // Le serveur a posé le cookie httpOnly de session Firebase.
       // Rechargement complet pour que le store hydrate le cookie.
