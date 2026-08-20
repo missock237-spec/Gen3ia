@@ -70,10 +70,10 @@ function toGen3iaUser(fbUser: Awaited<ReturnType<ReturnType<typeof getAdminAuth>
     providerData: fbUser.providerData.map((p) => ({
       providerId: p.providerId,
       uid: p.uid,
-    }),
+    })) ,
     customClaims: (fbUser.customClaims || {}) as Record<string, unknown>,
   };
-
+} 
 
 // ============================================================
 // Session cookies (server-side)
