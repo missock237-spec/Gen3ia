@@ -132,16 +132,27 @@ export function generateCSRFToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+export function generateCSRFToken(sessionToken: string): string {
+  const nonce = crypto.randomBytes(32).toString('hex');
+  const hmac = crypto.createHmac('sha256', sessionToken);
+  hmac.update(nonce);
+  const signature = hmac.digest('hex');
+  return `${nonce}:${signature}`;
+}
+
 export function validateCSRFToken(token: string, sessionToken: string): boolean {
-  // In production, use a proper CSRF library or framework support
   try {
+    const [nonce, signature] = token.split(':');
+    if (!nonce || !signature) return false;
     const hmac = crypto.createHmac('sha256', sessionToken);
-    hmac.update(token);
-    return hmac.digest('hex') === token;
+    hmac.update(nonce);
+    const expectedSignature = hmac.digest('hex');
+    // Comparaison temps-constant pour éviter les attaques timing
+    return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expectedSignature, 'hex'));
   } catch {
     return false;
   }
-}
+} 
 
 /**
  * SQL injection prevention - parameterized queries
