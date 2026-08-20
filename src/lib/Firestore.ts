@@ -14,7 +14,7 @@ function initFirestore() {
       credential: cert(JSON.parse(serviceAccount)),
     });
   }
-  return getFirestore();
+  return getFirestore(undefined, process.env.FIREBASE_DATABASE_ID || 'gen3ia');
 }
 
 export function getDb(): Firestore {

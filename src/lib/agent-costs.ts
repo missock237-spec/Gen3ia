@@ -60,7 +60,7 @@ function getDbSafe(): Firestore | null {
     return getAdminDb();
   } catch {
     try {
-      return getFirestore();
+      return getFirestore(undefined, process.env.FIREBASE_DATABASE_ID || 'gen3ia');
     } catch {
       return null;
     }
