@@ -112,11 +112,11 @@ export function securityHeaders(response: NextResponse): NextResponse {
     'geolocation=(), microphone=(), camera=(), payment=self'
   );
 
-  // CSP (Content Security Policy)
-  response.headers.set(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:"
-  );
+  // CSP (Content Security policy) 
+response.headers.set(
+  'Content-Security-Policy',
+  `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'nonce-${nonce}'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
+);
 
   return response;
 }
