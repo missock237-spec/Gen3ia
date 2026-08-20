@@ -39,7 +39,6 @@ export function RegisterForm() {
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '', terms: false });
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [apiError, setApiError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Capture le résultat OAuth redirect (mobile)
@@ -49,7 +48,6 @@ export function RegisterForm() {
     setForm(f => ({ ...f, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
     if (errors[field]) setErrors(er => ({ ...er, [field]: null }));
     setApiError('');
-    setSuccess('');
   };
 
   const validate = () => {
@@ -72,7 +70,6 @@ export function RegisterForm() {
     if (!validate()) return;
     setLoading(true);
     setApiError('');
-    setSuccess('');
 
     try {
       // 1. Sign-up via Firebase Client SDK -> crée le compte + obtient l'ID token
@@ -95,8 +92,12 @@ export function RegisterForm() {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 409) setApiError('Cet email est déjà utilisé.');
+        else if (err.status === 403) setApiError(err.message || 'Accès refusé.');
         else if (err.status === 429) setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
-        else if (err.status === 500) {
+        else if (err.status === 503) {
+          console.error('[register] Session cookie failed:', err.message);
+          setApiError('Erreur de session. Veuillez recharger la page et réessayer.');
+        } else if (err.status === 500) {
           console.error('[register] Server error:', err.message);
           setApiError('Erreur serveur temporaire. Veuillez réessayer dans un instant.');
         } else setApiError(err.message || "Erreur lors de l'inscription");
@@ -162,7 +163,6 @@ export function RegisterForm() {
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <Alert type="error" message={apiError} />
-        <Alert type="success" message={success} />
 
         <InputField
           label="Nom complet"

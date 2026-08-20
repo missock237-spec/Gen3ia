@@ -439,20 +439,22 @@ export function OAuthButtons({ mode, disabled, onError, onSuccess }: OAuthButton
     if (disabled || loadingProvider) return;
     setLoadingProvider(provider);
     try {
-      // Stocke le mode pour le redirect mobile (récupéré au retour)
+      // Stocke le contexte OAuth pour le redirect mobile.
+      // Utilise localStorage (pas sessionStorage) car les Custom Tabs
+      // Android perdent le sessionStorage au retour.
       if (typeof window !== 'undefined') {
-        sessionStorage.setItem('oauth_mode', mode);
-        sessionStorage.setItem('oauth_provider', provider);
+        const { saveOAuthContext } = await import('@/hooks/use-oauth-redirect');
+        saveOAuthContext(mode, provider);
       }
 
-      // 1. signIn côté client (Firebase Client SDK) -> idToken
+      // 1. signIn cote client (Firebase Client SDK) -> idToken
       const { signInWithGoogle, signInWithGithub, isMobileDevice } = await import('@/lib/firebase/auth-client');
 
       // Sur mobile, signInWithRedirect ne revient jamais ici (la page se recharge)
       if (isMobileDevice()) {
         if (provider === 'google') await signInWithGoogle();
         else await signInWithGithub();
-        // Ne pas exécuter le code ci-dessous après un redirect
+        // Ne pas executer le code ci-dessous apres un redirect
         return;
       }
 

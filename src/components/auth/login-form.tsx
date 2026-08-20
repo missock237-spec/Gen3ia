@@ -68,6 +68,9 @@ export function LoginForm() {
           setApiError(err.message || 'Acces refuse.');
         } else if (err.status === 429) {
           setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
+        } else if (err.status === 503) {
+          console.error('[login] Session cookie failed:', err.message);
+          setApiError('Erreur de session. Veuillez recharger la page et réessayer.');
         } else if (err.status === 500) {
           console.error('[login] Server error:', err.message);
           setApiError('Erreur serveur temporaire. Veuillez reessayer dans un instant.');

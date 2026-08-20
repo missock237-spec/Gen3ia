@@ -70,7 +70,18 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Positionne le cookie de session Firebase (httpOnly, 14 jours).
-    await setSessionCookie(idToken);
+    //    Try/catch dedie : si createSessionCookie echoue, on renvoie
+    //    une erreur claire au lieu d'un 500 generique.
+    try {
+      await setSessionCookie(idToken);
+    } catch (cookieErr) {
+      const msg = cookieErr instanceof Error ? cookieErr.message : String(cookieErr);
+      console.error('[auth/login] setSessionCookie failed:', msg);
+      return NextResponse.json(
+        { error: 'Erreur de session. Veuillez reessayer.' },
+        { status: 503 },
+      );
+    }
 
     // 4. Met a jour les champs volatils (lastActiveAt, avatar, emailVerified).
     try {

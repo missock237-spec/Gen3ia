@@ -3,14 +3,14 @@
 // ============================================================
 //  Body: { idToken: string, name?: string, email?: string }
 //  Flow :
-//    1. Le client crée le compte via createUserWithEmailAndPassword
+//    1. Le client cree le compte via createUserWithEmailAndPassword
 //       (Firebase Client SDK) -> obtient un idToken.
 //    2. POST cette route avec { idToken, name } -> le serveur :
-//       a. vérifie l'idToken via Admin SDK (verifyIdToken)
-//       b. crée le session cookie Firebase (httpOnly, 14 jours)
-//       c. crée le profil étendu dans Firestore + entrée crédits
-//       d. loggue l'événement dans audit_logs
-//       e. renvoie l'utilisateur normalisé
+//       a. verifie l'idToken via Admin SDK (verifyIdToken)
+//       b. cree le session cookie Firebase (httpOnly, 14 jours)
+//       c. cree le profil etendu dans Firestore + entree credits
+//       d. loggue l'evenement dans audit_logs
+//       e. renvoie l'utilisateur normalise
 //  Side-effect: positionne le cookie `gen3ia_session` (httpOnly, 14 jours).
 // ============================================================
 
@@ -31,29 +31,37 @@ export async function POST(req: NextRequest) {
 
     if (!idToken) {
       return NextResponse.json(
-        { error: 'idToken manquant (créez le compte côté client via createUserWithEmailAndPassword)' },
+        { error: 'idToken manquant' },
         { status: 400 },
       );
     }
 
-    // 1. Vérifie l'idToken côté serveur (Admin SDK) et récupère l'utilisateur.
-    //    verifyIdToken fait verifyIdToken(idToken, true) + getUser(uid),
-    //    avec fallback checkRevoked=false si le token est frais.
+    // 1. Verifie l'idToken cote serveur (Admin SDK) et recupere l'utilisateur.
     const user = await verifyIdToken(idToken);
     if (!user) {
       console.error('[auth/register] verifyIdToken returned null for token length:', idToken?.length);
       return NextResponse.json(
-        { error: 'Session invalide. Veuillez réessayer.' },
+        { error: 'Session invalide. Veuillez reessayer.' },
         { status: 401 },
       );
     }
 
     // 2. Positionne le cookie de session Firebase (httpOnly, 14 jours).
-    await setSessionCookie(idToken);
+    //    Try/catch dedie : si createSessionCookie echoue (Admin SDK
+    //    indisponible, token rejete), on renvoie une erreur claire
+    //    au lieu de laisser remonter en 500 generique.
+    try {
+      await setSessionCookie(idToken);
+    } catch (cookieErr) {
+      const msg = cookieErr instanceof Error ? cookieErr.message : String(cookieErr);
+      console.error('[auth/register] setSessionCookie failed:', msg);
+      return NextResponse.json(
+        { error: 'Erreur de session. Veuillez reessayer.' },
+        { status: 503 },
+      );
+    }
 
-    // 3. Crée le profil étendu Firestore (mirror de Firebase Auth).
-    //    On utilise upsert pour gérer le cas OAuth-first-login où le profil
-    //    existe déjà (par ex. login Google sans passer par register).
+    // 3. Cree le profil etendu Firestore (mirror de Firebase Auth).
     const now = new Date();
     const fallbackName = name || user.displayName || user.email?.split('@')[0] || 'Utilisateur';
     try {
@@ -68,7 +76,7 @@ export async function POST(req: NextRequest) {
           emailVerified: user.emailVerified,
           plan: 'free',
           role: 'user',
-          credits: 100, // crédits de bienvenue
+          credits: 100,
           isActive: true,
           isCreator: false,
           creatorEarnings: 0,
@@ -89,7 +97,7 @@ export async function POST(req: NextRequest) {
       console.error('[auth/register] profile upsert failed (non-fatal):', profileErr);
     }
 
-    // 4. Crée l'entrée crédits (idempotent — ne l'insère que si elle n'existe pas).
+    // 4. Cree l'entree credits (idempotent).
     try {
       const existingCredit = await db.credit.findUnique({ where: { id: `credit_${user.uid}` } });
       if (!existingCredit) {
@@ -121,8 +129,7 @@ export async function POST(req: NextRequest) {
       console.error('[auth/register] audit log failed (non-fatal):', auditErr);
     }
 
-    // 6. Réponse normalisée — doit inclure tous les champs attendus par le
-    //    client (RegisterForm) : id, email, name, plan, role, emailVerified.
+    // 6. Reponse normalisee.
     return NextResponse.json({
       user: {
         id: user.uid,
@@ -143,24 +150,20 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('[auth/register] Error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Erreur lors de l\'inscription' },
+      { error: error instanceof Error ? error.message : "Erreur lors de l'inscription" },
       { status: 500 },
     );
   }
 }
 
 /**
- * Validation côté serveur de la force du mot de passe.
- * À appeler côté client AVANT createUserWithEmailAndPassword.
+ * Validation cote serveur de la force du mot de passe.
  */
 export async function GET() {
   return NextResponse.json({
     passwordPolicy: {
       min: 8,
-      rules: ['Au moins 8 caractères', 'Au moins une majuscule', 'Au moins une minuscule', 'Au moins un chiffre'],
+      rules: ['Au moins 8 caracteres', 'Au moins une majuscule', 'Au moins une minuscule', 'Au moins un chiffre'],
     },
   });
 }
-
-// Re-export removed — Next.js Route files cannot export non-route symbols.
-// Use `import { validatePasswordStrength } from '@/lib/firebase/auth'` directly.
