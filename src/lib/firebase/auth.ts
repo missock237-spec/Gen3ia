@@ -62,7 +62,7 @@ function toGen3iaUser(fbUser: Awaited<ReturnType<ReturnType<typeof getAdminAuth>
   return {
     uid: fbUser.uid,
 // @ts-ignore — type narrowing pending, see refactor ticket
-    email: fbUser.email,
+    email: fbUser.email ?? null,
     displayName: fbUser.displayName || null,
     photoURL: fbUser.photoURL || null,
     emailVerified: fbUser.emailVerified,
@@ -70,10 +70,10 @@ function toGen3iaUser(fbUser: Awaited<ReturnType<ReturnType<typeof getAdminAuth>
     providerData: fbUser.providerData.map((p) => ({
       providerId: p.providerId,
       uid: p.uid,
-    })),
+    }),
     customClaims: (fbUser.customClaims || {}) as Record<string, unknown>,
   };
-}
+
 
 // ============================================================
 // Session cookies (server-side)
@@ -90,22 +90,23 @@ export async function createSessionCookie(idToken: string): Promise<string> {
     expiresIn: SESSION_COOKIE_MAX_AGE * 1000,
   });
 }
-
 /**
  * Positionne le cookie de session dans la réponse HTTP.
- * À appeler côté serveur (API route).
+ * À appeler côté serveur (API route / Server Action).
  */
 export async function setSessionCookie(idToken: string): Promise<void> {
-  cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {   // ❌ cookieStore et sessionCookie n'existent pas
-  httpOnly: true,
-  secure: true,
-  sameSite: process.env.NODE_ENV === "development" ? "none" : "lax",
-  path: "/",
-  maxAge: SESSION_COOKIE_MAX_AGE,
-})
+  const sessionCookie = await createSessionCookie(idToken);
+  const cookieStore = await cookies();
+
+  cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'development' ? 'lax' : 'lax',
+    path: '/',
+    maxAge: SESSION_COOKIE_MAX_AGE,
   });
 }
-}/**
+ }/**
  * Invalide le cookie de session (logout).
  */
 export async function clearSessionCookie(): Promise<void> {
