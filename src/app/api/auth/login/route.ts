@@ -53,13 +53,17 @@ export async function POST(req: NextRequest) {
       console.error('[auth/login] profile fetch failed:', profileErr);
     }
 
-    if (!profile) {
-      console.warn('[auth/login] No Firestore profile for:', user.uid, user.email);
-      return NextResponse.json(
-        { error: 'Aucun compte trouve. Veuillez creer un compte avant de vous connecter.' },
-        { status: 403 },
-      );
-    }
+    // ✅ CODE CORRIGÉ — Ajouter après la vérification isActive
+// Verifie que l'email est vérifié (sauf pour les fournisseurs OAuth)
+const isOAuthUser = user.providerData?.some(p => 
+  p.providerId === 'google.com' || p.providerId === 'github.com'
+);
+if (!user.emailVerified && !isOAuthUser) {
+  return NextResponse.json(
+    { error: 'Email non vérifié. Consultez votre boîte mail pour le lien de vérification.' },
+    { status: 403 },
+  );
+}
 
     // Verifie que le compte est actif
     if (profile.isActive === false) {
