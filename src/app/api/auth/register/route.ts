@@ -88,8 +88,11 @@ export async function POST(req: NextRequest) {
           updatedAt: now,
         },
       });
-    } catch (profileErr) {
-      console.error('[auth/register] Firestore profile creation FAILED (BLOCKING):', profileErr);
+    } // ✅ CODE CORRIGÉ — Ajouter la fonction manquante avant le POST
+async function rollbackFirebaseUser(uid: string): Promise<void> {
+  try {
+    const { getAdminAuth } = await import('@/lib/firebase/admin');
+}
       // Rollback : supprimer l'utilisateur Firebase
       await rollbackFirebaseUser(user.uid);
       return NextResponse.json(
@@ -114,20 +117,18 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch (creditErr) {
-      console.error('[auth/register] Credit creation FAILED (BLOCKING):', creditErr);
+     console.error('[auth/register] Credit creation FAILED (BLOCKING):', creditErr);
       // Rollback : supprimer le profil Firestore + l'utilisateur Firebase
-      try { await db.user.delete({ where: { id: user.uid } }); } catch {}
-      await rollbackFirebaseUser(user.uid);
-      return NextResponse.json(
-        { error: "Erreur lors de l'initialisation des credits. L'utilisateur n'a pas ete cree. Reessayez." },
-        { status: 500 },
-      );
-    }
+      try { await getAdminAuth().deleteUser(uid);
+    console.log('[auth/register] Rolled back Firebase user:', uid);
+  } catch (err) {
+    console.error('[auth/register] Failed to rollback Firebase user:', uid, err);
+      }
 
     // 4. Positionne le cookie de session Firebase (httpOnly, 14 jours).
     //    En dernier : on ne pose le cookie QUE si tout a reussi.
     try {
-      await setSessionCookie(idToken);
+      await setSessionCookie(idToken)};
     } catch (cookieErr) {
       const msg = cookieErr instanceof Error ? cookieErr.message : String(cookieErr);
       console.error('[auth/register] setSessionCookie failed:', msg);
