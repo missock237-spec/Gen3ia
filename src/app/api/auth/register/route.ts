@@ -40,7 +40,25 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+const PASSWORD_RULES = [
+  { regex: /.{8,}/, message: 'Minimum 8 caractères' },
+  { regex: /[A-Z]/, message: 'Au moins 1 majuscule' },
+  { regex: /[a-z]/, message: 'Au moins 1 minuscule' },
+  { regex: /[0-9]/, message: 'Au moins 1 chiffre' },
+  { regex: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/, message: 'Au moins 1 caractère spécial' },
+];
 
+// Avant de créer le profil :
+const providedPassword = body?.password as string | undefined;
+if (providedPassword) {
+  const failedRules = PASSWORD_RULES.filter(r => !r.regex.test(providedPassword));
+  if (failedRules.length > 0) {
+    return NextResponse.json(
+      { error: `Mot de passe trop faible: ${failedRules.map(r => r.message).join(', ')}` },
+      { status: 400 }
+    );
+  }
+}
     // 1. Verifie l'idToken cote serveur (Admin SDK).
     const user = await verifyIdToken(idToken);
     if (!user) {
