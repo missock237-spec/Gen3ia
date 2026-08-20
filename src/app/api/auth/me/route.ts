@@ -13,6 +13,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const session = await getServerSession();
+    const sessionCookie = request.cookies.get("gen3ia_session")?.value
     if (!session) {
       return NextResponse.json({ user: null }, { status: 200 });
     }
