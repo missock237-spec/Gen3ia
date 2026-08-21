@@ -112,15 +112,14 @@ export async function signUpWithEmail(
     await updateProfile(cred.user, { displayName });
   }
   // Envoie l'email de vérification (non bloquant)
-try {
-  await sendEmailVerification(cred.user, { 
-    url: window.location.origin + '/dashboard' 
-  });
-} catch (err) {
-  console.error('[signUpWithEmail] Failed to send verification email:', err);
-  // Optionnel : notifier l'utilisateur que l'email n'a pas pu être envoyé
-  // mais ne pas bloquer l'inscription
-}
+  try {
+    const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : 'http://localhost:3000/';
+    await sendEmailVerification(cred.user, {
+      url: redirectUrl,
+    });
+  } catch (err) {
+    console.error('[signUpWithEmail] Failed to send verification email:', err);
+  }
   return buildAuthResult(cred);
 }
 

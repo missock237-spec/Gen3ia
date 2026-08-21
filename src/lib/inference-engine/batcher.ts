@@ -212,7 +212,7 @@ class InferenceEngineService {
 
     // Découpe en tokens approximatifs (mots)
     const tokenized = prompts.map((p) => p.split(/\s+/));
-    let prefixTokens: string[] = [];
+    const prefixTokens: string[] = [];
     let sharedBy = tokenized.length;
 
     // Commence avec le plus court prompt comme référence

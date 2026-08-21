@@ -75,9 +75,10 @@ export async function POST(req: NextRequest) {
     //    Unverified users can login and access the dashboard.
     //    Verification is encouraged via in-app banners.
 
-    // 6. Création du cookie de session Firebase (14 jours)
+    // 6. Création du cookie de session Firebase (14 jours par défaut ou selon rememberMe)
+    const rememberMe = typeof body?.rememberMe === 'boolean' ? body.rememberMe : true;
     try {
-      await setSessionCookie(idToken);
+      await setSessionCookie(idToken, rememberMe);
     } catch (cookieErr) {
       const msg = cookieErr instanceof Error ? cookieErr.message : String(cookieErr);
       console.error('[auth/login] setSessionCookie failed:', msg);
