@@ -75,9 +75,10 @@ function ChatMessages() {
     incMessageCount();
 
     try {
-      const res = await fetch('/api/agents/chat', {
+      const chatUrl = selectedAgent ? `/api/agents/${selectedAgent}/chat` : '/api/agents/chat';
+      const res = await fetch(chatUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'credentials': 'include' },
         body: JSON.stringify({
           message: input,
           agentId: selectedAgent,

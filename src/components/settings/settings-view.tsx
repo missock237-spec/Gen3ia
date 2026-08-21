@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Settings, User, Shield, Bell, CreditCard, Key, Check, Moon, Sun, Monitor, Save, Eye, EyeOff, LogOut, Trash2, RefreshCw, Megaphone } from 'lucide-react';
+import { User, Shield, Bell, CreditCard, Key, Check, Moon, Sun, Monitor, Save, Eye, EyeOff, LogOut, Trash2, RefreshCw, Megaphone } from 'lucide-react';
+import { apiFetch, ApiError } from '@/lib/api';
 import { AdPreferencesPanel } from '@/components/advertising/ad-preferences-panel';
 
 interface SettingsViewProps {
@@ -36,10 +37,7 @@ export function SettingsView({ initialTab = 'profile' }: SettingsViewProps) {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [marketingEmails, setMarketingEmails] = useState(false);
-  const [approvedApps, setApprovedApps] = useState<{id: string; name: string; scopes: string[]; date: string}[]>([
-    { id: '1', name: 'VSCode Extension', scopes: ['read:agents', 'write:workflows'], date: '2026-06-15' },
-    { id: '2', name: 'CLI Tool', scopes: ['read:agents', 'read:billing'], date: '2026-05-20' },
-  ]);
+  const [approvedApps, setApprovedApps] = useState<{id: string; name: string; scopes: string[]; date: string}[]>([]);
 
   useEffect(() => {
     // Charger le profil depuis l'API au montage
@@ -61,9 +59,12 @@ export function SettingsView({ initialTab = 'profile' }: SettingsViewProps) {
 
   const handleSaveProfile = async () => {
     setSaving(true);
+    setSaved(false);
     try {
-      // Simuler un appel API
-      await new Promise(r => setTimeout(r, 800));
+      await apiFetch('/api/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify({ name: profileName, bio: profileBio, theme }),
+      });
       // Appliquer le thème
       if (theme === 'dark') document.documentElement.classList.add('dark');
       else if (theme === 'light') document.documentElement.classList.remove('dark');
@@ -72,7 +73,9 @@ export function SettingsView({ initialTab = 'profile' }: SettingsViewProps) {
         document.documentElement.classList.toggle('dark', prefersDark);
       }
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error('[settings] Save profile failed:', err);
     } finally {
       setSaving(false);
     }
@@ -80,14 +83,23 @@ export function SettingsView({ initialTab = 'profile' }: SettingsViewProps) {
 
   const handleChangePassword = async () => {
     if (newPassword !== confirmPassword) return;
+    if (newPassword.length < 8) return;
     setSaving(true);
+    setSaved(false);
     try {
-      await new Promise(r => setTimeout(r, 1000));
+      await apiFetch('/api/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        console.error('[settings] Password change failed:', err.message);
+      }
     } finally {
       setSaving(false);
     }

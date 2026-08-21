@@ -58,12 +58,28 @@ export function AutomationView() {
         method: 'POST',
         body: JSON.stringify({ command: input }),
       });
+
+      if (!plan || !plan.understanding) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: 'system',
+            content: 'L\'IA n\'a pas pu generer de plan. Reessayez avec une demande plus precise.',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        setLoading(false);
+        return;
+      }
+
       setCurrentPlan(plan);
 
+      const steps = Array.isArray(plan.steps) ? plan.steps : [];
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `**Compréhension:** ${plan.understanding}\n\n**Plan:**\n${plan.steps?.map((s: CommandStep, i: number) => `${i + 1}. ${s.title} — ${s.description}`).join('\n')}\n\n**Temps estimé:** ${plan.estimatedTime}\n\n**Résumé:** ${plan.summary}`,
+        content: `**Comprehension:** ${plan.understanding}\n\n**Plan:**\n${steps.map((s: CommandStep, i: number) => `${i + 1}. ${s.title} — ${s.description}`).join('\n')}\n\n**Temps estime:** ${plan.estimatedTime || 'N/A'}\n\n**Resume:** ${plan.summary || ''}`,
         timestamp: new Date().toISOString(),
         plan,
       };
@@ -90,8 +106,9 @@ export function AutomationView() {
 
     try {
       // Create tasks for each step
-      for (let i = 0; i < currentPlan.steps.length; i++) {
-        const step = currentPlan.steps[i];
+      const steps = Array.isArray(currentPlan.steps) ? currentPlan.steps : [];
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
         await apiFetch('/api/tasks', {
           method: 'POST',
           body: JSON.stringify({
