@@ -56,7 +56,7 @@ export function LoginForm() {
       });
 
       // 3. Redirection vers le tableau de bord
-      window.location.href = '/dashboard';
+      window.location.href = '/';
     } catch (err) {
       if (err instanceof ApiError) {
         // Erreurs renvoyées par le serveur (POST /api/auth/login)
@@ -126,7 +126,7 @@ export function LoginForm() {
           onError={(msg) => setApiError(msg)}
           onSuccess={async () => {
             await new Promise(resolve => setTimeout(resolve, 500));
-            window.location.href = '/dashboard';
+            window.location.href = '/';
           }}
         />
         <div className="flex items-center gap-3 my-4">

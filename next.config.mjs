@@ -35,7 +35,7 @@ const redirects = () => [
   // /login, /signup, /dashboard/app retirés — les routes natives existent:
   // /login (src/app/(auth)/login/page.tsx) et /dashboard (src/app/(dashboard)/...)
   // Les rediriger vers /auth/signin (qui n'existe pas) causait un 404 après 308.
-  { source: '/dashboard/app', destination: '/dashboard', permanent: false },
+  { source: '/dashboard/app', destination: '/', permanent: false },
 ];
 
 const nextConfig = {
