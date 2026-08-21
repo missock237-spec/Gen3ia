@@ -413,26 +413,36 @@ export function OAuthButtons({ mode, disabled, onError, onSuccess }: OAuthButton
    */
   const sendTokenToServer = async (idToken: string, displayName?: string | null) => {
     const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        idToken,
-        ...(mode === 'register' && displayName ? { name: displayName } : {}),
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        signal: controller.signal,
+        body: JSON.stringify({
+          idToken,
+          ...(mode === 'register' && displayName ? { name: displayName } : {}),
+        }),
+      });
+      clearTimeout(timeoutId);
 
-    if (!res.ok) {
-      let msg = 'Erreur lors de la connexion.';
-      try {
-        const body = await res.json();
-        if (body?.error) msg = body.error;
-      } catch {}
-      onError?.(msg);
+      if (!res.ok) {
+        let msg = 'Erreur lors de la connexion.';
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch {}
+        onError?.(msg);
+        return false;
+      }
+      return true;
+    } catch {
+      clearTimeout(timeoutId);
+      onError?.('Erreur reseau. Verifiez votre connexion.');
       return false;
     }
-    return true;
   };
 
   const handleOAuth = async (provider: 'google' | 'github') => {

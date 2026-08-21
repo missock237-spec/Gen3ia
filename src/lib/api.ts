@@ -29,7 +29,7 @@ export async function apiFetch<T = unknown>(
   path: string,
   options: ApiFetchOptions = {}
 ): Promise<T> {
-  const { params, ...fetchOptions } = options;
+  const { params, timeoutMs = 20_000, ...fetchOptions } = options;
 
   let url = path;
   if (params) {
@@ -42,11 +42,18 @@ export async function apiFetch<T = unknown>(
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(url, {
-    ...fetchOptions,
-    headers,
-    credentials: 'include',
-  });
+  const controller = new AbortController();
+  const timeoutId = timeoutMs > 0
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : undefined;
+
+  try {
+    const response = await fetch(url, {
+      ...fetchOptions,
+      headers,
+      credentials: 'include',
+      ...(timeoutId ? { signal: controller.signal } : {}),
+    });
 
   if (response.status === 401) {
     // Préserve le message serveur quand il y en a un (ex: /api/auth/login
@@ -77,5 +84,7 @@ export async function apiFetch<T = unknown>(
     );
   }
 
-  return response.json() as Promise<T>;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }

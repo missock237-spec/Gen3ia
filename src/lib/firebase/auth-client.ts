@@ -114,7 +114,7 @@ export async function signUpWithEmail(
   // Envoie l'email de vérification (non bloquant)
 try {
   await sendEmailVerification(cred.user, { 
-    url: window.location.origin + '/dashboard' 
+    url: window.location.origin + '/' 
   });
 } catch (err) {
   console.error('[signUpWithEmail] Failed to send verification email:', err);

@@ -89,44 +89,70 @@ export function useOAuthRedirect({ onError }: UseOAuthRedirectOptions = {}) {
     handled.current = true;
     if (typeof window === 'undefined') return;
 
-    const ctx = readOAuthContext();
-    if (!ctx) return;
-
-    const { mode: oauthMode, provider: oauthProvider } = ctx;
-    const providerLabel = oauthProvider === 'google' ? 'Google' : 'GitHub';
-    clearOAuthContext();
-
+    // FIX: Toujours essayer getRedirectResult() en premier.
+    // Sur mobile (Chrome Custom Tabs, Safari in-app browser),
+    // le localStorage peut etre efface pendant le redirect OAuth.
+    // Si getRedirectResult() retourne un resultat, on le traite
+    // meme sans le contexte sauvegarde.
     let idToken: string | null = null;
     let displayName: string | null = null;
+    let providerLabel = 'Google';
+    let oauthMode: string = 'login';
+    let contextFound = false;
 
+    // 1. Lire le contexte sauvegarde (best-effort)
+    const ctx = readOAuthContext();
+    if (ctx) {
+      oauthMode = ctx.mode;
+      providerLabel = ctx.provider === 'google' ? 'Google' : 'GitHub';
+      contextFound = true;
+    }
+
+    // 2. TOUJOURS appeler getRedirectResult (meme si pas de contexte)
     try {
       const { resolveOAuthRedirect } = await import('@/lib/firebase/auth-client');
       const authResult = await resolveOAuthRedirect();
-      if (!authResult) {
-        console.error('[useOAuthRedirect] getRedirectResult returned null');
-        onError?.(`Connexion ${providerLabel} annulee ou echouee.`);
-        return;
+      if (authResult) {
+        idToken = authResult.idToken;
+        displayName = authResult.displayName;
+        if (!contextFound) {
+          providerLabel = 'OAuth';
+          oauthMode = 'login';
+        }
       }
-      idToken = authResult.idToken;
-      displayName = authResult.displayName;
     } catch (err) {
       console.error('[useOAuthRedirect] resolveOAuthRedirect error:', err);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      onError?.(`Erreur lors de la connexion ${providerLabel} : ${errMsg}`);
+      if (contextFound) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        onError?.(`Erreur lors de la connexion ${providerLabel} : ${errMsg}`);
+      }
       return;
     }
 
+    // 3. Si getRedirectResult n'a rien retourne et pas de contexte, rien a faire
+    if (!idToken) return;
+
+    // 4. Nettoyer le contexte
+    if (contextFound) clearOAuthContext();
+
+    // 5. Envoyer le token au serveur (avec timeout)
     try {
       const endpoint = oauthMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: controller.signal,
         body: JSON.stringify({
           idToken,
           ...(oauthMode === 'register' && displayName ? { name: displayName } : {}),
         }),
       });
+      clearTimeout(timeoutId);
+
       if (!res.ok) {
         let msg = `Erreur lors de la connexion via ${providerLabel}.`;
         try {
@@ -136,10 +162,13 @@ export function useOAuthRedirect({ onError }: UseOAuthRedirectOptions = {}) {
         onError?.(msg);
         return;
       }
+
       window.location.href = '/';
     } catch (fetchErr) {
       console.error('[useOAuthRedirect] fetch error:', fetchErr);
-      onError?.(`Erreur reseau lors de la connexion ${providerLabel}.`);
+      if (contextFound) {
+        onError?.(`Erreur reseau lors de la connexion ${providerLabel}.`);
+      }
     }
   }, [router, onError]);
 
