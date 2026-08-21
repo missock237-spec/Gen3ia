@@ -23,6 +23,9 @@ export const FIREBASE_STORAGE_BUCKET = firebaseConfig.storageBucket || '';
 // Durée de vie du cookie de session Firebase (14 jours par défaut)
 export const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 14;
 
+// Durée de vie courte du cookie de session Firebase (24 heures)
+export const SESSION_COOKIE_MAX_AGE_SHORT = 60 * 60 * 24;
+
 // Nom du cookie contenant le session token Firebase
 export const SESSION_COOKIE_NAME = 'gen3ia_session';
 

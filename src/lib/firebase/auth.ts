@@ -24,6 +24,7 @@ import { NextRequest } from 'next/server';
 import { getAdminAuth } from './admin';
 import {
   SESSION_COOKIE_MAX_AGE,
+  SESSION_COOKIE_MAX_AGE_SHORT,
   SESSION_COOKIE_NAME,
 } from './config';
 
@@ -109,9 +110,6 @@ export async function setSessionCookie(idToken: string, rememberMe?: boolean): P
     maxAge,
   });
 }
-
-// Dans config.ts, ajouter :
-export const SESSION_COOKIE_MAX_AGE_SHORT = 60 * 60 * 24; // 24 heures
 
 /**
  * Invalide le cookie de session (logout).
