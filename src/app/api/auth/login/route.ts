@@ -70,17 +70,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Vérification de la validation de l'adresse email
-    const isOAuthUser = user.providerData?.some(
-      (p) => p.providerId === 'google.com' || p.providerId === 'github.com'
-    );
-
-    if (!user.emailVerified && !isOAuthUser) {
-      return NextResponse.json(
-        { error: 'Email non vérifié. Consultez votre boîte mail pour le lien de vérification.' },
-        { status: 403 },
-      );
-    }
+    // 5. Note: email verification is not blocking at login.
+    //    Firebase already verifies the email/password combination.
+    //    Unverified users can login and access the dashboard.
+    //    Verification is encouraged via in-app banners.
 
     // 6. Création du cookie de session Firebase (14 jours)
     try {
