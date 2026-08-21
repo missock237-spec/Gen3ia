@@ -124,11 +124,12 @@
   }
 }
 
-/* =========================================================
+/*
    HARD-TECH REALISM - utilitaires de design
    1. Obsidian Carbon  (#0A0A0B)  -> fond
    2. Krypton Cyan     (#00F5FF)  -> flux de donnees
-   3. Isotope Amber    (#FFB800)  -> points d'intervention humaine   ========================================================= */
+   3. Isotope Amber    (#FFB800)  -> points d'intervention humaine
+*/
 
 /* Grille de circuits (fond hero / sections) */
 .hardtech-circuit-grid {
@@ -295,9 +296,9 @@
   animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* =========================================================
+/*
    AGENT RESPONSE - Premium markdown rendering
-   ========================================================= */
+*/
 
 /* Outer container with subtle glow border */
 .agent-response-container {
@@ -531,9 +532,9 @@
   font-weight: 500;
 }
 
-/* =========================================================
+/*
    Light mode overrides for agent response
-   ========================================================= */
+*/
 
 :root:not(.dark) .agent-response-container {
   border-color: rgba(0, 117, 136, 0.15);
