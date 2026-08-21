@@ -38,6 +38,7 @@ function AppContent() {
 
   const hydratedRef = useRef(false);
   const validatedRef = useRef(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   // T23 : détection du chargement bloqué (pour afficher le bouton reset)
   const [isStuck, setIsStuck] = useState(false);
@@ -227,10 +228,10 @@ function AppContent() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar />
+      <AppSidebar mobileOpen={sidebarOpen} onCloseMobile={() => setSidebarOpen(false)} />
       <main className="flex-1 flex flex-col min-w-0">
-        <AppHeader />
-        <div className="flex-1 p-4 sm:p-6 overflow-auto">
+        <AppHeader onMenuClick={() => setSidebarOpen(true)} />
+        <div className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto">
           {renderView()}
         </div>
       </main>

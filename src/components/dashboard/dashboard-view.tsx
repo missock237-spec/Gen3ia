@@ -101,17 +101,17 @@ export function DashboardView() {
 
       {/* Cartes statistiques */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-28 bg-card rounded-xl border border-border animate-pulse" />
+            <div key={i} className="h-24 sm:h-28 bg-card rounded-xl border border-border animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
           {cards.map((card) => (
             <div
               key={card.label}
-              className="bg-card rounded-xl border border-border p-5 hover:shadow-md hover:border-primary/20 transition-all"
+              className="bg-card rounded-xl border border-border p-3 sm:p-5 hover:shadow-md hover:border-primary/20 transition-all"
             >
               <div className="flex items-center justify-between mb-3">
                 <card.icon className={`h-5 w-5 ${card.color}`} />
@@ -123,7 +123,7 @@ export function DashboardView() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Activité récente */}
         <div className="lg:col-span-2 bg-card rounded-xl border border-border p-5">
           <h2 className="font-semibold mb-4 flex items-center gap-2">
