@@ -35,10 +35,10 @@ jobs:
     steps:
       - uses: actions/first-interaction@v3
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          issue-message: |
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          issue_message: |
             Merci pour votre première issue sur Genova ! 🎉
             Notre équipe va l'examiner rapidement.
-          pr-message: |
+          pr_message: |
             Merci pour votre première PR sur Genova ! 🚀
             Un mainteneur va la reviewer sous peu.
