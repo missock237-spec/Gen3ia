@@ -37,6 +37,9 @@ const redirects = () => [
 ];
 
 const nextConfig = {
+  // Turbopack config (silences Next.js 16 Turbopack default warning)
+  turbopack: {},
+
   // Mode standalone retiré — Vercel gère l'output nativement,
   // et standalone mode provoque des erreurs de copy des client-reference-manifest
   // pour les routes dynamiques avec parentheses (app router).

@@ -54,6 +54,7 @@ const PUBLIC_PATHS = [
   // session valide — ce qui est une réponse publique, pas une fuite.
   '/api/auth/me',
   '/api/auth/session',
+  '/api/auth/debug',
   '/api/health',
   '/api/health/features',
   '/api/register',

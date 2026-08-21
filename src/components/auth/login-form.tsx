@@ -57,8 +57,9 @@ export function LoginForm() {
       });
 
       // 3. Redirection vers le tableau de bord
-      //    Utilise replace pour éviter que le bouton Back ne retourne au login.
-      window.location.replace('/');
+      //    Utilise href (comme le register) pour que le cookie soit envoyé
+      //    sur la navigation vers /.
+      window.location.href = '/';
     } catch (err) {
       if (err instanceof ApiError) {
         // Erreurs renvoyées par le serveur (POST /api/auth/login)
@@ -110,8 +111,8 @@ export function LoginForm() {
         }
       } else {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[login] Unexpected error:', msg);
-        setApiError('Erreur réseau. Veuillez réessayer.');
+        console.error('[login] Unexpected error:', msg, err);
+        setApiError(`Erreur réseau. Veuillez réessayer. (${msg.slice(0, 80)})`);
       }
     } finally {
       setLoading(false);
