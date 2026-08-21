@@ -17,7 +17,7 @@ import DevelopersPage from '@/components/developers/developers-page';
 import { ThemeProvider } from 'next-themes';
 import { Loader2, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import HardTechLanding from '@/components/landing/hardtech-landing';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 // T23 : délai avant d'afficher l'UI "chargement bloqué" (12s).
 // Au-delà de ce délai avec isLoading=true, on propose à l'utilisateur
@@ -232,7 +232,9 @@ function AppContent() {
       <main className="flex-1 flex flex-col min-w-0">
         <AppHeader onMenuClick={() => setSidebarOpen(true)} />
         <div className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto">
-          {renderView()}
+          <ErrorBoundary>
+            {renderView()}
+          </ErrorBoundary>
         </div>
       </main>
     </div>
