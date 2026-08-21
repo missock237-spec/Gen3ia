@@ -7,7 +7,6 @@
 
 import { NextResponse } from 'next/server';
 import { getAdminAuth } from '@/lib/firebase/admin';
-import { isFirebaseClientConfigured, getFirebaseInitError } from '@/lib/firebase/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,15 +20,19 @@ export async function GET() {
     const app = auth.app;
     results.adminApp = { ok: true, name: app.name, options: Object.keys(app.options) };
 
-    // Test listUsers (minimal)
+    // Test listUsers (minimal) to verify Admin SDK connectivity
     const start = Date.now();
-    await auth.listUsers({ maxResults: 1 });
-    results.adminListUsers = { ok: true, latencyMs: Date.now() - start };
+    const listResult = await auth.listUsers({ maxResults: 1 });
+    results.adminListUsers = {
+      ok: true,
+      latencyMs: Date.now() - start,
+      userCount: listResult.users?.length ?? 0,
+    };
   } catch (err) {
     results.adminApp = { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 
-  // 2. Environment variables
+  // 2. Environment variables (no values exposed, just presence)
   results.env = {
     hasServiceAccount: !!process.env.FIREBASE_SERVICE_ACCOUNT,
     hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
@@ -41,37 +44,51 @@ export async function GET() {
     nodeEnv: process.env.NODE_ENV,
   };
 
-  // 3. Firebase config validation
+  // 3. Firebase config validation (server-side, from config.ts)
   try {
-    const configCheck = isFirebaseClientConfigured();
-    results.clientConfig = configCheck;
-  } catch {
-    results.clientConfig = { ok: false, note: 'Server-side check' };
+    const { validateFirebaseConfig } = await import('@/lib/firebase/config');
+    const check = validateFirebaseConfig();
+    results.serverConfig = check;
+  } catch (err) {
+    results.serverConfig = { error: err instanceof Error ? err.message : String(err) };
   }
-  const initErr = getFirebaseInitError();
-  results.clientInitError = initErr || null;
 
-  // 4. Session cookie test
+  // 4. Session cookie config
   try {
-    const { SESSION_COOKIE_NAME, SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_MAX_AGE_SHORT } = await import('@/lib/firebase/config');
+    const { SESSION_COOKIE_NAME, SESSION_COOKIE_MAX_AGE } = await import('@/lib/firebase/config');
     results.sessionConfig = {
       cookieName: SESSION_COOKIE_NAME,
       maxAge14d: SESSION_COOKIE_MAX_AGE,
-      maxAge24h: SESSION_COOKIE_MAX_AGE_SHORT,
     };
+    // Also check SESSION_COOKIE_MAX_AGE_SHORT (exported from auth.ts)
+    const { SESSION_COOKIE_MAX_AGE_SHORT } = await import('@/lib/firebase/auth');
+    results.sessionConfig.maxAge24h = SESSION_COOKIE_MAX_AGE_SHORT;
   } catch (err) {
     results.sessionConfig = { error: err instanceof Error ? err.message : String(err) };
   }
 
-  // 5. Database connectivity
+  // 5. Database connectivity (Firestore)
   try {
     const { db } = await import('@/lib/firebase/firestore');
     const start = Date.now();
-    // Try a simple read that won't crash
     const testDoc = await db.user.findUnique({ where: { id: '__debug_nonexistent__' } });
     results.firestore = { ok: true, latencyMs: Date.now() - start, testResult: testDoc };
   } catch (err) {
     results.firestore = { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  // 6. Test createSessionCookie with a dummy token (should fail gracefully)
+  try {
+    const { createSessionCookie } = await import('@/lib/firebase/auth');
+    const start = Date.now();
+    await createSessionCookie('invalid_test_token');
+    results.createSessionCookieTest = { ok: false, note: 'Should have failed' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    results.createSessionCookieTest = {
+      ok: true, // Expected to fail with invalid token
+      expectedError: msg.slice(0, 100),
+    };
   }
 
   return NextResponse.json(results);
