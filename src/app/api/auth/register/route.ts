@@ -146,7 +146,7 @@ async function rollbackFirebaseUser(uid: string): Promise<void> {
     // 4. Positionne le cookie de session Firebase (httpOnly, 14 jours).
     //    En dernier : on ne pose le cookie QUE si tout a reussi.
     try {
-      await setSessionCookie(idToken)};
+      await setSessionCookie(idToken);
     } catch (cookieErr) {
       const msg = cookieErr instanceof Error ? cookieErr.message : String(cookieErr);
       console.error('[auth/register] setSessionCookie failed:', msg);
