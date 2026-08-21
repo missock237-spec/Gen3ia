@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { applySecurity } from '@/lib/security';
-import { advertiserDashboard } from '@/lib/advertising/advertiser-dashboard';
+import { dashboardService } from '@/lib/dashboard';
+import { getAuth } from '@/lib/security';
 
+export async function GET(request: NextRequest) {
+  const auth = await getAuth(request);
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    const stats = await dashboardService.getRealtimeStats(auth.uid, 24);
+    return NextResponse.json(stats);
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 500 });
+  }
+}
 export const dynamic = 'force-dynamic';
 
 // GET /api/ads/dashboard?scope=overview — full dashboard
