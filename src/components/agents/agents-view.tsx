@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/select';
 import { AdProvider, useAdContext } from '@/components/shared/ad-context';
 import { AdBanner } from '@/components/shared/ad-banner';
+import { AgentResponse } from '@/components/shared/agent-response';
 import { AgentCreateDialog } from './agent-create-dialog';
 import { AgentDetailView } from './agent-detail-view';
 import { apiFetch } from '@/lib/api';
@@ -633,32 +634,29 @@ function ChatTab({ agents }: { agents: Agent[] }) {
 
         {messages.map((msg, idx) => (
           <div key={msg.id}>
-            <div className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {msg.role === 'agent' && (
-                <div className="w-8 h-8 rounded-full bg-[#06b6d4]/10 flex items-center justify-center flex-shrink-0">
-                  <Bot className="h-4 w-4 text-[#06b6d4]" />
+            {msg.role === 'user' ? (
+              <div className="flex gap-3 justify-end">
+                <div className="max-w-[80%] rounded-2xl px-4 py-2.5 bg-[#06b6d4] text-white rounded-tr-sm">
+                  <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                  <p className="text-[10px] mt-1 text-white/50">
+                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-              )}
-              <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                  msg.role === 'user'
-                    ? 'bg-[#06b6d4] text-white rounded-tr-sm'
-                    : 'bg-muted rounded-tl-sm'
-                }`}
-              >
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                <p className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-white/50' : 'opacity-50'}`}>
-                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
-              {msg.role === 'user' && (
                 <div className="w-8 h-8 rounded-full bg-[#06b6d4] flex items-center justify-center flex-shrink-0">
                   <User className="h-4 w-4 text-white" />
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <AgentResponse
+                content={msg.content}
+                agentName={selectedAgent?.name}
+                avatar={selectedAgent?.avatar}
+                timestamp={msg.timestamp.toISOString()}
+                isStreaming={isTyping && idx === messages.length - 1}
+              />
+            )}
             {msg.role === 'agent' && idx > 0 && (
-              <div className="ml-11 mt-2">
+              <div className="mt-2">
                 <AdBanner
                   userPlan={userPlan}
                   placement="agent-response"
@@ -671,7 +669,7 @@ function ChatTab({ agents }: { agents: Agent[] }) {
           </div>
         ))}
 
-        {isTyping && (
+        {isTyping && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
           <div className="flex gap-3">
             <div className="w-8 h-8 rounded-full bg-[#06b6d4]/10 flex items-center justify-center flex-shrink-0">
               <Bot className="h-4 w-4 text-[#06b6d4]" />

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/lib/api';
+import { AgentResponse } from '@/components/shared/agent-response';
 import {
   AVAILABLE_SKILLS,
   parseAgentConfig,
@@ -526,45 +527,34 @@ export function AgentDetailView({
 
               {messages.map((msg, idx) => (
                 <div key={idx}>
-                  <div
-                    className={`flex gap-3 ${
-                      msg.role === 'user' ? 'justify-end' : 'justify-start'
-                    }`}
-                  >
-                    {msg.role === 'agent' && (
-                      <div className="w-8 h-8 rounded-full bg-[#06b6d4]/10 flex items-center justify-center flex-shrink-0">
-                        <Bot className="h-4 w-4 text-[#06b6d4]" />
+                  {msg.role === 'user' ? (
+                    <div className="flex gap-3 justify-end">
+                      <div className="max-w-[80%] rounded-2xl px-4 py-2.5 bg-[#06b6d4] text-white rounded-tr-sm">
+                        <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                        <p className="text-[10px] mt-1 text-white/50">
+                          {new Date(msg.timestamp).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
                       </div>
-                    )}
-                    <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                        msg.role === 'user'
-                          ? 'bg-[#06b6d4] text-white rounded-tr-sm'
-                          : 'bg-muted rounded-tl-sm'
-                      }`}
-                    >
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      <p
-                        className={`text-[10px] mt-1 ${
-                          msg.role === 'user' ? 'text-white/50' : 'opacity-50'
-                        }`}
-                      >
-                        {new Date(msg.timestamp).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                    </div>
-                    {msg.role === 'user' && (
                       <div className="w-8 h-8 rounded-full bg-[#06b6d4] flex items-center justify-center flex-shrink-0">
                         <User className="h-4 w-4 text-white" />
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <AgentResponse
+                      content={msg.content}
+                      agentName={agent.name}
+                      avatar={agent.avatar}
+                      timestamp={msg.timestamp}
+                      isStreaming={isStreaming && idx === messages.length - 1}
+                    />
+                  )}
                 </div>
               ))}
 
-              {isStreaming && (
+              {isStreaming && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
                 <div className="flex gap-3">
                   <div className="w-8 h-8 rounded-full bg-[#06b6d4]/10 flex items-center justify-center flex-shrink-0">
                     <Bot className="h-4 w-4 text-[#06b6d4]" />
