@@ -53,10 +53,12 @@ export function LoginForm() {
       await apiFetch<{ user: { id: string; email: string; name: string; role: string; plan: string; avatar?: string | null; emailVerified: boolean } }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ idToken: authResult.idToken, rememberMe: form.remember }),
+        timeoutMs: 30_000, // 30s — verifyIdToken a 3 tentatives avec délais (cold start Vercel)
       });
 
       // 3. Redirection vers le tableau de bord
-      window.location.href = '/';
+      //    Utilise replace pour éviter que le bouton Back ne retourne au login.
+      window.location.replace('/');
     } catch (err) {
       if (err instanceof ApiError) {
         // Erreurs renvoyées par le serveur (POST /api/auth/login)
