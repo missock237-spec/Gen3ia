@@ -319,8 +319,14 @@ export function initAutoUpdate(): void {
   if (typeof window === 'undefined') return;
   if (!('serviceWorker' in navigator)) return;
 
+  // Enregistre le SW avec un paramètre de version pour forcer le navigateur
+  // à re-vérifier le fichier sw.js à chaque chargement de page.
+  // Sans ce paramètre, le navigateur peut utiliser un sw.js en cache HTTP
+  // pendant des heures, empêchant la détection des mises à jour.
+  const swUrl = '/sw.js?v=gen3ia-v6';
+
   navigator.serviceWorker
-    .register('/sw.js')
+    .register(swUrl, { updateViaCache: 'none' })
     .then((reg) => {
       setupServiceWorkerListeners(reg);
       startPolling();

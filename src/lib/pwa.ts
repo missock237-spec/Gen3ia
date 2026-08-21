@@ -17,7 +17,7 @@ export function registerServiceWorker(): void {
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js')
+      .register('/sw.js?v=gen3ia-v6', { updateViaCache: 'none' })
       .then((reg) => {
         console.info('[PWA] Service Worker registered', reg.scope);
       })

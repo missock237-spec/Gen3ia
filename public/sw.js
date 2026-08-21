@@ -1,63 +1,66 @@
 // ============================================================
-// Gen3ia — Service Worker v4
+// Gen3ia — Service Worker v6
 // ============================================================
-//  Cache-first pour assets statiques HASHÉS (/_next/static/*)
-//  Network-first pour navigation HTML et API
-//  TTL: 24h static, 5min API
-//  Background sync pour les exécutions d'agents en attente
-//  NOTIFICATION de mise à jour via postMessage au client
+//  STRATÉGIE : Network-first pour TOUT (sauf assets hashés Next.js).
 //
-//  v4 — ajoute le canal de communication SW <-> client pour
-//  l'auto-update. Quand un nouveau SW est installé, il notifie
-//  toutes les tabs ouvertes via postMessage({ type: 'SW_UPDATE_AVAILABLE' }).
-//  Le client peut alors afficher une bannière "Mise à jour disponible".
+//  v6 — CORRECTION CRITIQUE :
+//  - Le SW précédent (v5) utilisait cache-first pour les JS avec
+//    un TTL de 24h et une CACHE_VERSION codée en dur. Résultat :
+//    les utilisateurs restaient bloqués sur l'ancien code cassé.
 //
-//  La CACHE_VERSION est dynamiquement injectée par prebuild.js
-//  à chaque build (gen3ia-v<version>-<gitSha>), garantissant que
-//  chaque déploiement invalide les anciens caches.
+//  - v6 passe à network-first pour les JS aussi. Les fichiers
+//    Next.js sont déjà hashés par contenu (_next/static/chunks/XXX.js),
+//    donc le cache HTTP du CDN/CDN de Vercel gère le cache optimal.
+//    Le SW n'a pas besoin de doubler ce cache.
+//
+//  - ACTIVATE supprime TOUS les anciens caches (pas seulement
+//    ceux d'une autre version) pour garantir un état propre.
+//
+//  - skipWaiting() est appelé immédiatement à l'installation
+//    pour que le nouveau SW prenne le contrôle sans attendre
+//    que l'utilisateur ferme tous les onglets.
 // ============================================================
 
-const CACHE_VERSION = 'gen3ia-v5'; // Incrémenté pour forcer la mise à jour (auth cache fix)
-const STATIC_CACHE = `${CACHE_VERSION}-static`;
-const API_CACHE = `${CACHE_VERSION}-api`;
+const CACHE_VERSION = 'gen3ia-v6';
+const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 
-const STATIC_TTL_MS = 24 * 60 * 60 * 1000;
-const API_TTL_MS = 5 * 60 * 1000;
-
+// Assets publics à pré-cacher
 const PRECACHE_URLS = ['/manifest.json', '/icon-192.png', '/icon-512.png'];
 
-// --- INSTALL : pré-cacher + notifier les clients ---
+// --- INSTALL : skipWaiting immédiat + pré-cache ---
 self.addEventListener('install', (event) => {
+  // Skip waiting pour activer immédiatement le nouveau SW
+  // sans attendre que l'utilisateur ferme les onglets
+  self.skipWaiting();
+
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS).catch(() => {}))
+    caches.open(DYNAMIC_CACHE).then((cache) =>
+      cache.addAll(PRECACHE_URLS).catch(() => {})
+    )
   );
-  // NE PAS appeler skipWaiting() ici — laisser le client décider
-  // quand activer le nouveau SW via la bannière de mise à jour.
 });
 
-// --- ACTIVATE : nettoyer les vieux caches ---
+// --- ACTIVATE : supprimer TOUS les anciens caches ---
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys
-          .filter((key) => !key.startsWith(CACHE_VERSION))
-          .map((key) => caches.delete(key))
+        // Supprimer TOUS les caches, y compris ceux de v5 et antérieurs
+        keys.map((key) => {
+          console.log('[SW v6] Deleting cache:', key);
+          return caches.delete(key);
+        })
       )
-    )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 // --- Communication SW <-> Client ---
-// Quand le client demande d'activer le nouveau SW en attente
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
     return;
   }
-
-  // Le client demande les infos de version du SW
   if (event.data?.type === 'GET_SW_VERSION') {
     event.ports[0]?.postMessage({
       type: 'SW_VERSION',
@@ -68,141 +71,52 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// --- Helpers : cache avec TTL ---
-async function getCachedWithTtl(cache, request, ttlMs) {
-  const cached = await cache.match(request);
-  if (!cached) return null;
-  const cachedAt = cached.headers.get('x-sw-cached-at');
-  if (cachedAt) {
-    const age = Date.now() - parseInt(cachedAt, 10);
-    if (age > ttlMs) {
-      await cache.delete(request);
-      return null;
-    }
-  }
-  return cached;
-}
-
-async function putWithTimestamp(cache, request, response) {
-  const clone = response.clone();
-  const headers = new Headers(clone.headers);
-  headers.set('x-sw-cached-at', String(Date.now()));
-  const cachedResponse = new Response(clone.body, { status: clone.status, statusText: clone.statusText, headers });
-  await cache.put(request, cachedResponse);
-}
-
-// Notifier toutes les tabs qu'une mise à jour est disponible
-function notifyClientsUpdateAvailable() {
-  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-    for (const client of clients) {
-      client.postMessage({
-        type: 'SW_UPDATE_AVAILABLE',
-        cacheVersion: CACHE_VERSION,
-      });
-    }
-  });
-}
-
-// --- FETCH : stratégies de cache ---
+// --- FETCH : NETWORK-FIRST pour tout ---
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Ne pas intercepter les non-GET
   if (request.method !== 'GET') return;
+  // Ne pas intercepter WebSocket
   if (request.url.startsWith('ws://') || request.url.startsWith('wss://')) return;
-
-  // Ne pas intercepter la requête de version (toujours fraîche)
+  // Ne pas intercepter les vérifications de version
   if (url.pathname === '/api/app-version') return;
-
-  // Ne JAMAIS mettre en cache les routes d'authentification.
-  // /api/auth/me doit toujours refleter l'etat reel de la session.
+  // Ne JAMAIS intercepter les routes d'auth
   if (url.pathname.startsWith('/api/auth/')) return;
 
-  // API : network-first avec fallback cache TTL
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      (async () => {
-        try {
-          const response = await fetch(request);
-          if (response.ok) {
-            const cache = await caches.open(API_CACHE);
-            await putWithTimestamp(cache, request, response);
-          }
-          return response;
-        } catch (err) {
-          const cache = await caches.open(API_CACHE);
-          const cached = await getCachedWithTtl(cache, request, API_TTL_MS);
-          if (cached) return cached;
-          return new Response(
-            JSON.stringify({ error: 'Vous êtes hors-ligne', offline: true }),
-            { status: 503, headers: { 'Content-Type': 'application/json' } }
-          );
+  // Pour TOUT le reste : NETWORK-FIRST avec fallback cache
+  // Cela inclut les JS Next.js — ils sont hashés par contenu,
+  // donc le cache HTTP du CDN gère déjà le cache optimal.
+  event.respondWith(
+    (async () => {
+      try {
+        const response = await fetch(request);
+        // Mettre en cache uniquement les réponses réussies
+        if (response.ok) {
+          const cache = await caches.open(DYNAMIC_CACHE);
+          await cache.put(request, response.clone());
         }
-      })()
-    );
-    return;
-  }
-
-  // Assets statiques Next.js HASHÉS : cache-first
-  if (url.pathname.match(/\/\_next\/static\/.*\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|eot)$/)) {
-    event.respondWith(
-      (async () => {
-        const cache = await caches.open(STATIC_CACHE);
-        const cached = await getCachedWithTtl(cache, request, STATIC_TTL_MS);
+        return response;
+      } catch (err) {
+        // Hors-ligne : essayer le cache
+        const cache = await caches.open(DYNAMIC_CACHE);
+        const cached = await cache.match(request);
         if (cached) return cached;
-        try {
-          const response = await fetch(request);
-          if (response.ok) await putWithTimestamp(cache, request, response);
-          return response;
-        } catch (err) {
-          return new Response('Offline', { status: 503 });
-        }
-      })()
-    );
-    return;
-  }
 
-  // Assets publics : cache-first avec TTL
-  if (url.pathname.match(/\.(png|jpg|jpeg|svg|ico|woff2?|ttf|eot)$/) && !url.pathname.startsWith('/_next/')) {
-    event.respondWith(
-      (async () => {
-        const cache = await caches.open(STATIC_CACHE);
-        const cached = await getCachedWithTtl(cache, request, STATIC_TTL_MS);
-        if (cached) return cached;
-        try {
-          const response = await fetch(request);
-          if (response.ok) await putWithTimestamp(cache, request, response);
-          return response;
-        } catch (err) {
-          return new Response('Offline', { status: 503 });
-        }
-      })()
-    );
-    return;
-  }
-
-  // Navigations HTML : NETWORK-FIRST
-  if (request.method === 'GET') {
-    event.respondWith(
-      (async () => {
-        try {
-          const response = await fetch(request);
-          if (response.ok && request.mode === 'navigate') {
-            const cache = await caches.open(STATIC_CACHE);
-            await putWithTimestamp(cache, request, response);
-          }
-          return response;
-        } catch (err) {
-          const cache = await caches.open(STATIC_CACHE);
-          const cached = await getCachedWithTtl(cache, request, STATIC_TTL_MS);
-          if (cached) return cached;
+        // Pour les navigations, essayer de servir la page racine en cache
+        if (request.mode === 'navigate') {
           const rootCache = await cache.match('/');
           if (rootCache) return rootCache;
-          return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/html' } });
         }
-      })()
-    );
-  }
+
+        return new Response(
+          JSON.stringify({ error: 'Vous êtes hors-ligne', offline: true }),
+          { status: 503, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    })()
+  );
 });
 
 // --- BACKGROUND SYNC ---
@@ -218,13 +132,16 @@ async function syncQueuedExecutions() {
     const keys = await cache.keys();
     for (const key of keys) {
       const response = await cache.match(key);
-      const body = await response.json();
-      const result = await fetch(key.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (result.ok) await cache.delete(key);
+      if (!response) continue;
+      try {
+        const body = await response.json();
+        const result = await fetch(key.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (result.ok) await cache.delete(key);
+      } catch {}
     }
   } catch (err) {
     console.error('[SW] sync failed:', err);
