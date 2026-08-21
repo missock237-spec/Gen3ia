@@ -209,7 +209,7 @@ if (!authResult) {
       }
 
       // 5. Succes — rechargement complet pour lire le cookie de session
-      console.log('[useOAuthRedirect] OAuth success, redirecting to dashboard');
+      console.log('[useOAuthRedirect] OAuth success, reloading to hydrate session');
       window.location.href = '/';
     } catch (fetchErr) {
       console.error('[useOAuthRedirect] fetch error:', fetchErr);

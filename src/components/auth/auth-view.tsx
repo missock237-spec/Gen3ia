@@ -43,7 +43,7 @@ export function AuthView() {
       // Hydrater le store pour mettre à jour l'état global
       await hydrate();
 
-      // Redirection vers le dashboard
+      // Redirection vers le dashboard (racine = SPA)
       window.location.href = '/';
     } catch {
       setError('Erreur de connexion au serveur');
