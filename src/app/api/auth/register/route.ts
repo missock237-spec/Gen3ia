@@ -1,20 +1,6 @@
 // ============================================================
 // POST /api/auth/register — Firebase Authentication
 // ============================================================
-//  Body: { idToken: string, name?: string, email?: string }
-//  Flow :
-//    1. Le client cree le compte via createUserWithEmailAndPassword
-//       (Firebase Client SDK) -> obtient un idToken.
-//    2. POST cette route avec { idToken, name } -> le serveur :
-//       a. verifie l'idToken via Admin SDK (verifyIdToken)
-//       b. cree le profil etendu dans Firestore + entree credits
-//       c. cree le session cookie Firebase (httpOnly, 14 jours)
-//       d. loggue l'evenement dans audit_logs
-//       e. renvoie l'utilisateur normalise
-//    En cas d'echec apres creation Firestore, le cookie N'EST PAS
-//    pose. En cas d'echec critique, l'utilisateur Firebase est
-//    supprime (rollback) car le login exige un profil Firestore.
-// ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -27,54 +13,23 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  let firebaseUserCreated = false;
-
   try {
     const body = await req.json().catch(() => null);
     const idToken = body?.idToken as string | undefined;
     const name = body?.name as string | undefined;
 
     if (!idToken) {
-      return NextResponse.json(
-        { error: 'idToken manquant' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'idToken manquant' }, { status: 400 });
     }
-const PASSWORD_RULES = [
-  { regex: /.{8,}/, message: 'Minimum 8 caractères' },
-  { regex: /[A-Z]/, message: 'Au moins 1 majuscule' },
-  { regex: /[a-z]/, message: 'Au moins 1 minuscule' },
-  { regex: /[0-9]/, message: 'Au moins 1 chiffre' },
-  { regex: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/, message: 'Au moins 1 caractère spécial' },
-];
 
-// Avant de créer le profil :
-const providedPassword = body?.password as string | undefined;
-if (providedPassword) {
-  const failedRules = PASSWORD_RULES.filter(r => !r.regex.test(providedPassword));
-  if (failedRules.length > 0) {
-    return NextResponse.json(
-      { error: `Mot de passe trop faible: ${failedRules.map(r => r.message).join(', ')}` },
-      { status: 400 }
-    );
-  }
-}
     // 1. Verifie l'idToken cote serveur (Admin SDK).
     const user = await verifyIdToken(idToken);
     if (!user) {
-      console.error('[auth/register] verifyIdToken returned null for token length:', idToken?.length);
-      return NextResponse.json(
-        { error: 'Session invalide. Veuillez reessayer.' },
-        { status: 401 },
-      );
+      console.error('[auth/register] verifyIdToken returned null');
+      return NextResponse.json({ error: 'Session invalide.' }, { status: 401 });
     }
 
-    // Marque que l'utilisateur Firebase existe (pour le rollback)
-    firebaseUserCreated = true;
-
     // 2. Cree le profil etendu Firestore — BLOQUANT.
-    //    Le login refuse tout utilisateur sans profil Firestore (403),
-    //    donc l'inscription DOIT reussir ici. Si ca echoue, on rollback.
     const now = new Date();
     const fallbackName = name || user.displayName || user.email?.split('@')[0] || 'Utilisateur';
     try {
@@ -106,15 +61,11 @@ if (providedPassword) {
           updatedAt: now,
         },
       });
-    } // ✅ CODE CORRIGÉ — Ajouter la fonction manquante avant le POST
-async function rollbackFirebaseUser(uid: string): Promise<void> {
-  try {
-    const { getAdminAuth } = await import('@/lib/firebase/admin');
-}
-      // Rollback : supprimer l'utilisateur Firebase
+    } catch (profileErr) {
+      console.error('[auth/register] Firestore profile creation FAILED:', profileErr);
       await rollbackFirebaseUser(user.uid);
       return NextResponse.json(
-        { error: "Erreur lors de la creation du profil. L'utilisateur n'a pas ete cree. Reessayez." },
+        { error: "Erreur lors de la creation du profil. Reessayez." },
         { status: 500 },
       );
     }
@@ -135,23 +86,21 @@ async function rollbackFirebaseUser(uid: string): Promise<void> {
         });
       }
     } catch (creditErr) {
-     console.error('[auth/register] Credit creation FAILED (BLOCKING):', creditErr);
-      // Rollback : supprimer le profil Firestore + l'utilisateur Firebase
-      try { await getAdminAuth().deleteUser(uid);
-    console.log('[auth/register] Rolled back Firebase user:', uid);
-  } catch (err) {
-    console.error('[auth/register] Failed to rollback Firebase user:', uid, err);
-      }
+      console.error('[auth/register] Credit creation FAILED:', creditErr);
+      try { await db.user.delete({ where: { id: user.uid } }); } catch {}
+      await rollbackFirebaseUser(user.uid);
+      return NextResponse.json(
+        { error: "Erreur lors de l'initialisation des credits. Reessayez." },
+        { status: 500 },
+      );
+    }
 
     // 4. Positionne le cookie de session Firebase (httpOnly, 14 jours).
-    //    En dernier : on ne pose le cookie QUE si tout a reussi.
     try {
       await setSessionCookie(idToken);
     } catch (cookieErr) {
       const msg = cookieErr instanceof Error ? cookieErr.message : String(cookieErr);
       console.error('[auth/register] setSessionCookie failed:', msg);
-      // Le profil Firestore existe mais le cookie echoue.
-      // On ne supprime pas le profil (il est valide), on signale l'erreur.
       return NextResponse.json(
         { error: 'Erreur de session. Rechargez la page et connectez-vous.' },
         { status: 503 },
@@ -167,17 +116,14 @@ async function rollbackFirebaseUser(uid: string): Promise<void> {
         details: { email: user.email, method: user.providerData?.[0]?.providerId || 'password' },
         severity: 'info',
       });
-    } catch (auditErr) {
-      console.error('[auth/register] audit log failed (non-fatal):', auditErr);
-    }
+    } catch {}
 
     // 6. Reponse normalisee.
-    firebaseUserCreated = false; // Succes — pas de rollback
     return NextResponse.json({
       user: {
         id: user.uid,
         uid: user.uid,
-        email: user.email || (body?.email as string) || '',
+        email: user.email || '',
         name: fallbackName,
         avatar: user.photoURL || null,
         picture: user.photoURL || null,
@@ -199,23 +145,16 @@ async function rollbackFirebaseUser(uid: string): Promise<void> {
   }
 }
 
-/**
- * Supprime un utilisateur Firebase Auth (rollback si inscription echoue).
- * Non bloquant : si la suppression echoue, on loggue mais on ne crash pas.
- */
 async function rollbackFirebaseUser(uid: string): Promise<void> {
   try {
     const auth = getAdminAuth();
     await auth.deleteUser(uid);
     console.warn('[auth/register] ROLLBACK: deleted Firebase user', uid);
   } catch (deleteErr) {
-    console.error('[auth/register] ROLLBACK FAILED: could not delete Firebase user', uid, deleteErr);
+    console.error('[auth/register] ROLLBACK FAILED:', uid, deleteErr);
   }
 }
 
-/**
- * Validation cote serveur de la force du mot de passe.
- */
 export async function GET() {
   return NextResponse.json({
     passwordPolicy: {
