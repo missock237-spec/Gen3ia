@@ -26,6 +26,9 @@ export async function GET() {
   }
 }
 
+// PUT est un alias pour PATCH (compatibilite)
+export async function PUT(req: NextRequest) { return PATCH(req); }
+
 export async function PATCH(req: NextRequest) {
   try {
     const session = await getServerSession();

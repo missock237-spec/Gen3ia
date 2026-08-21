@@ -87,10 +87,16 @@ export function SettingsView({ initialTab = 'profile' }: SettingsViewProps) {
     setSaving(true);
     setSaved(false);
     try {
-      await apiFetch('/api/auth/reset-password', {
+      // Verifier le mot de passe actuel via Firebase Client SDK
+      const { signInWithEmail } = await import('@/lib/firebase/auth-client');
+      const authResult = await signInWithEmail(profileEmail, currentPassword);
+
+      // Appeler l'API de changement de mot de passe
+      await apiFetch('/api/auth/change-password', {
         method: 'POST',
-        body: JSON.stringify({ currentPassword, newPassword }),
+        body: JSON.stringify({ idToken: authResult.idToken, newPassword }),
       });
+
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -99,6 +105,9 @@ export function SettingsView({ initialTab = 'profile' }: SettingsViewProps) {
     } catch (err) {
       if (err instanceof ApiError) {
         console.error('[settings] Password change failed:', err.message);
+      } else {
+        // Erreur Firebase = mot de passe actuel incorrect
+        console.error('[settings] Current password verification failed:', err);
       }
     } finally {
       setSaving(false);
