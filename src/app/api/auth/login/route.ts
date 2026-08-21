@@ -1,6 +1,10 @@
 // ============================================================
 // POST /api/auth/login — Firebase Authentication
 // ============================================================
+// Point d'entrée principal pour la connexion (email/password + OAuth).
+// Le client Firebase obtient un idToken, l'envoie ici, le serveur
+// le vérifie via Admin SDK et crée un cookie de session httpOnly.
+// ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -10,7 +14,6 @@ import { db } from '@/lib/firebase/firestore';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Interface explicite pour typer proprement le document utilisateur
 interface UserProfile {
   id: string;
   name?: string | null;
@@ -87,7 +90,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 7. Mise à jour des données utilisateur secondaires
+    // 7. Mise à jour des données utilisateur secondaires (non bloquant)
     try {
       await db.user.update({
         where: { id: user.uid },

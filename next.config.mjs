@@ -32,10 +32,8 @@ const securityHeaders = [
 // ensuite. 307 force une vérification serveur à chaque fois.
 const redirects = () => [
   { source: '/home', destination: '/', permanent: false },
-  // /login, /signup, /dashboard/app retirés — les routes natives existent:
-  // /login (src/app/(auth)/login/page.tsx) et /dashboard (src/app/(dashboard)/...)
-  // Les rediriger vers /auth/signin (qui n'existe pas) causait un 404 après 308.
-  { source: '/dashboard/app', destination: '/', permanent: false },
+  // Toutes les anciennes routes /dashboard/* redirigent vers le SPA dashboard à /
+  { source: '/dashboard/:path*', destination: '/', permanent: false },
 ];
 
 const nextConfig = {

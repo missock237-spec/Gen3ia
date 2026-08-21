@@ -50,7 +50,7 @@ export function LoginForm() {
       const authResult = await signInWithEmail(form.email, form.password);
 
       // 2. Envoie l'ID token au serveur qui crée le session cookie Firebase
-      await apiFetch('/api/auth/login', {
+      await apiFetch<{ user: { id: string; email: string; name: string; role: string; plan: string; avatar?: string | null; emailVerified: boolean } }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ idToken: authResult.idToken, rememberMe: form.remember }),
       });

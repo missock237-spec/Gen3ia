@@ -1,10 +1,12 @@
 // ============================================================
 // GET /api/auth — Auth info endpoint
+// POST /api/auth — Alias vers /api/auth/login (compatibilité)
 // ============================================================
 // NOTE: POST /api/auth/login has been moved to /api/auth/login/route.ts
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -20,4 +22,11 @@ export async function GET() {
       'POST /api/auth/verify-email',
     ],
   });
+}
+
+// Alias : POST /api/auth redirige vers la même logique que /api/auth/login
+// pour la compatibilité avec les anciens clients.
+export async function POST(req: NextRequest) {
+  const { POST: loginPost } = await import('./login/route');
+  return loginPost(req);
 }

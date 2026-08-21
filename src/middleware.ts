@@ -152,9 +152,27 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // 2. Routes non-API
+  // 2. Routes non-API : protection des pages
   if (!pathname.startsWith('/api/')) {
-    return response;
+    // Pages publiques (auth) : accessibles sans session
+    const PUBLIC_PAGES = [
+      '/',
+      '/login',
+      '/register',
+      '/forgot-password',
+      '/reset-password',
+      '/verify-email',
+    ];
+
+    if (PUBLIC_PAGES.includes(pathname)) {
+      return response;
+    }
+
+    // Toute autre page doit passer par le dashboard (SPA à /)
+    // Redirige vers / qui gère l'auth côté client
+    const dashboardUrl = request.nextUrl.clone();
+    dashboardUrl.pathname = '/';
+    return NextResponse.redirect(dashboardUrl, { headers: response.headers });
   }
 
   // 2.a — Versioning API

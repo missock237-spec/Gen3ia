@@ -1,7 +1,7 @@
 import { ApiKeysManager } from '@/components/api-keys/api-keys-manager';
 import { MCPConnector } from '@/components/connectors/mcp-connector';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Code, Key, Plug, BookOpen, Workflow } from 'lucide-react';
+import { Key, Plug, BookOpen, Workflow } from 'lucide-react';
 import { AgentFlow } from '@/components/developers/agent-flow';
 
 export default function DevelopersPage() {
@@ -45,14 +45,14 @@ export default function DevelopersPage() {
         <TabsContent value="docs">
           <div className="space-y-6">
             <div className="bg-card rounded-xl border border-border p-6">
-              <h2 className="text-xl font-semibold mb-4">📡 API REST Gen3ia</h2>
+              <h2 className="text-xl font-semibold mb-4">API REST Gen3ia</h2>
 
-              <h3 className="font-medium mb-2">🔐 Authentification</h3>
+              <h3 className="font-medium mb-2">Authentification</h3>
               <div className="bg-muted rounded-lg p-4 mb-6 font-mono text-sm">
                 <code>Authorization: Bearer gva_votre_cle_api</code>
               </div>
 
-              <h3 className="font-medium mb-3">📋 Endpoints</h3>
+              <h3 className="font-medium mb-3">Endpoints</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -72,10 +72,10 @@ export default function DevelopersPage() {
                 </table>
               </div>
 
-              <h3 className="font-medium mt-6 mb-3">📊 Limites par plan</h3>
+              <h3 className="font-medium mt-6 mb-3">Limites par plan</h3>
               <div className="grid gap-3 sm:grid-cols-4">
                 {[
-                  { name: 'Free', keys: '0', rate: '—' },
+                  { name: 'Free', keys: '0', rate: '-' },
                   { name: 'Starter', keys: '3', rate: '60 req/min' },
                   { name: 'Pro', keys: '10', rate: '300 req/min' },
                   { name: 'Enterprise', keys: '50', rate: '1000 req/min' },
@@ -90,13 +90,12 @@ export default function DevelopersPage() {
             </div>
 
             <div className="bg-card rounded-xl border border-border p-6">
-              <h2 className="text-xl font-semibold mb-4">🔌 Intégration MCP</h2>
+              <h2 className="text-xl font-semibold mb-4">Intégration MCP</h2>
               <p className="text-sm text-muted-foreground mb-4">
                 Gen3ia est compatible avec le protocole MCP (Model Context Protocol).
                 Connectez vos agents depuis Cursor, Claude Desktop, Windsurf, ou tout client MCP.
               </p>
               <div className="bg-muted rounded-lg p-4 font-mono text-sm">
-                <p className="text-muted-foreground mb-2">{/*  Configuration Cursor / Claude Desktop */}</p>
                 <code>{`{
   "mcpServers": {
     "gen3ia": {
@@ -109,7 +108,7 @@ export default function DevelopersPage() {
             </div>
 
             <div className="bg-card rounded-xl border border-border p-6">
-              <h2 className="text-xl font-semibold mb-4">📦 SDK</h2>
+              <h2 className="text-xl font-semibold mb-4">SDK</h2>
               <p className="text-sm text-muted-foreground mb-4">
                 Utilisez le SDK TypeScript pour intégrer Gen3ia directement dans votre code.
               </p>
