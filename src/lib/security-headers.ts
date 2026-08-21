@@ -46,9 +46,13 @@ export function getSecurityHeaders(isProduction: boolean): SecurityHeaders {
     'X-DNS-Prefetch-Control': 'off',
 
     // Isolement du contexte de navigation (Spectre mitigation)
+    // NOTE : 'require-corp' bloque le chargement des scripts Firebase
+    // (Google Identity Services, Firestore SDK) et les iframes OAuth.
+    // On utilise 'credentialless' qui offre une protection comparable
+    // tout en étant compatible avec les CDN tiers.
     'Cross-Origin-Opener-Policy': 'same-origin',
-    'Cross-Origin-Embedder-Policy': 'require-corp',
-    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': 'credentialless',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
 
     // Empêche Flash/PDF d'accéder au domaine
     'X-Permitted-Cross-Domain-Policies': 'none',

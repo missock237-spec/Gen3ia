@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
     const idToken = body?.idToken as string | undefined;
+    const rememberMe = body?.rememberMe as boolean | undefined;
 
     if (!idToken) {
       return NextResponse.json({ error: 'idToken manquant' }, { status: 400 });
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
 
     // 6. Création du cookie de session Firebase (14 jours)
     try {
-      await setSessionCookie(idToken);
+      await setSessionCookie(idToken, rememberMe);
     } catch (cookieErr) {
       const msg = cookieErr instanceof Error ? cookieErr.message : String(cookieErr);
       console.error('[auth/login] setSessionCookie failed:', msg);

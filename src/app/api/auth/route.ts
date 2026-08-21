@@ -2,7 +2,6 @@
 // GET /api/auth — Auth info endpoint
 // POST /api/auth — Alias vers /api/auth/login (compatibilité)
 // ============================================================
-// NOTE: POST /api/auth/login has been moved to /api/auth/login/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 

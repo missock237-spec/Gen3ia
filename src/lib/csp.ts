@@ -42,12 +42,16 @@ export function buildCspHeader(nonce: string): string {
     // API : OpenAI, Anthropic, Groq, OpenRouter, HuggingFace, Firebase, Sentry, Campay, WhatsApp
     "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io https://www.google-analytics.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://fcm.googleapis.com https://*.campay.net https://graph.facebook.com wss://*.firebaseio.com",
     "frame-ancestors 'none'",
-    "frame-src 'none'",
     "object-src 'none'",
+    // frame-src : Firebase Auth utilise des iframes pour les popups OAuth
+    // et la vérification d'email. On autorise les domaines Firebase et Google.
+    "frame-src 'self' https://*.firebaseapp.com https://*.google.com https://accounts.google.com",
+    // form-action : OAuth redirects vers Google/GitHub
+    "form-action 'self' https://accounts.google.com https://github.com",
+    // worker-src : Firebase SDK peut utiliser des Web Workers
+    "worker-src 'self' blob:",
     "base-uri 'self'",
-    "form-action 'self'",
     "manifest-src 'self'",
-    "worker-src 'self'",
     "upgrade-insecure-requests",
   ].join('; ');
 }
