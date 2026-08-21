@@ -94,7 +94,7 @@ export function AvatarView() {
   const fetchAvatars = useCallback(async () => {
     try {
       const data = await apiFetch<{ avatars: AvatarConfig[] }>('/api/avatars');
-      setAvatars(data.avatars || []);
+      setAvatars(data?.avatars || []);
     } catch {
       // Use empty state
     } finally {

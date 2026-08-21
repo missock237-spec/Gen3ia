@@ -40,9 +40,10 @@ export function GuardrailsView() {
   const loadGuardrails = useCallback(async () => {
     try {
       const data = await apiFetch<Guardrail[]>('/api/guardrails');
-      setGuardrails(data);
+      setGuardrails(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load guardrails:', error);
+      setGuardrails([]);
     } finally {
       setLoading(false);
     }

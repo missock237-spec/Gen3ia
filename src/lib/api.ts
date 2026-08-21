@@ -14,6 +14,7 @@ export class ApiError extends Error {
 
 interface ApiFetchOptions extends RequestInit {
   params?: Record<string, string>;
+  timeoutMs?: number;
 }
 
 /**
@@ -22,8 +23,9 @@ interface ApiFetchOptions extends RequestInit {
  * Key behaviors:
  * - Automatically sends httpOnly cookies via `credentials: 'include'`
  * - Auto-sets `Content-Type: application/json` for string bodies
- * - On 401: throws ApiError — the auth store handles session refresh/logout centrally
+ * - On 401: throws ApiError with server message (preserves auth error details)
  * - On other errors: throws ApiError with server error message
+ * - On success: returns parsed JSON body as T
  */
 export async function apiFetch<T = unknown>(
   path: string,
@@ -55,35 +57,26 @@ export async function apiFetch<T = unknown>(
       ...(timeoutId ? { signal: controller.signal } : {}),
     });
 
-  if (response.status === 401) {
-    // Préserve le message serveur quand il y en a un (ex: /api/auth/login
-    // et /api/auth/register renvoient 401 avec { error: "ID token invalide
-    // ou expiré" }). On ne remplace le message par 'Authentication required'
-    // que si le serveur n'a pas fourni de détail, pour ne pas casser le
-    // comportement des autres routes qui s'appuient sur ce message par défaut.
-    let errorData: unknown;
-    try {
-      errorData = await response.json();
-    } catch {
-      errorData = null;
+    if (!response.ok) {
+      // Préserve le message serveur quand il y en a un (ex: /api/auth/login
+      // et /api/auth/register renvoient des erreurs avec { error: "..." }).
+      let errorData: unknown;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { error: 'Request failed' };
+      }
+      throw new ApiError(
+        (errorData as { error?: string })?.error || 'Request failed',
+        response.status
+      );
     }
-    const serverMessage = (errorData as { error?: string } | null)?.error;
-    throw new ApiError(serverMessage || 'Authentication required', 401);
-  }
 
-  if (!response.ok) {
-    let errorData: unknown;
-    try {
-      errorData = await response.json();
-    } catch {
-      errorData = { error: 'Request failed' };
-    }
-    throw new ApiError(
-      (errorData as { error?: string })?.error || 'Request failed',
-      response.status
-    );
-  }
-
+    // Réponse OK — parse et retourne le corps JSON.
+    // Pour les réponses vides (204 No Content), retourne undefined.
+    const text = await response.text();
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
