@@ -26,7 +26,9 @@ import {
   Cpu,
   Server,
   MessageCircle,
+  Sparkles,
 } from 'lucide-react';
+import { parseAgentConfig, getAgentSkills } from './agents-view';
 
 const typeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   social_media: Megaphone,
@@ -135,17 +137,10 @@ export function AgentCard({ agent, onToggle, onDelete, onEdit, onSelect }: Agent
   const isActive = agent.status === 'active';
   const typeColor = typeColors[agent.type] || 'bg-muted text-muted-foreground';
 
-  let configTools: string[] = [];
-  let toolConfigs: Record<string, { enabled: boolean; requiresApproval: boolean }> = {};
-  try {
-    const parsed = JSON.parse(agent.config || '{}');
-    configTools = parsed.tools || [];
-    if (parsed.toolConfigs) {
-      toolConfigs = parsed.toolConfigs;
-    }
-  } catch {
-    // ignore
-  }
+  const cfg = parseAgentConfig(agent.config);
+  const configTools: string[] = Array.isArray(cfg.tools) ? (cfg.tools as string[]) : [];
+  const toolConfigs: Record<string, { enabled: boolean; requiresApproval: boolean }> = (cfg.toolConfigs as Record<string, { enabled: boolean; requiresApproval: boolean }>) || {};
+  const agentSkills = getAgentSkills(agent);
 
   // Count social accounts and check browser
   const socialTools = configTools.filter((t) => t.startsWith('social_'));
@@ -222,6 +217,12 @@ export function AgentCard({ agent, onToggle, onDelete, onEdit, onSelect }: Agent
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <Zap className="h-3 w-3 text-yellow-500" />
               {grantedPermissions.length} permission{grantedPermissions.length > 1 ? 's' : ''}
+            </div>
+          )}
+          {agentSkills.length > 0 && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Sparkles className="h-3 w-3 text-primary" />
+              {agentSkills.length} compétence{agentSkills.length > 1 ? 's' : ''}
             </div>
           )}
         </div>
