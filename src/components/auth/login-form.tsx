@@ -1,0 +1,198 @@
+/**
+ * GEN3IA OS — Login Form
+ * Email + password login with rememberMe and forgot password link.
+ */
+
+'use client';
+
+import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { apiFetch, ApiError } from '@/lib/api';
+import { AuthLayout } from './auth-layout';
+import { InputField, PasswordInput, Alert, AuthButton, Mail, OAuthButtons } from './shared';
+import { useOAuthRedirect } from '@/hooks/use-oauth-redirect';
+
+export function LoginForm() {
+  const router = useRouter();
+
+  const [form, setForm] = useState({ email: '', password: '', remember: false });
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [apiError, setApiError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Capture le résultat OAuth redirect (mobile)
+  useOAuthRedirect({ onError: (msg) => setApiError(msg) });
+
+  const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm(f => ({ ...f, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+    if (errors[field]) setErrors(er => ({ ...er, [field]: null }));
+    setApiError('');
+  };
+
+  const validate = () => {
+    const e: Record<string, string | null> = {};
+    if (!form.email) e.email = "L'adresse email est requise";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Adresse email invalide';
+    if (!form.password) e.password = 'Le mot de passe est requis';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleSubmit = useCallback(async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (!validate()) return;
+    setLoading(true);
+    setApiError('');
+
+    try {
+      // 1. Sign-in via Firebase Client SDK -> obtient l'ID token
+      const { signInWithEmail } = await import('@/lib/firebase/auth-client');
+      const authResult = await signInWithEmail(form.email, form.password);
+
+      // 2. Envoie l'ID token au serveur qui crée le session cookie Firebase
+      await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ idToken: authResult.idToken, rememberMe: form.remember }),
+      });
+
+      // 3. Redirection vers le tableau de bord
+      window.location.href = '/dashboard';
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // Erreurs renvoyées par le serveur (POST /api/auth/login)
+        if (err.status === 401) {
+          setApiError('Session invalide. Veuillez réessayer.');
+        } else if (err.status === 403) {
+          setApiError(err.message || 'Accès refusé.');
+        } else if (err.status === 429) {
+          setApiError('Trop de tentatives. Réessayez dans 15 minutes.');
+        } else if (err.status === 503) {
+          console.error('[login] Session cookie failed:', err.message);
+          setApiError('Erreur de session. Veuillez recharger la page et réessayer.');
+        } else if (err.status === 500) {
+          console.error('[login] Server error:', err.message);
+          setApiError('Erreur serveur temporaire. Veuillez réessayer dans un instant.');
+        } else {
+          setApiError(err.message || 'Identifiants invalides');
+        }
+      } else if (err && typeof err === 'object' && 'code' in err) {
+        // Firebase Auth error — traduction complète des codes connus
+        const firebaseErr = err as { code: string; message?: string };
+        const code = firebaseErr.code;
+        console.error('[login] Firebase error:', code, firebaseErr.message);
+
+        const firebaseErrorMap: Record<string, string> = {
+          'auth/invalid-credential': 'Identifiants invalides. Vérifiez votre email et mot de passe.',
+          'auth/wrong-password': 'Mot de passe incorrect.',
+          'auth/user-not-found': 'Aucun compte trouvé avec cet email.',
+          'auth/user-disabled': 'Ce compte a été désactivé. Contactez le support.',
+          'auth/too-many-requests': 'Trop de tentatives. Réessayez plus tard ou réinitialisez votre mot de passe.',
+          'auth/email-not-verified': 'Email non vérifié. Consultez votre boîte mail pour le lien de vérification.',
+          'auth/configuration-not-found': 'Erreur de configuration Firebase. Contactez l\'administrateur.',
+          'auth/invalid-api-key': 'Erreur de configuration. Contactez l\'administrateur.',
+          'auth/app-not-authorized': 'Application non autorisée. Contactez l\'administrateur.',
+          'auth/invalid-tenant-id': 'Erreur de configuration multi-tenant. Contactez l\'administrateur.',
+          'auth/unauthorized-domain': 'Ce domaine n\'est pas autorisé pour la connexion.',
+          'auth/operation-not-allowed': 'La connexion par email/mot de passe n\'est pas activée.',
+          'auth/network-request-failed': 'Erreur réseau. Vérifiez votre connexion internet.',
+          'auth/internal-error': 'Erreur interne. Veuillez réessayer.',
+          'auth/invalid-email': 'Format d\'email invalide.',
+        };
+
+        const mappedMessage = firebaseErrorMap[code];
+        if (mappedMessage) {
+          setApiError(mappedMessage);
+        } else {
+          console.error('[login] Unhandled Firebase error code:', code, firebaseErr);
+          setApiError('Erreur de connexion. Si le problème persiste, contactez le support.');
+        }
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[login] Unexpected error:', msg);
+        setApiError('Erreur réseau. Veuillez réessayer.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [form]);
+
+  return (
+    <AuthLayout title="Bon retour" subtitle="Connectez-vous à votre espace Genova">
+      {/* OAuth — Google + GitHub via Firebase (popup) */}
+      <div className="space-y-3">
+        <OAuthButtons
+          mode="login"
+          disabled={loading}
+          onError={(msg) => setApiError(msg)}
+          onSuccess={async () => {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            window.location.href = '/dashboard';
+          }}
+        />
+        <div className="flex items-center gap-3 my-4">
+          <div className="h-px flex-1 bg-slate-700/40"></div>
+          <span className="text-xs text-slate-500 uppercase tracking-wider">ou</span>
+          <div className="h-px flex-1 bg-slate-700/40"></div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        <Alert type="error" message={apiError} />
+
+        <InputField
+          label="Adresse email"
+          id="login-email"
+          type="email"
+          value={form.email}
+          onChange={set('email')}
+          error={errors.email}
+          icon={<Mail className="w-4 h-4" />}
+          placeholder="vous@exemple.com"
+          autoComplete="email"
+          disabled={loading}
+        />
+
+        <PasswordInput
+          label="Mot de passe"
+          id="login-password"
+          value={form.password}
+          onChange={set('password')}
+          error={errors.password}
+          placeholder="••••••••"
+          autoComplete="current-password"
+          disabled={loading}
+        />
+
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.remember}
+              onChange={set('remember')}
+              className="w-4 h-4 rounded bg-slate-800 border-slate-600 text-cyan-500 focus:ring-cyan-500/50 focus:ring-offset-slate-950"
+            />
+            <span className="text-xs text-slate-400">Se souvenir de moi</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => router.push('/forgot-password')}
+            className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors font-medium"
+          >
+            Mot de passe oublié ?
+          </button>
+        </div>
+
+        <AuthButton type="submit" loading={loading}>
+          Se connecter
+        </AuthButton>
+      </form>
+
+      <p className="text-center text-sm text-slate-500 mt-6">
+        Pas encore de compte ?{' '}
+        <button onClick={() => router.push('/register')} className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors">
+          Créer un compte
+        </button>
+      </p>
+    </AuthLayout>
+  );
+}
