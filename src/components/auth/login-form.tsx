@@ -63,9 +63,22 @@ export function LoginForm() {
   body: JSON.stringify({ idToken }),
 })
 
-      // Le serveur a posé le cookie httpOnly de session Firebase.
-      // Rechargement complet pour que le store hydrate le cookie.
-      window.location.href = '/';
+      
+import { NextRequest, NextResponse } from 'next/server';
+import { dashboardService } from '@/lib/dashboard';
+import { getAuth } from '@/lib/security';
+
+export async function GET(request: NextRequest) {
+  const auth = await getAuth(request);
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    const stats = await dashboardService.getRealtimeStats(auth.uid, 24);
+    return NextResponse.json(stats);
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 500 });
+  }
+}
     } catch (err) {
       if (err instanceof ApiError) {
         // Erreurs renvoyées par le serveur (POST /api/auth/login)
