@@ -68,7 +68,10 @@ export function getFirebaseAuth(): Auth {
 }
 
 export function getFirebaseDb(): Firestore {
-  if (!db) db = getFirestore(getFirebaseApp(), 'gen3ia');
+  if (!db) {
+    const databaseId = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID;
+    db = databaseId ? getFirestore(getFirebaseApp(), databaseId) : getFirestore(getFirebaseApp());
+  }
   return db;
 }
 

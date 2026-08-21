@@ -94,8 +94,8 @@ export function getAdminAuth(): Auth {
 
 export function getAdminDb(): Firestore {
   if (!adminDb) {
-    const databaseId = process.env.FIREBASE_DATABASE_ID || 'gen3ia';
-    adminDb = getFirestore(getAdminApp(), databaseId);
+    const databaseId = process.env.FIREBASE_DATABASE_ID;
+    adminDb = databaseId ? getFirestore(getAdminApp(), databaseId) : getFirestore(getAdminApp());
     adminDb.settings({ ignoreUndefinedProperties: true });
   }
   return adminDb;
