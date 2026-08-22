@@ -40,9 +40,8 @@ export function buildCspHeader(nonce: string): string {
     "img-src 'self' data: blob: https://*.githubusercontent.com https://*.googleusercontent.com https://cdn.huggingface.co https://www.google-analytics.com https://www.googletagmanager.com https://storage.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     // API : OpenAI, Anthropic, Groq, OpenRouter, HuggingFace, Firebase, Sentry, Campay, WhatsApp
-    // Firebase Auth : identitytoolkit (sign-in/up), securetoken (token refresh),
-    //   apis.google (token exchange, user info), firebaseappcheck (app integrity)
-    "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io https://www.google-analytics.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://apis.google.com https://firebaseappcheck.googleapis.com https://fcm.googleapis.com https://*.campay.net https://graph.facebook.com wss://*.firebaseio.com wss://*.googleapis.com",
+    // IMPORTANT: gen3ia.firebaseapp.com est requis pour signInWithEmailAndPassword
+    "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.groq.com https://openrouter.ai https://api-inference.huggingface.co https://*.sentry.io https://www.google-analytics.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://fcm.googleapis.com https://*.campay.net https://graph.facebook.com wss://*.firebaseio.com https://gen3ia.firebaseapp.com",
     "frame-ancestors 'none'",
     "object-src 'none'",
     // frame-src : Firebase Auth utilise des iframes pour les popups OAuth
