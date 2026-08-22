@@ -1,57 +1,50 @@
 // ============================================================
-// Gen3ia — Service Worker v6
+// Gen3ia — Service Worker v7 (NUCLEAR CACHE PURGE)
 // ============================================================
-//  STRATÉGIE : Network-first pour TOUT (sauf assets hashés Next.js).
-//
-//  v6 — CORRECTION CRITIQUE :
-//  - Le SW précédent (v5) utilisait cache-first pour les JS avec
-//    un TTL de 24h et une CACHE_VERSION codée en dur. Résultat :
-//    les utilisateurs restaient bloqués sur l'ancien code cassé.
-//
-//  - v6 passe à network-first pour les JS aussi. Les fichiers
-//    Next.js sont déjà hashés par contenu (_next/static/chunks/XXX.js),
-//    donc le cache HTTP du CDN/CDN de Vercel gère le cache optimal.
-//    Le SW n'a pas besoin de doubler ce cache.
-//
-//  - ACTIVATE supprime TOUS les anciens caches (pas seulement
-//    ceux d'une autre version) pour garantir un état propre.
-//
-//  - skipWaiting() est appelé immédiatement à l'installation
-//    pour que le nouveau SW prenne le contrôle sans attendre
-//    que l'utilisateur ferme tous les onglets.
+//  v7 — FORCE UPGRADE :
+//  - Fichier renommé + contenu changé pour casser le cache
+//    de l'ancien SW (v5/v6) qui bloquait les utilisateurs.
+//  - Supprime TOUS les caches à l'activation.
+//  - skipWaiting() immédiat.
+//  - Network-first pour tout (comme v6).
 // ============================================================
 
-const CACHE_VERSION = 'gen3ia-v6';
+const CACHE_VERSION = 'gen3ia-v7';
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 
-// Assets publics à pré-cacher
 const PRECACHE_URLS = ['/manifest.json', '/icon-192.png', '/icon-512.png'];
 
-// --- INSTALL : skipWaiting immédiat + pré-cache ---
+// --- INSTALL : skipWaiting + purge + precache ---
 self.addEventListener('install', (event) => {
-  // Skip waiting pour activer immédiatement le nouveau SW
-  // sans attendre que l'utilisateur ferme les onglets
   self.skipWaiting();
-
   event.waitUntil(
-    caches.open(DYNAMIC_CACHE).then((cache) =>
-      cache.addAll(PRECACHE_URLS).catch(() => {})
+    caches.keys().then((keys) =>
+      Promise.all(keys.map((key) => caches.delete(key)))
+    ).then(() =>
+      caches.open(DYNAMIC_CACHE).then((cache) =>
+        cache.addAll(PRECACHE_URLS).catch(() => {})
+      )
     )
   );
 });
 
-// --- ACTIVATE : supprimer TOUS les anciens caches ---
+// --- ACTIVATE : supprimer TOUS les caches + claim ---
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        // Supprimer TOUS les caches, y compris ceux de v5 et antérieurs
         keys.map((key) => {
-          console.log('[SW v6] Deleting cache:', key);
+          console.log('[SW v7] Deleting cache:', key);
           return caches.delete(key);
         })
       )
-    ).then(() => self.clients.claim())
+    ).then(() => {
+      // Informer tous les clients de recharger
+      self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: 'FORCE_RELOAD' }));
+      });
+      return self.clients.claim();
+    })
   );
 });
 
@@ -76,40 +69,42 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Ne pas intercepter les non-GET
   if (request.method !== 'GET') return;
-  // Ne pas intercepter WebSocket
   if (request.url.startsWith('ws://') || request.url.startsWith('wss://')) return;
-  // Ne pas intercepter les vérifications de version
   if (url.pathname === '/api/app-version') return;
-  // Ne JAMAIS intercepter les routes d'auth
   if (url.pathname.startsWith('/api/auth/')) return;
 
-  // Pour TOUT le reste : NETWORK-FIRST avec fallback cache
-  // Cela inclut les JS Next.js — ils sont hashés par contenu,
-  // donc le cache HTTP du CDN gère déjà le cache optimal.
+  // NE JAMAIS cacher la page HTML racine et les routes Next.js
+  // pour éviter de bloquer les mises à jour
+  if (
+    request.mode === 'navigate' ||
+    url.pathname === '/' ||
+    url.pathname.startsWith('/login') ||
+    url.pathname.startsWith('/register') ||
+    url.pathname.startsWith('/forgot-password') ||
+    url.pathname.startsWith('/reset-password')
+  ) {
+    event.respondWith(
+      fetch(request).catch(() => caches.match('/'))
+    );
+    return;
+  }
+
+  // Pour les assets statiques hashés (_next/static/*) : network-first
+  // avec cache fallback court (utile hors-ligne)
   event.respondWith(
     (async () => {
       try {
         const response = await fetch(request);
-        // Mettre en cache uniquement les réponses réussies
         if (response.ok) {
           const cache = await caches.open(DYNAMIC_CACHE);
           await cache.put(request, response.clone());
         }
         return response;
       } catch (err) {
-        // Hors-ligne : essayer le cache
         const cache = await caches.open(DYNAMIC_CACHE);
         const cached = await cache.match(request);
         if (cached) return cached;
-
-        // Pour les navigations, essayer de servir la page racine en cache
-        if (request.mode === 'navigate') {
-          const rootCache = await cache.match('/');
-          if (rootCache) return rootCache;
-        }
-
         return new Response(
           JSON.stringify({ error: 'Vous êtes hors-ligne', offline: true }),
           { status: 503, headers: { 'Content-Type': 'application/json' } }
@@ -144,7 +139,7 @@ async function syncQueuedExecutions() {
       } catch {}
     }
   } catch (err) {
-    console.error('[SW] sync failed:', err);
+    console.error('[SW v7] sync failed:', err);
   }
 }
 

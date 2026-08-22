@@ -116,6 +116,29 @@ export default async function RootLayout({
         <meta name="theme-color" content="#0A0A0B" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        {/* v7 SW force-upgrade: unregister old SWs + reload on new SW */}
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{
+            __html: `(function(){
+              if('serviceWorker' in navigator){
+                var r=false;
+                navigator.serviceWorker.addEventListener('controllerchange',function(){
+                  if(!r){r=true;window.location.reload();}
+                });
+                navigator.serviceWorker.addEventListener('message',function(e){
+                  if(e.data&&e.data.type==='FORCE_RELOAD'&&!r){r=true;window.location.reload();}
+                });
+                navigator.serviceWorker.register('/sw.js',{scope:'/'}).then(function(reg){
+                  if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});}
+                  if(reg.installing){reg.installing.addEventListener('statechange',function(){
+                    if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});}
+                  });}
+                }).catch(function(){});
+              }
+            })();`,
+          }}
+        />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
