@@ -12,6 +12,13 @@
 //    getAdminAuth().verifySessionCookie(sessionCookie, true) — vérif
 //    cryptographique Firebase + custom claims réels (pas forgeables).
 //  - Aucune donnée n'est retournée sans rôle admin vérifié côté serveur.
+//
+//  BUGFIX (migration Firestore) : la façade ne supporte pas les
+//  relations imbriquées Prisma (`select: { executions: {...} }` est
+//  ignoré — les agents arrivaient SANS `executions` et la route
+//  crashait sur `agent.executions[0]` → 500 systématique).
+//  Les exécutions récentes sont désormais chargées en UNE requête
+//  puis jointes en mémoire par agentId.
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -19,10 +26,8 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { applySecurity } from "@/lib/security";
 
-
-
-
 export const dynamic = "force-dynamic";
+
 interface SupervisionData {
   activeExecutions: number;
   agents: Array<{
@@ -62,6 +67,21 @@ interface SupervisionData {
   };
 }
 
+/** Ligne d'exécution telle que retournée par la façade Firestore. */
+type ExecutionRow = {
+  id: string;
+  agentId?: string;
+  status?: string;
+  estimatedCost?: number;
+  error?: string | null;
+  createdAt?: Date | string;
+};
+
+function toDate(value: Date | string | undefined): Date | null {
+  if (!value) return null;
+  return value instanceof Date ? value : new Date(value);
+}
+
 export async function OPTIONS(request: NextRequest) {
   const { error } = await applySecurity(request);
   if (error) return error;
@@ -92,28 +112,26 @@ export async function GET(request: NextRequest) {
     const [
       activeExecutions,
       agents,
+      recentExecutions,
       supervisorLogs,
       pendingApprovalsCount,
-      recentErrors,
       stats,
     ] = await Promise.all([
       // Exécutions en cours
       prisma.agentExecution.count({ where: { status: "running" } }),
 
-      // Tous les agents avec leurs stats
+      // Agents récents (documents complets — la façade ignore les
+      // projections avec relations imbriquées, on projette en mémoire)
       prisma.agent.findMany({
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          userId: true,
-          executions: {
-            select: { status: true, estimatedCost: true, createdAt: true, error: true },
-            orderBy: { createdAt: "desc" },
-            take: 100,
-          },
-        },
+        orderBy: { createdAt: "desc" },
         take: 50,
+      }),
+
+      // Exécutions récentes globales — UNE requête, jointure mémoire ensuite
+      // (remplace la relation imbriquée Prisma `executions: { take: 100 }`)
+      prisma.agentExecution.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 500,
       }),
 
       // Derniers logs supervisor
@@ -124,14 +142,6 @@ export async function GET(request: NextRequest) {
 
       // Approbations en attente
       prisma.approvalRequest.count({ where: { status: "pending" } }),
-
-      // Erreurs récentes
-      prisma.agentExecution.findMany({
-        where: { status: "failed" },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, agentId: true, error: true, createdAt: true },
-        take: 20,
-      }),
 
       // Stats globales
       Promise.all([
@@ -151,24 +161,47 @@ export async function GET(request: NextRequest) {
       })),
     ]);
 
+    // Jointure mémoire : groupe les exécutions par agentId (déjà triées desc)
+    const execsByAgent = new Map<string, ExecutionRow[]>();
+    for (const exec of recentExecutions as ExecutionRow[]) {
+      if (!exec.agentId) continue;
+      const list = execsByAgent.get(exec.agentId) ?? [];
+      list.push(exec);
+      execsByAgent.set(exec.agentId, list);
+    }
+
     // Transformer les agents avec leurs dernières stats
-    const agentData = agents.map((agent) => {
-      const lastExec = agent.executions[0];
+    const agentData = (agents as Array<Record<string, unknown>>).map((agent) => {
+      const execs = execsByAgent.get(agent.id as string) ?? [];
+      const lastExec = execs[0];
+      const lastExecDate = toDate(lastExec?.createdAt);
       return {
-        id: agent.id,
-        name: agent.name,
-        status: agent.status,
-        userId: agent.userId.slice(0, 8),
-        lastExecution: lastExec?.createdAt.toISOString() ?? null,
-        totalExecutions: agent.executions.length,
-        totalCost: agent.executions.reduce((s, e) => s + (e.estimatedCost ?? 0), 0),
+        id: agent.id as string,
+        name: (agent.name as string) ?? "Agent",
+        status: (agent.status as string) ?? "unknown",
+        userId: String(agent.userId ?? "").slice(0, 8),
+        lastExecution: lastExecDate ? lastExecDate.toISOString() : null,
+        // Note : limité aux 500 exécutions les plus récentes de la plateforme
+        totalExecutions: execs.length,
+        totalCost: execs.reduce((s, e) => s + (e.estimatedCost ?? 0), 0),
       };
     });
+
+    // Erreurs récentes (extraites des exécutions déjà chargées — 1 requête de moins)
+    const recentErrors = (recentExecutions as ExecutionRow[])
+      .filter((e) => e.status === "failed")
+      .slice(0, 20)
+      .map((e) => ({
+        id: e.id,
+        agentId: e.agentId ?? "",
+        error: e.error ?? null,
+        createdAt: toDate(e.createdAt) ?? new Date(0),
+      }));
 
     const data: SupervisionData = {
       activeExecutions,
       agents: agentData,
-      supervisorLogs,
+      supervisorLogs: supervisorLogs as SupervisionData["supervisorLogs"],
       pendingApprovals: pendingApprovalsCount,
       recentErrors,
       stats,
