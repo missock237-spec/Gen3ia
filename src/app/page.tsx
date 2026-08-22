@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuthStore, useAppStore } from '@/lib/store';
+import { useAuthStore, useAppStore, useModernStore } from '@/lib/store';
 import { hardReload, diagnoseServiceWorker } from '@/lib/client-cache-reset';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { AppHeader } from '@/components/layout/app-header';
@@ -18,15 +18,21 @@ import { ThemeProvider } from 'next-themes';
 import { Loader2, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
 // T23 : délai avant d'afficher l'UI "chargement bloqué" (12s).
-// Au-delà de ce délai avec isLoading=true, on propose à l'utilisateur
-// de vider le cache + SW et de recharger.
 const STUCK_LOADING_TIMEOUT_MS = 12_000;
+
+const pageTransition = {
+  initial: { opacity: 0, x: 12 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: -12 },
+  transition: { duration: 0.2, ease: 'easeInOut' },
+};
 
 function AppContent() {
   // Sélecteurs zustand INDIVIDUELS (retournent des références stables)
-  // → évite les re-rendus infinis dus à un objet déstructuré recréé à chaque rendu.
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
   const hydrate = useAuthStore((s) => s.hydrate);
@@ -40,13 +46,12 @@ function AppContent() {
   const validatedRef = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // T23 : détection du chargement bloqué (pour afficher le bouton reset)
+  // T23 : détection du chargement bloqué
   const [isStuck, setIsStuck] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [swInfo, setSwInfo] = useState<string | null>(null);
 
   // --- Fix 2 : logs debug pour hydrate() ---
-  // Trace l'exécution et les erreurs de hydrate() côté navigateur.
   useEffect(() => {
     if (!hydratedRef.current) {
       hydratedRef.current = true;
@@ -62,7 +67,6 @@ function AppContent() {
   }, [hydrate]);
 
   // --- Fix 2 : logs debug pour validateSession() ---
-  // Trace les erreurs de validateSession() côté navigateur.
   useEffect(() => {
     if (isAuthenticated && !validatedRef.current && !loadError) {
       validatedRef.current = true;
@@ -85,17 +89,14 @@ function AppContent() {
     }
   }, [isAuthenticated, loadError, validateSession, fetchApprovalCount]);
 
-  // --- T23 : timer qui affiche l'UI de secours si isLoading reste true ---
-  // Le timer est nettoyé dès que isLoading passe à false.
+  // --- T23 : timer stuck loading ---
   useEffect(() => {
     if (!isLoading) {
       setIsStuck(false);
       return;
     }
     const timer = setTimeout(() => {
-      // Toujours en loading après 12s → proposer le reset
       setIsStuck(true);
-      // Diagnostique le SW pour afficher des infos utiles
       diagnoseServiceWorker().then((info) => {
         if (info.hasSW) {
           setSwInfo(`${info.scriptURL} (scope: ${info.scope})`);
@@ -107,7 +108,7 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [isLoading]);
 
-  // --- T23 : handler pour le bouton "Vider le cache et recharger" ---
+  // --- T23 : handler hard reload ---
   const handleHardReload = useCallback(async () => {
     setResetting(true);
     console.log('[gen3ia] Hard reload requested by user');
@@ -115,15 +116,13 @@ function AppContent() {
       await hardReload({ bypassCache: true, includeStorage: false });
     } catch (err) {
       console.error('[gen3ia] Hard reload failed:', err);
-      // Fallback : reload simple
       if (typeof window !== 'undefined') {
         window.location.reload();
       }
     }
-    // NB : hardReload redirige la page, donc setResetting(false) n'a pas besoin d'être appelé
   }, []);
 
-  // --- Fix 4 : logout est stable (zustand), callback stable aussi ---
+  // --- Fix 4 : logout stable ---
   const handleUnauthorized = useCallback(() => {
     validatedRef.current = false;
     void logout();
@@ -222,18 +221,47 @@ function AppContent() {
       case 'analytics': return <AnalyticsView />;
       case 'billing': return <BillingPage />;
       case 'developers': return <DevelopersPage />;
+      // New v2 views: fall back to dashboard if component doesn't exist yet
+      case 'voice':
+      case 'images':
+      case 'integrations':
+      case 'notifications':
+      case 'scheduler':
+      case 'agent-chat':
       default: return <DashboardView />;
     }
   };
 
   return (
     <div className="min-h-screen flex bg-background">
-      <AppSidebar mobileOpen={sidebarOpen} onCloseMobile={() => setSidebarOpen(false)} />
+      {/* Mobile sidebar Sheet */}
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent side="left" className="w-64 p-0 bg-[#0B0C0D] border-[#1C1E22]">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <AppSidebar mobileOpen={sidebarOpen} onCloseMobile={() => setSidebarOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
+      {/* Desktop sidebar (mobile hidden - Sheet handles mobile) */}
+      <div className="hidden lg:block">
+        <AppSidebar />
+      </div>
+
       <main className="flex-1 flex flex-col min-w-0">
         <AppHeader onMenuClick={() => setSidebarOpen(true)} />
         <div className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto">
           <ErrorBoundary>
-            {renderView()}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentView}
+                initial={pageTransition.initial}
+                animate={pageTransition.animate}
+                exit={pageTransition.exit}
+                transition={pageTransition.transition}
+              >
+                {renderView()}
+              </motion.div>
+            </AnimatePresence>
           </ErrorBoundary>
         </div>
       </main>
