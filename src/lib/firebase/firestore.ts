@@ -25,12 +25,19 @@
 //    - where : tableau FirestoreWhereOp[], objet Prisma-style, et
 //      opérateurs logiques OR / AND / NOT (Filter composite Admin SDK)
 //    - select : string[] ou objet ; orderBy : tableau/objet/string
+//    - update : opérateurs atomiques { increment: n } / { decrement: n }
 //    - paginate() : pagination par curseur (sans offset() coûteux)
 //    - groupBy / aggregate : en mémoire, plafonnés à AGGREGATE_SCAN_LIMIT
 //      documents scannés (au-delà : résultat partiel + avertissement)
 //    - contains / startsWith / endsWith : approximés en `==` avec
 //      avertissement une-fois — utiliser @/lib/search-engine pour
 //      la recherche plein texte.
+//
+//  Note données : un bug historique sérialisait les sentinelles
+//  FieldValue.serverTimestamp() en objets { _methodName: ... }.
+//  Les documents écrits avant le correctif peuvent contenir des
+//  createdAt/updatedAt sous forme de map — les readers doivent
+//  tolérer les dates invalides (migration de rattrapage à prévoir).
 // ============================================================
 
 import {
@@ -363,7 +370,12 @@ function serialize(data: Record<string, unknown>): DocumentData {
   const out: DocumentData = {};
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
-    if (value instanceof Date) {
+    if (value instanceof FieldValue) {
+      // Sentinelle Firestore (serverTimestamp, increment, arrayUnion...) :
+      // ne JAMAIS la sérialiser — la convertir en objet la détruirait et
+      // écrirait un map { _methodName: ... } au lieu de la valeur attendue.
+      out[key] = value;
+    } else if (value instanceof Date) {
       out[key] = Timestamp.fromDate(value);
     } else if (Array.isArray(value)) {
       out[key] = value.map(serializeValue);
@@ -378,12 +390,49 @@ function serialize(data: Record<string, unknown>): DocumentData {
 
 function serializeValue(value: unknown): unknown {
   if (value === undefined) return null;
+  if (value instanceof FieldValue) return value; // sentinelle — passthrough
   if (value instanceof Date) return Timestamp.fromDate(value);
   if (Array.isArray(value)) return value.map(serializeValue);
   if (value && typeof value === 'object' && !(value instanceof Timestamp)) {
     return serialize(value as Record<string, unknown>);
   }
   return value;
+}
+
+/**
+ * Sérialise un payload de MISE À JOUR (update / updateMany / upsert / tx.update).
+ * Supporte les opérateurs atomiques Prisma-style sur champs numériques :
+ *   { downloads: { increment: 1 } } → FieldValue.increment(1)
+ *   { credits:   { decrement: 5 } } → FieldValue.increment(-5)
+ * Sans cette conversion, l'objet opérateur était écrit TEL QUEL et écrasait
+ * la valeur numérique du champ (corruption de données — ex: listing-manager
+ * incrementDownloads / incrementInstallCount).
+ */
+function serializeUpdate(data: Record<string, unknown>): DocumentData {
+  const pre: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !(value instanceof Date) &&
+      !(value instanceof Timestamp) &&
+      !(value instanceof FieldValue)
+    ) {
+      const rec = value as Record<string, unknown>;
+      const keys = Object.keys(rec);
+      if (keys.length === 1 && typeof rec.increment === 'number') {
+        pre[key] = FieldValue.increment(rec.increment);
+        continue;
+      }
+      if (keys.length === 1 && typeof rec.decrement === 'number') {
+        pre[key] = FieldValue.increment(-rec.decrement);
+        continue;
+      }
+    }
+    pre[key] = value;
+  }
+  return serialize(pre);
 }
 
 function deserialize(snapshot: DocumentData): Record<string, unknown> {
@@ -639,14 +688,14 @@ export class FirestoreRepository<T = any> {
       const existing = await this.findUnique({ where: options.where });
       if (!existing) throw new Error('update() — no record found for where clause');
       const existingId = (existing as Record<string, unknown>).id as string;
-      const payload = serialize({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
+      const payload = serializeUpdate({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
       await this.docRef(existingId).update(payload);
       const snap = await this.docRef(existingId).get();
       const result = deserialize(snap.data()!);
       result.id = existingId;
       return result as T;
     }
-    const payload = serialize({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
+    const payload = serializeUpdate({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
     await this.docRef(id).update(payload);
     const snap = await this.docRef(id).get();
     const result = deserialize(snap.data()!);
@@ -677,7 +726,7 @@ export class FirestoreRepository<T = any> {
     data: Record<string, unknown>;
   }): Promise<{ count: number }> {
     const items = await this.findMany({ where: options.where });
-    const payload = serialize({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
+    const payload = serializeUpdate({ ...options.data, updatedAt: FieldValue.serverTimestamp() });
     const chunks = chunkArray(items, FIRESTORE_BATCH_LIMIT);
     for (const chunk of chunks) {
       const batch: WriteBatch = this.db().batch();
@@ -1237,7 +1286,7 @@ export const db = {
           tx.set(ref, serialize(data));
         },
         update: (ref: DocumentReference, data: Record<string, unknown>) => {
-          tx.update(ref, serialize({ ...data, updatedAt: FieldValue.serverTimestamp() }));
+          tx.update(ref, serializeUpdate({ ...data, updatedAt: FieldValue.serverTimestamp() }));
         },
         delete: (ref: DocumentReference) => {
           tx.delete(ref);
