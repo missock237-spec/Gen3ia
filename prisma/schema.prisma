@@ -1,3 +1,15 @@
+// ============================================================================
+// ⚠️  SCHÉMA OBSOLÈTE — CONSERVÉ POUR RÉFÉRENCE HISTORIQUE UNIQUEMENT
+// ============================================================================
+// Gen3ia a migré de Prisma/PostgreSQL vers Cloud Firestore : la persistance
+// passe par la façade `db` (`src/lib/db.ts` → `src/lib/firebase/firestore.ts`
+// + `src/lib/firestore-extra.ts`). Aucune dépendance Prisma n'est installée
+// (voir package.json) et `prisma.config.ts` est un stub de dépréciation.
+// NE PAS exécuter `prisma generate` / `prisma migrate` — ce fichier ne
+// compile d'ailleurs plus (références à des modèles retirés du schéma).
+// Conservé uniquement comme documentation historique des modèles métier.
+// ============================================================================
+
 generator client { provider = "prisma-client-js" }
 datasource db { provider = "postgresql" url = env("DATABASE_URL") }
 
@@ -201,7 +213,7 @@ model AgentTool { id String @id @default(cuid()) agentId String name String desc
 model AgentMemory { id String @id @default(cuid()) agentId String userId String category String @default("episodic") content String @db.Text metadata String @default("{}") @db.Text importance Float @default(0.5) expiresAt DateTime? createdAt DateTime @default(now()) agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade) @@index([agentId, userId, category]) }
 model AgentDelegation { id String @id @default(cuid()) sourceAgentId String targetAgentId String task String @db.Text context String @default("") @db.Text status String @default("pending") priority Int @default(0) maxWaitMs Int @default(60000) result String? @db.Text error String? @db.Text startedAt DateTime? completedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt sourceAgent Agent @relation("AgentDelegationSource", fields: [sourceAgentId], references: [id], onDelete: Cascade) targetAgent Agent @relation("AgentDelegationTarget", fields: [targetAgentId], references: [id], onDelete: Cascade) @@index([sourceAgentId, status]) @@index([targetAgentId, status]) }
 model AutonomousRun { id String @id @default(cuid()) agentId String userId String goal String @db.Text instructions String @default("") @db.Text status String @default("pending") schedule String @default("") maxDurationMs Int @default(3600000) checkpointsConfig String @default("[]") @db.Text currentCheckpointId String? result String? @db.Text progress String @default("[]") @db.Text startedAt DateTime? pausedAt DateTime? completedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade) checkpoints AgentCheckpoint[] @@index([agentId, status]) @@index([userId, status]) }
-model AgentCheckpoint { id String @id @default(cuid()) runId String agentId String type String @default("approval") title String description String @default("") @db.Text status String @default("pending") context String @default("{}") @db.Text decision String? @db.Text decidedBy String? decidedAt DateTime? createdAt DateTime @default(now()) run AutonomousRun @relation(fields: [runId], references: [id], onDelete: Cascade) agent Agent @relation(fields: [agentId], references: [id]) @@index([runId, status]) @@index([agentId, status]) }
+model AgentCheckpoint { id String @id @default(cuid()) runId String agentId String type String @default("approval") title String description String @default("") @db.Text status String @default("pending") context String @default("{}") @db.Text decision String? @db.Text decidedBy String? decidedAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt run AutonomousRun @relation(fields: [runId], references: [id], onDelete: Cascade) agent Agent @relation(fields: [agentId], references: [id]) @@index([runId, status]) @@index([agentId, status]) }
 model AgentInvocation { id String @id @default(cuid()) agentId String userId String input String @db.Text output String @db.Text model String tokensUsed Int @default(0) cost Float @default(0) durationMs Int @default(0) metadata String @default("{}") @db.Text createdAt DateTime @default(now()) user User @relation(fields: [userId], references: [id]) @@index([agentId, createdAt]) @@index([userId, createdAt]) }
 model AgentSuite {
   id String @id @default(cuid()) name String goal String @default("") @db.Text strategy String @default("sequential") status String @default("draft") userId String
