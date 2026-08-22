@@ -333,6 +333,14 @@ export class FirestoreRepository<T = any> {
     for (const o of orderByOps) {
       q = q.orderBy(o.field, o.direction || 'asc');
     }
+    // Pagination côté serveur : offset() DOIT être appliqué avant limit().
+    // Bugfix : auparavant limit() était appliqué côté serveur puis l'offset
+    // par slice() en mémoire — toute page > 1 (offset > 0 avec limit)
+    // retournait un tableau vide (ex: /api/admin?scope=users&page=2).
+    // Note : offset() facture la lecture des documents sautés — pour les
+    // grandes profondeurs de pagination, préférer un curseur (startAfter).
+    const effectiveOffset = options.offset ?? options.skip;
+    if (effectiveOffset && effectiveOffset > 0) q = q.offset(effectiveOffset);
     const effectiveLimit = options.limit ?? options.take;
     if (effectiveLimit) q = q.limit(effectiveLimit);
 
@@ -347,10 +355,6 @@ export class FirestoreRepository<T = any> {
     if (selectFields && selectFields.length > 0) {
 // @ts-ignore — type narrowing pending, see refactor ticket
       items = items.map((it) => projectFields(it, selectFields) as T);
-    }
-    const effectiveOffset = options.offset ?? options.skip;
-    if (effectiveOffset && effectiveOffset > 0) {
-      items = items.slice(effectiveOffset);
     }
     return items;
   }
