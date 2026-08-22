@@ -136,3 +136,63 @@ export const useAppStore = create<AppState>((set) => ({
     } catch {}
   },
 }));
+
+// ============================================================
+// Modern Dashboard Data Store (v2 architecture)
+// ============================================================
+export type ModernViewType =
+  | 'dashboard' | 'agents' | 'agent-chat' | 'automation' | 'guardrails'
+  | 'coordination' | 'settings' | 'approvals' | 'analytics' | 'billing'
+  | 'developers' | 'voice' | 'images' | 'integrations' | 'notifications'
+  | 'scheduler';
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  read: boolean;
+  createdAt: string;
+}
+
+interface DashboardStats {
+  agentCount: number;
+  activeSessions: number;
+  totalTasks: number;
+  successRate: number;
+  creditsUsed: number;
+  creditsRemaining: number;
+  recentActivity: { action: string; createdAt: string }[];
+}
+
+interface ModernUIState {
+  // Extend view types to include new ones
+  currentView: ModernViewType;
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+  toggleSidebar: () => void;
+  // Dashboard data
+  dashboardStats: DashboardStats | null;
+  setDashboardStats: (stats: DashboardStats | null) => void;
+  // Notifications
+  notifications: NotificationItem[];
+  unreadCount: number;
+  setNotifications: (notifs: NotificationItem[]) => void;
+  markNotificationRead: (id: string) => void;
+}
+
+export const useModernStore = create<ModernUIState>((set) => ({
+  currentView: 'dashboard',
+  sidebarOpen: true,
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  dashboardStats: null,
+  setDashboardStats: (stats) => set({ dashboardStats: stats }),
+  notifications: [],
+  unreadCount: 0,
+  setNotifications: (notifs) => set({ notifications: notifs, unreadCount: notifs.filter(n => !n.read).length }),
+  markNotificationRead: (id) => set((s) => ({
+    notifications: s.notifications.map(n => n.id === id ? { ...n, read: true } : n),
+    unreadCount: s.notifications.filter(n => !n.read && n.id !== id).length,
+  })),
+}));
