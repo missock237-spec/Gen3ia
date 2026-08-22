@@ -20,12 +20,25 @@
 //  Pour préserver la compat avec les ~50 API routes existantes qui
 //  appellent `db.user.findUnique(...)` etc., on expose une facade
 //  Prisma-like reposant sur Firestore.
+//
+//  Compat Prisma étendue :
+//    - where : tableau FirestoreWhereOp[], objet Prisma-style, et
+//      opérateurs logiques OR / AND / NOT (Filter composite Admin SDK)
+//    - select : string[] ou objet ; orderBy : tableau/objet/string
+//    - paginate() : pagination par curseur (sans offset() coûteux)
+//    - groupBy / aggregate : en mémoire, plafonnés à AGGREGATE_SCAN_LIMIT
+//      documents scannés (au-delà : résultat partiel + avertissement)
+//    - contains / startsWith / endsWith : approximés en `==` avec
+//      avertissement une-fois — utiliser @/lib/search-engine pour
+//      la recherche plein texte.
 // ============================================================
 
 import {
   Firestore,
   Timestamp,
   FieldValue,
+  FieldPath,
+  Filter,
   type CollectionReference,
   type DocumentData,
   type DocumentReference,
@@ -68,6 +81,8 @@ export type FirestoreOrderBy = {
  *   - Array form:  [{ field: 'email', op: '==', value: 'a@b.c' }]
  *   - Object form: { email: 'a@b.c', status: 'active' }  (Prisma-style, == only)
  *   - Object form with operators: { status: { in: ['a','b'] } }
+ *   - Object form with logical keys: { OR: [{...}, {...}] },
+ *     { AND: [...] }, { NOT: { status: 'archived' } }
  */
 export type WhereInput = FirestoreWhereOp[] | Record<string, unknown>;
 
@@ -129,9 +144,48 @@ export interface DeleteOptions {
   where: { id?: string; [key: string]: unknown };
 }
 
+export interface PaginateOptions {
+  where?: WhereInput;
+  orderBy?: OrderByInput;
+  /** Taille de page — bornée à [1, 100], défaut 20. */
+  limit?: number;
+  /** ID du dernier document de la page précédente (= nextCursor). */
+  cursor?: string;
+}
+
+export interface PaginateResult<T> {
+  items: T[];
+  /** ID du dernier document de la page — à repasser en `cursor`, null si fin. */
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 // ============================================================
 // Normalizers — convert Prisma-style inputs to Firestore array form
 // ============================================================
+
+// ------------------------------------------------------------
+// Avertissements une-fois (approximations de recherche textuelle)
+// ------------------------------------------------------------
+const warnedTextApproximations = new Set<string>();
+
+/**
+ * Firestore n'a pas de recherche textuelle native : contains / startsWith /
+ * endsWith sont approximés en égalité stricte (==). On avertit une seule
+ * fois par couple (opérateur, champ) pour éviter le spam de logs, afin que
+ * les résultats silencieusement inexacts soient détectables en production.
+ * Pour la recherche plein texte, utiliser `@/lib/search-engine`.
+ */
+function warnTextApproximation(op: string, field: string): void {
+  const key = `${op}:${field}`;
+  if (warnedTextApproximations.has(key)) return;
+  warnedTextApproximations.add(key);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[firestore-facade] "${op}" sur le champ "${field}" est approximé en égalité stricte (==). ` +
+      'Firestore ne supporte pas la recherche textuelle — utiliser @/lib/search-engine pour le full-text.',
+  );
+}
 
 function normalizeWhere(input: WhereInput | undefined): FirestoreWhereOp[] {
   if (!input) return [];
@@ -146,6 +200,9 @@ function normalizeWhere(input: WhereInput | undefined): FirestoreWhereOp[] {
     if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
       // Operator object: { in: [...], not: ..., gte: ..., ... }
       for (const [op, v] of Object.entries(value as Record<string, unknown>)) {
+        if (op === 'contains' || op === 'startsWith' || op === 'endsWith') {
+          warnTextApproximation(op, field);
+        }
         const firestoreOp = prismaOpToFirestore(op);
         out.push({ field, op: firestoreOp, value: v });
       }
@@ -166,7 +223,7 @@ function prismaOpToFirestore(op: string): WhereFilterOp {
     case 'lte': return '<=';
     case 'gt': return '>';
     case 'gte': return '>=';
-    case 'contains': return '=='; // approximated (Firestore doesn't have native LIKE)
+    case 'contains': return '=='; // approximated (Firestore doesn't have native LIKE) — voir warnTextApproximation
     case 'startsWith': return '==';
     case 'endsWith': return '==';
     case 'has': return 'array-contains';
@@ -174,6 +231,109 @@ function prismaOpToFirestore(op: string): WhereFilterOp {
     case 'hasSome': return 'array-contains-any';
     default: return '==';
   }
+}
+
+// ============================================================
+// Opérateurs logiques Prisma-style : OR / AND / NOT
+// ============================================================
+//  L'Admin SDK (>= 11) expose Filter.or / Filter.and. La façade accepte :
+//    { OR: [{ status: 'active' }, { role: 'admin' }] }
+//    { AND: [{ ... }, { ... }] }
+//    { NOT: { status: 'archived' } }     // → status != 'archived'
+//    { NOT: { age: { gte: 18 } } }       // → age < 18
+//  Les clés logiques se combinent avec des conditions simples au même
+//  niveau (toutes ANDées ensemble, comme chez Prisma).
+//  Limites assumées (erreur explicite plutôt que résultat silencieusement
+//  faux — comportement précédent qui interrogeait un champ nommé "OR") :
+//    - OR / AND attendent un tableau non vide de clauses.
+//    - NOT n'accepte qu'UNE condition simple (négation d'opérateur).
+//      Pour un NOT composé, réécrire avec OR/AND explicites.
+// ============================================================
+
+const LOGICAL_WHERE_KEYS = new Set(['OR', 'AND', 'NOT']);
+
+type ConditionNode = { kind: 'condition'; field: string; op: WhereFilterOp; value: unknown };
+type WhereNode = ConditionNode | { kind: 'and' | 'or'; children: WhereNode[] };
+
+function hasLogicalKeys(input: WhereInput | undefined): boolean {
+  return !!input && !Array.isArray(input) && Object.keys(input).some((k) => LOGICAL_WHERE_KEYS.has(k));
+}
+
+/** Négation d'opérateur (NOT sur condition simple — lois de De Morgan). */
+function negateCondition(cond: ConditionNode): ConditionNode {
+  switch (cond.op) {
+    case '==': return { ...cond, op: '!=' };
+    case '!=': return { ...cond, op: '==' };
+    case 'in': return { ...cond, op: 'not-in' };
+    case 'not-in': return { ...cond, op: 'in' };
+    case '<': return { ...cond, op: '>=' };
+    case '<=': return { ...cond, op: '>' };
+    case '>': return { ...cond, op: '<=' };
+    case '>=': return { ...cond, op: '<' };
+    default:
+      throw new Error(
+        `[firestore-facade] NOT non supporté pour l'opérateur "${cond.op}" (champ "${cond.field}")`,
+      );
+  }
+}
+
+/** Parse une clause where (tableau ou objet) en arbre WhereNode. */
+function parseWhereNode(input: WhereInput | undefined): WhereNode | null {
+  if (!input) return null;
+  if (Array.isArray(input)) {
+    const children: WhereNode[] = (input as FirestoreWhereOp[]).map(
+      (w): WhereNode => ({ kind: 'condition', field: w.field, op: w.op, value: w.value }),
+    );
+    if (children.length === 0) return null;
+    return children.length === 1 ? children[0]! : { kind: 'and', children };
+  }
+  const children: WhereNode[] = [];
+  for (const [key, value] of Object.entries(input)) {
+    if (value === undefined) continue;
+    if (key === 'OR' || key === 'AND') {
+      if (!Array.isArray(value) || value.length === 0) {
+        throw new Error(`[firestore-facade] ${key} attend un tableau non vide de clauses where`);
+      }
+      const subs = value
+        .map((clause) => parseWhereNode(clause as WhereInput))
+        .filter((n): n is WhereNode => n !== null);
+      if (subs.length === 0) continue;
+      if (subs.length === 1) {
+        children.push(subs[0]!);
+      } else if (key === 'OR') {
+        children.push({ kind: 'or', children: subs });
+      } else {
+        children.push({ kind: 'and', children: subs });
+      }
+      continue;
+    }
+    if (key === 'NOT') {
+      const sub = parseWhereNode(value as WhereInput);
+      if (!sub) continue;
+      if (sub.kind !== 'condition') {
+        throw new Error(
+          "[firestore-facade] NOT n'accepte qu'une condition simple — réécrire avec OR/AND explicites",
+        );
+      }
+      children.push(negateCondition(sub));
+      continue;
+    }
+    // Condition simple ou objet opérateur — réutilise le normalizer historique
+    for (const w of normalizeWhere({ [key]: value })) {
+      children.push({ kind: 'condition', field: w.field, op: w.op, value: w.value });
+    }
+  }
+  if (children.length === 0) return null;
+  return children.length === 1 ? children[0]! : { kind: 'and', children };
+}
+
+/** Convertit un arbre WhereNode en Filter composite Firestore (récursif). */
+function whereNodeToFilter(node: WhereNode): Filter {
+  if (node.kind === 'condition') {
+    return Filter.where(node.field, node.op, serializeValue(node.value));
+  }
+  const filters = node.children.map(whereNodeToFilter);
+  return node.kind === 'or' ? Filter.or(...filters) : Filter.and(...filters);
 }
 
 function normalizeOrderBy(input: OrderByInput | undefined): FirestoreOrderBy[] {
@@ -276,6 +436,16 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 
 const FIRESTORE_BATCH_LIMIT = 400; // 400 < 500 pour marge de sécurité
 
+/**
+ * Plafond de documents scannés par groupBy / aggregate.
+ * Ces opérations s'exécutent en mémoire (Firestore n'a pas d'agrégation
+ * SQL de type GROUP BY) : sans plafond, une grande collection saturerait
+ * la mémoire du serveur et exploserait les coûts de lecture. Au-delà du
+ * plafond, le résultat est PARTIEL et un avertissement est émis — pour
+ * des agrégats exhaustifs, maintenir des compteurs dénormalisés.
+ */
+const AGGREGATE_SCAN_LIMIT = 10_000;
+
 export class FirestoreRepository<T = any> {
   constructor(private collectionName: string) {}
 
@@ -289,6 +459,27 @@ export class FirestoreRepository<T = any> {
 
   private docRef(id: string): DocumentReference {
     return this.db().doc(`${this.collectionName}/${id}`);
+  }
+
+  /**
+   * Applique une clause where à une requête Firestore.
+   * - Forme simple (tableau / objet sans OR/AND/NOT) : where() successifs
+   *   (comportement historique, strictement inchangé).
+   * - Forme logique (OR/AND/NOT) : Filter composite de l'Admin SDK — les
+   *   conditions simples du niveau racine sont fusionnées dans le même
+   *   Filter.and(...), sémantiquement équivalent à des where() chaînés.
+   */
+  private applyWhere(q: Query, where?: WhereInput): Query {
+    if (!where) return q;
+    if (!hasLogicalKeys(where)) {
+      for (const w of normalizeWhere(where)) {
+        q = q.where(w.field, w.op, serializeValue(w.value));
+      }
+      return q;
+    }
+    const node = parseWhereNode(where);
+    if (!node) return q;
+    return q.where(whereNodeToFilter(node));
   }
 
   async findUnique(options: FindUniqueOptions): Promise<T | null> {
@@ -325,10 +516,7 @@ export class FirestoreRepository<T = any> {
 
   async findMany(options: FindOptions = {}): Promise<T[]> {
     let q: Query = this.col();
-    const whereOps = normalizeWhere(options.where);
-    for (const w of whereOps) {
-      q = q.where(w.field, w.op, serializeValue(w.value));
-    }
+    q = this.applyWhere(q, options.where);
     const orderByOps = normalizeOrderBy(options.orderBy);
     for (const o of orderByOps) {
       q = q.orderBy(o.field, o.direction || 'asc');
@@ -338,7 +526,7 @@ export class FirestoreRepository<T = any> {
     // par slice() en mémoire — toute page > 1 (offset > 0 avec limit)
     // retournait un tableau vide (ex: /api/admin?scope=users&page=2).
     // Note : offset() facture la lecture des documents sautés — pour les
-    // grandes profondeurs de pagination, préférer un curseur (startAfter).
+    // grandes profondeurs de pagination, préférer paginate() (curseur).
     const effectiveOffset = options.offset ?? options.skip;
     if (effectiveOffset && effectiveOffset > 0) q = q.offset(effectiveOffset);
     const effectiveLimit = options.limit ?? options.take;
@@ -359,12 +547,61 @@ export class FirestoreRepository<T = any> {
     return items;
   }
 
+  /**
+   * Pagination par curseur — recommandée pour les grandes collections :
+   * contrairement à offset(), aucune lecture n'est facturée pour les
+   * documents déjà vus, et les performances restent constantes quelle
+   * que soit la profondeur de pagination.
+   *
+   * - `cursor` = `nextCursor` de la page précédente (ID de document).
+   * - Sans orderBy explicite, tri stable par ID de document.
+   * - `limit` borné à [1, 100] (défaut 20) — borne de coût par requête.
+   * - hasMore est détecté en lisant limit + 1 documents (pas de count()).
+   *
+   * Note : le document curseur doit posséder les champs de tri, sinon
+   * Firestore rejette startAfter() — toujours trier par un champ indexé
+   * présent sur tous les documents filtrés.
+   */
+  async paginate(options: PaginateOptions = {}): Promise<PaginateResult<T>> {
+    const rawLimit = Math.trunc(options.limit ?? 20);
+    const limit = Math.min(Math.max(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20, 1), 100);
+
+    let q: Query = this.col();
+    q = this.applyWhere(q, options.where);
+
+    const orderByOps = normalizeOrderBy(options.orderBy);
+    if (orderByOps.length === 0) {
+      // Tri stable par ID — indispensable à la reproductibilité du curseur.
+      q = q.orderBy(FieldPath.documentId(), 'asc');
+    } else {
+      for (const o of orderByOps) {
+        q = q.orderBy(o.field, o.direction || 'asc');
+      }
+    }
+
+    if (options.cursor) {
+      const cursorSnap = await this.docRef(options.cursor).get();
+      // Curseur invalide/supprimé → on repart du début plutôt que crasher.
+      if (cursorSnap.exists) q = q.startAfter(cursorSnap);
+    }
+
+    // +1 pour détecter hasMore sans aggregation count() coûteuse.
+    q = q.limit(limit + 1);
+    const snap = await q.get();
+    const hasMore = snap.docs.length > limit;
+    const pageDocs = hasMore ? snap.docs.slice(0, limit) : snap.docs;
+    const items = pageDocs.map((d) => {
+      const data = deserialize(d.data());
+      data.id = d.id;
+      return data as T;
+    });
+    const last = pageDocs[pageDocs.length - 1];
+    return { items, nextCursor: hasMore && last ? last.id : null, hasMore };
+  }
+
   async count(options: Pick<FindOptions, 'where'> = {}): Promise<number> {
     let q: Query = this.col();
-    const whereOps = normalizeWhere(options.where);
-    for (const w of whereOps) {
-      q = q.where(w.field, w.op, serializeValue(w.value));
-    }
+    q = this.applyWhere(q, options.where);
     // Utilise count().get() (agrégation côté serveur) au lieu de charger tous les docs
     // Fallback: snap.size si l'agrégation n'est pas disponible
     try {
@@ -458,9 +695,9 @@ export class FirestoreRepository<T = any> {
       await this.docRef(options.where.id).delete();
       return;
     }
-    // Delete by other field — normalize object form to where ops
-    const whereOps = normalizeWhere(options.where as WhereInput);
-    const items = await this.findMany({ where: whereOps });
+    // Suppression par autre(s) champ(s) — findMany gère toutes les formes
+    // de where (tableau, objet, opérateurs logiques OR/AND/NOT).
+    const items = await this.findMany({ where: options.where as WhereInput });
     const chunks = chunkArray(items, FIRESTORE_BATCH_LIMIT);
     for (const chunk of chunks) {
       const batch: WriteBatch = this.db().batch();
@@ -496,6 +733,20 @@ export class FirestoreRepository<T = any> {
     return { count };
   }
 
+  /** Lecture plafonnée pour agrégations mémoire (groupBy / aggregate). */
+  private async scanForAggregation(where?: FindOptions['where']): Promise<T[]> {
+    const items = await this.findMany({ where, limit: AGGREGATE_SCAN_LIMIT });
+    if (items.length >= AGGREGATE_SCAN_LIMIT) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[firestore-facade] agrégation plafonnée à ${AGGREGATE_SCAN_LIMIT} documents ` +
+          `sur "${this.collectionName}" — résultat potentiellement partiel. ` +
+          'Préférer des compteurs dénormalisés ou un export analytique.',
+      );
+    }
+    return items;
+  }
+
   /** Agrégation simple en mémoire (remplace aggregate de Prisma). */
   async groupBy(options: {
     where?: FindOptions['where'];
@@ -509,7 +760,7 @@ export class FirestoreRepository<T = any> {
     take?: number;
     skip?: number;
   }): Promise<Record<string, unknown>[]> {
-    let items = await this.findMany({ where: options.where });
+    let items = await this.scanForAggregation(options.where);
     // Apply orderBy
     if (options.orderBy) {
       const orderByOps = normalizeOrderBy(options.orderBy);
@@ -578,7 +829,7 @@ export class FirestoreRepository<T = any> {
     _min?: Record<string, number>;
     _max?: Record<string, number>;
   }> {
-    const items = await this.findMany({ where: options.where });
+    const items = await this.scanForAggregation(options.where);
     const result: {
       _sum?: Record<string, number>;
       _count?: Record<string, number>;
