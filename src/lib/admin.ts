@@ -3,10 +3,19 @@
  * - Compte admin via ADMIN_EMAILS
  * - Gestion des utilisateurs
  * - Statistiques plateforme
+ *
+ * MIGRATION FIRESTORE (bugfix) :
+ * - createAdminAccount n'appelle plus hashPassword() (qui lève une
+ *   Error depuis la migration Firebase Auth) — les mots de passe ne
+ *   sont plus stockés en base ; le compte Auth est géré par Firebase
+ *   (scripts/bootstrap-admin.ts). La fonction ne gère que le PROFIL.
+ * - searchUsers n'utilise plus `OR`/`contains/mode` (non supportés par
+ *   la façade) — filtrage en mémoire sur les utilisateurs récents.
+ * - getAllUsers/getAdminLogs : `_count` et `include` relationnels
+ *   remplacés par des comptages/jointures explicites.
  */
 
 import { prisma } from '@/lib/prisma';
-import { hashPassword } from '@/lib/auth';
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 const ADMIN_ROLE = 'admin';
@@ -28,12 +37,15 @@ export function getAdminEmails(): string[] {
 // Création automatique du compte admin
 // ============================================================
 
-export async function createAdminAccount(name: string, email: string, password: string) {
+export async function createAdminAccount(name: string, email: string, _password?: string) {
+  // NOTE: `_password` est accepté pour compat ascendante mais IGNORÉ —
+  // Firebase Auth gère les credentials (création du compte Auth via
+  // scripts/bootstrap-admin.ts). Aucun mot de passe n'est stocké ici.
   const existing = await prisma.user.findUnique({ where: { email } });
-  
+
   if (existing) {
     // Promouvoir au rôle admin si déjà existant
-    if (!isAdminRole(existing.role)) {
+    if (!isAdminRole((existing as Record<string, unknown>).role as string)) {
       return prisma.user.update({
         where: { email },
         data: {
@@ -47,13 +59,11 @@ export async function createAdminAccount(name: string, email: string, password: 
     return existing;
   }
 
-  // Créer le compte admin
-  const hashedPassword = await hashPassword(password);
+  // Créer le profil admin (aucun mot de passe stocké — Firebase Auth)
   return prisma.user.create({
     data: {
       email,
       name,
-      password: hashedPassword,
       role: ADMIN_ROLE,
       plan: ENTERPRISE_PLAN,
       isActive: true,
@@ -82,6 +92,26 @@ export interface AdminUserSummary {
   };
 }
 
+const USER_SUMMARY_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  plan: true,
+  role: true,
+  isActive: true,
+  isEmailVerified: true,
+  createdAt: true,
+} as const;
+
+/** Compte agents + conversations d'un utilisateur (remplace le `_count` relationnel Prisma). */
+async function countUserRelations(userId: string): Promise<{ agents: number; conversations: number }> {
+  const [agents, conversations] = await Promise.all([
+    prisma.agent.count({ where: [{ field: 'userId', op: '==', value: userId }] }),
+    prisma.conversation.count({ where: [{ field: 'userId', op: '==', value: userId }] }),
+  ]);
+  return { agents, conversations };
+}
+
 export async function getAllUsers(page: number = 1, limit: number = 20): Promise<{
   users: AdminUserSummary[];
   total: number;
@@ -89,34 +119,28 @@ export async function getAllUsers(page: number = 1, limit: number = 20): Promise
   totalPages: number;
 }> {
   const skip = (page - 1) * limit;
-  
+
   const [users, total] = await Promise.all([
     prisma.user.findMany({
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        plan: true,
-        role: true,
-        isActive: true,
-        isEmailVerified: true,
-        createdAt: true,
-        _count: {
-          select: {
-            agents: true,
-            conversations: true,
-          },
-        },
-      },
+      select: USER_SUMMARY_SELECT,
     }),
     prisma.user.count(),
   ]);
 
+  // La façade Firestore ne supporte pas le `_count` relationnel de Prisma :
+  // on compte explicitement agents + conversations pour chaque utilisateur.
+  const enriched = await Promise.all(
+    (users as Array<Record<string, unknown>>).map(async (u) => ({
+      ...u,
+      _count: await countUserRelations(u.id as string),
+    })),
+  );
+
   return {
-    users,
+    users: enriched as unknown as AdminUserSummary[],
     total,
     page,
     totalPages: Math.ceil(total / limit),
@@ -124,32 +148,32 @@ export async function getAllUsers(page: number = 1, limit: number = 20): Promise
 }
 
 export async function searchUsers(query: string): Promise<AdminUserSummary[]> {
-  return prisma.user.findMany({
-    where: {
-      OR: [
-        { email: { contains: query, mode: 'insensitive' } },
-        { name: { contains: query, mode: 'insensitive' } },
-      ],
-    },
-    take: 20,
+  const q = query.toLowerCase().trim();
+  if (!q) return [];
+
+  // La façade Firestore ne supporte ni `OR` ni `contains/mode` :
+  // on charge les utilisateurs récents puis on filtre en mémoire
+  // (recherche admin — volumétrie faible, pas d'index requis).
+  const candidates = await prisma.user.findMany({
+    take: 500,
     orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      plan: true,
-      role: true,
-      isActive: true,
-      isEmailVerified: true,
-      createdAt: true,
-      _count: {
-        select: {
-          agents: true,
-          conversations: true,
-        },
-      },
-    },
+    select: USER_SUMMARY_SELECT,
   });
+
+  const matches = (candidates as Array<Record<string, unknown>>)
+    .filter((u) =>
+      String(u.email ?? '').toLowerCase().includes(q) ||
+      String(u.name ?? '').toLowerCase().includes(q),
+    )
+    .slice(0, 20);
+
+  const enriched = await Promise.all(
+    matches.map(async (u) => ({
+      ...u,
+      _count: await countUserRelations(u.id as string),
+    })),
+  );
+  return enriched as unknown as AdminUserSummary[];
 }
 
 export async function updateUserPlan(userId: string, plan: string): Promise<void> {
@@ -236,7 +260,7 @@ export async function getRevenueStats() {
   today.setHours(0, 0, 0, 0);
   const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-  // Revenus réels : agrégation des factures payées via Prisma
+  // Revenus réels : agrégation des factures payées (façade Firestore)
   const [totalAgg, monthlyAgg, paidUsersCount, totalUsersCount, monthlyTxCount, totalTxCount] = await Promise.all([
     prisma.invoice.aggregate({
       _sum: { amount: true },
@@ -286,14 +310,31 @@ export async function logAdminAction(adminId: string, action: string, details: s
 }
 
 export async function getAdminLogs(limit: number = 50) {
-  return prisma.activityLog.findMany({
+  const logs = await prisma.activityLog.findMany({
     where: { category: 'admin' },
     orderBy: { createdAt: 'desc' },
     take: limit,
-    include: {
-      user: {
-        select: { name: true, email: true },
-      },
-    },
   });
+
+  // La façade ignore `include: { user }` — jointure manuelle dédupliquée.
+  const userIds = [...new Set(
+    (logs as Array<Record<string, unknown>>)
+      .map((l) => l.userId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  )];
+  const usersById = new Map<string, Record<string, unknown>>();
+  await Promise.all(
+    userIds.map(async (id) => {
+      const u = await prisma.user.findUnique({
+        where: { id },
+        select: { name: true, email: true },
+      });
+      if (u) usersById.set(id, u as Record<string, unknown>);
+    }),
+  );
+
+  return (logs as Array<Record<string, unknown>>).map((l) => ({
+    ...l,
+    user: usersById.get(l.userId as string) ?? null,
+  }));
 }
