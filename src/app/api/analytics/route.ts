@@ -3,6 +3,16 @@
 // ============================================================
 //  Appelé par analytics-view.tsx via fetch('/api/analytics?period=30d')
 //  Agrège les données de crédit et d'exécution en une seule réponse.
+//
+//  Correctifs :
+//   - Les collections credit_transactions / agent_executions ne sont
+//     plus chargées en intégralité : filtre userId côté serveur.
+//   - Le filtre de date reste en mémoire (évite l'index composite
+//     userId+createdAt et tolère les dates historiques corrompues).
+//   - topAgents : la requête `where: id in [...]` ne pouvait jamais
+//     matcher ('id' est l'identifiant du document, pas un champ de
+//     données) — les noms d'agents sont désormais résolus par
+//     lectures directes parallèles sur le top 10 par volume.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -39,13 +49,15 @@ export async function GET(request: NextRequest) {
   try {
     // ============================================================
     // 1. Fetch credit transactions (for creditsUsed, totalCost)
+    //    Filtre userId côté serveur — ne charge plus toute la collection.
     // ============================================================
-    const transactions = await db.creditTransaction.findMany({ where: {} });
+    const transactions = await db.creditTransaction.findMany({
+      where: [{ field: 'userId', op: '==', value: userId }],
+    });
     const userTxns = (transactions as Record<string, unknown>[])
       .filter((t) => {
-        if (t.userId !== userId) return false;
         const d = new Date(t.createdAt as string);
-        return d >= startDate;
+        return !Number.isNaN(d.getTime()) && d >= startDate;
       });
 
     const creditsUsed = userTxns.reduce((sum, t) => {
@@ -74,7 +86,7 @@ export async function GET(request: NextRequest) {
       });
       for (const cost of aiCosts as Record<string, unknown>[]) {
         const d = new Date(cost.createdAt as string);
-        if (d < startDate) continue;
+        if (Number.isNaN(d.getTime()) || d < startDate) continue;
         totalTokens += (cost.totalTokens as number) || 0;
         totalCalls += 1;
         totalLatency += (cost.latencyMs as number) || 0;
@@ -85,19 +97,20 @@ export async function GET(request: NextRequest) {
 
     // ============================================================
     // 3. Fetch agent executions (for success rate, top agents)
+    //    Filtre userId côté serveur — ne charge plus toute la collection.
     // ============================================================
     let successRate = 0;
     let topAgents: { name: string; executions: number }[] = [];
     let agentExecutions: Record<string, unknown>[] = [];
 
     try {
-      const allExecs = await db.agentExecution.findMany({ where: {} });
-      agentExecutions = allExecs.filter((e) => {
-        const r = e as Record<string, unknown>;
-        if (r.userId !== userId) return false;
-        const d = new Date(r.createdAt as string);
-        return d >= startDate;
-      }) as Record<string, unknown>[];
+      const myExecs = await db.agentExecution.findMany({
+        where: [{ field: 'userId', op: '==', value: userId }],
+      });
+      agentExecutions = (myExecs as Record<string, unknown>[]).filter((e) => {
+        const d = new Date(e.createdAt as string);
+        return !Number.isNaN(d.getTime()) && d >= startDate;
+      });
 
       const completed = agentExecutions.filter(
         (e) => e.status === 'completed',
@@ -116,24 +129,32 @@ export async function GET(request: NextRequest) {
         agentCountMap.set(agentId, (agentCountMap.get(agentId) || 0) + 1);
       }
 
-      // Fetch agent names
+      // Noms des agents : impossible de filtrer sur le champ 'id'
+      // (c'est l'identifiant du document, pas un champ de données) —
+      // on résout le top 10 par volume en lectures directes parallèles.
       if (agentCountMap.size > 0) {
-        const agentIds = Array.from(agentCountMap.keys());
-        const agents = await db.agent.findMany({
-          where: [{ field: 'id', op: 'in', value: agentIds }],
-        });
-        const nameMap = new Map<string, string>();
-        for (const a of agents as Record<string, unknown>[]) {
-          nameMap.set(a.id as string, a.name as string);
-        }
+        const topIds = Array.from(agentCountMap.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([id]) => id);
 
-        topAgents = Array.from(agentCountMap.entries())
-          .map(([id, count]) => ({
-            name: nameMap.get(id) || id,
-            executions: count,
-          }))
-          .sort((a, b) => b.executions - a.executions)
-          .slice(0, 10);
+        const agents = await Promise.all(
+          topIds.map((agentId) =>
+            db.agent
+              .findUnique({ where: { id: agentId }, select: ['name'] })
+              .catch(() => null),
+          ),
+        );
+        const nameMap = new Map<string, string>();
+        agents.forEach((a, i) => {
+          const id = topIds[i];
+          if (a && id) nameMap.set(id, ((a as Record<string, unknown>).name as string) || id);
+        });
+
+        topAgents = topIds.map((id) => ({
+          name: nameMap.get(id) || id,
+          executions: agentCountMap.get(id) || 0,
+        }));
       }
     } catch {
       // Graceful: empty arrays
@@ -156,20 +177,16 @@ export async function GET(request: NextRequest) {
     }
 
     // ============================================================
-    // 5. Agent & task counts
+    // 5. Agent & task counts (agrégation count() côté serveur)
     // ============================================================
     let totalAgents = 0;
     let totalTasks = 0;
     try {
-      const agents = await db.agent.findMany({
-        where: [{ field: 'userId', op: '==', value: userId }],
-      });
-      totalAgents = (agents as unknown[]).length;
-
-      const tasks = await db.task.findMany({
-        where: [{ field: 'userId', op: '==', value: userId }],
-      });
-      totalTasks = (tasks as unknown[]).length;
+      const whereUser = [{ field: 'userId', op: '==', value: userId }];
+      [totalAgents, totalTasks] = await Promise.all([
+        db.agent.count({ where: whereUser }),
+        db.task.count({ where: whereUser }),
+      ]);
     } catch {
       // Graceful: leave at 0
     }
