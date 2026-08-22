@@ -5,6 +5,17 @@
  * - Draft / archived / suspended listings are only visible to their owner
  * - Published listings are visible to authenticated viewers
  * - Runtime validation for create / update
+ *
+ * Notes façade Firestore :
+ * - Les documents n'ont PAS de champ `id` en données (l'id est injecté
+ *   côté client par la façade) : toute recherche par id passe par
+ *   findUnique({ where: { id } }), JAMAIS par un filtre where sur 'id'.
+ * - `include: { user: ... }` est accepté mais ignoré : la jointure auteur
+ *   est faite explicitement en mémoire (fetchAuthor / fetchAuthors).
+ * - Recherche texte / plages de prix / tags : appliqués en mémoire —
+ *   Firestore n'a pas de LIKE, et combiner un filtre de plage avec un
+ *   orderBy sur un autre champ exige un index composite (erreur runtime).
+ *   Seuls les filtres d'ÉGALITÉ (status/type/category) partent au serveur.
  */
 
 import { db } from '@/lib/db'
@@ -146,6 +157,53 @@ function normalizeCurrency(value?: string): string {
   return (value || 'USD').trim().toUpperCase()
 }
 
+/** Timestamp tolérant : Date, string ISO, ou valeur corrompue → 0. */
+function toTime(value: unknown): number {
+  if (value instanceof Date) {
+    const t = value.getTime()
+    return Number.isNaN(t) ? 0 : t
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const t = new Date(value).getTime()
+    return Number.isNaN(t) ? 0 : t
+  }
+  return 0
+}
+
+interface AuthorInfo {
+  name: string
+  avatar: string | null
+}
+
+/** Jointure mémoire : auteur d'un listing (include ignoré par la façade). */
+async function fetchAuthor(userId: string): Promise<AuthorInfo | undefined> {
+  if (!userId) return undefined
+  try {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: ['name', 'avatar'],
+    })
+    if (!user) return undefined
+    const u = user as Record<string, unknown>
+    return { name: String(u.name ?? ''), avatar: (u.avatar as string | null) ?? null }
+  } catch {
+    return undefined
+  }
+}
+
+/** Jointure mémoire en parallèle pour une page de listings. */
+async function fetchAuthors(userIds: string[]): Promise<Map<string, AuthorInfo>> {
+  const map = new Map<string, AuthorInfo>()
+  const unique = [...new Set(userIds.filter(Boolean))]
+  const results = await Promise.all(
+    unique.map(async (id) => [id, await fetchAuthor(id)] as const),
+  )
+  for (const [id, author] of results) {
+    if (author) map.set(id, author)
+  }
+  return map
+}
+
 function assertValidPreviewUrl(value?: string | null): void {
   if (value === undefined || value === null || value === '') return
 
@@ -270,17 +328,25 @@ function serializeListing(listing: {
     slug: listing.slug,
     description: listing.description,
     category: listing.category,
-    tags: safeParse<string[]>(listing.tags, []),
+    tags: Array.isArray(listing.tags)
+      ? (listing.tags as unknown as string[])
+      : safeParse<string[]>(String(listing.tags ?? '[]'), []),
     price: listing.price,
     currency: listing.currency,
-    config: safeParse<Record<string, unknown>>(listing.config, {}),
+    config:
+      typeof listing.config === 'string'
+        ? safeParse<Record<string, unknown>>(listing.config, {})
+        : ((listing.config as unknown as Record<string, unknown>) ?? {}),
     previewUrl: listing.previewUrl,
     downloads: listing.downloads,
     installCount: listing.installCount,
     rating: listing.rating,
     reviewCount: listing.reviewCount,
     status: listing.status,
-    metadata: safeParse<Record<string, unknown>>(listing.metadata, {}),
+    metadata:
+      typeof listing.metadata === 'string'
+        ? safeParse<Record<string, unknown>>(listing.metadata, {})
+        : ((listing.metadata as unknown as Record<string, unknown>) ?? {}),
     publishedAt: listing.publishedAt,
     createdAt: listing.createdAt,
     updatedAt: listing.updatedAt,
@@ -292,6 +358,9 @@ function serializeListing(listing: {
       : undefined,
   }
 }
+
+/** Forme brute d'un document listing en base (telle que lue par la façade). */
+type StoredListing = Parameters<typeof serializeListing>[0]
 
 // ---------------------------------------------------------------------------
 // Core: Create Listing
@@ -325,17 +394,11 @@ export async function createListing(
       }),
       status: 'draft',
     },
-    include: {
-      user: {
-        select: {
-          name: true,
-          avatar: true,
-        },
-      },
-    },
   })
 
-  return serializeListing(listing)
+  // include ignoré par la façade → jointure auteur explicite
+  const author = await fetchAuthor(userId)
+  return serializeListing({ ...(listing as StoredListing), user: author })
 }
 
 // ---------------------------------------------------------------------------
@@ -349,14 +412,14 @@ export async function updateListing(
 ): Promise<MarketplaceListingResult> {
   assertValidUpdateInput(options)
 
-  const existing = await db.marketplaceListing.findFirst({
-    where: {
-      id: listingId,
-      userId,
-    },
+  // Correctif : findFirst({ where: { id, userId } }) interrogeait le champ
+  // de données 'id' — inexistant (l'id est l'identifiant du document) —
+  // donc retournait TOUJOURS null. On lit par id puis on vérifie le owner.
+  const existing = await db.marketplaceListing.findUnique({
+    where: { id: listingId },
   })
 
-  if (!existing) {
+  if (!existing || (existing as Record<string, unknown>).userId !== userId) {
     throw new Error('Listing not found or not authorized')
   }
 
@@ -373,31 +436,28 @@ export async function updateListing(
   if (options.status !== undefined) data.status = options.status
 
   if (options.metadata !== undefined) {
-    const currentMeta = safeParse<Record<string, unknown>>(existing.metadata, {})
+    const existingMeta = (existing as Record<string, unknown>).metadata
+    const currentMeta =
+      typeof existingMeta === 'string'
+        ? safeParse<Record<string, unknown>>(existingMeta, {})
+        : ((existingMeta as Record<string, unknown> | undefined) ?? {})
     data.metadata = JSON.stringify({
       ...currentMeta,
       ...options.metadata,
     })
   }
 
-  if (options.status === 'published' && existing.status !== 'published') {
+  if (options.status === 'published' && (existing as Record<string, unknown>).status !== 'published') {
     data.publishedAt = new Date()
   }
 
   const listing = await db.marketplaceListing.update({
     where: { id: listingId },
     data,
-    include: {
-      user: {
-        select: {
-          name: true,
-          avatar: true,
-        },
-      },
-    },
   })
 
-  return serializeListing(listing)
+  const author = await fetchAuthor(userId)
+  return serializeListing({ ...(listing as StoredListing), user: author })
 }
 
 // ---------------------------------------------------------------------------
@@ -436,76 +496,85 @@ export async function searchListings(
     limit = 20,
   } = options
 
+  // 1. Filtres d'ÉGALITÉ côté serveur uniquement — pas d'index composite
+  //    requis (l'ordre est appliqué en mémoire à l'étape 3).
   const where: Record<string, unknown> = { status }
-
   if (type) where.type = type
   if (category) where.category = category
 
+  const all = (await db.marketplaceListing.findMany({
+    where,
+  })) as unknown as StoredListing[]
+
+  // 2. Filtres mémoire : texte (Firestore n'a pas de LIKE), prix (plage),
+  //    tags (stockés en JSON string — `contains` serveur ne matcherait
+  //    jamais un tag isolé).
+  let rows = all
+
   if (query) {
-    where.OR = [
-      { name: { contains: query } },
-      { description: { contains: query } },
-    ]
+    const q = query.trim().toLowerCase()
+    if (q) {
+      rows = rows.filter(
+        (l) =>
+          String(l.name || '').toLowerCase().includes(q) ||
+          String(l.description || '').toLowerCase().includes(q),
+      )
+    }
   }
 
-  if (minPrice !== undefined || maxPrice !== undefined) {
-    const priceFilter: Record<string, number> = {}
-    if (minPrice !== undefined) priceFilter.gte = minPrice
-    if (maxPrice !== undefined) priceFilter.lte = maxPrice
-    where.price = priceFilter
-  }
+  if (minPrice !== undefined) rows = rows.filter((l) => Number(l.price) >= minPrice)
+  if (maxPrice !== undefined) rows = rows.filter((l) => Number(l.price) <= maxPrice)
 
   if (tags && tags.length > 0) {
-    where.AND = tags.map((tag) => ({
-      tags: {
-        contains: tag,
-      },
-    }))
+    rows = rows.filter((l) => {
+      const listingTags = Array.isArray(l.tags)
+        ? (l.tags as unknown as string[])
+        : safeParse<string[]>(String(l.tags ?? '[]'), [])
+      return tags.every((tag) => listingTags.includes(tag))
+    })
   }
 
-  let orderBy:
-    | Array<Record<string, 'asc' | 'desc'>>
-    | Record<string, 'asc' | 'desc'>
-
+  // 3. Tri mémoire (tolérant aux dates corrompues via toTime)
   switch (sortBy) {
     case 'popular':
-      orderBy = [{ downloads: 'desc' }, { rating: 'desc' }]
+      rows.sort(
+        (a, b) =>
+          Number(b.downloads || 0) - Number(a.downloads || 0) ||
+          Number(b.rating || 0) - Number(a.rating || 0),
+      )
       break
     case 'rating':
-      orderBy = [{ rating: 'desc' }, { reviewCount: 'desc' }]
+      rows.sort(
+        (a, b) =>
+          Number(b.rating || 0) - Number(a.rating || 0) ||
+          Number(b.reviewCount || 0) - Number(a.reviewCount || 0),
+      )
       break
     case 'price_asc':
-      orderBy = [{ price: 'asc' }]
+      rows.sort((a, b) => Number(a.price || 0) - Number(b.price || 0))
       break
     case 'price_desc':
-      orderBy = [{ price: 'desc' }]
+      rows.sort((a, b) => Number(b.price || 0) - Number(a.price || 0))
       break
     case 'newest':
     default:
-      orderBy = [{ publishedAt: 'desc' }, { createdAt: 'desc' }]
+      rows.sort(
+        (a, b) => toTime(b.publishedAt) - toTime(a.publishedAt) || toTime(b.createdAt) - toTime(a.createdAt),
+      )
   }
 
-  const [listings, total] = await Promise.all([
-    db.marketplaceListing.findMany({
-      where,
-// @ts-ignore — type narrowing pending, see refactor ticket
-      orderBy,
-      skip: (page - 1) * limit,
-      take: limit,
-      include: {
-        user: {
-          select: {
-            name: true,
-            avatar: true,
-          },
-        },
-      },
-    }),
-    db.marketplaceListing.count({ where }),
-  ])
+  // 4. Pagination mémoire — totaux exacts sur l'ensemble filtré
+  const total = rows.length
+  const paged = rows.slice((page - 1) * limit, page * limit)
+
+  // 5. Jointure auteur sur la page uniquement (include ignoré par la façade)
+  const authors = await fetchAuthors(paged.map((l) => String(l.userId)))
+  const listings = paged.map((l) =>
+    serializeListing({ ...l, user: authors.get(String(l.userId)) }),
+  )
 
   return {
-    listings: listings.map(serializeListing),
+    listings,
     total,
     page,
     totalPages: Math.ceil(total / limit),
@@ -521,17 +590,12 @@ export async function getListing(
 ): Promise<MarketplaceListingResult | null> {
   const listing = await db.marketplaceListing.findUnique({
     where: { id: listingId },
-    include: {
-      user: {
-        select: {
-          name: true,
-          avatar: true,
-        },
-      },
-    },
   })
 
-  return listing ? serializeListing(listing) : null
+  if (!listing) return null
+  const row = listing as StoredListing
+  const author = await fetchAuthor(String(row.userId ?? ''))
+  return serializeListing({ ...row, user: author })
 }
 
 export async function getListingForViewer(
@@ -540,26 +604,20 @@ export async function getListingForViewer(
 ): Promise<MarketplaceListingResult | null> {
   const listing = await db.marketplaceListing.findUnique({
     where: { id: listingId },
-    include: {
-      user: {
-        select: {
-          name: true,
-          avatar: true,
-        },
-      },
-    },
   })
 
   if (!listing) return null
+  const row = listing as StoredListing
 
-  const isOwner = listing.userId === viewerUserId
-  const isPublished = listing.status === 'published'
+  const isOwner = row.userId === viewerUserId
+  const isPublished = row.status === 'published'
 
   if (!isOwner && !isPublished) {
     return null
   }
 
-  return serializeListing(listing)
+  const author = await fetchAuthor(String(row.userId ?? ''))
+  return serializeListing({ ...row, user: author })
 }
 
 // ---------------------------------------------------------------------------
@@ -570,14 +628,12 @@ export async function deleteListing(
   userId: string,
   listingId: string
 ): Promise<boolean> {
-  const listing = await db.marketplaceListing.findFirst({
-    where: {
-      id: listingId,
-      userId,
-    },
+  // Correctif : même bug champ 'id' que updateListing (toujours null).
+  const listing = await db.marketplaceListing.findUnique({
+    where: { id: listingId },
   })
 
-  if (!listing) return false
+  if (!listing || (listing as Record<string, unknown>).userId !== userId) return false
 
   await db.marketplaceListing.delete({
     where: { id: listingId },
@@ -589,6 +645,8 @@ export async function deleteListing(
 // ---------------------------------------------------------------------------
 // Core: Increment downloads / installs
 // ---------------------------------------------------------------------------
+// { increment: 1 } est converti en FieldValue.increment(1) par la façade
+// (serializeUpdate) — incrément atomique côté serveur, sans race condition.
 
 export async function incrementDownloads(listingId: string): Promise<void> {
   await db.marketplaceListing.update({
@@ -610,4 +668,4 @@ export async function incrementInstallCount(listingId: string): Promise<void> {
       },
     },
   })
-  }
+}
