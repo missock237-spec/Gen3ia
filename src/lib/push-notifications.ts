@@ -85,9 +85,11 @@ export async function removeSubscription(
   endpoint: string
 ): Promise<{ success: boolean }> {
   try {
-    const all = await db.pushSubscription.findMany({ where: {} });
-    const sub = (all as Record<string, unknown>[])
-      .find(s => s.userId === userId && s.endpoint === endpoint);
+    const mine = await db.pushSubscription.findMany({
+      where: [{ field: 'userId', op: '==', value: userId }],
+    });
+    const sub = (mine as Record<string, unknown>[])
+      .find(s => s.endpoint === endpoint);
     if (sub) {
       await db.pushSubscription.update({
         where: { id: sub.id as string },
@@ -119,9 +121,12 @@ export async function sendPushNotification(
 
   try {
     // Récupérer toutes les souscriptions actives de l'utilisateur
-    const all = await db.pushSubscription.findMany({ where: {} });
-    const subs = (all as Record<string, unknown>[])
-      .filter(s => s.userId === userId && s.active === true);
+    // (filtre userId côté serveur — ne charge pas toute la collection)
+    const mine = await db.pushSubscription.findMany({
+      where: [{ field: 'userId', op: '==', value: userId }],
+    });
+    const subs = (mine as Record<string, unknown>[])
+      .filter(s => s.active === true);
 
     if (subs.length === 0) {
       return { success: true, sent: 0 };
@@ -176,12 +181,19 @@ async function saveInAppNotification(userId: string, payload: PushPayload): Prom
 
 /**
  * Récupère les notifications non lues d'un utilisateur.
+ *
+ * Le filtre `userId` est appliqué côté serveur (ne charge plus toute la
+ * collection — correctif performance/coûts). Le filtre `read === false`
+ * reste en mémoire : il tolère les documents sans champ `read` et évite
+ * d'exiger un index composite (userId, read).
  */
 export async function getUnreadNotifications(userId: string): Promise<Record<string, unknown>[]> {
   try {
-    const all = await db.notification.findMany({ where: {} });
-    return (all as Record<string, unknown>[])
-      .filter(n => n.userId === userId && n.read === false)
+    const mine = await db.notification.findMany({
+      where: [{ field: 'userId', op: '==', value: userId }],
+    });
+    return (mine as Record<string, unknown>[])
+      .filter(n => n.read === false)
       .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime());
   } catch {
     return [];
@@ -193,9 +205,11 @@ export async function getUnreadNotifications(userId: string): Promise<Record<str
  */
 export async function markAllAsRead(userId: string): Promise<void> {
   try {
-    const all = await db.notification.findMany({ where: {} });
-    const unread = (all as Record<string, unknown>[])
-      .filter(n => n.userId === userId && n.read === false);
+    const mine = await db.notification.findMany({
+      where: [{ field: 'userId', op: '==', value: userId }],
+    });
+    const unread = (mine as Record<string, unknown>[])
+      .filter(n => n.read === false);
 
     for (const n of unread) {
       await db.notification.update({
