@@ -12,27 +12,32 @@ const loginSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  return handleRoute(async () => {
-    const body = await readJson(req, loginSchema)
-    const email = body.email.toLowerCase().trim()
+  // v3.1 : rate limiting IP — 10 tentatives/minute (anti force-brute).
+  return handleRoute(
+    req,
+    async () => {
+      const body = await readJson(req, loginSchema)
+      const email = body.email.toLowerCase().trim()
 
-    const user = await db.user.findUnique({ where: { email } })
-    if (!user || !user.passwordHash || !verifyPassword(body.password, user.passwordHash)) {
-      await audit(req, { action: "LOGIN_FAILED", entityType: "user", detail: { email } })
-      throw new ApiError(401, "E-mail ou mot de passe incorrect.", "BAD_CREDENTIALS")
-    }
+      const user = await db.user.findUnique({ where: { email } })
+      if (!user || !user.passwordHash || !verifyPassword(body.password, user.passwordHash)) {
+        await audit(req, { action: "LOGIN_FAILED", entityType: "user", detail: { email } })
+        throw new ApiError(401, "E-mail ou mot de passe incorrect.", "BAD_CREDENTIALS")
+      }
 
-    const token = await createSession(user.id, {
-      userAgent: req.headers.get("user-agent"),
-      ip: getClientIp(req),
-    })
-    await audit(req, { userId: user.id, action: "LOGIN", entityType: "user", entityId: user.id })
+      const token = await createSession(user.id, {
+        userAgent: req.headers.get("user-agent"),
+        ip: getClientIp(req),
+      })
+      await audit(req, { userId: user.id, action: "LOGIN", entityType: "user", entityId: user.id })
 
-    const res = NextResponse.json({
-      ok: true,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, credits: user.credits },
-    })
-    res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions())
-    return res
-  })
+      const res = NextResponse.json({
+        ok: true,
+        user: { id: user.id, email: user.email, name: user.name, role: user.role, credits: user.credits },
+      })
+      res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions())
+      return res
+    },
+    { rateLimit: { policy: "auth", identify: "ip" } }
+  )
 }

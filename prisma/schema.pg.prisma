@@ -123,13 +123,16 @@ model Task {
   tokensIn       Int       @default(0)
   tokensOut      Int       @default(0)
   attempts       Int       @default(0)
+  totalRetries   Int       @default(0) // plafond global de retries (circuit breaker)
+  version        Int       @default(0) // verrouillage optimiste des fusions JSON
   error          String?
   startedAt      DateTime?
   completedAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  steps TaskStep[]
+  steps     TaskStep[]
+  artifacts TaskArtifact[]
 
   @@index([userId, createdAt])
   @@index([status])
@@ -195,6 +198,8 @@ model Document {
   chunks     String? // JSON : morceaux indexés pour le RAG
   size       Int      @default(0)
   createdAt  DateTime @default(now())
+
+  embeddings Embedding[]
 
   @@index([userId])
 }
@@ -265,4 +270,92 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([createdAt])
+}
+// ============================================================
+// Améliorations v3.1 — vecteurs, cache, télémétrie, config, artefacts
+// ============================================================
+
+// Vecteurs d'embedding par morceau de document (RAG sémantique).
+// Backend « json » : embedding = JSON number[] + norme précalculée
+// (cosinus en mémoire, indépendant du moteur de base).
+model Embedding {
+  id         String   @id @default(cuid())
+  userId     String
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex Int
+  chunkText  String
+  embedding  String // JSON : number[]
+  dim        Int
+  norm       Float // norme L2 précalculée (accélère la similarité cosinus)
+  model      String // fournisseur d'embedding (openai/..., local/hash-256…)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, documentId])
+  @@index([userId, model])
+}
+
+// Cache de plans : évite de régénérer 5 plans pour des demandes similaires.
+// Recherche exacte par promptHash, puis similitude sémantique (embedding).
+model PlanCache {
+  id             String   @id @default(cuid())
+  userId         String
+  promptHash     String // SHA-256 du prompt normalisé
+  prompt         String
+  embedding      String? // JSON : number[] — recherche sémantique
+  plans          String // JSON : Plan[]
+  planScores     String // JSON : évaluation complète
+  selectedPlanId String
+  hitCount       Int      @default(0)
+  lastUsedAt     DateTime @default(now())
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([userId, promptHash])
+  @@index([userId, lastUsedAt])
+}
+
+// Télémétrie des moteurs : une ligne par exécution de phase/moteur.
+// Source unique de vérité du tableau d'observabilité admin.
+model EngineRun {
+  id         String   @id @default(cuid())
+  engine     String // PROMPT_ANALYSIS | PLANNER | EVALUATOR | EXECUTOR | VERIFICATION | SELF_CORRECTION | LEARNING | ORCHESTRATOR
+  taskId     String?
+  userId     String?
+  phase      String?
+  ok         Boolean
+  errorCode  String?
+  durationMs Int
+  attempts   Int      @default(1)
+  tokensIn   Int      @default(0)
+  tokensOut  Int      @default(0)
+  credits    Float    @default(0)
+  detail     String? // JSON : contexte (outils utilisés, stratégie de plan…)
+  createdAt  DateTime @default(now())
+
+  @@index([engine, createdAt])
+  @@index([taskId])
+}
+
+// Configuration système éditable depuis l'interface admin (KV JSON).
+model SystemConfig {
+  key       String   @id
+  value     String // JSON
+  updatedAt DateTime @updatedAt
+}
+
+// Artefacts volumineux d'une tâche : preuves et sorties compressées
+// (gzip+base64) — la ligne Task ne conserve que les métadonnées/références.
+model TaskArtifact {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  kind      String // EVIDENCE | STEP_OUTPUT | EXECUTION_RESULT | PHASE_OUTPUT
+  phase     String?
+  stepIndex Int?
+  payload   String // gzip + base64
+  bytes     Int // taille décompressée
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
 }

@@ -1,40 +1,53 @@
 import { db } from "@/lib/db"
 import type { Agent, Task, User } from "@prisma/client"
-import { chat } from "@/lib/ai"
-import { creditsForTokens } from "@/lib/ai/router"
 import { NoProviderError } from "@/lib/ai/types"
 import { chargeCredits, InsufficientCreditsError } from "@/lib/credits/ledger"
+import { creditsForTokens } from "@/lib/ai/router"
 import { searchKnowledge } from "@/lib/rag/retriever"
 import { recallMemories } from "@/lib/memory/store"
 import { TOOL_CATALOG, listAvailableToolKeys } from "@/lib/tools/registry"
-import { analyzePrompt } from "./prompt-analysis"
-import { generatePlans } from "./planner"
-import { evaluatePlans } from "./evaluator"
-import { executePlan } from "./executor"
-import { verifyResult } from "./verification"
-import { extractLearning } from "./learning"
-import { runWithSelfCorrection, analyzeError, ReplanRequiredError } from "./self-correction"
-import { transitionTask, recordStep, mergeTaskJson, type PipelinePhase } from "./state-machine"
+import { runEngine, type EngineContext } from "./sdk"
+import { engines, recordOrchestratorRun } from "./engines"
+import { feedbackSnapshot, plannerFeedbackBlock } from "./feedback"
+import { getSystemSettings } from "@/lib/system/config"
+import { externalizeEvidence, hydrateEvidence } from "@/lib/tasks/artifacts"
+import { analyzeError, ReplanRequiredError, RetryBudgetExceededError } from "./self-correction"
+import { transitionTask, recordStep, mergeTaskJson } from "./state-machine"
 import { audit } from "./audit"
 import type {
   CorrectionLogEntry,
   EvaluationWeights,
   ExecutionLogEntry,
   Plan,
+  PlanStep,
   PromptAnalysis,
   VerificationReport,
 } from "./types"
 import { DEFAULT_WEIGHTS } from "./types"
 import { getUserSettings, DEFAULT_USER_SETTINGS } from "@/lib/auth/guards"
+import { logger as rootLogger } from "@/lib/observability/logger"
+import { AppError, EngineError } from "@/lib/errors"
 
 /**
  * Orchestrator — moteur central de GEN3IA.
- * Pipeline : ANALYZING → PLANNING → SIMULATING → EXECUTING → VERIFYING → LEARNING → COMPLETED
+ * Pipeline : ANALYZING → PLANNING → SIMULATING [→ WAITING_PLAN_APPROVAL]
+ *   → EXECUTING → VERIFYING → LEARNING → COMPLETED
  *
  * Conception reprise-ez : chaque phase persiste ses sorties dans la tâche
  * (checkpoint). advanceTask() peut donc être appelé plusieurs fois (requête
  * HTTP initiale + sondages) : le pipeline reprend exactement là où il s'est
  * arrêté — compatible serverless, sans file d'attente externe obligatoire.
+ *
+ * Améliorations v3.1 :
+ *  - chaque phase passe par le SDK de moteurs (contrat execute/rollback/
+ *    getStatus) avec télémétrie EngineRun systématique ;
+ *  - éthique : l'EthicsEngine bloque les usages interdits avant exécution ;
+ *  - mode Explain : approbation manuelle des plans (WAITING_PLAN_APPROVAL) ;
+ *  - budget global de retries persisté (Task.totalRetries) — circuit breaker ;
+ *  - boucle de feedback : l'historique module l'évaluateur et le planificateur ;
+ *  - apprentissage sur les ÉCHECS en plus des succès ;
+ *  - preuves volumineuses externalisées (TaskArtifact gzip) ;
+ *  - journalisation structurée JSON de bout en bout.
  */
 
 const PHASE_BUDGET_MS = 50_000 // budget par appel advanceTask (compatible Vercel)
@@ -73,7 +86,8 @@ function agentAllowedTools(agent: TaskAgent | null): string[] {
   return listAvailableToolKeys()
 }
 
-function userWeights(user: User): EvaluationWeights {
+/** Pondérations : utilisateur > système (admin) > défauts. */
+function resolveWeights(user: User): EvaluationWeights {
   try {
     const settings = user.settings ? JSON.parse(user.settings) : {}
     return { ...DEFAULT_WEIGHTS, ...(settings.planWeights ?? {}) }
@@ -96,27 +110,20 @@ async function chargePhase(
 ): Promise<void> {
   if (meter.tokensIn === 0 && meter.tokensOut === 0) return
   const credits = Math.max(0.01, creditsForTokens(providerLabel, "auto", meter.tokensIn, meter.tokensOut))
-  try {
-    await chargeCredits(user.id, credits, {
-      type: phase === "PLANNING" ? "PLAN_GENERATION" : "TASK_EXECUTION",
-      description: `Phase ${phase} — ${meter.tokensIn} tokens entrée / ${meter.tokensOut} sortie`,
-      refType: "task",
-      refId: task.id,
-    })
-    await db.task.update({
-      where: { id: task.id },
-      data: {
-        costCredits: { increment: credits },
-        tokensIn: { increment: meter.tokensIn },
-        tokensOut: { increment: meter.tokensOut },
-      },
-    })
-  } catch (err) {
-    if (err instanceof InsufficientCreditsError) {
-      throw err
-    }
-    throw err
-  }
+  await chargeCredits(user.id, credits, {
+    type: phase === "PLANNING" ? "PLAN_GENERATION" : "TASK_EXECUTION",
+    description: `Phase ${phase} — ${meter.tokensIn} tokens entrée / ${meter.tokensOut} sortie`,
+    refType: "task",
+    refId: task.id,
+  })
+  await db.task.update({
+    where: { id: task.id },
+    data: {
+      costCredits: { increment: credits },
+      tokensIn: { increment: meter.tokensIn },
+      tokensOut: { increment: meter.tokensOut },
+    },
+  })
 }
 
 function parseJsonField<T>(value: string | null, fallback: T): T {
@@ -126,6 +133,12 @@ function parseJsonField<T>(value: string | null, fallback: T): T {
   } catch {
     return fallback
   }
+}
+
+const EMPTY_ANALYSIS: PromptAnalysis = {
+  intent: "", goals: [], constraints: [], requiredCapabilities: [], risks: [],
+  successCriteria: [], failureCriteria: [], estimatedComplexity: "MEDIUM",
+  estimatedSteps: 3, language: "fr", clarificationNeeded: false,
 }
 
 /** Ajoute une entrée au journal des corrections (persisté). */
@@ -139,7 +152,7 @@ async function appendCorrection(taskId: string, entry: CorrectionLogEntry): Prom
 /**
  * Fait avancer la tâche d'autant de phases que le budget temporel le permet.
  * Retourne la tâche mise à jour. Idempotent : sans effet sur une tâche
- * terminée, annulée ou en attente d'approbation humaine.
+ * terminée, annulée ou en attente (humain ou approbation de plan).
  */
 export async function advanceTask(
   taskId: string,
@@ -148,15 +161,39 @@ export async function advanceTask(
   const loaded = await loadTask(taskId)
   if (!loaded) return null
   let { task, user, agent } = loaded
+  const startedAt = Date.now()
 
   const budgetEnd = Date.now() + (options?.budgetMs ?? PHASE_BUDGET_MS)
   const settings = { ...DEFAULT_USER_SETTINGS, ...parseJsonField(user.settings ?? "{}", {}) }
   const maxAttempts = Math.max(1, Math.min(5, settings.maxAttempts ?? DEFAULT_MAX_EXECUTION_ATTEMPTS))
   const allowedTools = agentAllowedTools(agent)
+  const log = rootLogger.child({ taskId: task.id, userId: user.id, phase: "ORCHESTRATOR" })
 
   // Tâche déjà terminée / en attente : rien à faire.
-  if (["COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_HUMAN"].includes(task.status)) {
+  if (["COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_HUMAN", "WAITING_PLAN_APPROVAL"].includes(task.status)) {
     return task
+  }
+
+  // v3.1 — circuit breaker global : budget de retries persisté épuisé.
+  const systemSettings = await getSystemSettings()
+  const retryBudget = {
+    spent: task.totalRetries,
+    max: systemSettings.maxTotalRetries,
+    onSpend: async (total: number) => {
+      await db.task.update({ where: { id: task.id }, data: { totalRetries: total } }).catch(() => undefined)
+    },
+  }
+  if (task.totalRetries >= retryBudget.max) {
+    const err = new RetryBudgetExceededError(task.totalRetries, retryBudget.max)
+    await transitionTask(task, "FAILED", { error: err.userMessage.slice(0, 500) }).catch(() => undefined)
+    await audit(null, {
+      userId: user.id, action: "TASK_FAILED_RETRY_BUDGET", entityType: "task", entityId: task.id,
+    })
+    await recordOrchestratorRun({
+      taskId: task.id, userId: user.id, ok: false, durationMs: 0,
+      errorCode: "RETRY_BUDGET_EXCEEDED", detail: { totalRetries: task.totalRetries },
+    })
+    return await db.task.findUniqueOrThrow({ where: { id: task.id } })
   }
 
   const memories = await recallMemories(user.id, { query: task.prompt, agentId: agent?.id, limit: 5 })
@@ -173,6 +210,27 @@ export async function advanceTask(
     /* pas de base de connaissances */
   }
 
+  // v3.1 — boucle de feedback : l'historique influence planification + évaluation.
+  const feedback = await feedbackSnapshot(user.id)
+
+  const ctx: EngineContext = {
+    taskId: task.id,
+    userId: user.id,
+    agentId: agent?.id ?? null,
+    settings: {
+      maxAttempts,
+      confirmDangerousOps: settings.confirmDangerousOps,
+      planApproval: settings.planApproval ?? "auto",
+    },
+    allowedTools,
+    memories: memoryStrings,
+    knowledgeContext,
+    logger: log,
+    retryBudget,
+  }
+
+  const { analysis: analysisEngine, planner: plannerEngine, evaluator: evaluatorEngine, ethics: ethicsEngine, executor: executorEngine, verification: verificationEngine, learning: learningEngine } = engines()
+
   try {
     // ---------------- Phase ANALYZING ----------------
     if (task.status === "QUEUED") {
@@ -181,28 +239,15 @@ export async function advanceTask(
     }
     if (task.status === "ANALYZING") {
       if (!task.analysis) {
-        const meter: TokenMeter = { tokensIn: 0, tokensOut: 0 }
-        const { value: analysis } = await runWithSelfCorrection(
-          async () => {
-            const r = await analyzePrompt(task.prompt, {
-              agentName: agent?.name,
-              agentSystemPrompt: agent?.systemPrompt ?? undefined,
-              memories: memoryStrings,
-            })
-            meter.tokensIn += r.tokensIn
-            meter.tokensOut += r.tokensOut
-            return r.analysis
-          },
-          {
-            phase: "ANALYZING",
-            maxAttempts: 2,
-            attempt: 0,
-            onCorrection: (e) => appendCorrection(task.id, e),
-          }
-        )
-        await mergeTaskJson(task.id, "analysis", analysis)
-        await chargePhase(task, user, meter, "ANALYZING", "zai")
-        await recordStep(task.id, "ANALYZING", 0, "Analyse de la demande", "DONE", analysis)
+        const execution = await runEngine(analysisEngine, {
+          prompt: task.prompt,
+          agentName: agent?.name,
+          agentSystemPrompt: agent?.systemPrompt ?? undefined,
+          memories: memoryStrings,
+        }, ctx)
+        await mergeTaskJson(task.id, "analysis", execution.value)
+        await chargePhase(task, user, execution, "ANALYZING", "zai")
+        await recordStep(task.id, "ANALYZING", 0, "Analyse de la demande", "DONE", execution.value)
       }
       task = await transitionTask(task, "PLANNING")
       await recordStep(task.id, "PLANNING", 0, "Génération des 5 plans", "RUNNING")
@@ -211,61 +256,104 @@ export async function advanceTask(
     // ---------------- Phase PLANNING ----------------
     if (task.status === "PLANNING") {
       if (!task.plans) {
-        const meter: TokenMeter = { tokensIn: 0, tokensOut: 0 }
         const previousFailure = parseJsonField<CorrectionLogEntry[]>(task.correctionLog, [])
           .filter((c) => c.strategy === "REPLAN")
           .map((c) => c.error)
           .pop()
-        const { value: plans } = await runWithSelfCorrection(
-          async () => {
-            const r = await generatePlans(task.prompt, parseJsonField<PromptAnalysis>(task.analysis, {
-              intent: "", goals: [], constraints: [], requiredCapabilities: [], risks: [],
-              successCriteria: [], failureCriteria: [], estimatedComplexity: "MEDIUM",
-              estimatedSteps: 3, language: "fr", clarificationNeeded: false,
-            }), { previousFailure, memories: memoryStrings })
-            meter.tokensIn += r.tokensIn
-            meter.tokensOut += r.tokensOut
-            return r.plans
-          },
-          {
-            phase: "PLANNING",
-            maxAttempts: 2,
-            attempt: 0,
-            onCorrection: (e) => appendCorrection(task.id, e),
-          }
-        )
-        await mergeTaskJson(task.id, "plans", plans)
-        await chargePhase(task, user, meter, "PLANNING", "zai")
+        const execution = await runEngine(plannerEngine, {
+          prompt: task.prompt,
+          analysis: parseJsonField<PromptAnalysis>(task.analysis, EMPTY_ANALYSIS),
+          previousFailure,
+          memories: memoryStrings,
+          feedbackBlock: plannerFeedbackBlock(feedback),
+          allowedTools,
+        }, ctx)
+        if (execution.value.length === 0) {
+          throw new EngineError("PLANNING_FAILED", "Le planificateur n'a produit aucun plan exploitable.")
+        }
+        await mergeTaskJson(task.id, "plans", execution.value)
+        await chargePhase(task, user, execution, "PLANNING", "zai")
         await recordStep(task.id, "PLANNING", 0, "Génération des 5 plans", "DONE", {
-          plans: plans.map((p) => ({ id: p.id, name: p.name })),
+          plans: execution.value.map((p) => ({ id: p.id, name: p.name })),
+          fromCache: (execution.meta?.planCache as string | undefined) ?? null,
         })
       }
       task = await transitionTask(task, "SIMULATING")
-      await recordStep(task.id, "SIMULATING", 0, "Évaluation et sélection du plan optimal", "RUNNING")
+      await recordStep(task.id, "SIMULATING", 0, "Évaluation, éthique et sélection du plan optimal", "RUNNING")
     }
 
-    // ---------------- Phase SIMULATING (évaluation + validation pré-exécution) ----------------
+    // ---------------- Phase SIMULATING (évaluation + éthique + validation) ----------------
     if (task.status === "SIMULATING") {
       if (!task.planScores) {
         const plans = parseJsonField<Plan[]>(task.plans, [])
-        const evaluation = evaluatePlans({
+        if (plans.length === 0) {
+          throw new EngineError("PLANNING_FAILED", "Aucun plan disponible pour l'évaluation.")
+        }
+        const weights = resolveWeights(user)
+        const evaluation = await runEngine(evaluatorEngine, {
           plans,
-          weights: userWeights(user),
+          weights,
           availableTools: allowedTools,
           userCredits: user.credits,
-        })
+          feedback,
+        }, ctx)
+
         await mergeTaskJson(task.id, "planScores", {
-          scores: evaluation.scores,
-          selectedPlanId: evaluation.selectedPlanId,
-          rationale: evaluation.rationale,
-          weights: userWeights(user),
+          scores: evaluation.value.scores,
+          selectedPlanId: evaluation.value.selectedPlanId,
+          rationale: evaluation.value.rationale,
+          weights,
         })
-        await db.task.update({ where: { id: task.id }, data: { selectedPlanId: evaluation.selectedPlanId } })
-        await recordStep(task.id, "SIMULATING", 0, "Évaluation et sélection du plan optimal", "DONE", evaluation)
+        await db.task.update({ where: { id: task.id }, data: { selectedPlanId: evaluation.value.selectedPlanId } })
+        await recordStep(task.id, "SIMULATING", 0, "Évaluation et sélection du plan optimal", "DONE", evaluation.value)
         task = await db.task.findUniqueOrThrow({ where: { id: task.id } })
 
+        // v3.1 — Ethics Engine : usages interdits bloqués avant exécution.
+        const ethics = await runEngine(ethicsEngine, {
+          prompt: task.prompt,
+          plans,
+          selectedPlanId: evaluation.value.selectedPlanId,
+        }, ctx)
+        const blocking = ethics.value.violations.filter((v) => v.severity === "BLOCK")
+        const flagged = ethics.value.violations.filter((v) => v.severity === "FLAG")
+        if (blocking.length > 0) {
+          await mergeTaskJson(task.id, "planScores", {
+            scores: evaluation.value.scores,
+            selectedPlanId: evaluation.value.selectedPlanId,
+            rationale: evaluation.value.rationale,
+            weights,
+            ethicsViolations: blocking,
+          })
+          await transitionTask(task, "FAILED", {
+            error: `Politique d'éthique : demande refusée (${blocking.map((v) => v.rule).join(", ")}).`,
+          })
+          await audit(null, {
+            userId: user.id, action: "TASK_BLOCKED_ETHICS", entityType: "task", entityId: task.id,
+            detail: { rules: blocking.map((v) => v.rule) },
+          })
+          log.warn("ethics: tâche bloquée", { rules: blocking.map((v) => v.rule) })
+          return await db.task.findUniqueOrThrow({ where: { id: task.id } })
+        }
+
+        // v3.1 — cache de plans (après validation éthique).
+        await plannerEngine.persistCache(ctx, { prompt: task.prompt, analysis: parseJsonField<PromptAnalysis>(task.analysis, EMPTY_ANALYSIS), memories: memoryStrings, allowedTools }, plans, { scores: evaluation.value.scores, rationale: evaluation.value.rationale }, evaluation.value.selectedPlanId)
+
+        // v3.1 — mode Explain : approbation manuelle des plans demandée.
+        if (ctx.settings.planApproval === "manual") {
+          await transitionTask(task, "WAITING_PLAN_APPROVAL")
+          await recordStep(task.id, "SIMULATING", 0, "Évaluation et sélection du plan optimal", "DONE", {
+            ...evaluation.value,
+            awaitingPlanApproval: true,
+          })
+          await audit(null, {
+            userId: user.id, action: "TASK_WAITING_PLAN_APPROVAL", entityType: "task", entityId: task.id,
+            detail: { selectedPlanId: evaluation.value.selectedPlanId },
+          })
+          return await db.task.findUniqueOrThrow({ where: { id: task.id } })
+        }
+
         // Validation pré-exécution : opération sensible → approbation humaine.
-        const selected = plans.find((p) => p.id === evaluation.selectedPlanId)
+        const selected = plans.find((p) => p.id === evaluation.value.selectedPlanId)
         const dangerousTools = (selected?.requiredTools ?? []).filter((t) =>
           TOOL_CATALOG.find((c) => c.key === t)?.dangerous
         )
@@ -291,39 +379,35 @@ export async function advanceTask(
           })
           return await db.task.findUniqueOrThrow({ where: { id: task.id } })
         }
+        void flagged // les violations FLAG sont visibles dans le rapport d'éthique (détail de l'étape)
       }
       task = await transitionTask(task, "EXECUTING")
     }
 
     // ---------------- Phase EXECUTING ----------------
     if (task.status === "EXECUTING") {
-      if (!task.executionLog) {
+      const priorExecution = parseJsonField<{ finalAnswer?: string; steps?: ExecutionLogEntry[]; corrective?: string; previousAnswer?: string }>(task.executionLog, {})
+      if (!task.executionLog || !priorExecution.finalAnswer) {
+        // v3.1 : reprise après crash — les étapes déjà checkpointées sont
+        // signalées comme contexte (instruction corrective de reprise).
+        const resumeNote = task.executionLog && (priorExecution.steps?.length ?? 0) > 0
+          ? `Reprise après interruption : ${priorExecution.steps?.length ?? 0} étape(s) déjà réalisée(s) (${(priorExecution.steps ?? []).slice(-2).map((s) => s.title).join(" ; ")}). Reprends à la suite, sans répéter le travail accompli.`
+          : undefined
+        const correctiveInstruction = priorExecution.corrective ?? resumeNote
+
         const plans = parseJsonField<Plan[]>(task.plans, [])
-        const analysis = parseJsonField<PromptAnalysis>(task.analysis, {
-          intent: "", goals: [], constraints: [], requiredCapabilities: [], risks: [],
-          successCriteria: [], failureCriteria: [], estimatedComplexity: "MEDIUM",
-          estimatedSteps: 3, language: "fr", clarificationNeeded: false,
-        })
+        const analysis = parseJsonField<PromptAnalysis>(task.analysis, EMPTY_ANALYSIS)
         const selected = plans.find((p) => p.id === task.selectedPlanId) ?? plans[0]
-        if (!selected) throw new Error("Aucun plan sélectionné pour l'exécution.")
+        if (!selected) throw new EngineError("EXECUTION_FAILED", "Aucun plan sélectionné pour l'exécution.")
 
         const meter: TokenMeter = { tokensIn: 0, tokensOut: 0 }
+        let checkpointSteps: ExecutionLogEntry[] = []
 
-        const attemptCount = 0
-        const correctiveInstruction = (() => {
-          try {
-            const log = task.executionLog ? JSON.parse(task.executionLog) : null
-            return log && typeof log.corrective === "string" ? log.corrective : undefined
-          } catch {
-            return undefined
-          }
-        })()
-
-        const outcome = await executePlan(
-          task.prompt,
+        const outcome = await runEngine(executorEngine, {
+          prompt: task.prompt,
           analysis,
-          selected,
-          {
+          plan: selected,
+          executorCtx: {
             userId: user.id,
             taskId: task.id,
             agentId: agent?.id ?? null,
@@ -332,7 +416,7 @@ export async function advanceTask(
             knowledgeContext,
             memories: memoryStrings,
           },
-          {
+          callbacks: {
             onStepStart: async (i, title) => {
               await recordStep(task.id, "EXECUTING", i, `Étape ${i + 1} : ${title}`, "RUNNING")
             },
@@ -340,6 +424,7 @@ export async function advanceTask(
               await recordStep(task.id, "EXECUTING", entry.stepIndex, `Étape ${entry.stepIndex + 1} : ${entry.title}`, "DONE", {
                 output: entry.output.slice(0, 2000),
                 evidence: entry.evidence.length,
+                latencyMs: entry.latencyMs,
               })
             },
             onStepFailed: async (i, error) => {
@@ -349,39 +434,38 @@ export async function advanceTask(
               meter.tokensIn += tIn
               meter.tokensOut += tOut
             },
-            authorizeDangerousTool: () => {
-              // Approbation déjà donnée via HITL (le plan a été validé) OU
-              // confirmations désactivées par l'utilisateur.
-              return settings.confirmDangerousOps === false
+            // v3.1 : HITL déjà donné (approbation du plan) OU confirmations désactivées.
+            authorizeDangerousTool: () => settings.confirmDangerousOps === false,
+            // v3.1 : checkpoint mi-exécution — un crash ne perd plus les étapes.
+            onCheckpoint: async (partial) => {
+              checkpointSteps = partial.steps
+              await mergeTaskJson(task.id, "executionLog", {
+                steps: partial.steps,
+                corrective: correctiveInstruction,
+              })
             },
           },
-          correctiveInstruction
-        ).catch(async (err) => {
-          const analysis2 = analyzeError(err)
-          await appendCorrection(task.id, {
-            attempt: 0,
-            phase: "EXECUTING",
-            error: analysis2.reason.slice(0, 400),
-            classification: analysis2.classification,
-            attribution: analysis2.attribution,
-            strategy: analysis2.strategy,
-            action: analysis2.attribution,
-            outcome: "ESCALATED",
-          })
-          throw err
-        })
+          correctiveInstruction,
+        }, ctx)
 
+        // v3.1 — preuves volumineuses externalisées (TaskArtifact gzip).
+        const lightEvidence = await externalizeEvidence(task.id, outcome.value.evidence, { phase: "EXECUTING" })
         await mergeTaskJson(task.id, "executionLog", {
-          steps: outcome.steps,
-          finalAnswer: outcome.finalAnswer,
-          evidence: outcome.evidence,
+          steps: outcome.value.steps,
+          finalAnswer: outcome.value.finalAnswer,
+          evidence: lightEvidence,
+          toolsUsed: outcome.value.toolsUsed ?? [],
+          toolFailures: outcome.value.toolFailures ?? [],
         })
         await chargePhase(task, user, meter, "EXECUTING", "zai")
+        // Télémétrie outils consolidée pour la boucle de feedback.
         await db.task.update({
           where: { id: task.id },
           data: { attempts: { increment: 1 } },
         })
+        await recordEngineRunDetailTools(task.id, outcome.value.toolsUsed ?? [], outcome.value.toolFailures ?? [])
         task = await db.task.findUniqueOrThrow({ where: { id: task.id } })
+        void checkpointSteps
       }
       task = await transitionTask(task, "VERIFYING")
       await recordStep(task.id, "VERIFYING", 0, "Vérification du résultat", "RUNNING")
@@ -390,38 +474,22 @@ export async function advanceTask(
     // ---------------- Phase VERIFYING ----------------
     if (task.status === "VERIFYING") {
       if (!task.verification) {
-        const analysis = parseJsonField<PromptAnalysis>(task.analysis, {
-          intent: "", goals: [], constraints: [], requiredCapabilities: [], risks: [],
-          successCriteria: [], failureCriteria: [], estimatedComplexity: "MEDIUM",
-          estimatedSteps: 3, language: "fr", clarificationNeeded: false,
-        })
-        const execution = parseJsonField<{ finalAnswer: string; evidence: { type: string; description: string; content: string }[] }>(
+        const analysis = parseJsonField<PromptAnalysis>(task.analysis, EMPTY_ANALYSIS)
+        const execution = parseJsonField<{ finalAnswer: string; evidence: Array<{ type: string; description: string; content: string; artifactId?: string; bytes?: number }> }>(
           task.executionLog,
           { finalAnswer: "", evidence: [] }
         )
-        const meter: TokenMeter = { tokensIn: 0, tokensOut: 0 }
-        const { value: report } = await runWithSelfCorrection(
-          async () => {
-            const r = await verifyResult({
-              prompt: task.prompt,
-              analysis,
-              answer: execution.finalAnswer,
-              evidence: execution.evidence as never,
-            })
-            meter.tokensIn += r.tokensIn
-            meter.tokensOut += r.tokensOut
-            return r.report
-          },
-          {
-            phase: "VERIFYING",
-            maxAttempts: 2,
-            attempt: 0,
-            onCorrection: (e) => appendCorrection(task.id, e),
-          }
-        )
-        await mergeTaskJson(task.id, "verification", report)
-        await chargePhase(task, user, meter, "VERIFYING", "zai")
-        await recordStep(task.id, "VERIFYING", 0, "Vérification du résultat", "DONE", report)
+        // v3.1 : réhydratation des preuves externalisées pour la vérification.
+        const fullEvidence = await hydrateEvidence(execution.evidence as never)
+        const executionRun = await runEngine(verificationEngine, {
+          prompt: task.prompt,
+          analysis,
+          answer: execution.finalAnswer,
+          evidence: fullEvidence as never,
+        }, ctx)
+        await mergeTaskJson(task.id, "verification", executionRun.value)
+        await chargePhase(task, user, executionRun, "VERIFYING", "zai")
+        await recordStep(task.id, "VERIFYING", 0, "Vérification du résultat", "DONE", executionRun.value)
         task = await db.task.findUniqueOrThrow({ where: { id: task.id } })
       }
 
@@ -461,6 +529,10 @@ export async function advanceTask(
         await audit(null, {
           userId: user.id, action: "TASK_FAILED_VERIFICATION", entityType: "task", entityId: task.id,
         })
+        await recordOrchestratorRun({
+          taskId: task.id, userId: user.id, ok: false, durationMs: Date.now() - startedAt,
+          errorCode: "VERIFICATION_FAILED",
+        })
         return await db.task.findUniqueOrThrow({ where: { id: task.id } })
       }
       task = await transitionTask(task, "LEARNING")
@@ -476,29 +548,29 @@ export async function advanceTask(
           verified: true, confidence: 1, criteria: [], gaps: [], verdict: "",
         })
         try {
-          const { learning } = await extractLearning(user.id, task.id, {
-            prompt: task.prompt,
-            analysis: parseJsonField<PromptAnalysis>(task.analysis, {
-              intent: "", goals: [], constraints: [], requiredCapabilities: [], risks: [],
-              successCriteria: [], failureCriteria: [], estimatedComplexity: "MEDIUM",
-              estimatedSteps: 3, language: "fr", clarificationNeeded: false,
-            }),
-            plan: selected ?? { id: "A", name: "", strategy: "", steps: [], requiredTools: [], risks: [], estimatedCostCredits: 0, successProbability: 0.5, rationale: "", requiresHumanConfirmation: false },
-            outcome: "SUCCESS",
-            verification: report,
-          })
-          await mergeTaskJson(task.id, "learning", learning)
-        } catch {
           // L'apprentissage ne doit jamais faire échouer une tâche réussie.
+          if (selected) {
+            const learningRun = await runEngine(learningEngine, {
+              prompt: task.prompt,
+              analysis: parseJsonField<PromptAnalysis>(task.analysis, EMPTY_ANALYSIS),
+              plan: selected,
+              outcome: "SUCCESS",
+              verification: report,
+            }, ctx)
+            await mergeTaskJson(task.id, "learning", learningRun.value)
+            await chargePhase(task, user, learningRun, "LEARNING", "zai")
+          }
+        } catch {
+          /* best-effort */
         }
         await recordStep(task.id, "LEARNING", 0, "Apprentissage et mémorisation", "DONE")
       }
 
       // ---------------- Livraison ----------------
       await recordStep(task.id, "DELIVERING", 0, "Assemblage du livrable", "RUNNING")
-      const execution = parseJsonField<{ finalAnswer: string; evidence: { type: string; description: string; content: string }[] }>(
+      const execution = parseJsonField<{ finalAnswer: string; steps?: ExecutionLogEntry[]; evidence: Array<{ type: string; description: string; content: string; artifactId?: string; bytes?: number }> }>(
         task.executionLog,
-        { finalAnswer: "", evidence: [] }
+        { finalAnswer: "", steps: [], evidence: [] }
       )
       const plans = parseJsonField<Plan[]>(task.plans, [])
       const selected = plans.find((p) => p.id === task.selectedPlanId)
@@ -506,8 +578,8 @@ export async function advanceTask(
         answer: execution.finalAnswer,
         summary: selected?.name ?? "",
         plan: { id: selected?.id, name: selected?.name, strategy: selected?.strategy },
-        steps: execution.steps?.map((s: { stepIndex: number; title: string; output: string; status: string }) => ({
-          index: s.stepIndex, title: s.title, status: s.status,
+        steps: execution.steps?.map((s: { stepIndex: number; title: string; output: string; status: string; latencyMs?: number }) => ({
+          index: s.stepIndex, title: s.title, status: s.status, latencyMs: s.latencyMs ?? null,
         })),
         evidence: execution.evidence,
         verification: parseJsonField<VerificationReport>(task.verification, null as unknown as VerificationReport),
@@ -516,6 +588,7 @@ export async function advanceTask(
           tokensOut: task.tokensOut,
           credits: task.costCredits,
           attempts: task.attempts,
+          totalRetries: task.totalRetries, // v3.1 : visibilité du circuit breaker
         },
       }
       await mergeTaskJson(task.id, "result", result)
@@ -526,7 +599,11 @@ export async function advanceTask(
       task = await transitionTask(task, "COMPLETED")
       await audit(null, {
         userId: user.id, action: "TASK_COMPLETED", entityType: "task", entityId: task.id,
-        detail: { credits: task.costCredits, attempts: task.attempts },
+        detail: { credits: task.costCredits, attempts: task.attempts, totalRetries: task.totalRetries },
+      })
+      await recordOrchestratorRun({
+        taskId: task.id, userId: user.id, ok: true, durationMs: Date.now() - startedAt,
+        detail: { attempts: task.attempts, credits: task.costCredits },
       })
       if (agent) {
         // Mise à jour des statistiques de l'agent.
@@ -545,53 +622,130 @@ export async function advanceTask(
 
     return task
   } catch (err) {
-    // ---- Gestion des échecs de phase ----
-    if (err instanceof InsufficientCreditsError) {
-      await transitionTask(task, "FAILED", { error: err.message }).catch(() => undefined)
-      return await db.task.findUniqueOrThrow({ where: { id: task.id } })
-    }
-    if (err instanceof ReplanRequiredError) {
-      // Le replan est déjà comptabilisé dans les corrections ; on relance la planification.
-      await mergeTaskJson(task.id, "plans", null as unknown as string).catch(() => undefined)
-      await db.task.update({ where: { id: task.id }, data: { plans: null, planScores: null, selectedPlanId: null, executionLog: null } })
-      const fresh = await db.task.findUniqueOrThrow({ where: { id: task.id } })
-      if (fresh.status === "EXECUTING" || fresh.status === "VERIFYING") {
-        await transitionTask(fresh, "PLANNING").catch(() => undefined)
-        const current = await db.task.findUniqueOrThrow({ where: { id: task.id } })
-        if (Date.now() < budgetEnd && current.status === "PLANNING") {
-          return advanceTask(task.id, { budgetMs: Math.max(5000, budgetEnd - Date.now()) })
-        }
-        return current
-      }
-      return fresh
-    }
-    const analysis = analyzeError(err)
-    const message = err instanceof Error ? err.message : String(err)
-    await appendCorrection(task.id, {
-      attempt: task.attempts,
-      phase: task.status,
-      error: message.slice(0, 400),
-      classification: analysis.classification,
-      attribution: analysis.attribution,
-      strategy: analysis.strategy,
-      action: "Arrêt de la tâche après épuisement des stratégies de correction.",
-      outcome: "ABORTED",
-    })
-    await transitionTask(task, "FAILED", { error: message.slice(0, 500) }).catch(() => undefined)
-    await audit(null, {
-      userId: user.id, action: "TASK_FAILED", entityType: "task", entityId: task.id, detail: { message },
-    })
-    if (agent) {
-      const stats = parseJsonField<{ runs: number; success: number; failed: number; tokens: number; credits: number }>(
-        agent.stats,
-        { runs: 0, success: 0, failed: 0, tokens: 0, credits: 0 }
-      )
-      stats.runs++
-      stats.failed++
-      await db.agent.update({ where: { id: agent.id }, data: { stats: JSON.stringify(stats) } })
-    }
-    return await db.task.findUniqueOrThrow({ where: { id: task.id } })
+    return handlePipelineError(err, { task, user, agent, log, startedAt })
   }
+}
+
+async function handlePipelineError(
+  err: unknown,
+  env: {
+    task: Task
+    user: User
+    agent: TaskAgent | null
+    log: import("@/lib/observability/logger").Logger
+    startedAt: number
+  }
+): Promise<Task> {
+  const { task, user, agent, log, startedAt } = env
+  const fresh = await db.task.findUnique({ where: { id: task.id } })
+  const current = fresh ?? task
+
+  if (err instanceof InsufficientCreditsError) {
+    await transitionTask(current, "FAILED", { error: err.message }).catch(() => undefined)
+    await recordOrchestratorRun({ taskId: current.id, userId: user.id, ok: false, durationMs: Date.now() - startedAt, errorCode: "INSUFFICIENT_CREDITS" })
+    return await db.task.findUniqueOrThrow({ where: { id: current.id } })
+  }
+  if (err instanceof RetryBudgetExceededError) {
+    await appendCorrection(current.id, {
+      attempt: current.attempts,
+      phase: current.status,
+      error: err.userMessage.slice(0, 400),
+      classification: "CONTEXT",
+      attribution: "Budget global de tentatives épuisé (circuit breaker).",
+      strategy: "ABORT",
+      action: "Arrêt propre — protection contre les boucles infinies de correction.",
+      outcome: "ABORTED",
+    }).catch(() => undefined)
+    await transitionTask(current, "FAILED", { error: err.userMessage.slice(0, 500) }).catch(() => undefined)
+    await recordOrchestratorRun({ taskId: current.id, userId: user.id, ok: false, durationMs: Date.now() - startedAt, errorCode: "RETRY_BUDGET_EXCEEDED" })
+    return await db.task.findUniqueOrThrow({ where: { id: current.id } })
+  }
+  if (err instanceof ReplanRequiredError) {
+    // Le replan est déjà comptabilisé dans les corrections ; on relance la planification.
+    // v3.1 : plafond de replans (anti-boucle infinie REPLAN ↔ exécution).
+    const replanCount = parseJsonField<CorrectionLogEntry[]>(current.correctionLog, []).filter(
+      (c) => c.strategy === "REPLAN"
+    ).length
+    if (replanCount >= 3) {
+      await transitionTask(current, "FAILED", {
+        error: `Arrêt après ${replanCount} replanifications — la stratégie est probablement inadaptée à cette demande.`,
+      }).catch(() => undefined)
+      await recordOrchestratorRun({ taskId: current.id, userId: user.id, ok: false, durationMs: Date.now() - startedAt, errorCode: "PLANNING_FAILED" })
+      return await db.task.findUniqueOrThrow({ where: { id: current.id } })
+    }
+    await db.task.update({ where: { id: current.id }, data: { plans: null, planScores: null, selectedPlanId: null, executionLog: null } }).catch(() => undefined)
+    const after = await db.task.findUniqueOrThrow({ where: { id: current.id } })
+    if (after.status === "EXECUTING" || after.status === "VERIFYING") {
+      await transitionTask(after, "PLANNING").catch(() => undefined)
+      const next = await db.task.findUniqueOrThrow({ where: { id: current.id } })
+      if (next.status === "PLANNING") {
+        return (await advanceTask(current.id, { budgetMs: 45_000 })) ?? next
+      }
+      return next
+    }
+    return after
+  }
+
+  const analysis = analyzeError(err)
+  const message = err instanceof Error ? err.message : String(err)
+  const errorCode = err instanceof AppError ? err.code : null
+  await appendCorrection(current.id, {
+    attempt: current.attempts,
+    phase: current.status,
+    error: message.slice(0, 400),
+    classification: analysis.classification,
+    attribution: analysis.attribution,
+    strategy: analysis.strategy,
+    action: "Arrêt de la tâche après épuisement des stratégies de correction.",
+    outcome: "ABORTED",
+  }).catch(() => undefined)
+
+  // v3.1 — apprentissage sur les ÉCHECS (best-effort, jamais bloquant).
+  try {
+    const plans = parseJsonField<Plan[]>(current.plans, [])
+    const selected = plans.find((p) => p.id === current.selectedPlanId) ?? plans[0]
+    if (selected) {
+      const { learning: learningEngine } = engines()
+      await runEngine(learningEngine, {
+        prompt: current.prompt,
+        analysis: parseJsonField<PromptAnalysis>(current.analysis, EMPTY_ANALYSIS),
+        plan: selected,
+        outcome: "FAILURE",
+        error: message.slice(0, 400),
+      }, {
+        taskId: current.id,
+        userId: user.id,
+        agentId: agent?.id ?? null,
+        settings: { maxAttempts: 1, confirmDangerousOps: true, planApproval: "auto" },
+        allowedTools: [],
+        memories: [],
+        knowledgeContext: "",
+        logger: log,
+      })
+    }
+  } catch {
+    // L'apprentissage d'échec ne doit jamais masquer l'erreur d'origine.
+  }
+
+  await transitionTask(current, "FAILED", { error: message.slice(0, 500) }).catch(() => undefined)
+  await audit(null, {
+    userId: user.id, action: "TASK_FAILED", entityType: "task", entityId: current.id, detail: { message, errorCode },
+  })
+  await recordOrchestratorRun({
+    taskId: current.id, userId: user.id, ok: false, durationMs: Date.now() - startedAt,
+    errorCode, detail: { classification: analysis.classification },
+  })
+  if (agent) {
+    const stats = parseJsonField<{ runs: number; success: number; failed: number; tokens: number; credits: number }>(
+      agent.stats,
+      { runs: 0, success: 0, failed: 0, tokens: 0, credits: 0 }
+    )
+    stats.runs++
+    stats.failed++
+    await db.agent.update({ where: { id: agent.id }, data: { stats: JSON.stringify(stats) } })
+  }
+  log.error("pipeline échoué", { error: message, code: errorCode })
+  return await db.task.findUniqueOrThrow({ where: { id: current.id } })
 }
 
 /** Approuve ou refuse une tâche en attente d'humain (HITL). */
@@ -603,19 +757,159 @@ export async function resolveHumanApproval(
 ): Promise<Task> {
   const task = await db.task.findUniqueOrThrow({ where: { id: taskId } })
   if (task.userId !== userId) {
-    throw new Error("Tâche non autorisée.")
+    throw new AppError("FORBIDDEN", { message: "Tâche non autorisée." })
   }
   if (task.status !== "WAITING_FOR_HUMAN") {
-    throw new Error("Cette tâche n'est pas en attente d'approbation.")
+    throw new AppError("TASK_NOT_APPROVABLE")
   }
   await audit(null, {
     userId, action: approved ? "TASK_APPROVED" : "TASK_REJECTED",
     entityType: "task", entityId: taskId, detail: { reason },
   })
   if (approved) {
-    return transitionTask(task, "EXECUTING")
+    const updated = await transitionTask(task, "EXECUTING")
+    return (await advanceTask(updated.id)) ?? updated
   }
   return transitionTask(task, "CANCELLED", { error: reason ?? "Refusé par l'utilisateur." })
+}
+
+/**
+ * v3.1 — Mode Explain : résout l'approbation de plan.
+ * L'utilisateur peut sélectionner un autre plan, ÉDITER ses étapes,
+ * régénérer, ou refuser. La sélection manuelle prime sur le score.
+ */
+export interface PlanApprovalInput {
+  approved: boolean
+  planId?: string
+  /** Étapes éditées (remplacent celles du plan sélectionné). */
+  editedSteps?: Array<{ title: string; detail: string; tool?: string }>
+  regenerate?: boolean
+  reason?: string
+}
+
+export async function resolvePlanApproval(
+  taskId: string,
+  userId: string,
+  input: PlanApprovalInput
+): Promise<Task> {
+  const task = await db.task.findUniqueOrThrow({ where: { id: taskId } })
+  if (task.userId !== userId) {
+    throw new AppError("FORBIDDEN", { message: "Tâche non autorisée." })
+  }
+  if (task.status !== "WAITING_PLAN_APPROVAL") {
+    throw new AppError("TASK_NOT_APPROVABLE", {
+      message: "Cette tâche n'est pas en attente d'approbation de plan.",
+    })
+  }
+
+  const plans = parseJsonField<Plan[]>(task.plans, [])
+  const scores = parseJsonField<{ selectedPlanId?: string; rationale?: string }>(task.planScores, {})
+
+  await audit(null, {
+    userId,
+    action: input.regenerate ? "TASK_PLANS_REGENERATE" : input.approved ? "TASK_PLAN_APPROVED" : "TASK_PLAN_REJECTED",
+    entityType: "task",
+    entityId: taskId,
+    detail: { planId: input.planId, edited: (input.editedSteps?.length ?? 0) > 0, reason: input.reason },
+  })
+
+  // Régénération : retour à la planification (force le cache à ignorer l'entrée).
+  if (input.regenerate) {
+    await mergeTaskJson(taskId, "planScores", null)
+    await db.task.update({
+      where: { id: taskId },
+      data: { plans: null, planScores: null, selectedPlanId: null },
+    })
+    const fresh = await db.task.findUniqueOrThrow({ where: { id: taskId } })
+    await transitionTask(fresh, "PLANNING").catch(async () => {
+      // SIMULATING → PLANNING n'est pas direct : transition via replan interne.
+      await transitionTask(fresh, "CANCELLED")
+    })
+    return (await advanceTask(taskId)) ?? fresh
+  }
+
+  if (!input.approved) {
+    return transitionTask(task, "CANCELLED", { error: input.reason ?? "Plan refusé par l'utilisateur." })
+  }
+
+  // Sélection (défaut : le plan recommandé par l'évaluateur).
+  const planId = input.planId ?? scores.selectedPlanId ?? plans[0]?.id
+  const selected = plans.find((p) => p.id === planId)
+  if (!selected) {
+    throw new AppError("VALIDATION_ERROR", { message: `Plan « ${planId} » introuvable.` })
+  }
+
+  // Édition des étapes (mode Explain complet).
+  if (input.editedSteps && input.editedSteps.length > 0) {
+    if (input.editedSteps.length > 8) {
+      throw new AppError("VALIDATION_ERROR", { message: "Un plan ne peut dépasser 8 étapes." })
+    }
+    for (const step of input.editedSteps) {
+      if (step.title.trim().length < 3 || step.detail.trim().length < 5) {
+        throw new AppError("VALIDATION_ERROR", { message: "Chaque étape exige un titre (≥ 3 car.) et un détail (≥ 5 car.)." })
+      }
+    }
+    const editedSteps: PlanStep[] = input.editedSteps.map((s) => ({
+      title: s.title.trim().slice(0, 200),
+      detail: s.detail.trim().slice(0, 2000),
+      tool: s.tool,
+    }))
+    selected.steps = editedSteps
+    selected.requiredTools = [...new Set(editedSteps.map((s) => s.tool).filter((t): t is string => Boolean(t)))]
+    selected.rationale = "(plan édité manuellement par l'utilisateur)"
+    await mergeTaskJson(taskId, "plans", plans)
+  }
+
+  // Sélection manuelle : prime sur le score, traçable dans le rapport.
+  await mergeTaskJson(taskId, "planScores", {
+    ...scores,
+    selectedPlanId: selected.id,
+    rationale: `Sélection manuelle (mode Explain) : plan ${selected.id} « ${selected.name} » retenu par l'utilisateur.`,
+  })
+  await db.task.update({ where: { id: taskId }, data: { selectedPlanId: selected.id } })
+
+  // Opérations sensibles → HITL après sélection manuelle (défense en profondeur).
+  const owner = await db.user.findUnique({ where: { id: userId }, select: { settings: true } })
+  const settings = { ...DEFAULT_USER_SETTINGS, ...parseJsonField(owner?.settings ?? "{}", {}) }
+  const dangerousTools = selected.requiredTools.filter((t) => TOOL_CATALOG.find((c) => c.key === t)?.dangerous)
+  if (selected.requiresHumanConfirmation || (dangerousTools.length > 0 && settings.confirmDangerousOps !== false)) {
+    const updated = await db.task.findUniqueOrThrow({ where: { id: taskId } })
+    await transitionTask(updated, "WAITING_FOR_HUMAN", {
+      pendingApproval: JSON.stringify({
+        reason: `Le plan ${selected.id} (« ${selected.name} ») implique des opérations sensibles nécessitant votre confirmation.`,
+        planId: selected.id,
+        dangerousOperations: dangerousTools.length > 0 ? dangerousTools : ["opération déclarée sensible"],
+        askedAt: new Date().toISOString(),
+      }),
+    })
+    return db.task.findUniqueOrThrow({ where: { id: taskId } })
+  }
+
+  const updated = await transitionTask(task, "EXECUTING")
+  return (await advanceTask(updated.id)) ?? updated
+}
+
+/** Télémétrie outils consolidée par exécution (boucle de feedback Learning). */
+async function recordEngineRunDetailTools(
+  taskId: string,
+  toolsUsed: string[],
+  toolFailures: string[]
+): Promise<void> {
+  try {
+    const latest = await db.engineRun.findFirst({
+      where: { taskId, engine: "EXECUTOR" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    })
+    if (latest) {
+      await db.engineRun.update({
+        where: { id: latest.id },
+        data: { detail: JSON.stringify({ tools: toolsUsed, toolFailures }) },
+      })
+    }
+  } catch {
+    // best-effort
+  }
 }
 
 export { NoProviderError }

@@ -68,33 +68,14 @@ export async function resolveAgent(
   )
 }
 
-// ---------- Limiteur de débit en mémoire (par clé) ----------
+// ---------- Limiteur de débit (v3.1 : unifié avec security/rate-limit) ----------
 
-const RATE_LIMIT = 60 // requêtes
-const RATE_WINDOW_MS = 60_000 // par minute
+import { enforceRateLimit } from "@/lib/security/rate-limit"
 
-const buckets = new Map<string, { count: number; resetAt: number }>()
-
+/**
+ * 60 requêtes/minute par clé API — même politique qu'avant, mais gérée par
+ * le limiteur unifié (token bucket, partagé avec les dimensions ip/user).
+ */
 export function checkRateLimit(keyId: string): void {
-  const now = Date.now()
-  const bucket = buckets.get(keyId)
-  if (!bucket || bucket.resetAt < now) {
-    buckets.set(keyId, { count: 1, resetAt: now + RATE_WINDOW_MS })
-    // Purge paresseuse pour éviter la croissance non bornée.
-    if (buckets.size > 5000) {
-      for (const [k, v] of buckets) {
-        if (v.resetAt < now) buckets.delete(k)
-      }
-    }
-    return
-  }
-  bucket.count++
-  if (bucket.count > RATE_LIMIT) {
-    const retryIn = Math.ceil((bucket.resetAt - now) / 1000)
-    throw new ApiError(
-      429,
-      `Limite de débit atteinte (${RATE_LIMIT} requêtes/minute). Réessayez dans ${retryIn} s.`,
-      "RATE_LIMITED"
-    )
-  }
+  enforceRateLimit("apiKey", keyId)
 }

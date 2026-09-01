@@ -2,12 +2,22 @@ import type { CorrectionLogEntry, CorrectionStrategy, ErrorClass } from "./types
 import { LLMError } from "@/lib/ai/types"
 import { StructuredOutputError } from "@/lib/ai/structured"
 import { InsufficientCreditsError } from "@/lib/credits/ledger"
+import { AppError } from "@/lib/errors"
+import { backoffDelayMs, MAX_TOTAL_RETRIES_PER_TASK } from "@/lib/reliability/breaker"
 
 /**
  * Self-Correction Engine — détecte, classe, attribue et corrige les erreurs.
  * Stratégies : RETRY (même tentative), SWITCH_MODEL (fournisseur de repli),
  * SWITCH_TOOL (outil alternatif), REPLAN (nouveau plan), ABORT (arrêt propre).
  * Règle d'or : ne JAMAIS déclarer une tâche réussie sans preuve.
+ *
+ * Améliorations v3.1 — fiabilité :
+ *  - plafond GLOBAL de tentatives par tâche (budget partagé entre toutes
+ *    les phases — fini les boucles RETRY/REPLAN infinies) ;
+ *  - backoff exponentiel avec jitter (remplace la pause fixe de 3 s) ;
+ *  - SWITCH_TOOL est désormais câblé : quand le circuit breaker d'un outil
+ *    est ouvert, la stratégie bascule vers un outil/approche alternatif
+ *    au lieu de retenter l'outil défaillant.
  */
 
 export interface ErrorAnalysis {
@@ -17,7 +27,44 @@ export interface ErrorAnalysis {
   reason: string
 }
 
+/** Dépassement du budget global de tentatives — arrêt propre immédiat. */
+export class RetryBudgetExceededError extends AppError {
+  constructor(spent: number, max: number) {
+    super("RETRY_BUDGET_EXCEEDED", {
+      message: `Budget global de tentatives dépassé (${spent}/${max}) — arrêt propre pour éviter une consommation excessive de crédits.`,
+      context: { spent, max },
+    })
+    this.name = "RetryBudgetExceededError"
+  }
+}
+
 export function analyzeError(err: unknown): ErrorAnalysis {
+  // v3.1 : circuit breaker ouvert → stratégie ciblée selon la dépendance.
+  if (err instanceof AppError && err.code === "RETRY_BUDGET_EXCEEDED") {
+    const breaker = String(err.context?.breaker ?? "")
+    if (breaker.startsWith("tool:")) {
+      return {
+        classification: "TOOL",
+        attribution: `Circuit ouvert pour l'outil ${breaker} (échecs répétés).`,
+        strategy: "SWITCH_TOOL",
+        reason: err.userMessage,
+      }
+    }
+    if (breaker.startsWith("provider:") || breaker.startsWith("embeddings:")) {
+      return {
+        classification: "MODEL",
+        attribution: `Circuit ouvert pour la dépendance ${breaker}.`,
+        strategy: "SWITCH_MODEL",
+        reason: err.userMessage,
+      }
+    }
+    return {
+      classification: "CONTEXT",
+      attribution: "Budget global de tentatives épuisé.",
+      strategy: "ABORT",
+      reason: err.userMessage,
+    }
+  }
   if (err instanceof InsufficientCreditsError) {
     return {
       classification: "CONTEXT",
@@ -115,6 +162,12 @@ export interface SelfCorrectionOptions<T> {
   attempt: number // tentatives déjà consommées
   onCorrection?: (entry: CorrectionLogEntry) => Promise<void> | void
   providerOverride?: string
+  /** Budget global de retries partagé entre toutes les phases de la tâche. */
+  retryBudget?: {
+    spent: number
+    max: number
+    onSpend?: (totalSpent: number) => Promise<void> | void
+  }
 }
 
 export interface SelfCorrectionResult<T> {
@@ -127,6 +180,8 @@ export interface SelfCorrectionResult<T> {
 /**
  * Exécute une opération avec auto-correction intégrée.
  * Chaque échec est classé, journalisé, puis la stratégie adaptée est appliquée.
+ * Le budget global de retries (v3.1) borne la somme de toutes les tentatives
+ * de la tâche — dépassement = arrêt propre (RetryBudgetExceededError).
  */
 export async function runWithSelfCorrection<T>(
   fn: (ctx: { attempt: number; providerOverride?: string; previousError?: string }) => Promise<T>,
@@ -136,6 +191,8 @@ export async function runWithSelfCorrection<T>(
   let attempt = opts.attempt
   let providerOverride = opts.providerOverride
   let lastError: unknown
+  let retriesSpent = opts.retryBudget?.spent ?? 0
+  const maxBudget = opts.retryBudget?.max ?? MAX_TOTAL_RETRIES_PER_TASK
 
   while (attempt < opts.maxAttempts + opts.attempt) {
     try {
@@ -146,6 +203,10 @@ export async function runWithSelfCorrection<T>(
       })
       return { value, attempts: attempt - opts.attempt + 1, corrections, providerOverride }
     } catch (err) {
+      // v3.1 : budget global épuisé → arrêt immédiat, propre.
+      if (err instanceof RetryBudgetExceededError) {
+        throw err
+      }
       lastError = err
       const analysis = analyzeError(err)
       const entry: CorrectionLogEntry = {
@@ -165,6 +226,22 @@ export async function runWithSelfCorrection<T>(
         await opts.onCorrection?.(entry)
         throw err
       }
+      if (analysis.strategy === "REPLAN") {
+        entry.outcome = "ESCALATED"
+        corrections.push(entry)
+        await opts.onCorrection?.(entry)
+        throw new ReplanRequiredError(analysis.reason)
+      }
+
+      // v3.1 : chaque retry consomme le budget global de la tâche.
+      retriesSpent++
+      if (opts.retryBudget) {
+        if (retriesSpent > maxBudget) {
+          throw new RetryBudgetExceededError(retriesSpent - 1, maxBudget)
+        }
+        await opts.retryBudget.onSpend?.(retriesSpent)
+      }
+
       if (analysis.strategy === "SWITCH_MODEL") {
         providerOverride = undefined // retour au routage automatique (fournisseur suivant)
         entry.action = "Bascule vers le fournisseur de repli via le Model Router."
@@ -173,13 +250,7 @@ export async function runWithSelfCorrection<T>(
         entry.action = `Nouvelle tentative (${attempt + 1}) avec le même contexte.`
       }
       if (analysis.strategy === "SWITCH_TOOL") {
-        entry.action = "Outil alternatif ou approche sans l'outil défaillant."
-      }
-      if (analysis.strategy === "REPLAN") {
-        entry.outcome = "ESCALATED"
-        corrections.push(entry)
-        await opts.onCorrection?.(entry)
-        throw new ReplanRequiredError(analysis.reason)
+        entry.action = "Outil alternatif ou approche sans l'outil défaillant (circuit ouvert)."
       }
 
       corrections.push(entry)
@@ -194,9 +265,9 @@ export async function runWithSelfCorrection<T>(
         }
         throw err
       }
-      // Temporisation : laisse respirer les fournisseurs saturés (429/5xx).
+      // v3.1 : backoff exponentiel avec jitter (fournisseurs saturés, 429/5xx).
       if (analysis.classification === "TRANSIENT") {
-        await new Promise((r) => setTimeout(r, 3000))
+        await new Promise((r) => setTimeout(r, backoffDelayMs(attempt - opts.attempt + 1)))
       }
     }
   }

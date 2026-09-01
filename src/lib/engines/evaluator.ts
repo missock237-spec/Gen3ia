@@ -4,6 +4,11 @@ import type {
   PlanScore,
 } from "./types"
 import { DEFAULT_WEIGHTS } from "./types"
+import {
+  blendedSuccessProbability,
+  toolReliabilityMultiplier,
+  type FeedbackSnapshot,
+} from "./feedback"
 
 /**
  * Plan Evaluation Engine — note chaque plan selon une formule configurable,
@@ -12,9 +17,13 @@ import { DEFAULT_WEIGHTS } from "./types"
  *   score = w1·successRate + w2·accuracy + w3·(1-coût normalisé)
  *         + w4·(1-latence normalisée) + w5·(1-risque) + w6·complétude
  *
- * Les poids sont ajustables par l'utilisateur (page Paramètres) et stockés
- * dans ses préférences. La décision est entièrement traçable : le détail
- * de chaque critère est conservé avec la tâche.
+ * Amélioration v3.1 — boucle de feedback ACTIONNABLE :
+ *  - la probabilité de succès déclarée par le LLM est mélangée au taux de
+ *    succès OBSERVÉ de l'utilisateur pour cet archeype de plan (A-E) ;
+ *  - les plans utilisant un outil historiquement défaillant sont pénalisés
+ *    (multiplicateur de fiabilité) ;
+ *  - les poids restent ajustables (utilisateur > système > défaut).
+ * La décision reste entièrement traçable (ScoreBreakdownEntry[] persisté).
  */
 
 interface EvaluationInput {
@@ -22,6 +31,8 @@ interface EvaluationInput {
   weights?: Partial<EvaluationWeights>
   availableTools: string[]
   userCredits: number
+  /** Statistiques de retour d'expérience (Learning actionnable). */
+  feedback?: FeedbackSnapshot
 }
 
 function clamp01(v: number): number {
@@ -61,19 +72,27 @@ export function evaluatePlans(input: EvaluationInput): {
   const maxCost = Math.max(...input.plans.map((p) => p.estimatedCostCredits), 0.01)
   const maxSteps = Math.max(...input.plans.map((p) => p.steps.length), 1)
   const goalsCount = input.plans.length // approximation : la complétude relative suffit
+  const feedback = input.feedback
 
   const scores: PlanScore[] = input.plans.map((plan) => {
+    // --- Boucle de feedback : probabilité corrigée par l'observé ---
+    const blended = feedback
+      ? blendedSuccessProbability(plan.successProbability, feedback, plan.id)
+      : plan.successProbability
+    const reliability = feedback ? toolReliabilityMultiplier(plan.requiredTools, feedback) : 1
+    const corrected = Math.min(1, Math.max(0, blended * reliability))
+
     const entries = [
       {
         criterion: "successRate",
-        value: clamp01(plan.successProbability),
+        value: clamp01(corrected),
         weight: weights.successRate,
       },
       {
         criterion: "accuracy",
-        // précision proxy : probabilité × (1 - risques normalisés)
+        // précision proxy : probabilité corrigée × (1 - risques normalisés)
         value: clamp01(
-          plan.successProbability * (1 - clamp01(plan.risks.length / 5))
+          corrected * (1 - clamp01(plan.risks.length / 5))
         ),
         weight: weights.accuracy,
       },
@@ -124,11 +143,17 @@ export function evaluatePlans(input: EvaluationInput): {
   const rationale =
     `Plan ${best.id} (« ${best.name} ») retenu avec un score pondéré de ` +
     `${(bestScore.weighted * 100).toFixed(1)}% — probabilité de succès déclarée ` +
-    `${(best.successProbability * 100).toFixed(0)}%, coût estimé ${best.estimatedCostCredits.toFixed(1)} crédits, ` +
+    `${(best.successProbability * 100).toFixed(0)}%${feedback ? ` (corrigée par l'historique: ${(blendedSafe(feedback, best.id) * 100).toFixed(0)}%)` : ""}, coût estimé ${best.estimatedCostCredits.toFixed(1)} crédits, ` +
     `${best.steps.length} étapes.` +
     (eligible.length === 0
       ? " Attention : tous les plans dépassent le solde de crédits disponible."
       : "")
 
   return { scores, selectedPlanId: best.id, rationale }
+}
+
+/** Taux observé pour l'archeype sélectionné (affiché dans le rationale). */
+function blendedSafe(feedback: FeedbackSnapshot, planId: string): number {
+  const stat = feedback.strategies.find((s) => s.planId === planId)
+  return stat ? stat.successRate : 0.5
 }

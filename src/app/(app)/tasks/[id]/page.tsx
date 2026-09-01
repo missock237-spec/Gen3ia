@@ -13,6 +13,7 @@ import { usePolling, apiPost, formatCredits, formatDate } from "@/lib/client/hoo
 import {
   Loader2, CheckCircle2, XCircle, Clock, ChevronRight, ShieldAlert, FileCheck,
   Brain, GitBranch, Scale, Play, RefreshCcw, GraduationCap, Package, Coins,
+  ListChecks, Pencil, Plus, Trash2, Sparkles,
 } from "lucide-react";
 
 interface TaskDetail {
@@ -106,6 +107,10 @@ export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const [approving, setApproving] = useState(false)
+  // v3.1 — Mode Explain : choix et édition du plan avant exécution.
+  const [explainChoice, setExplainChoice] = useState<string | null>(null)
+  const [editingSteps, setEditingSteps] = useState(false)
+  const [draftSteps, setDraftSteps] = useState<{ title: string; detail: string; tool?: string }[]>([])
 
   const isActive = (status: string) => ACTIVE_STATUSES.includes(status)
   const { data, loading } = usePolling<TaskDetail>(`/api/tasks/${id}`, null)
@@ -134,6 +139,41 @@ export default function TaskDetailPage() {
     }
   }
 
+  async function submitPlanApproval(payload: {
+    approved: boolean
+    planId?: string
+    editedSteps?: { title: string; detail: string; tool?: string }[]
+    regenerate?: boolean
+  }) {
+    setApproving(true)
+    try {
+      const res = await apiPost(`/api/tasks/${id}/plans/approve`, payload)
+      if (!res.ok) throw new Error(res.error)
+      toast({
+        title: payload.regenerate
+          ? "Plans en régénération"
+          : payload.approved
+            ? "Plan approuvé"
+            : "Plan refusé",
+        description: payload.regenerate
+          ? "Cinq nouveaux plans vont être générés."
+          : payload.approved
+            ? "L'exécution du plan sélectionné démarre."
+            : "La tâche est annulée.",
+      })
+      window.location.reload()
+    } catch (err) {
+      toast({ title: "Action impossible", description: err instanceof Error ? err.message : "", variant: "destructive" })
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  function startEditing(plan: { steps: { title: string; detail: string; tool?: string }[] }) {
+    setDraftSteps(plan.steps.map((s) => ({ ...s })))
+    setEditingSteps(true)
+  }
+
   if (loading || !task) {
     return (
       <div className="space-y-4">
@@ -145,6 +185,9 @@ export default function TaskDetailPage() {
 
   const plans = task.plans ?? []
   const selectedPlan = plans.find((p) => p.id === task.selectedPlanId)
+  // v3.1 — plan en cours d'examen dans le mode Explain.
+  const explainPlanId = explainChoice ?? task.planScores?.selectedPlanId ?? task.selectedPlanId ?? plans[0]?.id
+  const explainPlan = plans.find((p) => p.id === explainPlanId)
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
@@ -194,6 +237,250 @@ export default function TaskDetailPage() {
         </Card>
       )}
 
+      {/* v3.1 — Mode Explain : validation et édition du plan avant exécution */}
+      {task.status === "WAITING_PLAN_APPROVAL" && plans.length > 0 && (
+        <Card className="border-teal-500/40 bg-teal-500/5">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-teal-200">
+              <ListChecks className="h-5 w-5" />
+              Mode Explain — validez le plan avant exécution
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-teal-200/80">
+              L'évaluateur recommande le plan{" "}
+              <span className="font-mono font-bold">{task.planScores?.selectedPlanId ?? "?"}</span>. Vous pouvez
+              sélectionner un autre plan, éditer ses étapes, régénérer les cinq plans, ou refuser.
+              {task.planScores?.rationale && (
+                <span className="block mt-1.5 text-xs text-zinc-500 italic">{task.planScores.rationale}</span>
+              )}
+            </p>
+
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {plans.map((p) => {
+                const score = task.planScores?.scores.find((s) => s.planId === p.id)
+                const chosen = explainPlanId === p.id
+                const recommended = task.planScores?.selectedPlanId === p.id
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setExplainChoice(p.id)
+                      setEditingSteps(false)
+                    }}
+                    className={`text-left rounded-xl border p-4 transition-colors ${
+                      chosen
+                        ? "border-teal-400/60 bg-teal-500/10"
+                        : "border-zinc-800 bg-zinc-950 hover:border-zinc-600"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-bold text-lg text-teal-300">{p.id}</span>
+                      <div className="flex gap-1.5">
+                        {recommended && (
+                          <Badge className="bg-teal-500 text-zinc-950 text-[10px] font-semibold">
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            RECOMMANDÉ
+                          </Badge>
+                        )}
+                        {chosen && (
+                          <Badge className="bg-emerald-500 text-zinc-950 text-[10px] font-semibold">CHOISI</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="font-medium text-sm mt-1 text-zinc-200">{p.name}</div>
+                    <p className="text-xs text-zinc-500 mt-1.5 line-clamp-2">{p.strategy}</p>
+                    <div className="mt-3 space-y-1.5 text-xs">
+                      <div className="flex justify-between text-zinc-400">
+                        <span>Score pondéré</span>
+                        <span className="font-mono text-teal-300">{score ? (score.weighted * 100).toFixed(1) : "—"}%</span>
+                      </div>
+                      <div className="flex justify-between text-zinc-400">
+                        <span>Prob. succès</span>
+                        <span className="font-mono">{Math.round(p.successProbability * 100)}%</span>
+                      </div>
+                      <div className="flex justify-between text-zinc-400">
+                        <span>Coût estimé</span>
+                        <span className="font-mono">{p.estimatedCostCredits} cr.</span>
+                      </div>
+                      <div className="flex justify-between text-zinc-400">
+                        <span>Étapes</span>
+                        <span className="font-mono">{p.steps.length}</span>
+                      </div>
+                    </div>
+                    {p.requiresHumanConfirmation && (
+                      <div className="mt-2 text-[10px] font-mono text-orange-300 border border-orange-500/30 rounded px-1.5 py-0.5 inline-block">
+                        opération sensible
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Étapes du plan examiné — consultation ou édition */}
+            {explainPlan && (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide">
+                    Plan {explainPlan.id} « {explainPlan.name} » — étapes
+                  </div>
+                  {!editingSteps ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-zinc-700 text-zinc-300"
+                      onClick={() => startEditing(explainPlan)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      <span className="ml-1.5">Éditer les étapes</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-zinc-700 text-zinc-400"
+                      onClick={() => setEditingSteps(false)}
+                    >
+                      Annuler l'édition
+                    </Button>
+                  )}
+                </div>
+
+                {!editingSteps ? (
+                  <ol className="space-y-2">
+                    {explainPlan.steps.map((s, i) => (
+                      <li key={i} className="flex gap-3 text-sm">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-teal-500/15 text-teal-300 text-[10px] font-mono font-bold mt-0.5">
+                          {i + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <span className="text-zinc-200">{s.title}</span>
+                          {s.tool && (
+                            <span className="ml-2 text-[10px] font-mono text-teal-300/70 border border-teal-500/20 rounded px-1.5 py-0.5">
+                              {s.tool}
+                            </span>
+                          )}
+                          <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{s.detail}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <div className="space-y-3">
+                    {draftSteps.map((step, i) => (
+                      <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] text-zinc-500">{i + 1}</span>
+                          <input
+                            value={step.title}
+                            onChange={(e) =>
+                              setDraftSteps((prev) =>
+                                prev.map((s, j) => (j === i ? { ...s, title: e.target.value } : s))
+                              )
+                            }
+                            className="flex-1 bg-transparent border-b border-zinc-700 focus:border-teal-400 outline-none text-sm text-zinc-200 py-0.5"
+                            placeholder="Titre de l'étape (≥ 3 caractères)"
+                          />
+                          <input
+                            value={step.tool ?? ""}
+                            onChange={(e) =>
+                              setDraftSteps((prev) =>
+                                prev.map((s, j) => (j === i ? { ...s, tool: e.target.value || undefined } : s))
+                              )
+                            }
+                            className="w-36 bg-transparent border-b border-zinc-700 focus:border-teal-400 outline-none text-xs font-mono text-teal-300/80 py-0.5"
+                            placeholder="outil (optionnel)"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-400 h-7 w-7 p-0"
+                            onClick={() => setDraftSteps((prev) => prev.filter((_, j) => j !== i))}
+                            aria-label={`Supprimer l'étape ${i + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <textarea
+                          value={step.detail}
+                          onChange={(e) =>
+                            setDraftSteps((prev) =>
+                              prev.map((s, j) => (j === i ? { ...s, detail: e.target.value } : s))
+                            )
+                          }
+                          rows={2}
+                          className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-teal-400/50 outline-none rounded p-2 text-xs text-zinc-300 resize-y"
+                          placeholder="Détail de l'étape — exécuté littéralement par le moteur (≥ 5 caractères)"
+                        />
+                      </div>
+                    ))}
+                    {draftSteps.length < 8 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="border-dashed border-zinc-700 text-zinc-400"
+                        onClick={() => setDraftSteps((prev) => [...prev, { title: "", detail: "" }])}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span className="ml-1.5">Ajouter une étape</span>
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-3 pt-1">
+              <Button
+                onClick={() =>
+                  submitPlanApproval({
+                    approved: true,
+                    planId: explainPlanId,
+                    editedSteps: editingSteps && draftSteps.length > 0 ? draftSteps : undefined,
+                  })
+                }
+                disabled={approving || (editingSteps && draftSteps.length === 0)}
+                className="bg-teal-500 hover:bg-teal-400 text-zinc-950 font-semibold"
+              >
+                {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                <span className="ml-2">
+                  {editingSteps ? "Exécuter le plan édité" : `Exécuter le plan ${explainPlanId ?? ""}`}
+                </span>
+              </Button>
+              <Button
+                onClick={() => submitPlanApproval({ approved: false, regenerate: true })}
+                disabled={approving}
+                variant="outline"
+                className="border-teal-500/40 text-teal-300 hover:bg-teal-500/10"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                <span className="ml-2">Régénérer les 5 plans</span>
+              </Button>
+              <Button
+                onClick={() => submitPlanApproval({ approved: false })}
+                disabled={approving}
+                variant="outline"
+                className="border-red-500/40 text-red-300 hover:bg-red-500/10"
+              >
+                <XCircle className="h-4 w-4" />
+                <span className="ml-2">Refuser la tâche</span>
+              </Button>
+            </div>
+            <p className="text-xs text-zinc-600">
+              Les étapes éditées remplacent celles du plan sélectionné ; la sélection manuelle est journalisée
+              (audit) et prime sur le score automatique.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Timeline du pipeline */}
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
@@ -236,7 +523,7 @@ export default function TaskDetailPage() {
                         </span>
                         <span className="text-[10px] font-mono text-zinc-600 uppercase">{s.phase}</span>
                       </div>
-                      {s.status === "RUNNING" && s.phase === "EXECUTING" && s.detail && typeof s.detail === "object" && "output" in (s.detail as object) && (
+                      {s.status === "RUNNING" && s.phase === "EXECUTING" && Boolean(s.detail) && typeof s.detail === "object" && "output" in (s.detail as object) && (
                         <p className="text-xs text-zinc-500 mt-1 truncate max-w-lg">
                           {String((s.detail as { output?: string }).output ?? "").slice(0, 120)}
                         </p>

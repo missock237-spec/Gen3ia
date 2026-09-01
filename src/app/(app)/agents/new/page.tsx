@@ -11,7 +11,8 @@ import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { apiPost } from "@/lib/client/hooks";
 import { usePolling } from "@/lib/client/hooks";
-import { Loader2, Bot, ArrowRight, Wrench } from "lucide-react";
+import { Loader2, Bot, ArrowRight, Wrench, Sparkles, Wand2, Eye } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 const TOOLS = [
   { key: "web_search", label: "Recherche web", desc: "Résultats en direct du web" },
@@ -24,11 +25,26 @@ const TOOLS = [
   { key: "datetime", label: "Date et heure", desc: "Horodatage courant" },
 ];
 
+interface TemplatePreview {
+  key: string
+  name: string
+  category: string
+  description: string
+  tools: string[]
+  temperature: number
+  tags: string[]
+  systemPromptPreview: string
+}
+
 export default function NewAgentPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { data: providersData } = usePolling<{ ok: boolean; providers: { key: string; name: string; available: boolean }[] }>("/api/auth/me");
   const providers = providersData?.providers ?? [];
+  // v3.1 — galerie de templates pré-configurés.
+  const { data: templatesData } = usePolling<{ ok: boolean; templates: TemplatePreview[] }>("/api/agents/templates");
+  const templates = templatesData?.templates ?? [];
+  const [instantiating, setInstantiating] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
@@ -43,10 +59,54 @@ export default function NewAgentPage() {
     setTools((t) => (t.includes(key) ? t.filter((x) => x !== key) : [...t, key]));
   }
 
+  /** Pré-remplit le formulaire à partir d'un template (tout reste modifiable). */
+  function applyTemplate(t: TemplatePreview) {
+    setName(t.name);
+    setDescription(t.description);
+    setSystemPrompt(""); // Le prompt complet est appliqué à la création ; l'édition manuelle reste libre.
+    setPendingTemplate(t);
+    setCategory(t.category);
+    setTemperature(t.temperature);
+    setTools(t.tools);
+    toast({
+      title: `Template « ${t.name} » chargé`,
+      description: "Formulaire pré-rempli — ajustez librement avant de créer, ou cliquez « Créer en 1 clic ».",
+    });
+  }
+
+  const [pendingTemplate, setPendingTemplate] = useState<TemplatePreview | null>(null);
+
+  /** Création directe depuis le template (prompt système complet inclus). */
+  async function instantiateTemplate(key: string) {
+    setInstantiating(key);
+    try {
+      const res = await apiPost<{ agent: { id: string; name: string } }>("/api/agents/templates", {
+        templateKey: key,
+      });
+      if (!res.ok) throw new Error(res.error ?? "Création impossible.");
+      toast({ title: "Agent créé depuis le template", description: `« ${res.agent.name} » est prêt — prompt et outils pré-configurés.` });
+      router.push(`/agents/${res.agent.id}`);
+    } catch (err) {
+      toast({
+        title: "Échec de création",
+        description: err instanceof Error ? err.message : "Erreur inconnue.",
+        variant: "destructive",
+      });
+    } finally {
+      setInstantiating(null);
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || name.trim().length < 2) {
       toast({ title: "Nom trop court", description: "Donnez un nom d'au moins 2 caractères.", variant: "destructive" });
+      return;
+    }
+    // Template sélectionné sans édition manuelle → création directe via l'API
+    // dédiée (prompt système complet du template conservé).
+    if (pendingTemplate && !systemPrompt.trim() && name.trim() === pendingTemplate.name) {
+      await instantiateTemplate(pendingTemplate.key);
       return;
     }
     setLoading(true);
@@ -82,6 +142,69 @@ export default function NewAgentPage() {
           Définissez son identité, son moteur et ses outils. Vous pourrez le tester puis le déployer en API.
         </p>
       </div>
+
+      {/* v3.1 — Galerie de templates : déploiement en un clic */}
+      {templates.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="h-4 w-4 text-amber-400" />
+            <h2 className="text-sm font-semibold text-zinc-200">Partir d'un template pré-configuré</h2>
+            <span className="text-xs text-zinc-500">— 8 profils éprouvés, entièrement modifiables après création</span>
+          </div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {templates.map((t) => (
+              <div
+                key={t.key}
+                className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 flex flex-col hover:border-amber-500/40 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-medium text-sm text-zinc-100">{t.name}</div>
+                  <Badge variant="outline" className="border-zinc-700 text-zinc-500 text-[9px] shrink-0">
+                    {t.category}
+                  </Badge>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1.5 line-clamp-3 flex-1">{t.description}</p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {t.tools.slice(0, 3).map((tool) => (
+                    <span key={tool} className="text-[9px] font-mono text-zinc-600 border border-zinc-800 rounded px-1.5 py-0.5">
+                      {tool}
+                    </span>
+                  ))}
+                  {t.tools.length > 3 && (
+                    <span className="text-[9px] font-mono text-zinc-600">+{t.tools.length - 3}</span>
+                  )}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold flex-1"
+                    disabled={instantiating === t.key}
+                    onClick={() => instantiateTemplate(t.key)}
+                  >
+                    {instantiating === t.key ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-3 w-3" />
+                    )}
+                    <span className="ml-1.5 text-xs">Créer en 1 clic</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-zinc-700 text-zinc-400"
+                    onClick={() => applyTemplate(t)}
+                  >
+                    <Eye className="h-3 w-3" />
+                    <span className="ml-1.5 text-xs">Pré-remplir</span>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <form onSubmit={onSubmit} className="space-y-6">
         <Card className="bg-zinc-900/40 border-zinc-800">

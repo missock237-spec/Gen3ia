@@ -18,6 +18,7 @@ export interface CurrentUser {
     maxAttempts: number
     confirmDangerousOps: boolean
     language: string
+    planApproval?: "auto" | "manual"
   }
 }
 
@@ -93,6 +94,15 @@ export function usePolling<T>(url: string | null, intervalMs: number | null = nu
   }, [url, intervalMs, load])
 
   return { data, error, loading, reload: load }
+}
+
+/** Requête GET JSON typée. */
+export async function apiGet<T = Record<string, unknown>>(
+  url: string
+): Promise<{ ok: boolean; error?: string } & T> {
+  const res = await fetch(url)
+  const data = await res.json().catch(() => ({ ok: false, error: "Réponse invalide." }))
+  return data
 }
 
 /** Requête POST JSON typée. */

@@ -10,6 +10,8 @@ const settingsSchema = z.object({
   confirmDangerousOps: z.boolean().optional(),
   defaultProvider: z.string().max(30).optional(),
   defaultModel: z.string().max(60).optional(),
+  /** v3.1 — mode Explain : « manual » exige l'approbation des plans avant exécution. */
+  planApproval: z.enum(["auto", "manual"]).optional(),
 })
 
 /** Mise à jour des préférences utilisateur (autonomie, sécurité, moteur). */

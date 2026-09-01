@@ -15,7 +15,10 @@ const registerSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  return handleRoute(async () => {
+  // v3.1 : rate limiting IP — 5 créations de compte/heure (anti-abus).
+  return handleRoute(
+    req,
+    async () => {
     const body = await readJson(req, registerSchema)
     const email = body.email.toLowerCase().trim()
 
@@ -64,6 +67,8 @@ export async function POST(req: NextRequest) {
 
     const res = NextResponse.json({ ok: true, user: { ...user, credits: SIGNUP_BONUS_CREDITS } })
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions())
-    return res
-  })
+      return res
+    },
+    { rateLimit: { policy: "register", identify: "ip" } }
+  )
 }

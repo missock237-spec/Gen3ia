@@ -3,6 +3,8 @@ import { chat } from "@/lib/ai"
 import { chatJSON } from "@/lib/ai/structured"
 import { creditsForTokens } from "@/lib/ai/router"
 import { runTool, TOOL_CATALOG, isToolDangerous, type ToolResult } from "@/lib/tools/registry"
+import { getBreaker } from "@/lib/reliability/breaker"
+import { AppError } from "@/lib/errors"
 import type {
   EvidenceItem,
   ExecutionLogEntry,
@@ -33,6 +35,8 @@ export interface ExecutorCallbacks {
   onLLMUsage?: (tokensIn: number, tokensOut: number, credits: number) => Promise<void> | void
   /** Retourne false si l'opération dangereuse est refusée (garde HITL). */
   authorizeDangerousTool?: (tool: string, args: Record<string, unknown>) => Promise<boolean> | boolean
+  /** v3.1 : checkpoint persisté après chaque étape (reprise après crash). */
+  onCheckpoint?: (partial: { steps: ExecutionLogEntry[] }) => Promise<void> | void
 }
 
 export interface ExecutorContext {
@@ -79,6 +83,9 @@ export interface ExecutorOutcome {
   tokensIn: number
   tokensOut: number
   error?: string
+  /** v3.1 : télémétrie outils (boucle de feedback + EngineRun). */
+  toolsUsed?: string[]
+  toolFailures?: string[]
 }
 
 export async function executePlan(
@@ -93,6 +100,8 @@ export async function executePlan(
   const evidence: EvidenceItem[] = []
   let tokensIn = 0
   let tokensOut = 0
+  const toolsUsed = new Set<string>()
+  const toolFailures = new Set<string>()
 
   const contextBlock: string[] = [
     `DEMANDE INITIALE :\n${prompt.slice(0, 2500)}`,
@@ -110,6 +119,7 @@ export async function executePlan(
 
   for (let i = 0; i < plan.steps.length; i++) {
     const step = plan.steps[i]
+    const stepStarted = Date.now()
     await callbacks.onStepStart?.(i, step.title)
 
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -188,7 +198,31 @@ export async function executePlan(
           }
         }
 
-        const result = await runTool(toolKey, args, { userId: ctx.userId, agentId: ctx.agentId })
+        // v3.1 : appel d'outil protégé par son circuit breaker dédié.
+        let result: ToolResult
+        try {
+          result = await getBreaker(`tool:${toolKey}`).run(() =>
+            runTool(toolKey, args, { userId: ctx.userId, agentId: ctx.agentId })
+          )
+        } catch (breakerErr) {
+          if (breakerErr instanceof AppError && breakerErr.code === "RETRY_BUDGET_EXCEEDED") {
+            // Circuit ouvert : SWITCH_TOOL effectif — le modèle est informé
+            // et doit trouver une approche sans cet outil.
+            toolFailures.add(toolKey)
+            observations.push(
+              `OBSERVATION : l'outil « ${toolKey} » est temporairement indisponible (circuit ouvert après échecs répétés). Utilise un autre outil ou une autre méthode.`
+            )
+            messages.push({ role: "assistant", content: decision.raw.slice(0, 1000) })
+            messages.push({
+              role: "user",
+              content: `OBSERVATION : l'outil « ${toolKey} » est indisponible (circuit ouvert). Poursuis avec un autre outil ou clôture l'étape en expliquant la limite rencontrée.`,
+            })
+            continue
+          }
+          throw breakerErr
+        }
+        toolsUsed.add(toolKey)
+        if (!result.ok) toolFailures.add(toolKey)
         await callbacks.onToolCall?.(toolKey, args, result)
         observations.push(`OBSERVATION (outil ${toolKey}) — ${result.ok ? "succès" : `ÉCHEC : ${result.error}`}:\n${result.output.slice(0, 3500)}`)
         stepEvidence.push({
@@ -229,13 +263,15 @@ export async function executePlan(
       reasoning: stepReasoning,
       tokensIn: stepTokensIn,
       tokensOut: stepTokensOut,
-      latencyMs: 0,
+      latencyMs: Date.now() - stepStarted, // v3.1 : latence RÉELLE mesurée
       evidence: stepEvidence,
       attempt: 1,
     }
     steps.push(entry)
     evidence.push(...stepEvidence)
     await callbacks.onStepDone?.(entry)
+    // v3.1 : checkpoint après chaque étape — un crash ne perd plus le travail.
+    await Promise.resolve(callbacks.onCheckpoint?.({ steps: [...steps] })).catch(() => undefined)
 
     // Le contexte s'enrichit pour l'étape suivante.
     contextBlock.push(`RÉSULTAT ÉTAPE ${i + 1} (${step.title}) :\n${stepOutput.slice(0, 1500)}`)
@@ -279,5 +315,7 @@ export async function executePlan(
     evidence,
     tokensIn,
     tokensOut,
+    toolsUsed: [...toolsUsed],
+    toolFailures: [...toolFailures],
   }
 }

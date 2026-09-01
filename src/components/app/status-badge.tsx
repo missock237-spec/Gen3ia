@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import {
-  CheckCircle2, XCircle, Clock, Loader2, PauseCircle, AlertTriangle, HelpCircle, Ban,
+  CheckCircle2, XCircle, Clock, Loader2, PauseCircle, AlertTriangle, HelpCircle, Ban, ListChecks,
 } from "lucide-react";
 
 /** Badge de statut unifié (tâches, agents, paiements). */
@@ -15,6 +15,7 @@ const STATUS_MAP: Record<string, { label: string; className: string; icon: React
   VERIFYING: { label: "Vérification", className: "border-teal-600/50 text-teal-300", icon: <Loader2 className="h-3 w-3 animate-spin" /> },
   LEARNING: { label: "Apprentissage", className: "border-teal-600/50 text-teal-300", icon: <Loader2 className="h-3 w-3 animate-spin" /> },
   WAITING_FOR_HUMAN: { label: "Confirmation requise", className: "border-orange-500/50 text-orange-300", icon: <HelpCircle className="h-3 w-3" /> },
+  WAITING_PLAN_APPROVAL: { label: "Choix du plan requis", className: "border-teal-500/50 text-teal-300", icon: <ListChecks className="h-3 w-3" /> },
   COMPLETED: { label: "Terminée", className: "border-emerald-600/50 text-emerald-300", icon: <CheckCircle2 className="h-3 w-3" /> },
   FAILED: { label: "Échec", className: "border-red-600/50 text-red-300", icon: <XCircle className="h-3 w-3" /> },
   CANCELLED: { label: "Annulée", className: "border-zinc-600 text-zinc-400", icon: <Ban className="h-3 w-3" /> },

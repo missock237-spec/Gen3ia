@@ -3,11 +3,24 @@ import { zaiWebSearch, zaiPageReader, htmlToText, isZaiAvailable } from "@/lib/a
 import { searchKnowledge } from "@/lib/rag/retriever"
 import { recallMemories } from "@/lib/memory/store"
 import { hasZaiConfig } from "@/lib/config"
+import { logger } from "@/lib/observability/logger"
 
 /**
  * Registre d'outils — chaque outil possède une implémentation RÉELLE.
  * Aucune réponse simulée : si un outil échoue, l'erreur remonte au moteur
  * d'auto-correction qui décide de la stratégie de récupération.
+ *
+ * v3.1 — durcissement de la sandbox code_runner (audit sécurité) :
+ *  - liste de refus STATIQUE des vecteurs d'échappement connus de node:vm
+ *    (constructor, __proto__, process, require, import, eval, Function…) ;
+ *  - contexte gelé (Object.freeze) ;
+ *  - journalisation de chaque exécution (qui, quand, taille, verdict) ;
+ *  - limitation inchangée : 5 s de CPU, 50 lignes de log, 4 Ko de sortie.
+ *
+ * ⚠ Limites documentées (ADR-0005) : node:vm n'est PAS une frontière de
+ * sécurité dure (pas d'isolation mémoire/processus). Pour des charges
+ * hostiles, l'exécution doit passer par le conteneur Docker autonome
+ * (Dockerfile fourni) — décision explicite, pas un angle mort.
  */
 
 export type ToolKey =
@@ -242,8 +255,45 @@ function toolCalculator(args: { expression: string }): ToolResult {
   }
 }
 
-function toolCodeRunner(args: { code: string }): ToolResult {
+/** Vecteurs d'échappement connus de node:vm — refusés AVANT exécution. */
+const SANDBOX_DENYLIST: Array<[RegExp, string]> = [
+  [/\bconstructor\b/, "accès à « constructor » (vecteur d'échappement d'isolat)"],
+  [/__proto__/, "accès à « __proto__ » (pollution de prototype)"],
+  [/\bprocess\b/, "accès à « process » interdit"],
+  [/\bglobalThis\b/, "accès à « globalThis » interdit"],
+  [/\brequire\s*\(/, "require() interdit"],
+  [/\bimport\s*\(/, "import() dynamique interdit"],
+  [/\beval\s*\(/, "eval() interdit"],
+  [/\bFunction\s*\(/, "constructeur Function interdit"],
+  [/\bWebAssembly\b/, "WebAssembly interdit"],
+  [/\bSharedArrayBuffer\b/, "SharedArrayBuffer interdit"],
+  [/\bWeakRef\b/, "WeakRef interdit"],
+  [/\bProxy\s*\(/, "constructeur Proxy interdit"],
+  [/\bfetch\b/, "réseau coupé : fetch indisponible"],
+  [/\bWebSocket\b/, "réseau coupé : WebSocket indisponible"],
+]
+
+function toolCodeRunner(args: { code: string }, ctx?: ToolContext): ToolResult {
   const started = Date.now()
+  const code = args.code ?? ""
+
+  // v3.1 — contrôle statique AVANT toute exécution (échec rapide, explicite).
+  for (const [pattern, reason] of SANDBOX_DENYLIST) {
+    if (pattern.test(code)) {
+      logger.warn("sandbox: code refusé (liste de refus)", {
+        userId: ctx?.userId,
+        reason,
+        bytes: code.length,
+      })
+      return {
+        ok: false,
+        output: "",
+        error: `Code refusé par la sandbox : ${reason}. Réécris le code sans cette construction.`,
+        latencyMs: Date.now() - started,
+      }
+    }
+  }
+
   const logs: string[] = []
   const sandboxConsole = {
     log: (...items: unknown[]) => {
@@ -266,12 +316,20 @@ function toolCodeRunner(args: { code: string }): ToolResult {
     Math, JSON, Date, Number, String, Boolean, Array, Object, isNaN, parseInt, parseFloat,
     BigInt: undefined, process: undefined, fetch: undefined, require: undefined, global: undefined,
   }
+  // Gel du conteneur (pas des globales partagées du processus hôte).
+  Object.freeze(sandbox)
+  Object.freeze(sandboxConsole)
   try {
-    const code = args.code ?? ""
     const result = vm.runInNewContext(code, sandbox, { timeout: 5000, displayErrors: true })
     const parts: string[] = []
     if (logs.length > 0) parts.push(logs.join("\n"))
     if (result !== undefined) parts.push(`→ ${serialize(result)}`)
+    logger.info("sandbox: exécution code_runner", {
+      userId: ctx?.userId,
+      bytes: code.length,
+      ok: true,
+      durMs: Date.now() - started,
+    })
     return {
       ok: true,
       output: parts.join("\n").slice(0, 4000) || "(aucune sortie)",
@@ -279,6 +337,11 @@ function toolCodeRunner(args: { code: string }): ToolResult {
       latencyMs: Date.now() - started,
     }
   } catch (err) {
+    logger.warn("sandbox: échec d'exécution", {
+      userId: ctx?.userId,
+      bytes: code.length,
+      error: err instanceof Error ? err.message : String(err),
+    })
     return {
       ok: false,
       output: logs.join("\n").slice(0, 2000),
@@ -428,7 +491,7 @@ export async function runTool(
     case "calculator":
       return toolCalculator({ expression: String(args.expression ?? "") })
     case "code_runner":
-      return toolCodeRunner({ code: String(args.code ?? "") })
+      return toolCodeRunner({ code: String(args.code ?? "") }, ctx)
     case "knowledge_search":
       return toolKnowledgeSearch({ query: String(args.query ?? "") }, ctx)
     case "memory_recall":

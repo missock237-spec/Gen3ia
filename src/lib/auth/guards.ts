@@ -40,6 +40,8 @@ export interface UserSettings {
   maxAttempts: number
   confirmDangerousOps: boolean
   language: string
+  /** v3.1 — mode Explain : « manual » exige l'approbation du plan avant exécution. */
+  planApproval: "auto" | "manual"
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -48,6 +50,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   maxAttempts: 3,
   confirmDangerousOps: true,
   language: "fr",
+  planApproval: "auto",
 }
 
 export function getUserSettings(user: User): UserSettings {

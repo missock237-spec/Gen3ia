@@ -4,11 +4,13 @@ import { handleRoute, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { advanceTask } from "@/lib/engines/orchestrator"
 import { transitionTask } from "@/lib/engines/state-machine"
+import { hydrateEvidence } from "@/lib/tasks/artifacts"
 
 /**
  * Détail d'une tâche — poursuit AUSSI l'avancement du pipeline si la tâche
  * est active (chaque sondage du client fait progresser l'orchestration,
  * dans la limite du budget temporel de la requête).
+ * v3.1 : hydratation des preuves externalisées (TaskArtifact gzip).
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
@@ -18,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!owned) throw new ApiError(404, "Tâche introuvable.", "NOT_FOUND")
 
     let task = owned
-    if (!["COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_HUMAN"].includes(task.status)) {
+    if (!["COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_HUMAN", "WAITING_PLAN_APPROVAL"].includes(task.status)) {
       task = (await advanceTask(task.id)) ?? task
     }
 
@@ -36,21 +38,37 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
+    // v3.1 : hydratation des preuves externalisées (artefacts gzip → contenu complet).
+    const hydrateEvidenceField = async <T extends { evidence?: Array<{ artifactId?: string }> }>(
+      parsed: T | null
+    ): Promise<T | null> => {
+      if (!parsed?.evidence?.length) return parsed
+      try {
+        const hydrated = await hydrateEvidence(parsed.evidence as never)
+        return { ...parsed, evidence: hydrated }
+      } catch {
+        return parsed
+      }
+    }
+    const executionLog = await hydrateEvidenceField(parse<{ finalAnswer?: string; steps?: unknown[]; evidence?: Array<{ artifactId?: string }> }>(task.executionLog))
+    const result = await hydrateEvidenceField(parse<{ answer?: string; evidence?: Array<{ artifactId?: string }> }>(task.result))
+
     return Response.json({
       ok: true,
       task: {
         id: task.id, prompt: task.prompt, status: task.status, agentId: task.agentId,
         selectedPlanId: task.selectedPlanId, costCredits: task.costCredits,
         tokensIn: task.tokensIn, tokensOut: task.tokensOut, attempts: task.attempts,
+        totalRetries: task.totalRetries,
         error: task.error, createdAt: task.createdAt, completedAt: task.completedAt,
         analysis: parse(task.analysis),
         plans: parse(task.plans),
         planScores: parse(task.planScores),
-        executionLog: parse(task.executionLog),
+        executionLog,
         verification: parse(task.verification),
         correctionLog: parse(task.correctionLog),
         learning: parse(task.learning),
-        result: parse(task.result),
+        result,
         pendingApproval: parse(task.pendingApproval),
       },
       steps: steps.map((s) => ({

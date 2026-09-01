@@ -63,3 +63,9 @@ Caddyfile
 worklog.md
 .z-ai-config
 agents.md
+
+# Bases locales et de test (artefacts, jamais versionnés)
+db/*.db
+
+# Artefacts internes de lecture
+tool-results/

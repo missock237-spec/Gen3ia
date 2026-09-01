@@ -8,7 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { usePolling, apiPatch, formatCredits, formatDate, useUser } from "@/lib/client/hooks";
-import { ShieldCheck, Users, Activity, Coins, Loader2, ScrollText } from "lucide-react";
+import { EnginesPanel } from "@/components/admin/engines-panel";
+import { ShieldCheck, Users, Activity, Coins, Loader2, ScrollText, Gauge } from "lucide-react";
 
 interface AdminData {
   ok: boolean
@@ -49,6 +50,8 @@ export default function AdminPage() {
   const { data, loading, reload } = usePolling<AdminData>("/api/admin", 15000);
   const [grantAmount, setGrantAmount] = useState<Record<string, string>>({});
   const [granting, setGranting] = useState<string | null>(null);
+  // v3.1 — onglets : vue générale / moteurs & observabilité.
+  const [tab, setTab] = useState<"general" | "engines">("general");
 
   async function grantCredits(userId: string) {
     const amount = Number(grantAmount[userId] ?? 0)
@@ -89,8 +92,40 @@ export default function AdminPage() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <ShieldCheck className="h-6 w-6 text-emerald-400" /> Administration
         </h1>
-        <p className="text-sm text-zinc-400 mt-1">Vue globale de la plateforme — statistiques, utilisateurs, audit.</p>
+        <p className="text-sm text-zinc-400 mt-1">Vue globale de la plateforme — statistiques, utilisateurs, audit, moteurs.</p>
       </div>
+
+      {/* v3.1 — Onglets */}
+      <div className="flex gap-2 border-b border-zinc-800 pb-px">
+        <button
+          type="button"
+          onClick={() => setTab("general")}
+          className={`px-4 py-2 text-sm rounded-t-lg border-b-2 transition-colors ${
+            tab === "general"
+              ? "border-emerald-500 text-emerald-300"
+              : "border-transparent text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          Vue générale
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("engines")}
+          className={`px-4 py-2 text-sm rounded-t-lg border-b-2 transition-colors flex items-center gap-1.5 ${
+            tab === "engines"
+              ? "border-emerald-500 text-emerald-300"
+              : "border-transparent text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          <Gauge className="h-3.5 w-3.5" />
+          Moteurs & observabilité
+        </button>
+      </div>
+
+      {tab === "engines" ? (
+        <EnginesPanel />
+      ) : (
+      <>
 
       {/* Statistiques */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -203,6 +238,8 @@ export default function AdminPage() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   )
 }

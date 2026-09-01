@@ -1,7 +1,7 @@
 import { db } from "@/lib/db"
 
 /**
- * Initialisation automatique du schéma SQLite à l'exécution.
+ * Initialisation automatique du schéma SQLite/Postgres à l'exécution.
  * Nécessaire sur les plateformes serverless (Vercel) : le système de
  * fichiers applicatif est en lecture seule, la base vit dans un chemin
  * accessible en écriture (ex. /tmp) et le schéma doit être créé au
@@ -96,6 +96,8 @@ CREATE TABLE IF NOT EXISTS "Task" (
     "tokensIn" INTEGER NOT NULL DEFAULT 0,
     "tokensOut" INTEGER NOT NULL DEFAULT 0,
     "attempts" INTEGER NOT NULL DEFAULT 0,
+    "totalRetries" INTEGER NOT NULL DEFAULT 0,
+    "version" INTEGER NOT NULL DEFAULT 0,
     "error" TEXT,
     "startedAt" DATETIME,
     "completedAt" DATETIME,
@@ -214,6 +216,82 @@ CREATE TABLE IF NOT EXISTS "AuditLog" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
+CREATE TABLE IF NOT EXISTS "Embedding" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "documentId" TEXT NOT NULL,
+    "chunkIndex" INTEGER NOT NULL DEFAULT 0,
+    "chunkText" TEXT NOT NULL,
+    "embedding" TEXT NOT NULL,
+    "dim" INTEGER NOT NULL,
+    "norm" REAL NOT NULL,
+    "model" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "Embedding_userId_documentId_idx" ON "Embedding"("userId", "documentId");
+CREATE INDEX IF NOT EXISTS "Embedding_userId_model_idx" ON "Embedding"("userId", "model");
+CREATE TABLE IF NOT EXISTS "PlanCache" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "promptHash" TEXT NOT NULL,
+    "prompt" TEXT NOT NULL,
+    "embedding" TEXT,
+    "plans" TEXT NOT NULL,
+    "planScores" TEXT NOT NULL,
+    "selectedPlanId" TEXT NOT NULL,
+    "hitCount" INTEGER NOT NULL DEFAULT 0,
+    "lastUsedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" DATETIME NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "PlanCache_userId_promptHash_idx" ON "PlanCache"("userId", "promptHash");
+CREATE INDEX IF NOT EXISTS "PlanCache_userId_lastUsedAt_idx" ON "PlanCache"("userId", "lastUsedAt");
+CREATE TABLE IF NOT EXISTS "EngineRun" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "engine" TEXT NOT NULL,
+    "taskId" TEXT,
+    "userId" TEXT,
+    "phase" TEXT,
+    "ok" BOOLEAN NOT NULL,
+    "errorCode" TEXT,
+    "durationMs" INTEGER NOT NULL,
+    "attempts" INTEGER NOT NULL DEFAULT 1,
+    "tokensIn" INTEGER NOT NULL DEFAULT 0,
+    "tokensOut" INTEGER NOT NULL DEFAULT 0,
+    "credits" REAL NOT NULL DEFAULT 0,
+    "detail" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "EngineRun_engine_createdAt_idx" ON "EngineRun"("engine", "createdAt");
+CREATE INDEX IF NOT EXISTS "EngineRun_taskId_idx" ON "EngineRun"("taskId");
+CREATE TABLE IF NOT EXISTS "SystemConfig" (
+    "key" TEXT NOT NULL PRIMARY KEY,
+    "value" TEXT NOT NULL,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS "TaskArtifact" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "taskId" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "phase" TEXT,
+    "stepIndex" INTEGER,
+    "payload" TEXT NOT NULL,
+    "bytes" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "TaskArtifact_taskId_idx" ON "TaskArtifact"("taskId");
+`
+
+/** Dialecte Postgres : mêmes tables, typage natif (TIMESTAMP, DOUBLE PRECISION, BOOLEAN). */
+const POSTGRES_DDL = SQLITE_DDL.replaceAll(" DATETIME ", " TIMESTAMP ")
+  .replaceAll("DATETIME NOT NULL", "TIMESTAMP NOT NULL")
+  .replaceAll(" REAL ", " DOUBLE PRECISION ")
+  .replaceAll("REAL NOT NULL", "DOUBLE PRECISION NOT NULL")
+
+/** Compléments non idempotents : colonnes ajoutées après coup (silencieux si déjà présentes). */
+const MIGRATION_DDL = `
+ALTER TABLE "Task" ADD COLUMN "version" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Task" ADD COLUMN "totalRetries" INTEGER NOT NULL DEFAULT 0;
 `
 
 const globalForInit = globalThis as unknown as { gen3iaSchemaReady?: Promise<void> }
@@ -224,9 +302,10 @@ export function ensureSchema(): Promise<void> {
     globalForInit.gen3iaSchemaReady = (async () => {
       const url = process.env.DATABASE_URL ?? ""
       const isPostgres = url.startsWith("postgres://") || url.startsWith("postgresql://")
-      const dialectError = /already exists|UNIQUE|duplicate key|multiple primary key/i
+      const dialectError =
+        /already exists|UNIQUE|duplicate key|multiple primary key|duplicate column/i
       try {
-        const ddl = isPostgres ? POSTGRES_DDL : SQLITE_DDL
+        const ddl = (isPostgres ? POSTGRES_DDL : SQLITE_DDL) + MIGRATION_DDL
         for (const statement of ddl.split(";")) {
           const trimmed = statement.trim()
           // Ignore les commentaires et les blocs vides.
@@ -235,7 +314,7 @@ export function ensureSchema(): Promise<void> {
           try {
             await db.$executeRawUnsafe(cleaned + ";")
           } catch (err) {
-            // Initialisation concurrente (une autre instance) : on ignore proprement.
+            // Initialisation concurrente ou colonne déjà présente : on ignore proprement.
             if (err instanceof Error && dialectError.test(err.message)) continue
             throw err
           }

@@ -1,10 +1,41 @@
-# ⚡ GEN3IA — Plateforme de construction et d'orchestration d'agents IA
+# ⚡ GEN3IA v3.1 — Plateforme de construction et d'orchestration d'agents IA
 
 GEN3IA analyse vos demandes, **génère 5 plans**, les **compare** avec une formule d'évaluation pondérée, **exécute** le meilleur avec des **outils réels** (recherche web, calculs, code sandboxé, RAG), **vérifie** le résultat contre des critères prouvés, **corrige** les échecs automatiquement, **apprend** de chaque tâche et **livre** une réponse traçable — avec API publique et SDK.
 
 ```
 Comprendre → Planifier → Comparer → Exécuter → Vérifier → Corriger → Évaluer → Apprendre → Livrer
 ```
+
+---
+
+## ✨ Nouveautés v3.1 — Fiabilité, qualité, observabilité
+
+**Architecture & moteurs**
+- **SDK de moteurs** : contrat strict `execute()` / `rollback()` / `getStatus()` + registre — ajout d'un nouveau moteur (ex : l'EthicsEngine fourni) sans toucher au cœur (ADR-0009)
+- **RAG vectoriel** : embeddings persistés à l'ingestion (OpenAI-compatible ou repli local sans clé), recherche hybride 0.6·cosinus + 0.4·TF-IDF, réindexation en un clic (ADR-0003)
+- **Learning actionnable** : les leçons d'échec ET de succès modulent l'évaluateur (prior par archétype A-E) et le planificateur (outils à éviter) ; patrons réutilisables persistés
+
+**Qualité & fiabilité**
+- **64 tests** (bun:test) : unitaires (évaluateur, éthique, breaker, erreurs, RAG, rate limit, machine à états) + **intégration pipeline complet** avec LLM simulé — `bun run test`
+- **Erreurs centralisées** : catalogue de codes métier (PLANNING_FAILED, INSUFFICIENT_CREDITS, RETRY_BUDGET_EXCEEDED…)
+- **Circuit breaker** par outil/fournisseur + **budget global de retries par tâche** (défaut 8) + backoff exponentiel avec jitter — fini les boucles infinies (ADR-0010)
+- **SWITCH_TOOL câblé** : un outil défaillant est court-circuité, le moteur d'exécution bascule vers une approche alternative
+
+**Performance & scalabilité**
+- **Cache de plans** : exact (SHA-256) + sémantique (cosinus ≥ 0.92), TTL 7 j, fail-open (ADR-0011)
+- **Checkpointing optimisé** : preuves volumineuses externalisées et compressées (gzip), checkpoint après CHAQUE étape d'exécution, fusions atomiques (verrouillage optimiste)
+
+**Sécurité**
+- **Sandbox durcie** : liste de refus des vecteurs d'échappement node:vm + audit systématique (ADR-0005)
+- **Rate limiting unifié** : IP (login 10/min, inscription 5/h), utilisateur (120/min), clés API (60/min), webhook (120/min)
+
+**Observabilité & UX**
+- **Logger JSON structuré** avec rédaction des secrets + **métriques EngineRun** durables (taux de succès, latence p95 par moteur)
+- **Interface admin Moteurs** : performances temps réel, état des breakers, pondérations d'évaluation éditables, purge du cache
+- **Mode Explain** : sélection, édition et régénération des 5 plans AVANT exécution (ADR-0012)
+- **Templates d'agents** : 8 profils pré-configurés (analyste financier, chercheur académique…) déployables en un clic
+
+Décisions d'architecture documentées : [`docs/adr/`](docs/adr/) (12 ADR).
 
 ---
 
@@ -35,7 +66,7 @@ Le **premier compte créé** devient administrateur. 25 crédits d'exécution so
 |---|---|---|
 | ANALYZING | Prompt Analysis Engine | Objectifs, contraintes, risques, critères de succès vérifiables |
 | PLANNING | Planner | 5 plans (A–E) : stratégie, étapes, outils, coûts, probabilité |
-| SIMULATING | Plan Evaluation Engine | Formule pondérée configurable (succès, coût, latence, risque, complétude) |
+| SIMULATING | Plan Evaluation Engine + Ethics Engine | Formule pondérée configurable corrigée par l'historique, politique d'éthique déterministe |
 | EXECUTING | Executor (ReAct) | Boucle d'outils réels avec journalisation et preuves |
 | VERIFYING | Verification Engine | Critère non prouvé = critère non validé (anti-hallucination) |
 | CORRECTING | Self-Correction Engine | Classification (transitoire/logique/outil/modèle) → RETRY, SWITCH_MODEL, REPLAN, ABORT |
@@ -131,11 +162,17 @@ docker run -p 3000:3000 --env-file .env gen3ia
 ## 🧪 Tests
 
 ```bash
-bun scripts/test-llm.ts        # couche IA (providers + JSON structuré)
-bun scripts/test-pipeline.ts   # pipeline d'orchestration complet en réel
-bun run lint                   # qualité de code
+# Suite complète (64 tests) : unitaires + intégration pipeline (LLM simulé)
+bun run test
+
+# Test du pipeline avec un vrai LLM (requiert GLM_API_KEY)
+bun run test:pipeline
+
+# Test de la couche LLM (routage, repli, JSON structuré)
+bun run test:llm
 ```
 
----
-
-© 2026 GEN3IA — Tous droits réservés.
+La suite d'intégration exécute une tâche complète (ANALYZING → COMPLETED) sur
+une base dédiée (`db/test.db`) avec la couche LLM simulée : vérifie l'enchaînement
+des moteurs, les checkpoints, la télémétrie EngineRun, le Credit Ledger,
+l'apprentissage et le cache de plans — sans aucune clé API.

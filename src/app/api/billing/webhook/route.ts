@@ -3,15 +3,28 @@ import { db } from "@/lib/db"
 import { verifyChariowSignature } from "@/lib/payments/chariow"
 import { grantCredits } from "@/lib/credits/ledger"
 import { audit } from "@/lib/engines/audit"
+import { getClientIp } from "@/lib/api"
+import { checkRateLimit } from "@/lib/security/rate-limit"
 
 /**
  * Webhook Chariow — UNIQUE point d'entrée des confirmations de paiement.
  * Sécurité : la signature HMAC-SHA256 (x-chariow-signature) est vérifiée
  * sur le corps BRUT avant tout traitement. Un paiement réussi crédite le
  * compte via le Credit Ledger (jamais de modification directe du solde).
+ * v3.1 : rate limiting IP (120 req/min) avant la vérification de signature.
  */
 
 export async function POST(req: NextRequest) {
+  // v3.1 : limitation de débit non authentifiée (protection flood).
+  const ip = getClientIp(req) ?? "local"
+  const limit = checkRateLimit("webhook", ip)
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Trop de requêtes de webhook. Réessayez plus tard.", code: "RATE_LIMITED" },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((limit.resetAt - Date.now()) / 1000)) } }
+    )
+  }
+
   try {
     const rawBody = await req.text()
     const signature = req.headers.get("x-chariow-signature")

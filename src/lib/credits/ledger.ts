@@ -22,8 +22,9 @@ export class InsufficientCreditsError extends Error {
 
 export interface LedgerEntry {
   type: string
-  amount: number
   description: string
+  /** Optionnel : le montant réel est passé en paramètre de chargeCredits. */
+  amount?: number
   refType?: string
   refId?: string
 }

@@ -1,63 +1,59 @@
 import { db } from "@/lib/db"
+import { logger } from "@/lib/observability/logger"
+import { searchVector } from "./vector-store"
+import { chunkText, tokenize, type Chunk } from "./text-utils"
 
 /**
- * RAG — découpage de documents et récupération par pertinence TF-IDF.
- * Index réel construit sur les documents de l'utilisateur : le vecteur de
- * requête est confronté aux fréquences de termes de chaque morceau via
- * similarité cosinus pondérée par IDF (technique de recherche d'information
- * standard, sans dépendance externe).
+ * RAG — recherche hybride (amélioration « Remplacer TF-IDF par un Vecteur DB »).
+ *
+ * Stratégie par ordre de priorité :
+ *  1. Vecteurs persistés (Embedding) + TF-IDF ciblé sur les morceaux
+ *     candidats → score hybride 0.6·cosinus + 0.4·lexical ;
+ *  2. Repli TF-IDF pur si aucun vecteur n'est indexé pour l'utilisateur
+ *     (documents antérieurs à la v3.1, ou fournisseur local indisponible).
+ *
+ * L'embedding n'est JAMAIS recalculé pour les documents à la requête :
+ * il est calculé une fois à l'ingestion (voir vector-store.indexDocument).
  */
 
-export interface Chunk {
-  text: string
-  index: number
-}
-
-export function chunkText(text: string, size = 900, overlap = 120): Chunk[] {
-  const clean = text.replace(/\r/g, "").trim()
-  if (clean.length <= size) return [{ text: clean, index: 0 }]
-  const chunks: Chunk[] = []
-  let cursor = 0
-  let index = 0
-  while (cursor < clean.length) {
-    let end = Math.min(cursor + size, clean.length)
-    if (end < clean.length) {
-      // Coupe au dernier espace pour éviter les mots tronqués.
-      const lastSpace = clean.lastIndexOf(" ", end)
-      if (lastSpace > cursor + size * 0.5) end = lastSpace
-    }
-    chunks.push({ text: clean.slice(cursor, end).trim(), index })
-    index++
-    cursor = end - overlap
-    if (cursor < 0) cursor = 0
-    if (end >= clean.length) break
-  }
-  return chunks.filter((c) => c.text.length > 0)
-}
-
-const STOPWORDS = new Set([
-  "le","la","les","un","une","des","du","de","et","ou","en","dans","pour","par","sur","au","aux",
-  "que","qui","quoi","dont","est","sont","être","avoir","a","the","of","and","to","in","is","are",
-  "for","on","with","as","by","an","be","this","that","it","d","l","s","qu","ne","pas","plus",
-  "ce","cet","cette","ces","son","sa","ses","leur","leurs","nous","vous","je","tu","il","elle",
-])
-
-/** Tokenisation : minuscules, suppression accents basique, mots vides retirés. */
-export function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9àâçéèêëîïôûùüÿñæœa-z0-9\s-]/gi, " ")
-    .split(/[\s\-]+/)
-    .filter((t) => t.length > 1 && !STOPWORDS.has(t))
-}
+export { chunkText, tokenize } from "./text-utils"
+export type { Chunk } from "./text-utils"
 
 export interface ScoredChunk {
   documentId: string
   title: string
   text: string
   score: number
+  /** Origine du score (observabilité). */
+  method?: "hybrid" | "lexical"
+}
+
+/** TF-IDF ciblé : requête vs liste fermée de morceaux (sous-corpus candidats). */
+function lexicalScores(query: string, texts: string[]): number[] {
+  const queryTokens = tokenize(query)
+  if (queryTokens.length === 0 || texts.length === 0) return texts.map(() => 0)
+
+  const docTokens = texts.map((t) => tokenize(t))
+  const N = texts.length
+  const df = new Map<string, number>()
+  for (const tokens of docTokens) {
+    for (const term of new Set(tokens)) df.set(term, (df.get(term) ?? 0) + 1)
+  }
+  const idf = (term: string) => Math.log(1 + N / (1 + (df.get(term) ?? 0)))
+
+  const querySet = new Set(queryTokens)
+  return docTokens.map((tokens) => {
+    const tf = new Map<string, number>()
+    for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1)
+    let dot = 0
+    let docNorm = 0
+    for (const [term, f] of tf) {
+      const dw = (f / (tokens.length || 1)) * idf(term)
+      docNorm += dw * dw
+      if (querySet.has(term)) dot += idf(term) * dw
+    }
+    return docNorm > 0 ? dot / Math.sqrt(docNorm) : 0
+  })
 }
 
 /** Recherche RAG sur la base de connaissances de l'utilisateur. */
@@ -66,22 +62,49 @@ export async function searchKnowledge(
   query: string,
   topK = 4
 ): Promise<ScoredChunk[]> {
-  const docs = await db.document.findMany({
+  // 1. Candidats vectoriels (embedding requête + cosinus sur vecteurs persistés).
+  let vectorHits: Awaited<ReturnType<typeof searchVector>> = []
+  try {
+    vectorHits = await searchVector(userId, query, Math.max(topK * 2, 8))
+  } catch (err) {
+    logger.warn("rag: recherche vectorielle indisponible, repli lexical", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  const docIds = [...new Set(vectorHits.map((h) => h.documentId))]
+  const docs =
+    docIds.length > 0
+      ? await db.document.findMany({ where: { userId, id: { in: docIds } }, select: { id: true, title: true } })
+      : []
+  const titleById = new Map(docs.map((d) => [d.id, d.title]))
+
+  if (vectorHits.length > 0) {
+    // 2. Score hybride sur les candidats vectoriels.
+    const texts = vectorHits.map((h) => h.text)
+    const lex = lexicalScores(query, texts)
+    const merged: ScoredChunk[] = vectorHits.map((h, i) => ({
+      documentId: h.documentId,
+      title: titleById.get(h.documentId) ?? "(document supprimé)",
+      text: h.text,
+      score: Math.round((0.6 * h.score + 0.4 * lex[i]) * 1000) / 1000,
+      method: "hybrid" as const,
+    }))
+    return merged
+      .filter((m) => m.score > 0.02)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK)
+  }
+
+  // 3. Repli lexical complet (aucun vecteur indexé pour cet utilisateur).
+  const allDocs = await db.document.findMany({
     where: { userId },
     select: { id: true, title: true, chunks: true },
   })
-  if (docs.length === 0) return []
+  if (allDocs.length === 0) return []
 
-  // Corpus : tous les morceaux de tous les documents.
-  interface IndexedChunk {
-    documentId: string
-    title: string
-    text: string
-    tf: Map<string, number>
-    length: number
-  }
-  const corpus: IndexedChunk[] = []
-  for (const doc of docs) {
+  const corpus: Array<{ documentId: string; title: string; text: string }> = []
+  for (const doc of allDocs) {
     let chunks: Chunk[] = []
     try {
       chunks = doc.chunks ? (JSON.parse(doc.chunks) as Chunk[]) : []
@@ -89,60 +112,23 @@ export async function searchKnowledge(
       chunks = []
     }
     if (chunks.length === 0 && doc.title) {
-      // Document non encore découpé : indexation à la volée.
       chunks = chunkText(doc.title)
     }
     for (const chunk of chunks) {
-      const tokens = tokenize(chunk.text)
-      const tf = new Map<string, number>()
-      for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1)
-      corpus.push({
-        documentId: doc.id,
-        title: doc.title,
-        text: chunk.text,
-        tf,
-        length: tokens.length || 1,
-      })
+      corpus.push({ documentId: doc.id, title: doc.title, text: chunk.text })
     }
   }
   if (corpus.length === 0) return []
 
-  // IDF sur le corpus.
-  const df = new Map<string, number>()
-  for (const c of corpus) {
-    for (const term of c.tf.keys()) df.set(term, (df.get(term) ?? 0) + 1)
-  }
-  const N = corpus.length
-  const idf = (term: string) => Math.log(1 + N / (1 + (df.get(term) ?? 0)))
-
-  // Vecteur requête + similarité cosinus pondérée IDF.
-  const queryTokens = tokenize(query)
-  if (queryTokens.length === 0) return []
-  const queryTf = new Map<string, number>()
-  for (const t of queryTokens) queryTf.set(t, (queryTf.get(t) ?? 0) + 1)
-
-  const scored: ScoredChunk[] = corpus.map((c) => {
-    let dot = 0
-    let queryNorm = 0
-    let docNorm = 0
-    for (const [term, qf] of queryTf) {
-      const w = qf * idf(term)
-      queryNorm += w * w
-      const dtf = c.tf.get(term)
-      if (dtf) {
-        const dw = (dtf / c.length) * idf(term)
-        dot += w * dw
-      }
-    }
-    for (const [term, dtf] of c.tf) {
-      const dw = (dtf / c.length) * idf(term)
-      docNorm += dw * dw
-    }
-    const score = queryNorm > 0 && docNorm > 0 ? dot / (Math.sqrt(queryNorm) * Math.sqrt(docNorm)) : 0
-    return { documentId: c.documentId, title: c.title, text: c.text, score: Math.round(score * 1000) / 1000 }
-  })
-
-  return scored
+  const lex = lexicalScores(query, corpus.map((c) => c.text))
+  return corpus
+    .map((c, i) => ({
+      documentId: c.documentId,
+      title: c.title,
+      text: c.text,
+      score: Math.round(lex[i] * 1000) / 1000,
+      method: "lexical" as const,
+    }))
     .filter((s) => s.score > 0.02)
     .sort((a, b) => b.score - a.score)
     .slice(0, topK)

@@ -8,7 +8,7 @@ on:
 
 jobs:
   quality:
-    name: Lint & types
+    name: Tests, lint & types
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,5 +19,15 @@ jobs:
         run: npm install --legacy-peer-deps
       - name: Génération Prisma
         run: npx prisma generate
+      - name: Tests unitaires & intégration (bun:test)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Exécution des tests
+        run: bun test tests/unit/
+        env:
+          DATABASE_URL: file:/tmp/gen3ia-ci.db
+          PLAN_CACHE: "on"
+          LOG_LEVEL: error
       - name: Lint
         run: npm run lint

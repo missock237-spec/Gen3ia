@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiPost, useUser, formatDate, type CurrentUser } from "@/lib/client/hooks";
-import { Settings, Loader2, Save, ShieldCheck, Cpu } from "lucide-react";
+import { Settings, Loader2, Save, ShieldCheck, Cpu, ListChecks } from "lucide-react";
 
 /** Formulaire initialisé UNE fois au montage à partir des préférences. */
 function SettingsForm({
@@ -25,6 +25,8 @@ function SettingsForm({
   const [maxAttempts, setMaxAttempts] = useState(user.settings.maxAttempts)
   const [confirmDangerousOps, setConfirmDangerousOps] = useState(user.settings.confirmDangerousOps)
   const [defaultProvider, setDefaultProvider] = useState(user.settings.defaultProvider)
+  // v3.1 — mode Explain : approbation manuelle des plans avant exécution.
+  const [planApproval, setPlanApproval] = useState(user.settings.planApproval === "manual")
   const [saving, setSaving] = useState(false)
 
   async function save() {
@@ -33,6 +35,7 @@ function SettingsForm({
       maxAttempts,
       confirmDangerousOps,
       defaultProvider,
+      planApproval: planApproval ? "manual" : "auto",
     })
     setSaving(false)
     if (!res.ok) {
@@ -111,6 +114,32 @@ function SettingsForm({
               checked={confirmDangerousOps}
               onCheckedChange={setConfirmDangerousOps}
               className="data-[state=checked]:bg-emerald-500"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* v3.1 — Mode Explain */}
+      <Card className="bg-zinc-900/40 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ListChecks className="h-4 w-4 text-teal-400" /> Mode Explain — validation des plans
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium text-zinc-200">Approuver les plans avant l'exécution</div>
+              <p className="text-xs text-zinc-500 mt-1 max-w-md">
+                Avant d'exécuter, GEN3IA vous présente les 5 plans notés : sélectionnez le plan de votre choix,
+                éditez ses étapes, ou régénérez-les. Désactivé, l'évaluateur sélectionne et exécute
+                automatiquement le meilleur plan.
+              </p>
+            </div>
+            <Switch
+              checked={planApproval}
+              onCheckedChange={setPlanApproval}
+              className="data-[state=checked]:bg-teal-500"
             />
           </div>
         </CardContent>
