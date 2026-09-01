@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     return Response.json({
       ok: true,
       app: APP_NAME,
-      version: "3.0.0",
+      version: "3.1.0",
       database,
       llmProviders: providers.filter((p) => p.available).map((p) => p.key),
       time: new Date().toISOString(),
