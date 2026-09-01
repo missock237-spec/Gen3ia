@@ -1,0 +1,23 @@
+name: CI GEN3IA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Lint & types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Installation
+        run: npm install --legacy-peer-deps
+      - name: Génération Prisma
+        run: npx prisma generate
+      - name: Lint
+        run: npm run lint
