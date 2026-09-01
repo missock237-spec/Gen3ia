@@ -271,7 +271,6 @@ model AuditLog {
 
   @@index([createdAt])
 }
-
 // ============================================================
 // Améliorations v3.1 — vecteurs, cache, télémétrie, config, artefacts
 // ============================================================
