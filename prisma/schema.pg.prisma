@@ -1,0 +1,268 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// GEN3IA — Schéma de données
+// Utilisateurs, agents, tâches, moteur d'orchestration,
+// crédits, paiements Chariow, RAG, mémoire, audit.
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?
+  name         String?
+  role         String   @default("USER") // USER | ADMIN
+  plan         String   @default("FREE") // FREE | PRO | ENTERPRISE
+  credits      Float    @default(25)
+  settings     String? // JSON : préférences (modèle par défaut, autonomie, confirmations…)
+  chariowId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions     Session[]
+  agents       Agent[]
+  tasks        Task[]
+  apiKeys      ApiKey[]
+  transactions Transaction[]
+  payments     Payment[]
+  documents    Document[]
+  memories     Memory[]
+  skills       Skill[]
+  auditLogs    AuditLog[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Agent {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  slug         String   @unique
+  description  String?
+  systemPrompt String?
+  provider     String   @default("auto") // auto | zai | glm | openrouter | groq | openai | huggingface
+  model        String   @default("auto")
+  temperature  Float    @default(0.7)
+  maxTokens    Int      @default(4096)
+  status       String   @default("DRAFT") // DRAFT | PUBLISHED | PAUSED | ARCHIVED
+  visibility   String   @default("PRIVATE") // PRIVATE | MARKETPLACE
+  category     String?
+  tags         String? // JSON : ["analyse", "rédaction"]
+  config       String? // JSON : { tools, skills, guardrails, memory, rag, autonomy }
+  stats        String? // JSON : { runs, success, failed, tokens, credits, avgLatencyMs }
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tasks   Task[]
+  reviews MarketplaceReview[]
+
+  @@index([userId])
+  @@index([status, visibility])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId    String?
+  name       String
+  prefix     String // 12 premiers caractères, affichables
+  keyHash    String    @unique // SHA-256 du secret complet
+  scopes     String    @default("chat,analyze,task") // CSV
+  requests   Int       @default(0)
+  revoked    Boolean   @default(false)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Machine à états d'une tâche :
+// QUEUED -> ANALYZING -> PLANNING -> SIMULATING -> EXECUTING -> VERIFYING
+//   -> LEARNING -> COMPLETED
+// WAITING_FOR_HUMAN (depuis SIMULATING/EXECUTING, reprend vers l'état d'origine)
+// FAILED / CANCELLED (terminal)
+model Task {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId        String?
+  agent          Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  prompt         String
+  status         String    @default("QUEUED")
+  analysis       String? // JSON : PromptAnalysis
+  plans          String? // JSON : Plan[5]
+  planScores     String? // JSON : scores d'évaluation
+  selectedPlanId String?
+  executionLog   String? // JSON : journaux d'exécution
+  verification   String? // JSON : rapport de vérification
+  correctionLog  String? // JSON : historique des auto-corrections
+  learning       String? // JSON : leçons extraites
+  result         String? // JSON : { answer, evidence, artifacts, metrics }
+  pendingApproval String? // JSON : approbation humaine en attente
+  costCredits    Float     @default(0)
+  tokensIn       Int       @default(0)
+  tokensOut      Int       @default(0)
+  attempts       Int       @default(0)
+  error          String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  steps TaskStep[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model TaskStep {
+  id         String    @id @default(cuid())
+  taskId     String
+  task       Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  phase      String // ANALYZING | PLANNING | SIMULATING | EXECUTING | CORRECTING | VERIFYING | LEARNING | DELIVERING
+  stepIndex  Int       @default(0)
+  title      String
+  detail     String? // JSON : données propres à l'étape
+  status     String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED | SKIPPED | WAITING
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([taskId])
+}
+
+model Transaction {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String // TASK_EXECUTION | PLAN_GENERATION | AGENT_DEPLOY | TOPUP | SUBSCRIPTION | REFUND | BONUS | ADJUSTMENT
+  amount       Float // positif = crédit, négatif = débit
+  balanceAfter Float
+  description  String
+  refType      String?
+  refId        String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   String   @default("chariow")
+  checkoutId String? // identifiant de transaction Chariow
+  plan       String?
+  amount     Float
+  currency   String   @default("XOF")
+  credits    Float    @default(0)
+  status     String   @default("PENDING") // PENDING | SUCCEEDED | FAILED
+  raw        String? // JSON : charge utile du webhook
+  createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId    String?
+  title      String
+  sourceType String   @default("TEXT") // TEXT | FILE | URL
+  content    String
+  chunks     String? // JSON : morceaux indexés pour le RAG
+  size       Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Memory {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId    String?
+  layer      String // SHORT_TERM | LONG_TERM | TASK | USER | AGENT
+  content    String
+  importance Float     @default(0.5)
+  metadata   String? // JSON
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, layer])
+}
+
+model Skill {
+  id          String   @id @default(cuid())
+  userId      String? // null = compétence intégrée
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key         String   @unique
+  name        String
+  description String
+  category    String   @default("GENERAL")
+  definition  String? // JSON : { instructions, tools, examples }
+  isPublic    Boolean  @default(false)
+  installs    Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model Tool {
+  id          String  @id @default(cuid())
+  userId      String? // null = catalogue intégré
+  key         String  @unique
+  name        String
+  description String
+  category    String  @default("GENERAL")
+  parameters  String? // JSON : schéma des paramètres
+  isBuiltIn   Boolean @default(false)
+  enabled     Boolean @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model MarketplaceReview {
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  userId    String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([agentId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String?
+  entityId   String?
+  detail     String? // JSON
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}

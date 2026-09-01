@@ -223,19 +223,25 @@ export function ensureSchema(): Promise<void> {
   if (!globalForInit.gen3iaSchemaReady) {
     globalForInit.gen3iaSchemaReady = (async () => {
       const url = process.env.DATABASE_URL ?? ""
-      if (!url.startsWith("file:")) return // Postgres : utilisez prisma migrate deploy
+      const isPostgres = url.startsWith("postgres://") || url.startsWith("postgresql://")
+      const dialectError = /already exists|UNIQUE|duplicate key|multiple primary key/i
       try {
-        for (const statement of SQLITE_DDL.split(";")) {
+        const ddl = isPostgres ? POSTGRES_DDL : SQLITE_DDL
+        for (const statement of ddl.split(";")) {
           const trimmed = statement.trim()
-          if (trimmed.length > 0 && !trimmed.startsWith("--")) {
-            await db.$executeRawUnsafe(trimmed + ";")
+          // Ignore les commentaires et les blocs vides.
+          const cleaned = trimmed.replace(/^(--[\s\S]*?)?(?=[A-Z(])/, "").trim()
+          if (!cleaned || !/^(CREATE|ALTER)/i.test(cleaned)) continue
+          try {
+            await db.$executeRawUnsafe(cleaned + ";")
+          } catch (err) {
+            // Initialisation concurrente (une autre instance) : on ignore proprement.
+            if (err instanceof Error && dialectError.test(err.message)) continue
+            throw err
           }
         }
       } catch (err) {
-        // Déjà initialisé par une requête concurrente : on ignore.
-        if (!(err instanceof Error && /already exists|UNIQUE/i.test(err.message))) {
-          console.error("[db-init] échec d'initialisation :", err)
-        }
+        console.error("[db-init] échec d'initialisation :", err)
       }
     })()
   }
