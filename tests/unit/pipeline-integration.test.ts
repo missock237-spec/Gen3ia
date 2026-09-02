@@ -70,7 +70,14 @@ const LEARNING_DATA = {
 let chatCalls = 0
 let chatJSONCalls = 0
 
+// v3.2 — le mock doit PRÉSERVER les exports réels du module remplacé :
+// self-correction.ts importe StructuredOutputError depuis ce même module.
+// Bun ≥ 1.4 valide les exports nommés à l'import → un mock partiel
+// (chatJSON seul) provoquait un SyntaxError en CI.
+const realStructured = await import("@/lib/ai/structured")
+
 mock.module("@/lib/ai/structured", () => ({
+  ...realStructured,
   chatJSON: async (opts: { taskType?: string }) => {
     chatJSONCalls++
     const taskType = opts.taskType ?? "CHAT"
@@ -92,7 +99,11 @@ mock.module("@/lib/ai/structured", () => ({
   },
 }))
 
+// Même précaution que ci-dessus : préserve les exports réels (router, types).
+const realAi = await import("@/lib/ai")
+
 mock.module("@/lib/ai", () => ({
+  ...realAi,
   chat: async () => {
     chatCalls++
     return {
