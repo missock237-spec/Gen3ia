@@ -11,6 +11,8 @@ import { lookupPlanCache, storePlanCache } from "./plan-cache"
 import type { FeedbackSnapshot } from "./feedback"
 import type { EvaluationWeights, Plan, PromptAnalysis, VerificationReport } from "./types"
 import { recordEngineRun } from "@/lib/observability/metrics"
+import { SwarmEngine } from "./swarm"
+import { DebateEngine } from "./debate"
 
 /**
  * Implémentations concrètes du SDK de moteurs (amélioration « SDK de Moteurs »).
@@ -501,6 +503,8 @@ export interface Engines {
   verification: VerificationEngine
   learning: LearningEngine
   selfCorrection: SelfCorrectionEngine
+  swarm: SwarmEngine
+  debate: DebateEngine
 }
 
 function buildEngines(): Engines {
@@ -513,6 +517,8 @@ function buildEngines(): Engines {
     verification: new VerificationEngine(),
     learning: new LearningEngine(),
     selfCorrection: new SelfCorrectionEngine(),
+    swarm: new SwarmEngine(),
+    debate: new DebateEngine(),
   }
   // Enregistrement au registre SDK (santé/admin).
   for (const engine of Object.values(instances)) {

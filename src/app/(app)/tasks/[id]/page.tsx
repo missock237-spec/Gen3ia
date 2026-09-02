@@ -8,13 +8,28 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/app/status-badge";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { usePolling, apiPost, formatCredits, formatDate } from "@/lib/client/hooks";
+import { PipelineDag } from "@/components/tasks/pipeline-dag";
+import { StepInterceptor } from "@/components/tasks/step-interceptor";
+import { DebugReplay } from "@/components/tasks/debug-replay";
 import {
   Loader2, CheckCircle2, XCircle, Clock, ChevronRight, ShieldAlert, FileCheck,
   Brain, GitBranch, Scale, Play, RefreshCcw, GraduationCap, Package, Coins,
-  ListChecks, Pencil, Plus, Trash2, Sparkles,
+  ListChecks, Pencil, Plus, Trash2, Sparkles, Image as ImageIcon, BarChart3,
+  Network, Send, Download, Bug, SlidersHorizontal, MessageSquare,
 } from "lucide-react";
+
+/** Contenu multimodal généré (image/diagramme/graphique) par la tâche. */
+interface GeneratedMedia {
+  type: "image" | "diagram" | "chart"
+  provider: string
+  url: string
+  caption: string
+  dataUrl?: string
+}
 
 interface TaskDetail {
   task: {
@@ -92,32 +107,22 @@ interface TaskDetail {
 
 const ACTIVE_STATUSES = ["QUEUED", "ANALYZING", "PLANNING", "SIMULATING", "EXECUTING", "VERIFYING", "LEARNING"]
 
-const PHASE_ICONS: Record<string, React.ReactNode> = {
-  ANALYZING: <Brain className="h-3.5 w-3.5" />,
-  PLANNING: <GitBranch className="h-3.5 w-3.5" />,
-  SIMULATING: <Scale className="h-3.5 w-3.5" />,
-  EXECUTING: <Play className="h-3.5 w-3.5" />,
-  CORRECTING: <RefreshCcw className="h-3.5 w-3.5" />,
-  VERIFYING: <FileCheck className="h-3.5 w-3.5" />,
-  LEARNING: <GraduationCap className="h-3.5 w-3.5" />,
-  DELIVERING: <Package className="h-3.5 w-3.5" />,
-}
-
 export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const [approving, setApproving] = useState(false)
-  // v3.1 — Mode Explain : choix et édition du plan avant exécution.
-  const [explainChoice, setExplainChoice] = useState<string | null>(null)
-  const [editingSteps, setEditingSteps] = useState(false)
-  const [draftSteps, setDraftSteps] = useState<{ title: string; detail: string; tool?: string }[]>([])
+  
+  // Chat Multimodal
+  const [multimodalPrompt, setMultimodalPrompt] = useState("")
+  const [multimodalType, setMultimodalType] = useState<"image" | "diagram" | "chart">("image")
+  const [generatingMedia, setGeneratingMedia] = useState(false)
+  const [generatedMediaList, setGeneratedMediaList] = useState<GeneratedMedia[]>([])
 
   const isActive = (status: string) => ACTIVE_STATUSES.includes(status)
   const { data, loading } = usePolling<TaskDetail>(`/api/tasks/${id}`, null)
-  // Sondage conditionnel : actif uniquement quand la tâche tourne.
-  const { data: polled, loading: _ } = usePolling<TaskDetail>(
+  const { data: polled } = usePolling<TaskDetail>(
     data && isActive(data.task.status) ? `/api/tasks/${id}` : null,
-    3000
+    2500
   )
   const task = (polled ?? data)?.task
   const steps = (polled ?? data)?.steps ?? []
@@ -139,74 +144,76 @@ export default function TaskDetailPage() {
     }
   }
 
-  async function submitPlanApproval(payload: {
-    approved: boolean
-    planId?: string
-    editedSteps?: { title: string; detail: string; tool?: string }[]
-    regenerate?: boolean
-  }) {
-    setApproving(true)
-    try {
-      const res = await apiPost(`/api/tasks/${id}/plans/approve`, payload)
-      if (!res.ok) throw new Error(res.error)
-      toast({
-        title: payload.regenerate
-          ? "Plans en régénération"
-          : payload.approved
-            ? "Plan approuvé"
-            : "Plan refusé",
-        description: payload.regenerate
-          ? "Cinq nouveaux plans vont être générés."
-          : payload.approved
-            ? "L'exécution du plan sélectionné démarre."
-            : "La tâche est annulée.",
-      })
-      window.location.reload()
-    } catch (err) {
-      toast({ title: "Action impossible", description: err instanceof Error ? err.message : "", variant: "destructive" })
-    } finally {
-      setApproving(false)
-    }
-  }
+  async function handleGenerateMultimodal() {
+    if (!multimodalPrompt.trim()) return
+    setGeneratingMedia(true)
 
-  function startEditing(plan: { steps: { title: string; detail: string; tool?: string }[] }) {
-    setDraftSteps(plan.steps.map((s) => ({ ...s })))
-    setEditingSteps(true)
+    try {
+      const res = await apiPost<{ media: GeneratedMedia }>("/api/multimodal/generate", {
+        prompt: multimodalPrompt,
+        type: multimodalType,
+        taskId: id,
+      })
+
+      if (!res.ok) throw new Error(res.error)
+
+      setGeneratedMediaList((prev) => [res.media, ...prev])
+      setMultimodalPrompt("")
+      toast({
+        title: "Contenu multimodal généré !",
+        description: `${res.media.caption}`,
+      })
+    } catch (err) {
+      toast({
+        title: "Échec de génération",
+        description: err instanceof Error ? err.message : "Erreur réseau",
+        variant: "destructive",
+      })
+    } finally {
+      setGeneratingMedia(false)
+    }
   }
 
   if (loading || !task) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 max-w-5xl mx-auto">
         <Skeleton className="h-10 w-3/4 bg-zinc-800/60" />
         <Skeleton className="h-64 w-full bg-zinc-800/60" />
       </div>
     )
   }
 
-  const plans = task.plans ?? []
-  const selectedPlan = plans.find((p) => p.id === task.selectedPlanId)
-  // v3.1 — plan en cours d'examen dans le mode Explain.
-  const explainPlanId = explainChoice ?? task.planScores?.selectedPlanId ?? task.selectedPlanId ?? plans[0]?.id
-  const explainPlan = plans.find((p) => p.id === explainPlanId)
-
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-10">
+    <div className="space-y-6 max-w-6xl mx-auto pb-12">
       {/* En-tête */}
-      <div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-3">
-            <Link href="/tasks" className="text-zinc-500 hover:text-zinc-300 text-base font-normal">← Tâches</Link>
-            <span className="font-mono text-sm text-zinc-500">{task.id.slice(0, 12)}…</span>
-          </h1>
-          <StatusBadge status={task.status} />
-          {task.attempts > 1 && <Badge variant="outline" className="border-amber-600/40 text-amber-300 text-[11px]">{task.attempts} tentatives</Badge>}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl font-bold tracking-tight flex items-center gap-3">
+              <Link href="/tasks" className="text-zinc-500 hover:text-zinc-300 text-base font-normal">← Tâches</Link>
+              <span className="font-mono text-sm text-zinc-500">{task.id.slice(0, 12)}…</span>
+            </h1>
+            <StatusBadge status={task.status} />
+            {task.attempts > 1 && (
+              <Badge variant="outline" className="border-amber-600/40 text-amber-300 text-[11px]">
+                {task.attempts} tentatives
+              </Badge>
+            )}
+          </div>
+          <p className="mt-2 text-sm text-zinc-300 bg-zinc-900/50 border border-zinc-800/80 rounded-lg p-3.5 leading-relaxed">
+            {task.prompt}
+          </p>
         </div>
-        <p className="mt-3 text-sm text-zinc-300 bg-zinc-900/40 border border-zinc-800 rounded-lg p-4 leading-relaxed">
-          {task.prompt}
-        </p>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 font-mono text-xs px-3 py-1">
+            <Coins className="h-3.5 w-3.5 mr-1.5" />
+            {formatCredits(task.costCredits)} crédits
+          </Badge>
+        </div>
       </div>
 
-      {/* Approbation humaine */}
+      {/* Approbation humaine critique */}
       {task.status === "WAITING_FOR_HUMAN" && task.pendingApproval && (
         <Card className="border-orange-500/40 bg-orange-500/5">
           <CardContent className="pt-6">
@@ -237,596 +244,184 @@ export default function TaskDetailPage() {
         </Card>
       )}
 
-      {/* v3.1 — Mode Explain : validation et édition du plan avant exécution */}
-      {task.status === "WAITING_PLAN_APPROVAL" && plans.length > 0 && (
-        <Card className="border-teal-500/40 bg-teal-500/5">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2 text-teal-200">
-              <ListChecks className="h-5 w-5" />
-              Mode Explain — validez le plan avant exécution
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-teal-200/80">
-              L'évaluateur recommande le plan{" "}
-              <span className="font-mono font-bold">{task.planScores?.selectedPlanId ?? "?"}</span>. Vous pouvez
-              sélectionner un autre plan, éditer ses étapes, régénérer les cinq plans, ou refuser.
-              {task.planScores?.rationale && (
-                <span className="block mt-1.5 text-xs text-zinc-500 italic">{task.planScores.rationale}</span>
-              )}
-            </p>
+      {/* 1. Visualisation du Graphe d'Exécution (DAG) */}
+      <section>
+        <PipelineDag task={task} steps={steps} />
+      </section>
 
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {plans.map((p) => {
-                const score = task.planScores?.scores.find((s) => s.planId === p.id)
-                const chosen = explainPlanId === p.id
-                const recommended = task.planScores?.selectedPlanId === p.id
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      setExplainChoice(p.id)
-                      setEditingSteps(false)
-                    }}
-                    className={`text-left rounded-xl border p-4 transition-colors ${
-                      chosen
-                        ? "border-teal-400/60 bg-teal-500/10"
-                        : "border-zinc-800 bg-zinc-950 hover:border-zinc-600"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-lg text-teal-300">{p.id}</span>
-                      <div className="flex gap-1.5">
-                        {recommended && (
-                          <Badge className="bg-teal-500 text-zinc-950 text-[10px] font-semibold">
-                            <Sparkles className="h-3 w-3 mr-1" />
-                            RECOMMANDÉ
-                          </Badge>
-                        )}
-                        {chosen && (
-                          <Badge className="bg-emerald-500 text-zinc-950 text-[10px] font-semibold">CHOISI</Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="font-medium text-sm mt-1 text-zinc-200">{p.name}</div>
-                    <p className="text-xs text-zinc-500 mt-1.5 line-clamp-2">{p.strategy}</p>
-                    <div className="mt-3 space-y-1.5 text-xs">
-                      <div className="flex justify-between text-zinc-400">
-                        <span>Score pondéré</span>
-                        <span className="font-mono text-teal-300">{score ? (score.weighted * 100).toFixed(1) : "—"}%</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-400">
-                        <span>Prob. succès</span>
-                        <span className="font-mono">{Math.round(p.successProbability * 100)}%</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-400">
-                        <span>Coût estimé</span>
-                        <span className="font-mono">{p.estimatedCostCredits} cr.</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-400">
-                        <span>Étapes</span>
-                        <span className="font-mono">{p.steps.length}</span>
-                      </div>
-                    </div>
-                    {p.requiresHumanConfirmation && (
-                      <div className="mt-2 text-[10px] font-mono text-orange-300 border border-orange-500/30 rounded px-1.5 py-0.5 inline-block">
-                        opération sensible
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
+      {/* Onglets des Fonctionnalités Améliorées & Vues de Détail */}
+      <Tabs defaultValue="pas-a-pas" className="space-y-4">
+        <TabsList className="bg-zinc-900/80 border border-zinc-800 p-1 grid grid-cols-2 sm:grid-cols-4 gap-1">
+          <TabsTrigger value="pas-a-pas" className="text-xs font-medium gap-1.5">
+            <SlidersHorizontal className="h-3.5 w-3.5 text-teal-400" /> Mode Pas-à-Pas
+          </TabsTrigger>
+          <TabsTrigger value="multimodal" className="text-xs font-medium gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-purple-400" /> Chat Multimodal
+          </TabsTrigger>
+          <TabsTrigger value="debug" className="text-xs font-medium gap-1.5">
+            <Bug className="h-3.5 w-3.5 text-amber-400" /> Mode Débug (Replay)
+          </TabsTrigger>
+          <TabsTrigger value="details" className="text-xs font-medium gap-1.5">
+            <ListChecks className="h-3.5 w-3.5 text-emerald-400" /> Détails Pipeline
+          </TabsTrigger>
+        </TabsList>
 
-            {/* Étapes du plan examiné — consultation ou édition */}
-            {explainPlan && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-xs text-zinc-500 uppercase tracking-wide">
-                    Plan {explainPlan.id} « {explainPlan.name} » — étapes
-                  </div>
-                  {!editingSteps ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="border-zinc-700 text-zinc-300"
-                      onClick={() => startEditing(explainPlan)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      <span className="ml-1.5">Éditer les étapes</span>
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="border-zinc-700 text-zinc-400"
-                      onClick={() => setEditingSteps(false)}
-                    >
-                      Annuler l'édition
-                    </Button>
-                  )}
-                </div>
+        {/* 2. Mode "pas-à-pas" interactif SSE */}
+        <TabsContent value="pas-a-pas">
+          <StepInterceptor taskId={task.id} initialTask={task} initialSteps={steps} />
+        </TabsContent>
 
-                {!editingSteps ? (
-                  <ol className="space-y-2">
-                    {explainPlan.steps.map((s, i) => (
-                      <li key={i} className="flex gap-3 text-sm">
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-teal-500/15 text-teal-300 text-[10px] font-mono font-bold mt-0.5">
-                          {i + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <span className="text-zinc-200">{s.title}</span>
-                          {s.tool && (
-                            <span className="ml-2 text-[10px] font-mono text-teal-300/70 border border-teal-500/20 rounded px-1.5 py-0.5">
-                              {s.tool}
-                            </span>
-                          )}
-                          <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{s.detail}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <div className="space-y-3">
-                    {draftSteps.map((step, i) => (
-                      <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] text-zinc-500">{i + 1}</span>
-                          <input
-                            value={step.title}
-                            onChange={(e) =>
-                              setDraftSteps((prev) =>
-                                prev.map((s, j) => (j === i ? { ...s, title: e.target.value } : s))
-                              )
-                            }
-                            className="flex-1 bg-transparent border-b border-zinc-700 focus:border-teal-400 outline-none text-sm text-zinc-200 py-0.5"
-                            placeholder="Titre de l'étape (≥ 3 caractères)"
-                          />
-                          <input
-                            value={step.tool ?? ""}
-                            onChange={(e) =>
-                              setDraftSteps((prev) =>
-                                prev.map((s, j) => (j === i ? { ...s, tool: e.target.value || undefined } : s))
-                              )
-                            }
-                            className="w-36 bg-transparent border-b border-zinc-700 focus:border-teal-400 outline-none text-xs font-mono text-teal-300/80 py-0.5"
-                            placeholder="outil (optionnel)"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-400 h-7 w-7 p-0"
-                            onClick={() => setDraftSteps((prev) => prev.filter((_, j) => j !== i))}
-                            aria-label={`Supprimer l'étape ${i + 1}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                        <textarea
-                          value={step.detail}
-                          onChange={(e) =>
-                            setDraftSteps((prev) =>
-                              prev.map((s, j) => (j === i ? { ...s, detail: e.target.value } : s))
-                            )
-                          }
-                          rows={2}
-                          className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-teal-400/50 outline-none rounded p-2 text-xs text-zinc-300 resize-y"
-                          placeholder="Détail de l'étape — exécuté littéralement par le moteur (≥ 5 caractères)"
-                        />
-                      </div>
-                    ))}
-                    {draftSteps.length < 8 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="border-dashed border-zinc-700 text-zinc-400"
-                        onClick={() => setDraftSteps((prev) => [...prev, { title: "", detail: "" }])}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        <span className="ml-1.5">Ajouter une étape</span>
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex flex-wrap gap-3 pt-1">
-              <Button
-                onClick={() =>
-                  submitPlanApproval({
-                    approved: true,
-                    planId: explainPlanId,
-                    editedSteps: editingSteps && draftSteps.length > 0 ? draftSteps : undefined,
-                  })
-                }
-                disabled={approving || (editingSteps && draftSteps.length === 0)}
-                className="bg-teal-500 hover:bg-teal-400 text-zinc-950 font-semibold"
-              >
-                {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                <span className="ml-2">
-                  {editingSteps ? "Exécuter le plan édité" : `Exécuter le plan ${explainPlanId ?? ""}`}
-                </span>
-              </Button>
-              <Button
-                onClick={() => submitPlanApproval({ approved: false, regenerate: true })}
-                disabled={approving}
-                variant="outline"
-                className="border-teal-500/40 text-teal-300 hover:bg-teal-500/10"
-              >
-                <RefreshCcw className="h-4 w-4" />
-                <span className="ml-2">Régénérer les 5 plans</span>
-              </Button>
-              <Button
-                onClick={() => submitPlanApproval({ approved: false })}
-                disabled={approving}
-                variant="outline"
-                className="border-red-500/40 text-red-300 hover:bg-red-500/10"
-              >
-                <XCircle className="h-4 w-4" />
-                <span className="ml-2">Refuser la tâche</span>
-              </Button>
-            </div>
-            <p className="text-xs text-zinc-600">
-              Les étapes éditées remplacent celles du plan sélectionné ; la sélection manuelle est journalisée
-              (audit) et prime sur le score automatique.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Timeline du pipeline */}
-      <Card className="bg-zinc-900/40 border-zinc-800">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center justify-between">
-            <span>Pipeline d'exécution</span>
-            {isActive(task.status) && (
-              <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-normal">
-                <Loader2 className="h-3 w-3 animate-spin" /> en cours — rafraîchissement auto
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {steps.length === 0 ? (
-            <p className="text-sm text-zinc-500 flex items-center gap-2 py-4">
-              <Clock className="h-4 w-4" /> En file d'attente…
-            </p>
-          ) : (
-            <div className="space-y-0 max-h-[500px] overflow-y-auto pr-2">
-              {steps.map((s, i) => {
-                const icon = PHASE_ICONS[s.phase] ?? <Play className="h-3.5 w-3.5" />
-                const color =
-                  s.status === "DONE" ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
-                  : s.status === "FAILED" ? "text-red-400 border-red-500/30 bg-red-500/10"
-                  : s.status === "RUNNING" ? "text-teal-300 border-teal-500/30 bg-teal-500/10 animate-pulse"
-                  : s.status === "WAITING" ? "text-orange-300 border-orange-500/30 bg-orange-500/10"
-                  : "text-zinc-500 border-zinc-800 bg-zinc-900"
-                return (
-                  <div key={s.id} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${color}`}>
-                        {s.status === "DONE" ? <CheckCircle2 className="h-3.5 w-3.5" /> : icon}
-                      </div>
-                      {i < steps.length - 1 && <div className="w-px flex-1 bg-zinc-800 my-1" />}
-                    </div>
-                    <div className="pb-4 min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-sm ${s.status === "RUNNING" ? "text-teal-300" : s.status === "DONE" ? "text-zinc-200" : "text-zinc-500"}`}>
-                          {s.title}
-                        </span>
-                        <span className="text-[10px] font-mono text-zinc-600 uppercase">{s.phase}</span>
-                      </div>
-                      {s.status === "RUNNING" && s.phase === "EXECUTING" && Boolean(s.detail) && typeof s.detail === "object" && "output" in (s.detail as object) && (
-                        <p className="text-xs text-zinc-500 mt-1 truncate max-w-lg">
-                          {String((s.detail as { output?: string }).output ?? "").slice(0, 120)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Erreur */}
-      {task.error && task.status === "FAILED" && (
-        <Card className="border-red-500/30 bg-red-500/5">
-          <CardContent className="pt-6">
-            <h3 className="font-semibold text-red-300 flex items-center gap-2"><XCircle className="h-4 w-4" />Échec de la tâche</h3>
-            <p className="text-sm text-red-200/80 mt-2">{task.error}</p>
-            <p className="text-xs text-zinc-500 mt-3">
-              GEN3IA ne déclare jamais une tâche réussie sans preuve : consultez le rapport de vérification et les corrections ci-dessous.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Résultat */}
-      {(task.result || task.executionLog?.finalAnswer) && task.status === "COMPLETED" && (
-        <Card className="border-emerald-500/30 bg-emerald-500/5">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2 text-emerald-300">
-              <CheckCircle2 className="h-4 w-4" /> Résultat final — vérifié
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
-              {task.result?.answer ?? task.executionLog?.finalAnswer}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Analyse */}
-        {task.analysis && (
-          <Card className="bg-zinc-900/40 border-zinc-800">
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2"><Brain className="h-4 w-4 text-emerald-400" />Analyse de la demande</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              <div>
-                <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1.5">Intention</div>
-                <p className="text-zinc-300">{task.analysis.intent}</p>
-              </div>
-              <div>
-                <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1.5">Objectifs ({task.analysis.goals.length})</div>
-                <ul className="space-y-1">
-                  {task.analysis.goals.map((g) => (
-                    <li key={g} className="text-zinc-300 flex gap-2"><span className="text-emerald-500">›</span>{g}</li>
-                  ))}
-                </ul>
-              </div>
-              {task.analysis.constraints.length > 0 && (
-                <div>
-                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1.5">Contraintes</div>
-                  <ul className="space-y-1">
-                    {task.analysis.constraints.map((c) => (
-                      <li key={c} className="text-zinc-400 flex gap-2"><span className="text-zinc-600">›</span>{c}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {task.analysis.risks.length > 0 && (
-                <div>
-                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1.5">Risques</div>
-                  <ul className="space-y-1">
-                    {task.analysis.risks.map((r) => (
-                      <li key={r} className="text-amber-300/80 flex gap-2"><span className="text-amber-600">›</span>{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div className="flex gap-2 pt-1">
-                <Badge variant="outline" className="border-zinc-700 text-zinc-400">{task.analysis.estimatedComplexity}</Badge>
-                <Badge variant="outline" className="border-zinc-700 text-zinc-400">≈ {task.analysis.estimatedSteps} étapes</Badge>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Vérification */}
-        {task.verification && (
-          <Card className="bg-zinc-900/40 border-zinc-800">
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <FileCheck className={`h-4 w-4 ${task.verification.verified ? "text-emerald-400" : "text-red-400"}`} />
-                Vérification
-                <Badge variant="outline" className={`ml-auto ${task.verification.verified ? "border-emerald-600/50 text-emerald-300" : "border-red-600/50 text-red-300"}`}>
-                  confiance {Math.round(task.verification.confidence * 100)}%
-                </Badge>
+        {/* 3. Chat Multimodal */}
+        <TabsContent value="multimodal" className="space-y-4">
+          <Card className="border-purple-500/30 bg-zinc-950/90 shadow-xl">
+            <CardHeader className="pb-3 border-b border-zinc-800">
+              <CardTitle className="text-base text-zinc-100 flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-purple-400" />
+                Génération Multimodale Inline (DALL-E / Diagrammes SVG / Graphiques)
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {task.verification.criteria.map((c, i) => (
-                <div key={i} className="flex gap-2.5 items-start">
-                  {c.met ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <div className="text-zinc-300">{c.criterion}</div>
-                    {c.evidence && <div className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{c.evidence}</div>}
-                  </div>
+
+            <CardContent className="pt-4 space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <Input
+                    value={multimodalPrompt}
+                    onChange={(e) => setMultimodalPrompt(e.target.value)}
+                    placeholder="Ex: Diagramme d'architecture du système ou Graphique de vente trimestrielle..."
+                    className="bg-zinc-900 border-zinc-800 text-xs text-zinc-100 placeholder:text-zinc-500"
+                    onKeyDown={(e) => e.key === "Enter" && handleGenerateMultimodal()}
+                  />
                 </div>
-              ))}
-              {task.verification.gaps.length > 0 && (
-                <div className="pt-2 border-t border-zinc-800">
-                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1.5">Manques identifiés</div>
-                  <ul className="space-y-1 text-amber-300/70 text-xs">
-                    {task.verification.gaps.map((g) => <li key={g}>• {g}</li>)}
-                  </ul>
+
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    variant={multimodalType === "image" ? "default" : "outline"}
+                    onClick={() => setMultimodalType("image")}
+                    className={`h-9 text-xs gap-1 ${multimodalType === "image" ? "bg-purple-600 text-white" : "border-zinc-700"}`}
+                  >
+                    <ImageIcon className="h-3.5 w-3.5" /> Image
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={multimodalType === "diagram" ? "default" : "outline"}
+                    onClick={() => setMultimodalType("diagram")}
+                    className={`h-9 text-xs gap-1 ${multimodalType === "diagram" ? "bg-purple-600 text-white" : "border-zinc-700"}`}
+                  >
+                    <Network className="h-3.5 w-3.5" /> Diagramme
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={multimodalType === "chart" ? "default" : "outline"}
+                    onClick={() => setMultimodalType("chart")}
+                    className={`h-9 text-xs gap-1 ${multimodalType === "chart" ? "bg-purple-600 text-white" : "border-zinc-700"}`}
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" /> Graphique
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    onClick={handleGenerateMultimodal}
+                    disabled={generatingMedia || !multimodalPrompt.trim()}
+                    className="bg-purple-500 hover:bg-purple-400 text-zinc-950 font-semibold h-9 text-xs"
+                  >
+                    {generatingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Galerie de contenus générés */}
+              {generatedMediaList.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-zinc-900">
+                  {generatedMediaList.map((media, idx) => (
+                    <div key={idx} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="text-[10px] border-purple-500/40 text-purple-300 font-mono">
+                          {media.provider || media.type}
+                        </Badge>
+                        <a
+                          href={media.url}
+                          download={`gen3ia-media-${idx + 1}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-zinc-400 hover:text-white flex items-center gap-1"
+                        >
+                          <Download className="h-3 w-3" /> Télécharger
+                        </a>
+                      </div>
+
+                      <div className="relative rounded-lg overflow-hidden border border-zinc-800 bg-zinc-950 flex items-center justify-center p-2 min-h-[220px]">
+                        <img
+                          src={media.url}
+                          alt={media.caption}
+                          className="max-h-[300px] w-auto object-contain rounded"
+                        />
+                      </div>
+
+                      <p className="text-xs text-zinc-300 font-medium">{media.caption}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-zinc-500 text-xs border border-dashed border-zinc-800/80 rounded-lg">
+                  Demandez la génération d'une image DALL-E, d'un diagramme d'architecture SVG ou d'un graphique interactif.
                 </div>
               )}
-              <p className="text-xs text-zinc-500 italic pt-1">{task.verification.verdict}</p>
             </CardContent>
           </Card>
-        )}
-      </div>
+        </TabsContent>
 
-      {/* Plans comparés */}
-      {plans.length > 0 && task.planScores && (
-        <Card className="bg-zinc-900/40 border-zinc-800">
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <GitBranch className="h-4 w-4 text-emerald-400" />
-              Comparaison des {plans.length} plans
-              <span className="ml-auto text-xs text-zinc-500 font-normal">{task.planScores.rationale}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {plans.map((p) => {
-                const score = task.planScores!.scores.find((s) => s.planId === p.id)
-                const selected = task.selectedPlanId === p.id
-                return (
-                  <div
-                    key={p.id}
-                    className={`rounded-xl border p-4 ${
-                      selected ? "border-emerald-500/50 bg-emerald-500/5" : "border-zinc-800 bg-zinc-950"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-lg text-emerald-400">{p.id}</span>
-                      {selected && <Badge className="bg-emerald-500 text-zinc-950 text-[10px] font-semibold">SÉLECTIONNÉ</Badge>}
-                    </div>
-                    <div className="font-medium text-sm mt-1 text-zinc-200">{p.name}</div>
-                    <p className="text-xs text-zinc-500 mt-1.5 line-clamp-2">{p.strategy}</p>
-                    <div className="mt-3 space-y-1.5 text-xs">
-                      <div className="flex justify-between text-zinc-400">
-                        <span>Score pondéré</span>
-                        <span className="font-mono text-emerald-400">{score ? (score.weighted * 100).toFixed(1) : "—"}%</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-400">
-                        <span>Prob. succès</span>
-                        <span className="font-mono">{Math.round(p.successProbability * 100)}%</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-400">
-                        <span>Coût estimé</span>
-                        <span className="font-mono">{p.estimatedCostCredits} cr.</span>
-                      </div>
-                      <div className="flex justify-between text-zinc-400">
-                        <span>Étapes</span>
-                        <span className="font-mono">{p.steps.length}</span>
-                      </div>
-                    </div>
-                    <div className="mt-3 pt-2 border-t border-zinc-800/60 flex flex-wrap gap-1">
-                      {p.requiredTools.slice(0, 4).map((t) => (
-                        <span key={t} className="text-[10px] font-mono text-zinc-500 border border-zinc-800 rounded px-1.5 py-0.5">{t}</span>
+        {/* 4. Mode Débug Avancé */}
+        <TabsContent value="debug">
+          <DebugReplay task={task} steps={steps} />
+        </TabsContent>
+
+        {/* Détails traditionnels du pipeline */}
+        <TabsContent value="details" className="space-y-6">
+          {/* Résultat Final */}
+          {task.result && (
+            <Card className="border-emerald-500/30 bg-emerald-500/5">
+              <CardHeader>
+                <CardTitle className="text-base text-emerald-300 flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5" /> Résultat de la tâche
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="prose prose-invert prose-emerald text-sm max-w-none bg-zinc-950/80 border border-emerald-500/20 rounded-lg p-4 leading-relaxed whitespace-pre-wrap">
+                  {task.result.answer}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Analyse */}
+          {task.analysis && (
+            <Card className="bg-zinc-900/40 border-zinc-800">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2 text-zinc-200">
+                  <Brain className="h-4 w-4 text-emerald-400" /> Analyse de la demande
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-xs">
+                <div>
+                  <span className="text-zinc-500 font-medium">Intention :</span>
+                  <p className="text-zinc-200 mt-1 font-mono bg-zinc-950 p-2.5 rounded border border-zinc-800">{task.analysis.intent}</p>
+                </div>
+                {task.analysis.goals?.length > 0 && (
+                  <div>
+                    <span className="text-zinc-500 font-medium">Objectifs :</span>
+                    <ul className="list-disc list-inside mt-1 text-zinc-300 space-y-1">
+                      {task.analysis.goals.map((g, i) => (
+                        <li key={i}>{g}</li>
                       ))}
-                      {p.requiresHumanConfirmation && (
-                        <span className="text-[10px] font-mono text-orange-300 border border-orange-500/30 rounded px-1.5 py-0.5">confirmation</span>
-                      )}
-                    </div>
+                    </ul>
                   </div>
-                )
-              })}
-            </div>
-
-            {selectedPlan && (
-              <div className="mt-5 rounded-lg border border-emerald-500/25 bg-zinc-950 p-4">
-                <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">
-                  Plan {selectedPlan.id} retenu — étapes d'exécution
-                </div>
-                <ol className="space-y-2">
-                  {selectedPlan.steps.map((s, i) => (
-                    <li key={i} className="flex gap-3 text-sm">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-emerald-500/15 text-emerald-400 text-[10px] font-mono font-bold mt-0.5">
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <span className="text-zinc-200">{s.title}</span>
-                        {s.tool && <span className="ml-2 text-[10px] font-mono text-emerald-400/70 border border-emerald-500/20 rounded px-1.5 py-0.5">{s.tool}</span>}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Corrections */}
-      {task.correctionLog && task.correctionLog.length > 0 && (
-        <Card className="bg-zinc-900/40 border-zinc-800">
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <RefreshCcw className="h-4 w-4 text-amber-400" /> Auto-corrections ({task.correctionLog.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {task.correctionLog.map((c, i) => (
-              <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3.5 text-xs space-y-1.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="outline" className="border-amber-600/40 text-amber-300 text-[10px]">{c.classification}</Badge>
-                  <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-[10px]">{c.strategy}</Badge>
-                  <span className="font-mono text-zinc-600">{c.phase} · tentative {c.attempt}</span>
-                  <span className={`ml-auto ${c.outcome === "RECOVERED" ? "text-emerald-400" : c.outcome === "ABORTED" ? "text-red-400" : "text-amber-400"}`}>
-                    {c.outcome}
-                  </span>
-                </div>
-                <p className="text-zinc-400">{c.error}</p>
-                <p className="text-zinc-500 italic">→ {c.action}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Apprentissage */}
-      {task.learning && (
-        <Card className="bg-zinc-900/40 border-zinc-800">
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 text-emerald-400" /> Apprentissage — mémorisé pour les prochaines tâches
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid sm:grid-cols-3 gap-4 text-sm">
-            <div>
-              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1.5">Leçons</div>
-              <ul className="space-y-1.5">
-                {task.learning.lessons.map((l) => <li key={l} className="text-zinc-300 text-xs">• {l}</li>)}
-              </ul>
-            </div>
-            <div>
-              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1.5">Préférences détectées</div>
-              <ul className="space-y-1.5">
-                {task.learning.userPreferences.map((l) => <li key={l} className="text-zinc-300 text-xs">• {l}</li>)}
-              </ul>
-            </div>
-            <div>
-              <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1.5">Patrons réutilisables</div>
-              <ul className="space-y-1.5">
-                {task.learning.reusablePatterns.map((l) => <li key={l} className="text-zinc-300 text-xs">• {l}</li>)}
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Coûts */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="bg-zinc-900/40 border-zinc-800 py-3">
-          <CardContent className="px-4 text-center">
-            <div className="text-lg font-bold flex items-center justify-center gap-1.5"><Coins className="h-4 w-4 text-emerald-400" />{formatCredits(task.costCredits)}</div>
-            <div className="text-[11px] text-zinc-500 mt-0.5">crédits consommés</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-zinc-900/40 border-zinc-800 py-3">
-          <CardContent className="px-4 text-center">
-            <div className="text-lg font-bold">{task.tokensIn.toLocaleString("fr-FR")}</div>
-            <div className="text-[11px] text-zinc-500 mt-0.5">tokens entrée</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-zinc-900/40 border-zinc-800 py-3">
-          <CardContent className="px-4 text-center">
-            <div className="text-lg font-bold">{task.tokensOut.toLocaleString("fr-FR")}</div>
-            <div className="text-[11px] text-zinc-500 mt-0.5">tokens sortie</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-zinc-900/40 border-zinc-800 py-3">
-          <CardContent className="px-4 text-center">
-            <div className="text-lg font-bold">{task.attempts}</div>
-            <div className="text-[11px] text-zinc-500 mt-0.5">tentative(s)</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <p className="text-xs text-zinc-600 text-center">
-        Créée le {formatDate(task.createdAt)}
-        {task.completedAt && ` · terminée le ${formatDate(task.completedAt)}`}
-      </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
-  )
+  );
 }

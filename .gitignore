@@ -74,3 +74,11 @@ tool-results/
 research/
 dev.log
 server.log
+# Bases SQLite locales (jamais versionnées)
+prisma/*.db
+*.db
+db/*.db
+# Lockfile npm — le projet utilise bun (bun.lock)
+package-lock.json
+# Artefacts locaux
+.prod-db-url.txt

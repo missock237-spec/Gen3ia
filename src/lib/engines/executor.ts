@@ -2,8 +2,8 @@ import { z } from "zod"
 import { chat } from "@/lib/ai"
 import { chatJSON } from "@/lib/ai/structured"
 import { creditsForTokens } from "@/lib/ai/router"
-import { runTool, TOOL_CATALOG, isToolDangerous, type ToolResult } from "@/lib/tools/registry"
-import { connectorToolsForUser, type ConnectorTool } from "@/lib/connectors/core/toolset"
+import { runTool, getToolCatalog, isToolDangerous, type ToolResult } from "@/lib/tools/registry"
+import { connectorToolsForUser } from "@/lib/connectors/core/toolset"
 import { getBreaker } from "@/lib/reliability/breaker"
 import { AppError } from "@/lib/errors"
 import type {
@@ -80,7 +80,7 @@ function executorSystemPrompt(
   plan: Plan,
   connectorTools: PromptTool[]
 ): string {
-  const staticTools = TOOL_CATALOG.filter((t) => ctx.allowedTools.includes(t.key)).map(toPromptTool)
+  const staticTools = getToolCatalog().filter((t) => ctx.allowedTools.includes(t.key)).map(toPromptTool)
   const tools = [...staticTools, ...connectorTools]
   const toolLines = tools.map((t) => {
     const params = Object.entries(t.parameters)

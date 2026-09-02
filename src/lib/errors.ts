@@ -53,6 +53,15 @@ export const ERROR_CODES = {
   SANDBOX_VIOLATION: { status: 400, message: "Code refusé par la sandbox (motif interdit détecté).", retryable: false },
   SSRF_BLOCKED: { status: 400, message: "URL bloquée par la politique de sécurité réseau.", retryable: false },
   TASK_NOT_APPROVABLE: { status: 409, message: "Cette tâche n'est pas en attente d'approbation.", retryable: false },
+
+  // ----- Connecteurs d'applications (moteur local, ADR-0014) -----
+  CONNECTOR_NOT_CONFIGURED: { status: 503, message: "Connecteurs indisponibles : cette application n'est pas configurée sur le serveur (variables OAuth absentes) et n'accepte pas l'import de token.", retryable: false },
+  CONNECTOR_NOT_FOUND: { status: 404, message: "Application ou connexion introuvable.", retryable: false },
+  CONNECTOR_NOT_CONNECTED: { status: 409, message: "Aucune connexion active à cette application. Connectez-la d'abord depuis la page Connecteurs.", retryable: false },
+  CONNECTOR_AUTH_FAILED: { status: 402, message: "Identifiants refusés par le fournisseur (token invalide ou révoqué). Reconnectez l'application.", retryable: false },
+  CONNECTOR_UNREACHABLE: { status: 502, message: "API du fournisseur injoignable. Réessayez dans un instant.", retryable: true },
+  CONNECTOR_ACTION_FAILED: { status: 502, message: "L'exécution de l'action dans l'application externe a échoué.", retryable: true },
+  CONNECTOR_RATE_LIMITED: { status: 429, message: "Limite de débit du fournisseur atteinte. Réessayez dans un instant.", retryable: true },
 } as const
 
 export type ErrorCode = keyof typeof ERROR_CODES

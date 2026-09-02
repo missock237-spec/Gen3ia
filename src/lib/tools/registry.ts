@@ -110,6 +110,17 @@ export const TOOL_CATALOG: ToolDefinition[] = [
   },
 ]
 
+/**
+ * Catalogue dynamique : les 8 outils de base + les actions des apps
+ * connectées (outils connector_*) exposées par le toolset local —
+ * cf. ADR-0014. Les actions connectées sont ajoutées par l'executor
+ * au prompt (par utilisateur) ; ce catalogue reste la base statique
+ * partagée (agents, planner, UI, validation HITL).
+ */
+export function getToolCatalog(): ToolDefinition[] {
+  return TOOL_CATALOG
+}
+
 export interface ToolResult {
   ok: boolean
   output: string
@@ -524,9 +535,9 @@ export function isToolDangerous(key: string): boolean {
     // La méthode exacte est résolue par le toolset ; par défaut prudent.
     return true
   }
-  return TOOL_CATALOG.find((t) => t.key === key)?.dangerous ?? false
+  return getToolCatalog().find((t) => t.key === key)?.dangerous ?? false
 }
 
 export function listAvailableToolKeys(): string[] {
-  return TOOL_CATALOG.map((t) => t.key)
+  return getToolCatalog().map((t) => t.key)
 }

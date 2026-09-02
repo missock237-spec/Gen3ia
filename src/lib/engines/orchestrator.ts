@@ -5,7 +5,7 @@ import { chargeCredits, InsufficientCreditsError } from "@/lib/credits/ledger"
 import { creditsForTokens } from "@/lib/ai/router"
 import { searchKnowledge } from "@/lib/rag/retriever"
 import { recallMemories } from "@/lib/memory/store"
-import { TOOL_CATALOG, listAvailableToolKeys } from "@/lib/tools/registry"
+import { getToolCatalog, listAvailableToolKeys } from "@/lib/tools/registry"
 import { runEngine, type EngineContext } from "./sdk"
 import { engines, recordOrchestratorRun } from "./engines"
 import { feedbackSnapshot, plannerFeedbackBlock } from "./feedback"
@@ -82,7 +82,7 @@ function agentAllowedTools(agent: TaskAgent | null): string[] {
       return cfg.tools.filter(
         (t) =>
           // Outils statiques du catalogue.
-          TOOL_CATALOG.some((c) => c.key === t) ||
+          getToolCatalog().some((c) => c.key === t) ||
           // Outils connector : joker global, préfixe d'app ou action exacte.
           t === "connectors" ||
           t === "connector" ||
@@ -364,7 +364,7 @@ export async function advanceTask(
         // Validation pré-exécution : opération sensible → approbation humaine.
         const selected = plans.find((p) => p.id === evaluation.value.selectedPlanId)
         const dangerousTools = (selected?.requiredTools ?? []).filter((t) =>
-          TOOL_CATALOG.find((c) => c.key === t)?.dangerous
+          getToolCatalog().find((c) => c.key === t)?.dangerous
         )
         if (
           selected?.requiresHumanConfirmation ||
@@ -880,7 +880,7 @@ export async function resolvePlanApproval(
   // Opérations sensibles → HITL après sélection manuelle (défense en profondeur).
   const owner = await db.user.findUnique({ where: { id: userId }, select: { settings: true } })
   const settings = { ...DEFAULT_USER_SETTINGS, ...parseJsonField(owner?.settings ?? "{}", {}) }
-  const dangerousTools = selected.requiredTools.filter((t) => TOOL_CATALOG.find((c) => c.key === t)?.dangerous)
+  const dangerousTools = selected.requiredTools.filter((t) => getToolCatalog().find((c) => c.key === t)?.dangerous)
   if (selected.requiresHumanConfirmation || (dangerousTools.length > 0 && settings.confirmDangerousOps !== false)) {
     const updated = await db.task.findUniqueOrThrow({ where: { id: taskId } })
     await transitionTask(updated, "WAITING_FOR_HUMAN", {

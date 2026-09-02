@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { db } from "@/lib/db"
 import { handleRoute } from "@/lib/api"
 import { getProviderStatuses, APP_NAME } from "@/lib/config"
+import { listApps, appAvailability } from "@/lib/connectors/apps"
 import pkg from "../../../../package.json"
 
 /** Health check — état base de données + fournisseurs IA configurés. */
@@ -14,12 +15,15 @@ export async function GET(req: NextRequest) {
       database = "unavailable"
     }
     const providers = getProviderStatuses()
+    // Connecteurs : nombre d'apps connectables (moteur local — ADR-0014).
+    const connectableApps = listApps().filter((a) => appAvailability(a).connectable).length
     return Response.json({
       ok: true,
       app: APP_NAME,
       version: pkg.version,
       database,
       llmProviders: providers.filter((p) => p.available).map((p) => p.key),
+      connectors: `local:${connectableApps}/${listApps().length}`,
       time: new Date().toISOString(),
     })
   })

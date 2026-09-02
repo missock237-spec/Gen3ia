@@ -55,4 +55,6 @@ export async function chat(opts: LLMCallOptions): Promise<LLMResult> {
 }
 
 export { MODEL_CATALOG, getAvailableProviders, isProviderAvailable, creditsForTokens } from "./router"
+export { chatJSON, extractJson, StructuredOutputError } from "./structured"
+export type { JSONCallResult } from "./structured"
 export type { ModelInfo, TaskType } from "./types"
