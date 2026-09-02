@@ -8,7 +8,7 @@ on:
 
 jobs:
   quality:
-    name: Tests, types stricts, lint & build
+    name: "Tests, types stricts, lint et build"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,19 +18,19 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: Installation (verrouillée par bun.lock)
+      - name: "Installation (verrouillée par bun.lock)"
         run: bun install --frozen-lockfile
-      - name: Types stricts (tsc --noEmit)
+      - name: "Types stricts (tsc --noEmit)"
         run: bunx tsc --noEmit
-      - name: Tests unitaires & intégration (bun:test)
+      - name: "Tests unitaires et intégration (bun:test)"
         run: bun test tests/unit/
         env:
           DATABASE_URL: file:/tmp/gen3ia-ci.db
           PLAN_CACHE: "on"
           LOG_LEVEL: error
-      - name: Lint
+      - name: "Lint"
         run: bun run lint
-      - name: Build de production (ignoreBuildErrors: false)
+      - name: "Build de production (types stricts appliqués au build)"
         run: bun run build
         env:
           DATABASE_URL: file:/tmp/gen3ia-build.db
