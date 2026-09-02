@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { handleRoute } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
-import { TOOL_CATALOG } from "@/lib/tools/registry"
+import { getToolCatalog } from "@/lib/tools/registry"
 
 /** Catalogue des outils réels disponibles (avec statut sensible). */
 export async function GET(req: NextRequest) {
@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     await requireUser(req)
     return Response.json({
       ok: true,
-      tools: TOOL_CATALOG.map((t) => ({
+      tools: getToolCatalog().map((t) => ({
         key: t.key,
         name: t.name,
         description: t.description,

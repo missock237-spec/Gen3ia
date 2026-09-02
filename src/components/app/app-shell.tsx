@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/knowledge", label: "Connaissances", icon: "book-open" },
   { href: "/skills", label: "Compétences", icon: "graduation-cap" },
   { href: "/tools", label: "Outils", icon: "wrench" },
+  { href: "/connectors", label: "Connecteurs", icon: "plug-zap" },
   { href: "/memory", label: "Mémoire", icon: "database" },
   { href: "/marketplace", label: "Marketplace", icon: "store" },
   { href: "/api", label: "Clés API", icon: "key-round" },

@@ -2,7 +2,7 @@ import { z } from "zod"
 import { chat } from "@/lib/ai"
 import { chatJSON } from "@/lib/ai/structured"
 import { creditsForTokens } from "@/lib/ai/router"
-import { runTool, TOOL_CATALOG, isToolDangerous, type ToolResult } from "@/lib/tools/registry"
+import { runTool, getToolCatalog, isToolDangerous, type ToolResult } from "@/lib/tools/registry"
 import { getBreaker } from "@/lib/reliability/breaker"
 import { AppError } from "@/lib/errors"
 import type {
@@ -54,7 +54,7 @@ export interface ExecutorContext {
 const MAX_TOOL_ROUNDS = 5
 
 function executorSystemPrompt(ctx: ExecutorContext, plan: Plan): string {
-  const tools = TOOL_CATALOG.filter((t) => ctx.allowedTools.includes(t.key))
+  const tools = getToolCatalog().filter((t) => ctx.allowedTools.includes(t.key))
   return `Tu es le moteur d'exécution de GEN3IA. Tu exécutes le plan suivant avec rigueur, une étape à la fois.
 
 PLAN ${plan.id} — ${plan.name} : ${plan.strategy}

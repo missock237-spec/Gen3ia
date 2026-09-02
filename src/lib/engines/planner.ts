@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { chatJSON } from "@/lib/ai/structured"
-import { TOOL_CATALOG } from "@/lib/tools/registry"
+import { getToolCatalog } from "@/lib/tools/registry"
 import type { Plan, PlanId, PlanStep, PromptAnalysis } from "./types"
 
 /**
@@ -47,8 +47,9 @@ const plansSchema = z.preprocess(
 )
 const PLANS_SKELETON = `{"plans":[{"id":"A","name":"...","strategy":"...","steps":[{"title":"...","detail":"...","tool":"web_search|null"}],"requiredTools":["..."],"risks":["..."],"estimatedCostCredits":2,"successProbability":0.8,"rationale":"...","requiresHumanConfirmation":false}, ... B, C, D, E]}`
 
-/** Source unique de vérité : le registre d'outils réel. */
-const AVAILABLE_TOOLS: string[] = TOOL_CATALOG.map((t) => t.key)
+/** Source unique de vérité : le registre d'outils réel (dynamique — inclut
+ * les connecteurs Composio quand COMPOSIO_API_KEY est configurée). */
+const availableToolKeys = (): string[] => getToolCatalog().map((t) => t.key)
 
 const SYSTEM_PROMPT = `Tu es le planificateur de GEN3IA. Pour toute demande, tu produis EXACTEMENT 5 plans nommés A, B, C, D, E, chacun avec une STRATÉGIE radicalement différente :
 
@@ -79,8 +80,9 @@ export async function generatePlans(
     allowedTools?: string[]
   }
 ): Promise<{ plans: Plan[]; tokensIn: number; tokensOut: number }> {
-  const tools = (context?.allowedTools ?? AVAILABLE_TOOLS).filter((t) =>
-    AVAILABLE_TOOLS.includes(t)
+  const catalogKeys = availableToolKeys()
+  const tools = (context?.allowedTools ?? catalogKeys).filter((t) =>
+    catalogKeys.includes(t)
   )
   const failureBlock = context?.previousFailure
     ? `\nATTENTION — une tentative précédente a échoué : ${context.previousFailure}\nLe plan qui a échoué doit être remplacé par une stratégie différente.\n`

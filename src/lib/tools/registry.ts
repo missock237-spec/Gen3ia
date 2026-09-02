@@ -4,6 +4,8 @@ import { searchKnowledge } from "@/lib/rag/retriever"
 import { recallMemories } from "@/lib/memory/store"
 import { hasZaiConfig } from "@/lib/config"
 import { logger } from "@/lib/observability/logger"
+import { isComposioConfigured } from "@/lib/connectors/composio"
+import { COMPOSIO_TOOL_CATALOG, runComposioTool } from "./composio-tools"
 
 /**
  * Registre d'outils — chaque outil possède une implémentation RÉELLE.
@@ -32,6 +34,9 @@ export type ToolKey =
   | "memory_recall"
   | "http_fetch"
   | "datetime"
+  | "composio_list_apps"
+  | "composio_list_actions"
+  | "composio_execute"
 
 export interface ToolDefinition {
   key: ToolKey
@@ -108,6 +113,18 @@ export const TOOL_CATALOG: ToolDefinition[] = [
     parameters: {},
   },
 ]
+
+/**
+ * Catalogue dynamique : les 8 outils de base + les 3 outils Composio
+ * (1000+ apps externes) si et seulement si COMPOSIO_API_KEY est configurée.
+ * Économise les tokens du prompt quand la fonctionnalité est absente,
+ * échoue explicitement sinon (jamais de réponse simulée).
+ */
+export function getToolCatalog(): ToolDefinition[] {
+  return isComposioConfigured()
+    ? [...TOOL_CATALOG, ...COMPOSIO_TOOL_CATALOG]
+    : TOOL_CATALOG
+}
 
 export interface ToolResult {
   ok: boolean
@@ -500,15 +517,19 @@ export async function runTool(
       return toolHttpFetch({ url: String(args.url ?? "") })
     case "datetime":
       return toolDatetime()
+    case "composio_list_apps":
+    case "composio_list_actions":
+    case "composio_execute":
+      return runComposioTool(key, args, ctx)
     default:
       return { ok: false, output: "", error: `Outil inconnu : ${key}`, latencyMs: 0 }
   }
 }
 
 export function isToolDangerous(key: string): boolean {
-  return TOOL_CATALOG.find((t) => t.key === key)?.dangerous ?? false
+  return getToolCatalog().find((t) => t.key === key)?.dangerous ?? false
 }
 
 export function listAvailableToolKeys(): string[] {
-  return TOOL_CATALOG.map((t) => t.key)
+  return getToolCatalog().map((t) => t.key)
 }

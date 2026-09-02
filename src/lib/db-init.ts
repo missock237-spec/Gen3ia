@@ -280,6 +280,25 @@ CREATE TABLE IF NOT EXISTS "TaskArtifact" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS "TaskArtifact_taskId_idx" ON "TaskArtifact"("taskId");
+CREATE TABLE IF NOT EXISTS "ConnectedAccount" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "toolkitSlug" TEXT NOT NULL,
+    "toolkitName" TEXT,
+    "composioId" TEXT NOT NULL,
+    "authConfigId" TEXT,
+    "alias" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'INITIATING',
+    "statusReason" TEXT,
+    "executions" INTEGER NOT NULL DEFAULT 0,
+    "lastSyncedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ConnectedAccount_composioId_key" ON "ConnectedAccount"("composioId");
+CREATE INDEX IF NOT EXISTS "ConnectedAccount_userId_idx" ON "ConnectedAccount"("userId");
+CREATE INDEX IF NOT EXISTS "ConnectedAccount_userId_toolkitSlug_idx" ON "ConnectedAccount"("userId", "toolkitSlug");
+CREATE INDEX IF NOT EXISTS "ConnectedAccount_userId_status_idx" ON "ConnectedAccount"("userId", "status");
 `
 
 /** Dialecte Postgres : mêmes tables, typage natif (TIMESTAMP, DOUBLE PRECISION, BOOLEAN). */

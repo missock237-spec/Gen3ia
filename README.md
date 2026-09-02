@@ -1,12 +1,19 @@
-# ⚡ GEN3IA v3.2 — Plateforme de construction et d'orchestration d'agents IA
+# ⚡ GEN3IA v3.3 — Plateforme de construction et d'orchestration d'agents IA
 
-GEN3IA analyse vos demandes, **génère 5 plans**, les **compare** avec une formule d'évaluation pondérée, **exécute** le meilleur avec des **outils réels** (recherche web, calculs, code sandboxé, RAG), **vérifie** le résultat contre des critères prouvés, **corrige** les échecs automatiquement, **apprend** de chaque tâche et **livre** une réponse traçable — avec API publique et SDK.
+GEN3IA analyse vos demandes, **génère 5 plans**, les **compare** avec une formule d'évaluation pondérée, **exécute** le meilleur avec des **outils réels** (recherche web, calculs, code sandboxé, RAG, **1000+ applications externes via Composio**), **vérifie** le résultat contre des critères prouvés, **corrige** les échecs automatiquement, **apprend** de chaque tâche et **livre** une réponse traçable — avec API publique et SDK.
 
 ```
 Comprendre → Planifier → Comparer → Exécuter → Vérifier → Corriger → Évaluer → Apprendre → Livrer
 ```
 
 ---
+
+## ✨ Nouveautés v3.3 — Connecteurs d'applications (Composio)
+
+- **1000+ applications réelles** accessibles aux agents IA (GitHub, Slack, Notion, Gmail, WhatsApp, Google Sheets…) via l'API Composio v3.1 — client TypeScript natif, circuit breaker, zéro dépendance ajoutée (ADR-0014).
+- **Connexion OAuth guidée** : page Connecteurs → autorisation chez le fournisseur → retour callback → statut ACTIVE ; les jetons restent dans le coffre Composio (GEN3IA ne stocke aucun secret applicatif).
+- **3 outils moteur** (`composio_list_apps`, `composio_list_actions`, `composio_execute`) : le planner découvre les apps connectées, l'exécuteur agit de manière authentifiée — `composio_execute` est SENSIBLE (confirmation humaine HITL par défaut).
+- Activation : `COMPOSIO_API_KEY` (gratuite sur dashboard.composio.dev) ; sans clé, fail-closed explicite — le catalogue d'outils n'expose même pas les outils inutiles (économie de tokens).
 
 ## ✨ Nouveautés v3.2 — Audit qualité externe (correctifs)
 
@@ -96,9 +103,9 @@ Le **premier compte créé** devient administrateur. 25 crédits d'exécution so
 
 ## 🛠 Outils réels intégrés
 
-`web_search` (recherche live) · `page_reader` (lecture de page) · `calculator` (évaluations exactes) · `code_runner` (bac à sable vm, 5 s, réseau coupé) · `knowledge_search` (RAG TF-IDF sur vos documents) · `memory_recall` · `http_fetch` (SSRF bloqué) · `datetime`
+`web_search` (recherche live) · `page_reader` (lecture de page) · `calculator` (évaluations exactes) · `code_runner` (bac à sable vm, 5 s, réseau coupé) · `knowledge_search` (RAG TF-IDF sur vos documents) · `memory_recall` · `http_fetch` (SSRF bloqué) · `datetime` · **`composio_list_apps` / `composio_list_actions` / `composio_execute` (1000+ apps externes — cf. /connectors)**
 
-Les outils `code_runner` et `http_fetch` sont **sensibles** : ils déclenchent une approbation humaine (HITL) avant exécution.
+Les outils `code_runner`, `http_fetch` et `composio_execute` sont **sensibles** : ils déclenchent une approbation humaine (HITL) avant exécution.
 
 ## 🧭 Model Router
 

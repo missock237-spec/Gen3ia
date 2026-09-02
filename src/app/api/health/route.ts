@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { db } from "@/lib/db"
 import { handleRoute } from "@/lib/api"
 import { getProviderStatuses, APP_NAME } from "@/lib/config"
+import { isComposioConfigured } from "@/lib/connectors/composio"
 import pkg from "../../../../package.json"
 
 /** Health check — état base de données + fournisseurs IA configurés. */
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
       version: pkg.version,
       database,
       llmProviders: providers.filter((p) => p.available).map((p) => p.key),
+      connectors: isComposioConfigured() ? "composio" : "not-configured",
       time: new Date().toISOString(),
     })
   })

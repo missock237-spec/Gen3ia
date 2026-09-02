@@ -36,6 +36,7 @@ model User {
   memories     Memory[]
   skills       Skill[]
   auditLogs    AuditLog[]
+  connections  ConnectedAccount[]
 }
 
 model Session {
@@ -335,6 +336,30 @@ model EngineRun {
 
   @@index([engine, createdAt])
   @@index([taskId])
+}
+
+// Connexions d'applications externes via Composio (1000+ apps réelles).
+// Les jetons OAuth vivent CHEZ Composio — GEN3IA ne stocke que l'identifiant
+// du compte connecté et son statut (ADR-0014 : zéro secret applicatif ici).
+model ConnectedAccount {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toolkitSlug  String // ex: github, slack, notion
+  toolkitName  String?
+  composioId   String   @unique // connected_account_id côté Composio
+  authConfigId String?
+  alias        String?
+  status       String   @default("INITIATING") // INITIALIZING | INITIATED | ACTIVE | FAILED | EXPIRED | INACTIVE | REVOKED
+  statusReason String?
+  executions   Int      @default(0)
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, toolkitSlug])
+  @@index([userId, status])
 }
 
 // Configuration système éditable depuis l'interface admin (KV JSON).
