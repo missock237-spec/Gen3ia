@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test"
+import { mkdirSync } from "node:fs"
 
 /**
  * Test d'intégration du pipeline d'orchestration COMPLET.
@@ -13,6 +14,9 @@ import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test"
  */
 
 // Base dédiée (chemin portable, résolu relativement à ce fichier — CI inclus).
+// v3.2 : le dossier db/ est gitignoré → création explicite sur checkout frais (CI),
+// sinon SQLite échoue avec « Unable to open the database file ».
+mkdirSync(new URL("../../db", import.meta.url).pathname, { recursive: true })
 const TEST_DB_PATH = new URL("../../db/test.db", import.meta.url).pathname
 process.env.DATABASE_URL = `file:${TEST_DB_PATH}`
 process.env.PLAN_CACHE = "on"

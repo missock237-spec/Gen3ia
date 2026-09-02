@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeAll } from "bun:test"
 import crypto from "crypto"
+import { mkdirSync } from "node:fs"
 
 /**
  * Tests critiques du code qui touche à l'ARGENT — v3.2 (audit tests).
@@ -13,6 +14,10 @@ import crypto from "crypto"
  * Base dédiée : db/test-billing.db — aucune clé API nécessaire.
  */
 
+// Base dédiée (chemin portable, résolu relativement à ce fichier — CI inclus).
+// v3.2 : le dossier db/ est gitignoré → il faut le créer sur un checkout
+// frais (CI) sinon SQLite échoue avec « Unable to open the database file ».
+mkdirSync(new URL("../../db", import.meta.url).pathname, { recursive: true })
 const TEST_DB_PATH = new URL("../../db/test-billing.db", import.meta.url).pathname
 process.env.DATABASE_URL = `file:${TEST_DB_PATH}`
 process.env.CHARIOW_WEBHOOK_SECRET = "secret-webhook-test-3.2"
