@@ -280,6 +280,36 @@ CREATE TABLE IF NOT EXISTS "TaskArtifact" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS "TaskArtifact_taskId_idx" ON "TaskArtifact"("taskId");
+CREATE TABLE IF NOT EXISTS "ConnectedAccount" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "appSlug" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'INITIALIZING',
+    "authScheme" TEXT NOT NULL,
+    "encryptedData" TEXT NOT NULL,
+    "meta" TEXT,
+    "lastError" TEXT,
+    "lastRefreshAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ConnectedAccount_userId_appSlug_key" ON "ConnectedAccount"("userId", "appSlug");
+CREATE INDEX IF NOT EXISTS "ConnectedAccount_userId_idx" ON "ConnectedAccount"("userId");
+CREATE INDEX IF NOT EXISTS "ConnectedAccount_appSlug_status_idx" ON "ConnectedAccount"("appSlug", "status");
+CREATE TABLE IF NOT EXISTS "ConnectionRequest" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "appSlug" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "redirectUri" TEXT,
+    "state" TEXT NOT NULL,
+    "verifierEnc" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" DATETIME NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ConnectionRequest_state_key" ON "ConnectionRequest"("state");
+CREATE INDEX IF NOT EXISTS "ConnectionRequest_userId_idx" ON "ConnectionRequest"("userId");
+CREATE INDEX IF NOT EXISTS "ConnectionRequest_appSlug_status_idx" ON "ConnectionRequest"("appSlug", "status");
 `
 
 /** Dialecte Postgres : mêmes tables, typage natif (TIMESTAMP, DOUBLE PRECISION, BOOLEAN). */

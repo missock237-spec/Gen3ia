@@ -100,6 +100,19 @@ Le **premier compte créé** devient administrateur. 25 crédits d'exécution so
 
 Les outils `code_runner` et `http_fetch` sont **sensibles** : ils déclenchent une approbation humaine (HITL) avant exécution.
 
+## 🔌 Connecteurs d'applications (moteur local, architecture Composio adaptée — ADR-0014)
+
+13 applications réelles, 77 actions exécutées **directement** contre leurs API publiques (aucun intermédiaire, aucun SaaS de connecteurs) :
+
+`GitHub` · `Slack` · `Gmail` · `Google Calendar` · `Notion` · `Discord` · `Trello` · `Jira Cloud` · `Linear` · `Airtable` · `Telegram` · `Stripe` · `X (Twitter)`
+
+- **Authentifications** : OAuth2 complet (code + PKCE, refresh automatique, révocation), OAuth1.0a (signature HMAC-SHA1 par requête), comptes de service Google (JWT RS256), import de tokens personnels (PAT GitHub, token Slack/Bot, Notion, Linear, Airtable, Telegram, Stripe), Basic (Jira).
+- **Sécurité** : secrets chiffrés **AES-256-GCM** au repos (`ConnectedAccount.encryptedData`), state OAuth signé HMAC anti-CSRF à usage unique, jamais renvoyés par l'API.
+- **Agents** : les actions des apps connectées apparaissent comme outils (`connector_github_create_issue`…) — joker `connectors`, préfixe `connector:<app>` ou action exacte dans la config de l'agent. Les actions en écriture sont marquées sensibles (HITL).
+- **Activation OAuth** (optionnelle — sinon l'import de token suffit) : `GITHUB_CLIENT_ID/SECRET`, `SLACK_CLIENT_ID/SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `TRELLO_CONSUMER_KEY/SECRET`, `X_CLIENT_ID/SECRET`. Recommandé : `CONNECTORS_ENCRYPTION_KEY` (hex 32 octets) pour une clé de chiffrement dédiée.
+- **Vérification E2E réelle** : `BASE_URL=… GITHUB_TOKEN=ghp_… node scripts/connectors-verify.mjs` (appel authentifié à api.github.com, catalogue, erreurs propres).
+- Page UI `/connectors` : catalogue, connexion, console d'exécution d'action. API : `/api/connectors/*`.
+
 ## 🧭 Model Router
 
 Routage par type de tâche avec basculement automatique de fournisseur :

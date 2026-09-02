@@ -36,6 +36,8 @@ model User {
   memories     Memory[]
   skills       Skill[]
   auditLogs    AuditLog[]
+  connectedAccounts     ConnectedAccount[]
+  connectionRequests    ConnectionRequest[]
 }
 
 model Session {
@@ -358,4 +360,46 @@ model TaskArtifact {
   createdAt DateTime @default(now())
 
   @@index([taskId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONNECTORS — comptes connectés (moteur local, architecture
+// adaptée de Composio — MIT, Sampark Inc.). Secrets chiffrés
+// AES-256-GCM : jamais de token en clair en base.
+// ─────────────────────────────────────────────────────────────
+model ConnectedAccount {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appSlug       String // github | slack | gmail | calendar | notion | …
+  status        String    @default("INITIALIZING") // INITIALIZING | INITIATED | ACTIVE | FAILED | EXPIRED | REVOKED
+  authScheme    String // OAUTH2 | OAUTH1 | API_KEY | BEARER_TOKEN | BASIC | NO_AUTH
+  encryptedData String // JSON ConnectionData chiffré AES-256-GCM (access/refresh token, secrets)
+  meta          String? // JSON non sensible : { scopes, accountHint, tokenExpiresAt }
+  lastError     String?
+  lastRefreshAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, appSlug])
+  @@index([userId])
+  @@index([appSlug, status])
+}
+
+// Demande de connexion en cours : state anti-CSRF + verifier PKCE
+// (chiffrés), sert de handshake entre initiate et callback OAuth.
+model ConnectionRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appSlug     String
+  status      String   @default("PENDING") // PENDING | COMPLETED | FAILED | EXPIRED
+  redirectUri String? // URL UI de retour après connexion
+  state       String   @unique // HMAC-signé, à usage unique
+  verifierEnc String? // code_verifier PKCE chiffré (OAuth2 avec PKCE)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([userId])
+  @@index([appSlug, status])
 }

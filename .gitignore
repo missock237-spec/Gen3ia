@@ -69,3 +69,8 @@ db/*.db
 
 # Artefacts internes de lecture
 tool-results/
+
+# sources de recherche (clone Composio — analyse uniquement)
+research/
+dev.log
+server.log

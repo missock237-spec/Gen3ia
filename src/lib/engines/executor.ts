@@ -3,6 +3,7 @@ import { chat } from "@/lib/ai"
 import { chatJSON } from "@/lib/ai/structured"
 import { creditsForTokens } from "@/lib/ai/router"
 import { runTool, TOOL_CATALOG, isToolDangerous, type ToolResult } from "@/lib/tools/registry"
+import { connectorToolsForUser, type ConnectorTool } from "@/lib/connectors/core/toolset"
 import { getBreaker } from "@/lib/reliability/breaker"
 import { AppError } from "@/lib/errors"
 import type {
@@ -53,14 +54,46 @@ export interface ExecutorContext {
 
 const MAX_TOOL_ROUNDS = 5
 
-function executorSystemPrompt(ctx: ExecutorContext, plan: Plan): string {
-  const tools = TOOL_CATALOG.filter((t) => ctx.allowedTools.includes(t.key))
+/** Outil unifié pour le prompt : catalogue statique + outils connector. */
+interface PromptTool {
+  key: string
+  description: string
+  dangerous: boolean
+  parameters: Record<string, { type: string; description: string; required: boolean }>
+}
+
+function toPromptTool(t: { key: string; description: string; dangerous: boolean; parameters: Record<string, unknown> }): PromptTool {
+  const parameters: PromptTool["parameters"] = {}
+  for (const [k, v] of Object.entries(t.parameters)) {
+    const p = v as { type?: string; description?: string; required?: boolean }
+    parameters[k] = {
+      type: String(p.type ?? "string"),
+      description: String(p.description ?? ""),
+      required: !!p.required,
+    }
+  }
+  return { key: t.key, description: t.description, dangerous: t.dangerous, parameters }
+}
+
+function executorSystemPrompt(
+  ctx: ExecutorContext,
+  plan: Plan,
+  connectorTools: PromptTool[]
+): string {
+  const staticTools = TOOL_CATALOG.filter((t) => ctx.allowedTools.includes(t.key)).map(toPromptTool)
+  const tools = [...staticTools, ...connectorTools]
+  const toolLines = tools.map((t) => {
+    const params = Object.entries(t.parameters)
+      .map(([k, p]) => `${k}${p.required ? "*" : ""}:${p.type}`)
+      .join(", ")
+    return `- ${t.key} : ${t.description}${params ? ` (params: ${params})` : " (sans paramètre)"}${t.dangerous ? " [SENSIBLE]" : ""}`
+  })
   return `Tu es le moteur d'exécution de GEN3IA. Tu exécutes le plan suivant avec rigueur, une étape à la fois.
 
 PLAN ${plan.id} — ${plan.name} : ${plan.strategy}
 
 OUTILS DISPONIBLES :
-${tools.map((t) => `- ${t.key} : ${t.description}${t.dangerous ? " [SENSIBLE]" : ""}`).join("\n")}
+${toolLines.join("\n")}
 
 PROTOCOLE (réponds TOUJOURS en JSON) :
 {"action":"CALL_TOOL","reasoning":"...","tool":"<clé d'outil>","args":{...}}
@@ -103,6 +136,12 @@ export async function executePlan(
   const toolsUsed = new Set<string>()
   const toolFailures = new Set<string>()
 
+  // Outils connector : actions des apps connectées de l'utilisateur,
+  // filtrées par les outils autorisés de l'agent (clés connector_*).
+  const connectorTools = await connectorToolsForUser(ctx.userId, ctx.allowedTools)
+    .then((ts) => ts.map(toPromptTool))
+    .catch(() => [] as PromptTool[])
+
   const contextBlock: string[] = [
     `DEMANDE INITIALE :\n${prompt.slice(0, 2500)}`,
     `OBJECTIFS :\n${analysis.goals.map((g) => `- ${g}`).join("\n")}`,
@@ -123,7 +162,7 @@ export async function executePlan(
     await callbacks.onStepStart?.(i, step.title)
 
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-      { role: "system", content: executorSystemPrompt(ctx, plan) },
+      { role: "system", content: executorSystemPrompt(ctx, plan, connectorTools) },
       { role: "user", content: `${contextBlock.join("\n\n")}\n\nÉTAPE ${i + 1}/${plan.steps.length} : ${step.title}\nDétail : ${step.detail}${step.tool ? `\nOutil suggéré : ${step.tool}` : ""}\n\nCommence.` },
     ]
 

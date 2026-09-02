@@ -4,6 +4,7 @@ import { searchKnowledge } from "@/lib/rag/retriever"
 import { recallMemories } from "@/lib/memory/store"
 import { hasZaiConfig } from "@/lib/config"
 import { logger } from "@/lib/observability/logger"
+import { parseConnectorToolKey, runConnectorTool } from "@/lib/connectors/core/toolset"
 
 /**
  * Registre d'outils — chaque outil possède une implémentation RÉELLE.
@@ -500,12 +501,29 @@ export async function runTool(
       return toolHttpFetch({ url: String(args.url ?? "") })
     case "datetime":
       return toolDatetime()
-    default:
+    default: {
+      // Outils connector (actions d'app connectées : GitHub, Slack, Notion…).
+      if (parseConnectorToolKey(key)) {
+        const result = await runConnectorTool(key, args, { userId: ctx.userId, agentId: ctx.agentId })
+        return {
+          ok: result.ok,
+          output: result.ok ? result.output : `${result.error ? `${result.error}\n` : ""}${result.output}`,
+          data: result.data,
+          latencyMs: result.latencyMs,
+          error: result.error,
+        }
+      }
       return { ok: false, output: "", error: `Outil inconnu : ${key}`, latencyMs: 0 }
+    }
   }
 }
 
 export function isToolDangerous(key: string): boolean {
+  if (parseConnectorToolKey(key)) {
+    // Actions connector : sensibles sauf lecture pure (GET).
+    // La méthode exacte est résolue par le toolset ; par défaut prudent.
+    return true
+  }
   return TOOL_CATALOG.find((t) => t.key === key)?.dangerous ?? false
 }
 

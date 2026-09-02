@@ -74,16 +74,25 @@ async function loadTask(taskId: string): Promise<LoadedTask | null> {
 }
 
 function agentAllowedTools(agent: TaskAgent | null): string[] {
-  if (!agent?.config) return listAvailableToolKeys()
+  // Sans restriction explicite : catalogue complet + apps connectées.
+  if (!agent?.config) return [...listAvailableToolKeys(), "connectors"]
   try {
     const cfg = JSON.parse(agent.config) as { tools?: string[] }
     if (Array.isArray(cfg.tools) && cfg.tools.length > 0) {
-      return cfg.tools.filter((t) => TOOL_CATALOG.some((c) => c.key === t))
+      return cfg.tools.filter(
+        (t) =>
+          // Outils statiques du catalogue.
+          TOOL_CATALOG.some((c) => c.key === t) ||
+          // Outils connector : joker global, préfixe d'app ou action exacte.
+          t === "connectors" ||
+          t === "connector" ||
+          /^connector[:_]/.test(t)
+      )
     }
   } catch {
     /* configuration illisible : tous les outils */
   }
-  return listAvailableToolKeys()
+  return [...listAvailableToolKeys(), "connectors"]
 }
 
 /** Pondérations : utilisateur > système (admin) > défauts. */
