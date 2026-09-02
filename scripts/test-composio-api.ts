@@ -3,7 +3,9 @@
  * clé (COMPOSIO_API_KEY) : appels réels au catalogue public.
  * Usage : bun scripts/test-composio-api.ts
  */
-const { isComposioConfigured, listToolkits, listTools } = await import("../src/lib/connectors/composio/client.ts")
+export {} // module ES (top-level await)
+
+const { isComposioConfigured, listToolkits, listTools } = await import("../src/lib/connectors/composio/client")
 
 console.log("Composio configuré :", isComposioConfigured())
 

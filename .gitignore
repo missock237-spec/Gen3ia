@@ -69,3 +69,9 @@ db/*.db
 
 # Artefacts internes de lecture
 tool-results/
+
+# Bases SQLite locales (jamais versionnées)
+prisma/*.db
+*.db
+# Lockfile npm — le projet utilise bun (bun.lock)
+package-lock.json
