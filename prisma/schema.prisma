@@ -26,16 +26,18 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions     Session[]
-  agents       Agent[]
-  tasks        Task[]
-  apiKeys      ApiKey[]
-  transactions Transaction[]
-  payments     Payment[]
-  documents    Document[]
-  memories     Memory[]
-  skills       Skill[]
-  auditLogs    AuditLog[]
+  sessions            Session[]
+  agents              Agent[]
+  tasks               Task[]
+  apiKeys             ApiKey[]
+  transactions        Transaction[]
+  payments            Payment[]
+  documents           Document[]
+  memories            Memory[]
+  skills              Skill[]
+  auditLogs           AuditLog[]
+  externalConnections ExternalConnection[]
+  watchConfigs        WatchConfig[]
 }
 
 model Session {
@@ -102,34 +104,34 @@ model ApiKey {
 // WAITING_FOR_HUMAN (depuis SIMULATING/EXECUTING, reprend vers l'état d'origine)
 // FAILED / CANCELLED (terminal)
 model Task {
-  id             String    @id @default(cuid())
-  userId         String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agentId        String?
-  agent          Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  prompt         String
-  status         String    @default("QUEUED")
-  analysis       String? // JSON : PromptAnalysis
-  plans          String? // JSON : Plan[5]
-  planScores     String? // JSON : scores d'évaluation
-  selectedPlanId String?
-  executionLog   String? // JSON : journaux d'exécution
-  verification   String? // JSON : rapport de vérification
-  correctionLog  String? // JSON : historique des auto-corrections
-  learning       String? // JSON : leçons extraites
-  result         String? // JSON : { answer, evidence, artifacts, metrics }
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId         String?
+  agent           Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  prompt          String
+  status          String    @default("QUEUED")
+  analysis        String? // JSON : PromptAnalysis
+  plans           String? // JSON : Plan[5]
+  planScores      String? // JSON : scores d'évaluation
+  selectedPlanId  String?
+  executionLog    String? // JSON : journaux d'exécution
+  verification    String? // JSON : rapport de vérification
+  correctionLog   String? // JSON : historique des auto-corrections
+  learning        String? // JSON : leçons extraites
+  result          String? // JSON : { answer, evidence, artifacts, metrics }
   pendingApproval String? // JSON : approbation humaine en attente
-  costCredits    Float     @default(0)
-  tokensIn       Int       @default(0)
-  tokensOut      Int       @default(0)
-  attempts       Int       @default(0)
-  totalRetries   Int       @default(0) // plafond global de retries (circuit breaker)
-  version        Int       @default(0) // verrouillage optimiste des fusions JSON
-  error          String?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  costCredits     Float     @default(0)
+  tokensIn        Int       @default(0)
+  tokensOut       Int       @default(0)
+  attempts        Int       @default(0)
+  totalRetries    Int       @default(0) // plafond global de retries (circuit breaker)
+  version         Int       @default(0) // verrouillage optimiste des fusions JSON
+  error           String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   steps     TaskStep[]
   artifacts TaskArtifact[]
@@ -182,7 +184,7 @@ model Payment {
   status     String   @default("PENDING") // PENDING | SUCCEEDED | FAILED
   raw        String? // JSON : charge utile du webhook
   createdAt  DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt  DateTime @updatedAt
 
   @@index([userId])
 }
@@ -234,15 +236,15 @@ model Skill {
 }
 
 model Tool {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   userId      String? // null = catalogue intégré
-  key         String  @unique
+  key         String   @unique
   name        String
   description String
-  category    String  @default("GENERAL")
+  category    String   @default("GENERAL")
   parameters  String? // JSON : schéma des paramètres
-  isBuiltIn   Boolean @default(false)
-  enabled     Boolean @default(true)
+  isBuiltIn   Boolean  @default(false)
+  enabled     Boolean  @default(true)
   createdAt   DateTime @default(now())
 }
 
@@ -271,13 +273,11 @@ model AuditLog {
 
   @@index([createdAt])
 }
+
 // ============================================================
 // Améliorations v3.1 — vecteurs, cache, télémétrie, config, artefacts
 // ============================================================
 
-// Vecteurs d'embedding par morceau de document (RAG sémantique).
-// Backend « json » : embedding = JSON number[] + norme précalculée
-// (cosinus en mémoire, indépendant du moteur de base).
 model Embedding {
   id         String   @id @default(cuid())
   userId     String
@@ -295,8 +295,6 @@ model Embedding {
   @@index([userId, model])
 }
 
-// Cache de plans : évite de régénérer 5 plans pour des demandes similaires.
-// Recherche exacte par promptHash, puis similitude sémantique (embedding).
 model PlanCache {
   id             String   @id @default(cuid())
   userId         String
@@ -315,8 +313,6 @@ model PlanCache {
   @@index([userId, lastUsedAt])
 }
 
-// Télémétrie des moteurs : une ligne par exécution de phase/moteur.
-// Source unique de vérité du tableau d'observabilité admin.
 model EngineRun {
   id         String   @id @default(cuid())
   engine     String // PROMPT_ANALYSIS | PLANNER | EVALUATOR | EXECUTOR | VERIFICATION | SELF_CORRECTION | LEARNING | ORCHESTRATOR
@@ -337,15 +333,12 @@ model EngineRun {
   @@index([taskId])
 }
 
-// Configuration système éditable depuis l'interface admin (KV JSON).
 model SystemConfig {
   key       String   @id
   value     String // JSON
   updatedAt DateTime @updatedAt
 }
 
-// Artefacts volumineux d'une tâche : preuves et sorties compressées
-// (gzip+base64) — la ligne Task ne conserve que les métadonnées/références.
 model TaskArtifact {
   id        String   @id @default(cuid())
   taskId    String
@@ -358,4 +351,451 @@ model TaskArtifact {
   createdAt DateTime @default(now())
 
   @@index([taskId])
+}
+
+// ============================================================
+// Connexions BDD & APIs externes (External Connections)
+// ============================================================
+
+model ExternalConnection {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  type      String   // POSTGRES, MYSQL, MONGODB, SALESFORCE, HUBSPOT, NOTION, SLACK
+  config    String   // JSON : paramètres de connexion sécurisés
+  status    String   @default("ACTIVE") // ACTIVE, INACTIVE, ERROR
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, type])
+}
+
+// ============================================================
+// Agent Veille (Watchdog & Monitoring)
+// ============================================================
+
+model WatchConfig {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  type          String   // PRICE, WEBSITE, INDICATOR
+  target        String   // URL, API endpoint, ou requête BDD
+  condition     String   // JSON : condition de déclenchement (opérateur, valeur, sélecteur)
+  cronExpr      String   // Ex: "0 * * * *" ou "hourly", "daily", "every_10m"
+  channel       String   // EMAIL, SLACK, BOTH
+  channelConfig String?  // JSON : destinataire email, webhook Slack, channel
+  active        Boolean  @default(true)
+  lastRunAt     DateTime?
+  lastStatus    String?  // OK, TRIGGERED, ERROR
+  lastResult    String?  // JSON : dernier résultat mesuré
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  executions WatchExecution[]
+
+  @@index([userId])
+  @@index([active])
+}
+
+model WatchExecution {
+  id            String      @id @default(cuid())
+  watchConfigId String
+  watchConfig   WatchConfig @relation(fields: [watchConfigId], references: [id], onDelete: Cascade)
+  status        String      // OK, TRIGGERED, ERROR
+  value         String?     // Valeur observée
+  message       String?     // Rapport/Alerte générée
+  raw           String?     // JSON détaillé
+  createdAt     DateTime    @default(now())
+
+  @@index([watchConfigId])
+}
+
+// ============================================================
+// v3.3 — Multi-Agents & Swarm
+// ============================================================
+
+model SwarmSession {
+  id             String   @id @default(cuid())
+  taskId         String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  strategy       String   @default("HIERARCHICAL")
+  status         String   @default("RUNNING")
+  prompt         String
+  plan           String?
+  result         String?
+  tokensIn       Int      @default(0)
+  tokensOut      Int      @default(0)
+  costCredits    Float    @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  subTasks       SubTask[]
+  sharedMemories SharedMemory[]
+  messages       SwarmMessage[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model SubTask {
+  id             String   @id @default(cuid())
+  sessionId      String
+  session        SwarmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  title          String
+  description    String
+  assignedAgent  String
+  status         String   @default("PENDING")
+  dependencies   String?
+  input          String?
+  result         String?
+  error          String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([sessionId])
+}
+
+model SharedMemory {
+  id         String        @id @default(cuid())
+  sessionId  String?
+  session    SwarmSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId     String?
+  key        String
+  value      String
+  author     String
+  namespace  String   @default("default")
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([sessionId, namespace, key])
+}
+
+model SwarmMessage {
+  id         String   @id @default(cuid())
+  sessionId  String
+  session    SwarmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  channel    String
+  senderId   String
+  content    String
+  payload    String?
+  createdAt  DateTime @default(now())
+
+  @@index([sessionId, channel])
+}
+
+// ============================================================
+// v3.3 — Exécution autonome avancée
+// ============================================================
+
+model TaskPriority {
+  id        String   @id @default(cuid())
+  taskId    String   @unique
+  cost      Float    @default(0.33)
+  speed     Float    @default(0.33)
+  accuracy  Float    @default(0.34)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ExplorationRun {
+  id           String   @id @default(cuid())
+  taskId       String
+  variantCount Int
+  winnerPlanId String
+  results      String
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([taskId])
+}
+
+// ============================================================
+// v3.3 — Apprentissage & personnalisation
+// ============================================================
+
+model FineTuneJob {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  status      String   @default("QUEUED") // QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED
+  datasetPath String?
+  datasetSize Int      @default(0)
+  baseModel   String
+  engine      String   @default("unsloth") // unsloth | axolotl
+  config      String?  // JSON
+  metrics     String?  // JSON : loss, eval_loss, epochs
+  error       String?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model AutoSkill {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pattern     String  // pattern détecté
+  code        String  // code généré
+  language    String  @default("typescript")
+  status      String  @default("DRAFT") // DRAFT | VALIDATED | PUBLISHED | REJECTED
+  usageCount  Int     @default(0)
+  successRate Float   @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model UserProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responseStyle   String   @default("balanced") // concise | balanced | detailed
+  tone            String   @default("professional") // professional | casual | formal
+  language        String   @default("fr")
+  detailLevel     Float    @default(0.5) // 0-1
+  preferences     String?  // JSON
+  interactionCount Int    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================================
+// v3.3 — Gouvernance & sécurité
+// ============================================================
+
+model ImmutableAuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  prevHash   String?  // hash de l'entrée précédente (chaîne)
+  entryHash  String   // HMAC-SHA256 du contenu
+  action     String
+  entityType String?
+  entityId   String?
+  detail     String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model AnomalyAlert {
+  id           String   @id @default(cuid())
+  userId       String?
+  type         String   // LOOP | COST_SPIKE | FAILURE_RATE | LATENCY
+  severity     String   @default("WARNING") // INFO | WARNING | CRITICAL
+  message      String
+  metric       String?
+  threshold    Float?
+  actualValue  Float?
+  action       String   @default("ALERT") // ALERT | THROTTLE | BLOCK
+  resolved     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([resolved])
+}
+
+// ============================================================
+// v3.3 — Observabilité & tracing
+// ============================================================
+
+model Trace {
+  id         String   @id @default(cuid())
+  traceId    String   @unique
+  taskId     String?
+  userId     String?
+  rootSpanId String?
+  status     String   @default("RUNNING")
+  durationMs Int      @default(0)
+  spans      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([taskId])
+  @@index([createdAt])
+}
+
+model TraceSpan {
+  id            String   @id @default(cuid())
+  traceId       String
+  trace        Trace     @relation(fields: [traceId], references: [id], onDelete: Cascade)
+  spanId       String
+  parentSpanId String?
+  name         String
+  startTime    Float
+  endTime      Float?
+  durationMs   Int      @default(0)
+  attributes   String?  // JSON
+  status       String   @default("UNSET") // OK | ERROR | UNSET
+  events       String?  // JSON
+  createdAt    DateTime @default(now())
+
+  @@index([traceId])
+}
+
+// ============================================================
+// v3.3 — Batch
+// ============================================================
+
+model BatchTask {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String?
+  status      String   @default("PENDING") // PENDING | RUNNING | COMPLETED | PARTIAL | FAILED
+  total       Int      @default(0)
+  completed   Int      @default(0)
+  failed      Int      @default(0)
+  results     String?  // JSON agrégé
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       BatchItem[]
+
+  @@index([userId, createdAt])
+}
+
+model BatchItem {
+  id         String   @id @default(cuid())
+  batchId    String
+  batch      BatchTask @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  taskId     String?
+  prompt     String
+  status     String   @default("PENDING") // PENDING | RUNNING | DONE | FAILED
+  result     String?
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([batchId])
+}
+
+// ============================================================
+// v3.3 — Écosystème & partage
+// ============================================================
+
+model AgentListing {
+  id          String   @id @default(cuid())
+  agentId     String   @unique
+  price       Float    @default(0) // 0 = gratuit
+  currency    String   @default("XOF")
+  commission  Float    @default(0.1) // 10% par défaut
+  description String?
+  tags        String?  // JSON
+  downloads   Int      @default(0)
+  purchases   Int      @default(0)
+  revenue     Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Purchase {
+  id          String   @id @default(cuid())
+  buyerId     String
+  sellerId    String
+  agentId     String
+  listingId   String
+  amount      Float
+  commission  Float
+  payout      Float
+  status      String   @default("PENDING") // PENDING | COMPLETED | REFUNDED
+  createdAt   DateTime @default(now())
+
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+model WebhookConfig {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url       String
+  events    String   // JSON : ["task.completed", "task.failed"]
+  secret    String   // pour signature HMAC
+  agentId   String?
+  taskId    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([userId])
+}
+
+model WebhookDelivery {
+  id           String   @id @default(cuid())
+  webhookId    String
+  webhook      WebhookConfig @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event        String
+  payload      String
+  statusCode   Int?
+  response     String?
+  attempt      Int      @default(1)
+  deliveredAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([webhookId, createdAt])
+}
+
+model ExternalConnection {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // postgresql | mysql | mongodb | salesforce | hubspot | notion | slack
+  name      String
+  config    String   // JSON encrypté (host, port, database, credentials…)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, type])
+}
+
+model WatchConfig {
+  id           String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  type        String   // PRICE | WEBSITE | INDICATOR | CUSTOM
+  target      String   // URL ou identifiant
+  schedule    String   // expression CRON
+  condition   String?  // JSON : { operator: "lt", value: 100 }
+  alertChannel String  @default("email") // email | slack | webhook
+  alertTarget String?  // email/Slack channel/webhook URL
+  lastValue   String?
+  lastCheckAt DateTime?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executions WatchExecution[]
+
+  @@index([userId, active])
+}
+
+model WatchExecution {
+  id           String   @id @default(cuid())
+  watchId      String
+  watch        WatchConfig @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  value        String?
+  triggered    Boolean  @default(false)
+  alertSent    Boolean  @default(false)
+  error        String?
+  executedAt   DateTime @default(now())
+
+  @@index([watchId, executedAt])
 }

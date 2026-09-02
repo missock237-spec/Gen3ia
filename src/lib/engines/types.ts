@@ -176,3 +176,197 @@ export interface TaskResult {
     attempts: number
   }
 }
+
+// ---------- Multi-Agents & Swarm ----------
+
+export type SubAgentRole =
+  | "SUPERVISOR"
+  | "RESEARCHER"
+  | "DATA_ANALYZER"
+  | "WRITER"
+  | "REFEREE"
+  | "CUSTOM"
+
+export interface SubAgent {
+  id: string
+  name: string
+  role: SubAgentRole
+  systemPrompt: string
+  capabilities: string[]
+  model?: string
+}
+
+export interface SubTaskSpec {
+  id: string
+  title: string
+  description: string
+  assignedAgentRole: SubAgentRole
+  dependencies: string[]
+  status: "PENDING" | "RUNNING" | "DONE" | "FAILED"
+  input?: Record<string, unknown>
+  result?: string
+  error?: string
+}
+
+export interface SwarmTask {
+  id: string
+  sessionId: string
+  prompt: string
+  strategy: "HIERARCHICAL" | "DEBATE"
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED"
+  subTasks: SubTaskSpec[]
+  subAgents: SubAgent[]
+  finalResult?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DebateProposal {
+  agentId: string
+  agentName: string
+  role: string
+  proposal: string
+  arguments: string[]
+  confidence: number
+}
+
+export interface DebateResult {
+  topic: string
+  proposals: DebateProposal[]
+  refereeVerdict: string
+  synthesis: string
+  winningProposalAgentId?: string
+  consensusScore: number
+}
+
+export interface SharedMemoryEntry {
+  id: string
+  sessionId?: string
+  key: string
+  value: unknown
+  author: string
+  namespace: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SwarmMessagePayload {
+  id: string
+  sessionId: string
+  channel: string
+  senderId: string
+  content: string
+  payload?: Record<string, unknown>
+  createdAt: string
+}
+
+// ---------- Exécution autonome avancée ----------
+
+export type PriorityDimension = "COST" | "SPEED" | "ACCURACY"
+
+export interface PriorityProfile {
+  cost: number      // 0-1, pondération coût
+  speed: number    // 0-1, pondération rapidité
+  accuracy: number // 0-1, pondération précision
+}
+
+export interface DeviationReport {
+  stepIndex: number
+  expectedOutcome: string
+  actualOutcome: string
+  deviationScore: number // 0-1
+  shouldReplan: boolean
+  reason: string
+}
+
+export interface ExplorationResult {
+  variants: Array<{
+    planId: PlanId
+    result: string
+    score: number
+    cost: number
+    latencyMs: number
+  }>
+  winnerPlanId: PlanId
+  winnerResult: string
+}
+
+// ---------- Observabilité & tracing ----------
+
+export interface TraceSpan {
+  spanId: string
+  parentSpanId?: string
+  traceId: string
+  name: string
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  attributes: Record<string, unknown>
+  status: "OK" | "ERROR" | "UNSET"
+  events: Array<{ name: string; timestamp: number; attributes?: Record<string, unknown> }>
+}
+
+// ---------- Batch ----------
+
+export interface BatchTaskItem {
+  taskId: string
+  status: "PENDING" | "RUNNING" | "DONE" | "FAILED"
+  result?: string
+  error?: string
+}
+
+export interface BatchResult {
+  batchId: string
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "PARTIAL"
+  total: number
+  completed: number
+  failed: number
+  items: BatchTaskItem[]
+}
+
+// ---------- Sécurité RBAC ----------
+
+export type Role = "ADMIN" | "AGENT_MANAGER" | "USER"
+
+export type Permission =
+  | "task.execute"
+  | "task.view"
+  | "task.view_logs"
+  | "agent.manage"
+  | "agent.deploy"
+  | "agent.view"
+  | "knowledge.manage"
+  | "billing.access"
+  | "admin.access"
+  | "system.config"
+  | "webhook.manage"
+
+// ---------- Écosystème ----------
+
+export interface AgentExport {
+  version: string
+  agent: {
+    name: string
+    description: string | null
+    systemPrompt: string | null
+    provider: string
+    model: string
+    temperature: number
+    maxTokens: number
+    config: string | null
+  }
+  skills: Array<{ key: string; name: string; definition: string | null }>
+  tools: string[]
+  exportedAt: string
+}
+
+export interface WebhookConfig {
+  id: string
+  url: string
+  events: string[]
+  secret: string
+  agentId?: string
+  taskId?: string
+  active: boolean
+}

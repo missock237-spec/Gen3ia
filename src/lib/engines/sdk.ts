@@ -40,6 +40,11 @@ export type EngineName =
   | "SELF_CORRECTION"
   | "LEARNING"
   | "ORCHESTRATOR"
+  | "SWARM"
+  | "DEBATE"
+  | "EXPLORATION"
+  | "ANOMALY_DETECTOR"
+  | "BATCH"
 
 export interface EngineContext {
   taskId: string
