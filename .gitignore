@@ -75,3 +75,6 @@ prisma/*.db
 *.db
 # Lockfile npm — le projet utilise bun (bun.lock)
 package-lock.json
+
+# Artefacts locaux
+.prod-db-url.txt
