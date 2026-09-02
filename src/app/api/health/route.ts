@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { db } from "@/lib/db"
 import { handleRoute } from "@/lib/api"
 import { getProviderStatuses, APP_NAME } from "@/lib/config"
+import pkg from "../../../../package.json"
 
 /** Health check — état base de données + fournisseurs IA configurés. */
 export async function GET(req: NextRequest) {
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
     return Response.json({
       ok: true,
       app: APP_NAME,
-      version: "3.1.0",
+      version: pkg.version,
       database,
       llmProviders: providers.filter((p) => p.available).map((p) => p.key),
       time: new Date().toISOString(),
