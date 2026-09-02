@@ -135,7 +135,7 @@ export function routeCall(opts: LLMCallOptions): RoutingDecision {
     const model =
       opts.model && opts.model !== "auto"
         ? opts.model
-        : defaultModelFor(provider, opts.taskType)
+        : defaultModelFor(provider, opts.taskType ?? "CHAT")
     return { provider, model, fallbackChain: buildChain(available, provider) }
   }
 

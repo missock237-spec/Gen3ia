@@ -42,7 +42,7 @@ console.log(r.content.slice(0, 2000))
 console.log("\n=== LONGUEUR ===", r.content.length, "| tokens:", r.tokensIn, "/", r.tokensOut)
 try {
   const parsed = extractJson(r.content)
-  console.log("=== TYPE ===", Array.isArray(parsed) ? "ARRAY" : typeof parsed, "| clés :", Array.isArray(parsed) ? parsed.length : Object.keys(parsed))
+  console.log("=== TYPE ===", Array.isArray(parsed) ? "ARRAY" : typeof parsed, "| clés :", Array.isArray(parsed) ? parsed.length : Object.keys(parsed as Record<string, unknown>))
 } catch (e) {
   console.error("extraction échouée :", e)
 }

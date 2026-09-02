@@ -92,7 +92,7 @@ export async function zaiChat(opts: LLMCallOptions, model: string): Promise<LLMR
     provider: "zai",
     model,
     tokensIn: Number(c?.usage?.prompt_tokens ?? estimateTokens(opts.messages)),
-    tokensOut: Number(c?.usage?.completion_tokens ?? estimateTokens([{ role: "assistant", content }])),
+    tokensOut: Number(c?.usage?.completion_tokens ?? estimateTokens([{ content }])),
     latencyMs: Date.now() - started,
   }
 }

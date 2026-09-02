@@ -138,9 +138,9 @@ export async function chatJSON<T>(
 
   // Tentative de réparation : on montre les erreurs exactes au modèle.
    
-  const issues: { path: (string | number)[]; message: string }[] = parsed !== null
+  const issues: { path: string[]; message: string }[] = parsed !== null
     ? (schema.safeParse(tryUnwrap(parsed)).error?.issues ?? []).map((i) => ({
-        path: i.path,
+        path: i.path.map((p) => String(p)),
         message: i.message,
       }))
     : []

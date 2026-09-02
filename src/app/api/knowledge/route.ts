@@ -5,6 +5,7 @@ import { handleRoute, readJson, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { chunkText } from "@/lib/rag/retriever"
 import { indexDocument } from "@/lib/rag/vector-store"
+import { listParams, paginate } from "@/lib/api-pagination"
 import { audit } from "@/lib/engines/audit"
 
 const addSchema = z.object({
@@ -16,20 +17,25 @@ const addSchema = z.object({
 export async function GET(req: NextRequest) {
   return handleRoute(async () => {
     const user = await requireUser(req)
-    const documents = await db.document.findMany({
+    const { limit, cursor } = listParams(new URL(req.url).searchParams)
+    const rows = await db.document.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true, title: true, sourceType: true, size: true, createdAt: true,
         agentId: true,
       },
     })
+    const { page, nextCursor } = paginate(rows, limit)
     return Response.json({
       ok: true,
-      documents: documents.map((d) => ({
+      documents: page.map((d) => ({
         ...d,
         chunks: d.size, // taille = nombre de caractères ; le détail des morceaux est indexé
       })),
+      nextCursor,
     })
   })
 }

@@ -1,10 +1,29 @@
-# ⚡ GEN3IA v3.1 — Plateforme de construction et d'orchestration d'agents IA
+# ⚡ GEN3IA v3.2 — Plateforme de construction et d'orchestration d'agents IA
 
 GEN3IA analyse vos demandes, **génère 5 plans**, les **compare** avec une formule d'évaluation pondérée, **exécute** le meilleur avec des **outils réels** (recherche web, calculs, code sandboxé, RAG), **vérifie** le résultat contre des critères prouvés, **corrige** les échecs automatiquement, **apprend** de chaque tâche et **livre** une réponse traçable — avec API publique et SDK.
 
 ```
 Comprendre → Planifier → Comparer → Exécuter → Vérifier → Corriger → Évaluer → Apprendre → Livrer
 ```
+
+---
+
+## ✨ Nouveautés v3.2 — Audit qualité externe (correctifs)
+
+**Corrections prioritaires**
+- **Typage strict effectif** : `ignoreBuildErrors: false` — le build ÉCHOUE sur toute erreur de type (plus de silence en prod) ; `tsc --noEmit` ajouté à la CI
+- **React StrictMode réactivé** : détection des effets non idempotents dès le développement
+- **Gestionnaire unique : bun** — CI (`bun install --frozen-lockfile`) et Dockerfile alignés sur `bun.lock` (fini la divergence npm/bun entre versions testées et déployées) — ADR-0013
+
+**Sécurité & architecture**
+- **Middleware central** : `/api/admin/*` bloqué en amont sans cookie de session (filet de sécurité contre l'oubli de garde sur une future route)
+- **Tests du code « argent »** : 19 tests webhook Chariow (HMAC, idempotence, double-crédit impossible) + Credit Ledger (atomicité) + guards admin (401/403) — **83 tests au total**
+
+**Divers**
+- Pagination standard (limit + curseur) sur agents, clés API, documents, skills — rétro-compatible
+- `next-intl` retiré (dépendance morte), **LICENSE MIT** ajoutée
+- **3 templates sectoriels** : réservation restaurant, facturation PME, prospection commerciale (11 profils au total)
+- ADR-0005 renforcée : modèle de menace explicite + **déclencheur de migration documenté** vers un isolat réel avant exposition d'exécution de code à des tiers
 
 ---
 
@@ -33,17 +52,17 @@ Comprendre → Planifier → Comparer → Exécuter → Vérifier → Corriger �
 - **Logger JSON structuré** avec rédaction des secrets + **métriques EngineRun** durables (taux de succès, latence p95 par moteur)
 - **Interface admin Moteurs** : performances temps réel, état des breakers, pondérations d'évaluation éditables, purge du cache
 - **Mode Explain** : sélection, édition et régénération des 5 plans AVANT exécution (ADR-0012)
-- **Templates d'agents** : 8 profils pré-configurés (analyste financier, chercheur académique…) déployables en un clic
+- **Templates d'agents** : 11 profils pré-configurés (analyste financier, chercheur académique, facturation PME, réservation restaurant…) déployables en un clic
 
-Décisions d'architecture documentées : [`docs/adr/`](docs/adr/) (12 ADR).
+Décisions d'architecture documentées : [`docs/adr/`](docs/adr/) (13 ADR).
 
 ---
 
 ## 🚀 Démarrage rapide
 
 ```bash
-# 1. Installer les dépendances
-bun install        # ou npm install
+# 1. Installer les dépendances (bun — gestionnaire unique, voir ADR-0013)
+bun install
 
 # 2. Configurer l'environnement
 cp .env.example .env
@@ -152,6 +171,7 @@ docker run -p 3000:3000 --env-file .env gen3ia
 
 - Mots de passe : scrypt + sel aléatoire (jamais stockés en clair)
 - Sessions : cookies httpOnly + SameSite, révocables (base)
+- **Middleware central : /api/admin/* bloqué sans session (filet de sécurité)**
 - Clés API : SHA-256 uniquement, comparaison à temps constant
 - Webhook Chariow : HMAC-SHA256 sur corps brut + idempotence
 - Sandbox code : `node:vm`, 5 s, réseau et `require` neutralisés
@@ -162,7 +182,8 @@ docker run -p 3000:3000 --env-file .env gen3ia
 ## 🧪 Tests
 
 ```bash
-# Suite complète (64 tests) : unitaires + intégration pipeline (LLM simulé)
+# Suite complète (83 tests) : unitaires + intégration pipeline (LLM simulé)
+# + webhook/ledger/guards (code qui touche à l'argent)
 bun run test
 
 # Test du pipeline avec un vrai LLM (requiert GLM_API_KEY)

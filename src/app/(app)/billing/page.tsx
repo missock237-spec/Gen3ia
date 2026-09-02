@@ -126,7 +126,7 @@ export default function BillingPage() {
                   </ul>
                   <Button
                     onClick={() => checkout(offer.key)}
-                    disabled={checkoutLoading === offer.key || (data && !data.chariow.configured)}
+                    disabled={checkoutLoading === offer.key || (data ? data.chariow.configured !== true : false)}
                     className="mt-5 w-full bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold"
                   >
                     {checkoutLoading === offer.key ? "Redirection…" : (

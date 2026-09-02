@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { handleRoute, readJson, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { BUILT_IN_SKILLS } from "@/lib/skills/builtins"
+import { listParams, paginate } from "@/lib/api-pagination"
 
 const createSchema = z.object({
   name: z.string().min(2).max(80),
@@ -18,14 +19,19 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   return handleRoute(async () => {
     const user = await requireUser(req)
-    const custom = await db.skill.findMany({
+    const { limit, cursor } = listParams(new URL(req.url).searchParams)
+    const rows = await db.skill.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     })
+    const { page, nextCursor } = paginate(rows, limit)
     return Response.json({
       ok: true,
       builtIn: BUILT_IN_SKILLS,
-      custom,
+      custom: page,
+      nextCursor,
     })
   })
 }

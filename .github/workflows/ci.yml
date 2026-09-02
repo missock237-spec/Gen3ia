@@ -8,26 +8,30 @@ on:
 
 jobs:
   quality:
-    name: Tests, lint & types
+    name: Tests, types stricts, lint & build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Installation
-        run: npm install --legacy-peer-deps
-      - name: Génération Prisma
-        run: npx prisma generate
-      - name: Tests unitaires & intégration (bun:test)
-        uses: oven-sh/setup-bun@v2
+      # v3.2 — gestionnaire UNIQUE : bun (bun.lock à la racine).
+      # Avant : npm install --legacy-peer-deps sans lockfile → risque de
+      # divergence entre versions testées en CI et déployées (Vercel bun).
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: Exécution des tests
+      - name: Installation (verrouillée par bun.lock)
+        run: bun install --frozen-lockfile
+      - name: Types stricts (tsc --noEmit)
+        run: bunx tsc --noEmit
+      - name: Tests unitaires & intégration (bun:test)
         run: bun test tests/unit/
         env:
           DATABASE_URL: file:/tmp/gen3ia-ci.db
           PLAN_CACHE: "on"
           LOG_LEVEL: error
       - name: Lint
-        run: npm run lint
+        run: bun run lint
+      - name: Build de production (ignoreBuildErrors: false)
+        run: bun run build
+        env:
+          DATABASE_URL: file:/tmp/gen3ia-build.db
+          LOG_LEVEL: error

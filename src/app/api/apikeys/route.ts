@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { handleRoute, readJson, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { generateApiKey } from "@/lib/sdk/keys"
+import { listParams, paginate } from "@/lib/api-pagination"
 import { audit } from "@/lib/engines/audit"
 
 const createSchema = z.object({
@@ -15,15 +16,19 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   return handleRoute(async () => {
     const user = await requireUser(req)
-    const keys = await db.apiKey.findMany({
+    const { limit, cursor } = listParams(new URL(req.url).searchParams, 50, 100)
+    const rows = await db.apiKey.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true, name: true, prefix: true, scopes: true, requests: true, revoked: true,
         lastUsedAt: true, createdAt: true, agentId: true,
       },
     })
-    return Response.json({ ok: true, keys })
+    const { page, nextCursor } = paginate(rows, limit)
+    return Response.json({ ok: true, keys: page, nextCursor })
   })
 }
 

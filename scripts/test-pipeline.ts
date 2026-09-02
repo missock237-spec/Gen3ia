@@ -32,13 +32,15 @@ async function main() {
   let rounds = 0
   while (!["COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_HUMAN"].includes(current.status) && rounds < 12) {
     rounds++
-    current = await advanceTask(task.id)
+    const advanced = await advanceTask(task.id)
+    if (!advanced) throw new Error("Tâche introuvable pendant l'avancement.")
+    current = advanced
     console.log(`\n— tour ${rounds} : statut = ${current.status} —`)
     if (current.status === "WAITING_FOR_HUMAN") {
       console.log("approbation requise (plan sensible) → approbation automatique pour le test")
       const { resolveHumanApproval } = await import("../src/lib/engines/orchestrator")
-      current = await resolveHumanApproval(task.id, user.id, true, "test")
-      current = await advanceTask(task.id)
+      current = (await resolveHumanApproval(task.id, user.id, true, "test")) ?? current
+      current = (await advanceTask(task.id)) ?? current
       console.log(`reprise : statut = ${current.status}`)
     }
     if (current.error) console.log("erreur :", current.error.slice(0, 200))

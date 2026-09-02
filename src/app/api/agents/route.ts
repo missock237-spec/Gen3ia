@@ -5,6 +5,7 @@ import { handleRoute, readJson, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { uniqueSlug } from "@/lib/agents/chat"
 import { TOOL_CATALOG } from "@/lib/tools/registry"
+import { listParams, paginate } from "@/lib/api-pagination"
 import { audit } from "@/lib/engines/audit"
 
 const createSchema = z.object({
@@ -22,9 +23,12 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   return handleRoute(async () => {
     const user = await requireUser(req)
-    const agents = await db.agent.findMany({
+    const { limit, cursor } = listParams(new URL(req.url).searchParams)
+    const rows = await db.agent.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true, name: true, slug: true, description: true, status: true, visibility: true,
         category: true, provider: true, model: true, temperature: true, maxTokens: true,
@@ -32,7 +36,8 @@ export async function GET(req: NextRequest) {
         _count: { select: { tasks: true } },
       },
     })
-    return Response.json({ ok: true, agents })
+    const { page, nextCursor } = paginate(rows, limit)
+    return Response.json({ ok: true, agents: page, nextCursor })
   })
 }
 

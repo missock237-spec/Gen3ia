@@ -1,14 +1,22 @@
 # GEN3IA — image de production (sortie standalone)
-FROM node:22-alpine AS builder
+# v3.2 — gestionnaire UNIQUE : bun (bun.lock à la racine), cohérent avec la
+# CI (bun install --frozen-lockfile) et le déploiement Vercel (détection
+# automatique de bun.lock). Avant : npm install --legacy-peer-deps SANS
+# lockfile → divergence possible des versions installées.
+FROM oven/bun:1 AS builder
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --legacy-peer-deps
+# Permet de cibler PostgreSQL au build : --build-arg DATABASE_URL=postgres://…
+ARG DATABASE_URL=""
+ENV DATABASE_URL=$DATABASE_URL
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
 COPY . .
-RUN npx prisma generate && npm run build
+RUN bunx prisma generate && bun run build
 
-FROM node:22-alpine AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
