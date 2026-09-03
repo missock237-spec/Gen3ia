@@ -29,6 +29,7 @@ import {
   KeyRound,
   Info,
 } from "lucide-react";
+import { CatalogSection } from "@/components/connectors/catalog-section";
 
 interface ActionParamView {
   name: string;
@@ -147,6 +148,10 @@ export default function ConnectorsPage() {
     () => apps.filter((a) => a.connection?.active).length,
     [apps]
   );
+
+  const reloadAll = useCallback(() => {
+    void refresh();
+  }, [refresh]);
 
   async function connect(app: AppView) {
     setBusy(app.slug);
@@ -301,8 +306,20 @@ export default function ConnectorsPage() {
           </p>
         </div>
         <Badge variant="outline" className="border-emerald-700/40 text-emerald-300">
-          {connectedCount} / {apps.length} connectées
+          {connectedCount} / {apps.length} apps natives connectées
         </Badge>
+      </div>
+
+      {/* v3.4 — Catalogue complet (1467 apps, modèle Composio managé). */}
+      <CatalogSection onConnected={reloadAll} />
+
+      <div className="pt-2">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-1">
+          Apps natives GEN3IA — actions exécutables en local
+        </h2>
+        <p className="text-xs text-zinc-500 mb-4">
+          Ces applications disposent d&apos;actions intégrées au moteur (exécution directe par vos agents).
+        </p>
       </div>
 
       {loading ? (

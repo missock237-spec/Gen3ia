@@ -15,6 +15,7 @@ import { usePolling, apiPost, formatCredits, formatDate } from "@/lib/client/hoo
 import { PipelineDag } from "@/components/tasks/pipeline-dag";
 import { StepInterceptor } from "@/components/tasks/step-interceptor";
 import { DebugReplay } from "@/components/tasks/debug-replay";
+import { Radio } from "lucide-react";
 import {
   Loader2, CheckCircle2, XCircle, Clock, ChevronRight, ShieldAlert, FileCheck,
   Brain, GitBranch, Scale, Play, RefreshCcw, GraduationCap, Package, Coins,
@@ -120,6 +121,27 @@ export default function TaskDetailPage() {
 
   const isActive = (status: string) => ACTIVE_STATUSES.includes(status)
   const { data, loading } = usePolling<TaskDetail>(`/api/tasks/${id}`, null)
+  const [startingLive, setStartingLive] = useState(false)
+
+  /** Démarre une session live liée à cette tâche (partage d'écran temps réel). */
+  async function startLiveSession() {
+    setStartingLive(true)
+    try {
+      const json = await apiPost<{ session?: { code: string } }>(`/api/live`, {
+        taskId: id,
+        title: `Diffusion — ${(data?.task?.prompt ?? "tâche").slice(0, 60)}`,
+      })
+      if (json.ok && json.session) {
+        window.location.href = `/live/${json.session.code}`
+      } else {
+        toast({ title: "Lancement refusé", description: json.error, variant: "destructive" })
+      }
+    } catch (err) {
+      toast({ title: "Erreur réseau", description: err instanceof Error ? err.message : String(err), variant: "destructive" })
+    } finally {
+      setStartingLive(false)
+    }
+  }
   const { data: polled } = usePolling<TaskDetail>(
     data && isActive(data.task.status) ? `/api/tasks/${id}` : null,
     2500
@@ -206,6 +228,16 @@ export default function TaskDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={startingLive}
+            onClick={() => void startLiveSession()}
+            className="border-red-800/60 text-red-300 hover:bg-red-950/30"
+          >
+            {startingLive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
+            Mode live
+          </Button>
           <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 font-mono text-xs px-3 py-1">
             <Coins className="h-3.5 w-3.5 mr-1.5" />
             {formatCredits(task.costCredits)} crédits

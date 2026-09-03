@@ -14,6 +14,8 @@ import { notionApp, discordApp } from "./notion-discord"
 import { trelloApp, jiraApp } from "./trello-jira"
 import { linearApp, airtableApp } from "./linear-airtable"
 import { telegramApp, stripeApp, twitterApp } from "./telegram-stripe-twitter"
+import { buildDynamicApp } from "./dynamic"
+import { getCatalogApp } from "../catalog"
 
 /** Fabriques : l'environnement est lu à CHAQUE appel (jamais au module-load). */
 const APP_FACTORIES: Array<() => AppDefinition> = [
@@ -32,13 +34,14 @@ const APP_FACTORIES: Array<() => AppDefinition> = [
   twitterApp,
 ]
 
-/** Retourne la définition fraîche d'une application. */
+/** Retourne la définition fraîche d'une application (native puis dynamique). */
 export function getApp(appSlug: string): AppDefinition | null {
   for (const factory of APP_FACTORIES) {
     const app = factory()
     if (app.slug === appSlug) return app
   }
-  return null
+  // Application dynamique du catalogue (1467 apps) : résolue à l'exécution.
+  return buildDynamicApp(appSlug)
 }
 
 export function listApps(): AppDefinition[] {
@@ -141,4 +144,33 @@ function envVarNamesFor(app: AppDefinition, suffixes: string[]): string[] {
 /** L'app exige-t-elle un flux par redirection ? */
 export function requiresRedirect(app: AppDefinition): boolean {
   return isRedirectableAuthScheme(app.authScheme)
+}
+
+// ─────────────────────────────────────────────────────────────
+// v3.4 — Applications dynamiques du catalogue (Composio-like)
+// ─────────────────────────────────────────────────────────────
+
+import { ensureDynamicApps as refreshDynamic, registrySlugs } from "./dynamic"
+
+/** Liste toutes les apps natives + dynamiques résolues (cache/DB). */
+export function listAllApps(): AppDefinition[] {
+  const natives = APP_FACTORIES.map((f) => f())
+  const nativesBySlug = new Set(natives.map((a) => a.slug))
+  const dynamics: AppDefinition[] = []
+  for (const slug of registrySlugs()) {
+    if (nativesBySlug.has(slug)) continue
+    const dyn = buildDynamicApp(slug)
+    if (dyn) dynamics.push(dyn)
+  }
+  return [...natives, ...dynamics]
+}
+
+/** Pré-charge les identifiants dynamiques (routes API — appel à chaud). */
+export async function ensureCatalogApps(): Promise<void> {
+  await refreshDynamic()
+}
+
+/** Vérifie qu'un slug existe dans le catalogue étendu (natif + catalogue). */
+export function isKnownAppSlug(appSlug: string): boolean {
+  return getApp(appSlug) !== null || getCatalogApp(appSlug) !== null
 }

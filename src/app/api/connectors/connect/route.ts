@@ -7,7 +7,7 @@ import {
   connectDirectly,
   initiateConnection,
 } from "@/lib/connectors/core/connections"
-import { appAvailability } from "@/lib/connectors/apps"
+import { appAvailability, ensureCatalogApps } from "@/lib/connectors/apps"
 
 const initiateSchema = z.object({
   appSlug: z.string().min(1),
@@ -32,6 +32,8 @@ const directSchema = z.object({
 export async function POST(req: NextRequest) {
   return handleRoute(req, async () => {
     const user = await requireUser(req)
+    // Charge les identifiants dynamiques (OAuthAppConfig) avant résolution.
+    await ensureCatalogApps()
     const body = await req.json().catch(() => ({}))
 
     // 1. Connexion directe si des identifiants sont fournis.

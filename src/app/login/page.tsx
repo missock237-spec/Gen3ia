@@ -8,10 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft } from "lucide-react";
+import { OAuthButtons, OAuthErrorNotice } from "@/components/auth/oauth-buttons";
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const [oauthError] = useState(() =>
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("error") : null
+  );
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -61,6 +65,8 @@ export default function LoginPage() {
             <p className="mt-2 text-sm text-zinc-400">Accédez au Task Center et à vos agents.</p>
           </div>
 
+          <OAuthErrorNotice error={oauthError} />
+
           <form onSubmit={onSubmit} className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-7">
             <div className="space-y-2">
               <Label htmlFor="email">Adresse e-mail</Label>
@@ -95,6 +101,7 @@ export default function LoginPage() {
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Se connecter"}
             </Button>
+            <OAuthButtons redirectTo="/dashboard" />
             <p className="text-center text-sm text-zinc-400">
               Pas encore de compte ?{" "}
               <Link href="/register" className="text-emerald-400 hover:text-emerald-300 font-medium">

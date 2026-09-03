@@ -3,6 +3,7 @@ import { z } from "zod"
 import { handleRoute, jsonOk, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { executeAction } from "@/lib/connectors/core/toolset"
+import { ensureCatalogApps } from "@/lib/connectors/apps"
 import { ConnectorExecutionError } from "@/lib/connectors/core/executor"
 
 const executeSchema = z.object({
@@ -19,6 +20,7 @@ const executeSchema = z.object({
 export async function POST(req: NextRequest) {
   return handleRoute(req, async () => {
     const user = await requireUser(req)
+    await ensureCatalogApps()
     const parsed = executeSchema.safeParse(await req.json().catch(() => ({})))
     if (!parsed.success) {
       throw new ApiError(400, "Corps invalide : appSlug, actionSlug et params requis.")

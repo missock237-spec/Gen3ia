@@ -23,6 +23,9 @@ model User {
   credits      Float    @default(25)
   settings     String? // JSON : préférences (modèle par défaut, autonomie, confirmations…)
   chariowId    String?
+  githubId     String?  @unique
+  googleId     String?  @unique
+  avatarUrl    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -46,6 +49,10 @@ model User {
   autoSkills          AutoSkill[]
   webhooks            WebhookConfig[]
   profile             UserProfile?
+  oauthIdentities     OAuthIdentity[] @relation("OAuthIdentities")
+  liveHostSessions    LiveSession[]   @relation("LiveHost")
+  liveParticipations  LiveParticipant[] @relation("LiveParticipants")
+  oauthProvider       String?  // dernier fournisseur OAuth utilisé : github | google
 }
 
 model Session {
@@ -344,7 +351,6 @@ model EngineRun {
 
 // Connexions d'applications externes via Composio (1000+ apps réelles).
 // Les jetons OAuth vivent CHEZ Composio — GEN3IA ne stocke que l'identifiant
-// du compte connecté et son statut (ADR-0014 : zéro secret applicatif ici).
 
 // Configuration système éditable depuis l'interface admin (KV JSON).
 model SystemConfig {
@@ -798,4 +804,109 @@ model WatchExecution {
   executedAt   DateTime @default(now())
 
   @@index([watchId, executedAt])
+}
+
+// ---------------------------------------------------------------------------
+// v3.4 — Authentification OAuth (GitHub / Google) : registre des apps
+// ---------------------------------------------------------------------------
+
+// Identités OAuth rattachées à un compte utilisateur. Un utilisateur peut
+// lier plusieurs fournisseurs ; la fusion se fait par e-mail vérifié.
+model OAuthIdentity {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation("OAuthIdentities", fields: [userId], references: [id], onDelete: Cascade)
+  provider     String   // github | google
+  providerAccountId String @unique
+  email        String?
+  name         String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// v3.4 — Registre des applications OAuth de la plateforme (modèle Composio)
+// ---------------------------------------------------------------------------
+// Pour chaque app du catalogue, l'opérateur de la plateforme enregistre les
+// client_id/client_secret de SON application OAuth (créée chez le fournisseur).
+// Les utilisateurs finaux n'ont alors qu'à cliquer « Connecter » : le flux
+// OAuth utilise les identifiants de la plateforme, jamais les leurs.
+
+model OAuthAppConfig {
+  id              String   @id @default(cuid())
+  appSlug         String   @unique // ex. github, slack, notion (catalogue)
+  clientId        String
+  clientSecret    String   // chiffré AES-256-GCM
+  redirectUri     String?
+  scopes          String?  // surcharge des scopes par défaut (CSV)
+  extraConfig     String?  // JSON : endpoints spécifiques, PKCE, tenant…
+  active          Boolean  @default(true)
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([active])
+}
+
+// ---------------------------------------------------------------------------
+// v3.4 — Mode live : sessions de partage d'écran temps réel (WebRTC P2P)
+// ---------------------------------------------------------------------------
+
+model LiveSession {
+  id          String   @id @default(cuid())
+  code        String   @unique // code court à partager
+  hostId      String
+  host        User     @relation("LiveHost", fields: [hostId], references: [id], onDelete: Cascade)
+  taskId      String?  // tâche liée (optionnel)
+  title       String?
+  status      String   @default("LIVE") // LIVE | ENDED
+  viewerCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  endedAt     DateTime?
+  updatedAt   DateTime @updatedAt
+
+  participants LiveParticipant[]
+  signals      LiveSignal[]
+
+  @@index([status, createdAt])
+}
+
+model LiveParticipant {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation("LiveParticipants", fields: [userId], references: [id], onDelete: SetNull)
+  displayName String
+  role        String   @default("VIEWER") // HOST | VIEWER
+  lastSeenAt  DateTime @default(now())
+  joinedAt    DateTime @default(now())
+  leftAt      DateTime?
+
+  signalsSent LiveSignal[] @relation("SignalFrom")
+
+  @@unique([sessionId, userId])
+  @@index([sessionId, lastSeenAt])
+}
+
+// Messages de signalisation WebRTC (SDP offers/answers, candidats ICE).
+// Échangés via l'API et consommés par polling long-côté clients ; le flux
+// média lui-même voyage en P2P chiffré (DTLS/SRTP), jamais via le serveur.
+model LiveSignal {
+  id            String   @id @default(cuid())
+  sessionId     String
+  session       LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fromId        String
+  from          LiveParticipant @relation("SignalFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId          String?  // null = diffusion à tous les autres participants
+  type          String   // OFFER | ANSWER | ICE | BYE | CHAT
+  payload       String   // JSON (SDP, candidat ICE…)
+  createdAt     DateTime @default(now())
+  consumedAt    DateTime?
+
+  @@index([sessionId, createdAt])
+  @@index([toId, consumedAt])
 }

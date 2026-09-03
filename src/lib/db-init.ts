@@ -28,8 +28,12 @@ CREATE TABLE IF NOT EXISTS "User" (
     "credits" REAL NOT NULL DEFAULT 25,
     "settings" TEXT,
     "chariowId" TEXT,
+    "githubId" TEXT,
+    "googleId" TEXT,
+    "avatarUrl" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "updatedAt" DATETIME NOT NULL,
+    "oauthProvider" TEXT
 );
 
 CREATE TABLE IF NOT EXISTS "Session" (
@@ -629,7 +633,77 @@ CREATE TABLE IF NOT EXISTS "WatchExecution" (
     CONSTRAINT "WatchExecution_watchId_fkey" FOREIGN KEY ("watchId") REFERENCES "WatchConfig" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "OAuthIdentity" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "providerAccountId" TEXT NOT NULL,
+    "email" TEXT,
+    "name" TEXT,
+    "avatarUrl" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "OAuthIdentity_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "OAuthAppConfig" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "appSlug" TEXT NOT NULL,
+    "clientId" TEXT NOT NULL,
+    "clientSecret" TEXT NOT NULL,
+    "redirectUri" TEXT,
+    "scopes" TEXT,
+    "extraConfig" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdBy" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "LiveSession" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "code" TEXT NOT NULL,
+    "hostId" TEXT NOT NULL,
+    "taskId" TEXT,
+    "title" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'LIVE',
+    "viewerCount" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "endedAt" DATETIME,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "LiveSession_hostId_fkey" FOREIGN KEY ("hostId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "LiveParticipant" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "sessionId" TEXT NOT NULL,
+    "userId" TEXT,
+    "displayName" TEXT NOT NULL,
+    "role" TEXT NOT NULL DEFAULT 'VIEWER',
+    "lastSeenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "joinedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "leftAt" DATETIME,
+    CONSTRAINT "LiveParticipant_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "LiveSession" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "LiveParticipant_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "LiveSignal" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "sessionId" TEXT NOT NULL,
+    "fromId" TEXT NOT NULL,
+    "toId" TEXT,
+    "type" TEXT NOT NULL,
+    "payload" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "consumedAt" DATETIME,
+    CONSTRAINT "LiveSignal_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "LiveSession" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "LiveSignal_fromId_fkey" FOREIGN KEY ("fromId") REFERENCES "LiveParticipant" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "User_googleId_key" ON "User"("googleId");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "Session_token_key" ON "Session"("token");
 
@@ -748,6 +822,28 @@ CREATE INDEX IF NOT EXISTS "ExternalConnection_userId_type_idx" ON "ExternalConn
 CREATE INDEX IF NOT EXISTS "WatchConfig_userId_active_idx" ON "WatchConfig"("userId", "active");
 
 CREATE INDEX IF NOT EXISTS "WatchExecution_watchId_executedAt_idx" ON "WatchExecution"("watchId", "executedAt");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "OAuthIdentity_providerAccountId_key" ON "OAuthIdentity"("providerAccountId");
+
+CREATE INDEX IF NOT EXISTS "OAuthIdentity_userId_idx" ON "OAuthIdentity"("userId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "OAuthIdentity_provider_providerAccountId_key" ON "OAuthIdentity"("provider", "providerAccountId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "OAuthAppConfig_appSlug_key" ON "OAuthAppConfig"("appSlug");
+
+CREATE INDEX IF NOT EXISTS "OAuthAppConfig_active_idx" ON "OAuthAppConfig"("active");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "LiveSession_code_key" ON "LiveSession"("code");
+
+CREATE INDEX IF NOT EXISTS "LiveSession_status_createdAt_idx" ON "LiveSession"("status", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "LiveParticipant_sessionId_lastSeenAt_idx" ON "LiveParticipant"("sessionId", "lastSeenAt");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "LiveParticipant_sessionId_userId_key" ON "LiveParticipant"("sessionId", "userId");
+
+CREATE INDEX IF NOT EXISTS "LiveSignal_sessionId_createdAt_idx" ON "LiveSignal"("sessionId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "LiveSignal_toId_consumedAt_idx" ON "LiveSignal"("toId", "consumedAt");
 `
 // @generated-db-ddl:sqlite:end
 
@@ -765,8 +861,12 @@ CREATE TABLE IF NOT EXISTS "User" (
     "credits" DOUBLE PRECISION NOT NULL DEFAULT 25,
     "settings" TEXT,
     "chariowId" TEXT,
+    "githubId" TEXT,
+    "googleId" TEXT,
+    "avatarUrl" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "oauthProvider" TEXT,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -1419,7 +1519,81 @@ CREATE TABLE IF NOT EXISTS "WatchExecution" (
     CONSTRAINT "WatchExecution_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE IF NOT EXISTS "OAuthIdentity" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "providerAccountId" TEXT NOT NULL,
+    "email" TEXT,
+    "name" TEXT,
+    "avatarUrl" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "OAuthIdentity_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "OAuthAppConfig" (
+    "id" TEXT NOT NULL,
+    "appSlug" TEXT NOT NULL,
+    "clientId" TEXT NOT NULL,
+    "clientSecret" TEXT NOT NULL,
+    "redirectUri" TEXT,
+    "scopes" TEXT,
+    "extraConfig" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdBy" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "OAuthAppConfig_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "LiveSession" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "hostId" TEXT NOT NULL,
+    "taskId" TEXT,
+    "title" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'LIVE',
+    "viewerCount" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "endedAt" TIMESTAMP(3),
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "LiveSession_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "LiveParticipant" (
+    "id" TEXT NOT NULL,
+    "sessionId" TEXT NOT NULL,
+    "userId" TEXT,
+    "displayName" TEXT NOT NULL,
+    "role" TEXT NOT NULL DEFAULT 'VIEWER',
+    "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "leftAt" TIMESTAMP(3),
+
+    CONSTRAINT "LiveParticipant_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "LiveSignal" (
+    "id" TEXT NOT NULL,
+    "sessionId" TEXT NOT NULL,
+    "fromId" TEXT NOT NULL,
+    "toId" TEXT,
+    "type" TEXT NOT NULL,
+    "payload" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "consumedAt" TIMESTAMP(3),
+
+    CONSTRAINT "LiveSignal_pkey" PRIMARY KEY ("id")
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "User_googleId_key" ON "User"("googleId");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "Session_token_key" ON "Session"("token");
 
@@ -1539,6 +1713,28 @@ CREATE INDEX IF NOT EXISTS "WatchConfig_userId_active_idx" ON "WatchConfig"("use
 
 CREATE INDEX IF NOT EXISTS "WatchExecution_watchId_executedAt_idx" ON "WatchExecution"("watchId", "executedAt");
 
+CREATE UNIQUE INDEX IF NOT EXISTS "OAuthIdentity_providerAccountId_key" ON "OAuthIdentity"("providerAccountId");
+
+CREATE INDEX IF NOT EXISTS "OAuthIdentity_userId_idx" ON "OAuthIdentity"("userId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "OAuthIdentity_provider_providerAccountId_key" ON "OAuthIdentity"("provider", "providerAccountId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "OAuthAppConfig_appSlug_key" ON "OAuthAppConfig"("appSlug");
+
+CREATE INDEX IF NOT EXISTS "OAuthAppConfig_active_idx" ON "OAuthAppConfig"("active");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "LiveSession_code_key" ON "LiveSession"("code");
+
+CREATE INDEX IF NOT EXISTS "LiveSession_status_createdAt_idx" ON "LiveSession"("status", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "LiveParticipant_sessionId_lastSeenAt_idx" ON "LiveParticipant"("sessionId", "lastSeenAt");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "LiveParticipant_sessionId_userId_key" ON "LiveParticipant"("sessionId", "userId");
+
+CREATE INDEX IF NOT EXISTS "LiveSignal_sessionId_createdAt_idx" ON "LiveSignal"("sessionId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "LiveSignal_toId_consumedAt_idx" ON "LiveSignal"("toId", "consumedAt");
+
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "Agent" ADD CONSTRAINT "Agent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1604,6 +1800,18 @@ ALTER TABLE "ExternalConnection" ADD CONSTRAINT "ExternalConnection_userId_fkey"
 ALTER TABLE "WatchConfig" ADD CONSTRAINT "WatchConfig_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "WatchExecution" ADD CONSTRAINT "WatchExecution_watchId_fkey" FOREIGN KEY ("watchId") REFERENCES "WatchConfig"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "OAuthIdentity" ADD CONSTRAINT "OAuthIdentity_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "LiveSession" ADD CONSTRAINT "LiveSession_hostId_fkey" FOREIGN KEY ("hostId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "LiveParticipant" ADD CONSTRAINT "LiveParticipant_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "LiveSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "LiveParticipant" ADD CONSTRAINT "LiveParticipant_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+ALTER TABLE "LiveSignal" ADD CONSTRAINT "LiveSignal_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "LiveSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "LiveSignal" ADD CONSTRAINT "LiveSignal_fromId_fkey" FOREIGN KEY ("fromId") REFERENCES "LiveParticipant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 `
 // @generated-db-ddl:postgres:end
 

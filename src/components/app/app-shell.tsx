@@ -12,11 +12,18 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Tableau de bord", icon: "gauge" },
   { href: "/agents", label: "Mes agents", icon: "bot" },
   { href: "/tasks", label: "Task Center", icon: "list-checks" },
+  { href: "/swarm", label: "Swarm IA", icon: "network" },
+  { href: "/batch", label: "Batch Tasks", icon: "layers" },
   { href: "/knowledge", label: "Connaissances", icon: "book-open" },
   { href: "/skills", label: "Compétences", icon: "graduation-cap" },
   { href: "/tools", label: "Outils", icon: "wrench" },
   { href: "/connectors", label: "Connecteurs", icon: "plug" },
   { href: "/memory", label: "Mémoire", icon: "database" },
+  { href: "/finetune", label: "Fine-tuning", icon: "brain" },
+  { href: "/watchdog", label: "Watchdog", icon: "eye" },
+  { href: "/webhooks", label: "Webhooks", icon: "webhook" },
+  { href: "/traces", label: "Traces", icon: "activity" },
+  { href: "/live", label: "Mode live", icon: "radio" },
   { href: "/marketplace", label: "Marketplace", icon: "store" },
   { href: "/api", label: "Clés API", icon: "key-round" },
   { href: "/sdk", label: "SDK", icon: "code-2" },
@@ -64,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const nav = user.role === "ADMIN"
-    ? [...NAV_ITEMS, { href: "/admin", label: "Administration", icon: "shield-check" }]
+    ? [...NAV_ITEMS, { href: "/admin", label: "Administration", icon: "shield-check" }, { href: "/admin/oauth", label: "OAuth plateforme", icon: "key-round" }]
     : NAV_ITEMS;
 
   const sidebar = (

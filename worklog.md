@@ -67,3 +67,26 @@ Work Log:
 Stage Summary:
 - Mises à jour déployées et vérifiées en production ; connecteurs réels opérationnels
 - Actions utilisateur restantes : ajouter GLM_API_KEY (et idéalement Postgres persistant + SESSION_SECRET + variables OAuth des apps souhaitées) sur Vercel ; ROTATION des tokens GitHub/Vercel exposés dans le chat
+
+---
+Task ID: 5
+Agent: main
+Task: v3.4 — catalogue Composio 1467 apps + OAuth login + mode live + UI des fonctionnalités cachées + correctifs UI
+
+Work Log:
+- Audit : features DB sans UI identifiées (swarm, batch, webhooks, watchdog, traces, finetune, external-connections) ; corruption syntaxique corrigée (app-shell `enuOpen`, tasks `ultimodalPrompt`)
+- Correctif couleur : `className="dark"` sur <html> — les composants shadcn rendaient le texte noir (--foreground clair) sur pages sombres
+- Catalogue Composio : toolkits.json (1467 apps, 51240 outils, données publiques MIT) converti en sources locales (apps.json 548K + 13 chunks + tools-chunks.ts imports statiques webpack) via scripts/build-connectors-catalog.mjs
+- Registre d'endpoints OAuth réels (~55 apps populaires : github, slack, notion, jira, google, zoom, figma…) : catalog/endpoints.ts
+- Apps dynamiques : apps/dynamic.ts résout catalogue + endpoints + identifiants (OAuthAppConfig DB chiffrés AES-256-GCM ou env) → AppDefinition complète injectée dans le moteur existant (connect/callback/execute)
+- Parseur OpenAPI → actions réelles exécutables (openapi-parser.ts) : spec collée par l'admin = actions HTTP natives pour les agents
+- Modèles Prisma : OAuthIdentity, OAuthAppConfig, LiveSession, LiveParticipant, LiveSignal + champs User (githubId/googleId/avatarUrl) — 48 tables, DDL régénéré
+- API : /api/connectors/catalog (recherche/pagination/stats), /api/connectors/catalog/[slug], /api/admin/oauth-apps (CRUD, secrets chiffrés), GET /api/swarm, GET /api/batch, /api/watchdog/[id]
+- Auth OAuth GitHub+Google : lib/auth/oauth.ts (RFC 6749 complet, state HMAC, fusion par e-mail vérifié, bonus crédits), routes /api/auth/oauth/[provider] + callback, boutons UI login/register
+- Mode live : API /api/live (sessions, join, long-poll signalisation ≤20s), LiveSignaling client, page /live (gestionnaire) + /live/[code] (WebRTC P2P complet : getDisplayMedia, offers/answers/ICE, chat, multi-spectateurs), bouton « Mode live » sur les tâches
+- UI nouvelles pages : /swarm, /batch, /webhooks, /watchdog, /traces, /finetune, /admin/oauth + navigation enrichie (19 entrées + admin)
+- Tests : connectors-catalog.test.ts (10), auth-oauth.test.ts (6) → suite totale 175 pass / 0 fail / 1317 assertions ; eslint 0 erreur ; build production OK
+
+Stage Summary:
+- v3.4 complète : catalogue 1467 apps avec connexion 1-clic (identifiants plateforme), OAuth login GitHub/Google, mode live WebRTC, 6 pages UI pour les fonctionnalités jusqu'ici invisibles, texte blanc partout
+- Prêt à pousser/déployer ; variables d'env optionnelles documentées (AUTH_GITHUB/GOOGLE_*, OAuthAppConfig via /admin/oauth)

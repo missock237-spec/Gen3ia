@@ -3,6 +3,7 @@ import { z } from "zod"
 import { handleRoute, readJson, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { getBalance } from "@/lib/credits/ledger"
+import { db } from "@/lib/db"
 import { SwarmOrchestrator } from "@/lib/engines/swarm"
 import { DebateOrchestrator } from "@/lib/engines/debate"
 
@@ -29,5 +30,25 @@ export async function POST(req: NextRequest) {
       const execution = await swarm.executeSession(session.id)
       return Response.json({ ok: true, strategy: "HIERARCHICAL", sessionId: session.id, result: execution.finalResult })
     }
+  })
+}
+
+export async function GET(req: NextRequest) {
+  return handleRoute(async () => {
+    const user = await requireUser(req)
+    const sessions = await db.swarmSession.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        prompt: true,
+        strategy: true,
+        status: true,
+        costCredits: true,
+        createdAt: true,
+      },
+    })
+    return Response.json({ ok: true, sessions })
   })
 }

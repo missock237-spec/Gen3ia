@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Check } from "lucide-react";
+import { OAuthButtons } from "@/components/auth/oauth-buttons";
 
 const BENEFITS = [
   "25 crédits d'exécution offerts",
@@ -145,6 +146,7 @@ export default function RegisterPage() {
               >
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Créer mon compte"}
               </Button>
+              <OAuthButtons redirectTo="/dashboard" />
               <p className="text-center text-sm text-zinc-400">
                 Déjà inscrit ?{" "}
                 <Link href="/login" className="text-emerald-400 hover:text-emerald-300 font-medium">

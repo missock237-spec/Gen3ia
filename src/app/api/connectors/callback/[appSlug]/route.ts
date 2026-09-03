@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { handleRoute, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
-import { getApp } from "@/lib/connectors/apps"
+import { getApp, ensureCatalogApps } from "@/lib/connectors/apps"
 import { completeOAuth1, completeOAuth2 } from "@/lib/connectors/core/connections"
 import { logger } from "@/lib/observability/logger"
 
@@ -33,6 +33,8 @@ export async function GET(
 ) {
   const { appSlug } = await params
   return handleRoute(req, async () => {
+    // Identifiants dynamiques (cache DB) avant la résolution de l'app.
+    await ensureCatalogApps()
     const app = getApp(appSlug)
     if (!app) {
       throw new ApiError(404, `Application inconnue : ${appSlug}`)
