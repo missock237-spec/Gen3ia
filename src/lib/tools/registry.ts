@@ -5,6 +5,7 @@ import { hasZaiConfig } from "@/lib/config"
 import { logger } from "@/lib/observability/logger"
 import { parseConnectorToolKey, runConnectorTool } from "@/lib/connectors/core/toolset"
 import { runSandboxedCode, sandboxStats } from "@/lib/security/sandbox/runner"
+import { startSpan as otelStart, endSpan as otelEnd, traceparentHeader } from "@/lib/observability/otel"
 
 /**
  * Registre d'outils — chaque outil possède une implémentation RÉELLE.
@@ -383,12 +384,19 @@ async function toolHttpFetch(args: { url: string }): Promise<ToolResult> {
   if (!check.ok) {
     return { ok: false, output: "", error: check.error, latencyMs: Date.now() - started }
   }
+  // v3.6 — OTel : span d'appel externe + propagation traceparent W3C.
+  const span = otelStart("http.client.fetch", { "http.url": check.url.toString().slice(0, 200) })
   try {
     const res = await fetch(check.url.toString(), {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; GEN3IA/1.0)", Accept: "application/json, text/*" },
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; GEN3IA/1.0)",
+        Accept: "application/json, text/*",
+        ...traceparentHeader(span),
+      },
       signal: AbortSignal.timeout(20_000),
       redirect: "follow",
     })
+    otelEnd(span, "OK", { "http.status_code": res.status })
     const contentType = res.headers.get("content-type") ?? ""
     const body = (await res.text()).slice(0, 8000)
     return {
@@ -399,6 +407,7 @@ async function toolHttpFetch(args: { url: string }): Promise<ToolResult> {
       error: res.ok ? undefined : `HTTP ${res.status}`,
     }
   } catch (err) {
+    otelEnd(span, "ERROR", {}, err instanceof Error ? err.message : String(err))
     return {
       ok: false,
       output: "",

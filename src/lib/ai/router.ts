@@ -97,6 +97,8 @@ const PROVIDER_PRIORITY: Record<TaskType, string[]> = {
 /** Ordre de repli global. */
 const FALLBACK_ORDER = ["zai", "glm", "openrouter", "groq", "openai", "huggingface"]
 
+import { getDisabledProvidersSync } from "@/lib/observability/model-health"
+
 export function getAvailableProviders(): string[] {
   const available: string[] = []
   if (hasZaiConfig()) available.push("zai")
@@ -118,7 +120,11 @@ export interface RoutingDecision {
 
 /** Choisit le modèle pour un appel : explicite > modèle par défaut utilisateur > routage par tâche. */
 export function routeCall(opts: LLMCallOptions): RoutingDecision {
-  const available = getAvailableProviders()
+  // v3.6 — bascule manuelle admin : les fournisseurs désactivés sortent
+  // de la chaîne de repli (l'EXPLICITE opts.provider reste prioritaire).
+  const disabled = getDisabledProvidersSync()
+  const all = getAvailableProviders()
+  const available = disabled.size > 0 ? all.filter((p) => !disabled.has(p) || p === opts.provider) : all
 
   if (available.length === 0) {
     throw new NoProviderError()

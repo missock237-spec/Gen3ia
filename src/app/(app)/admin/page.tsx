@@ -10,7 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 import { usePolling, apiPatch, formatCredits, useUser } from "@/lib/client/hooks";
 import { EnginesPanel } from "@/components/admin/engines-panel";
-import { ShieldCheck, Users, Activity, Coins, Loader2, ScrollText, Gauge } from "lucide-react";
+import { ModelsPanel } from "@/components/admin/models-panel";
+import { ShieldCheck, Users, Activity, Coins, Loader2, ScrollText, Gauge, Cpu } from "lucide-react";
 
 interface AdminData {
   ok: boolean
@@ -54,7 +55,7 @@ export default function AdminPage() {
   const [grantAmount, setGrantAmount] = useState<Record<string, string>>({});
   const [granting, setGranting] = useState<string | null>(null);
   // v3.1 — onglets : vue générale / moteurs & observabilité.
-  const [tab, setTab] = useState<"general" | "engines">("general");
+  const [tab, setTab] = useState<"general" | "engines" | "models">("general");
 
   async function grantCredits(userId: string) {
     const amount = Number(grantAmount[userId] ?? 0)
@@ -113,6 +114,18 @@ export default function AdminPage() {
         </button>
         <button
           type="button"
+          onClick={() => setTab("models")}
+          className={`px-4 py-2 text-sm rounded-t-lg border-b-2 transition-colors flex items-center gap-1.5 ${
+            tab === "models"
+              ? "border-emerald-500 text-emerald-300"
+              : "border-transparent text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          <Cpu className="h-3.5 w-3.5" />
+          {t("admin.tab.models")}
+        </button>
+        <button
+          type="button"
           onClick={() => setTab("engines")}
           className={`px-4 py-2 text-sm rounded-t-lg border-b-2 transition-colors flex items-center gap-1.5 ${
             tab === "engines"
@@ -125,7 +138,9 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {tab === "engines" ? (
+      {tab === "models" ? (
+        <ModelsPanel />
+      ) : tab === "engines" ? (
         <EnginesPanel />
       ) : (
       <>

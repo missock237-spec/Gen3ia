@@ -10,6 +10,7 @@
  */
 
 import { logger } from "@/lib/observability/logger"
+import { startSpan as otelStart, endSpan as otelEnd } from "@/lib/observability/otel"
 import { getAction, getApp } from "../apps"
 import {
   deleteConnection,
@@ -233,15 +234,27 @@ export async function runConnectorTool(
   if (!parsed) {
     return failure(`Clé d'outil connector invalide : ${key}`)
   }
+  // v3.6 — OTel : span d'appel externe Composio (app + action + statut).
+  const span = otelStart("composio.action", {
+    "composio.app": parsed.appSlug,
+    "composio.action": parsed.actionSlug,
+    "composio.user_id": ctx.userId,
+  })
   try {
-    return await executeAction({
+    const result = await executeAction({
       userId: ctx.userId,
       agentId: ctx.agentId ?? null,
       appSlug: parsed.appSlug,
       actionSlug: parsed.actionSlug,
       params: args,
     })
+    otelEnd(span, result.ok ? "OK" : "ERROR", {
+      "http.status_code": result.status,
+      "composio.latency_ms": result.latencyMs,
+    })
+    return result
   } catch (err) {
+    otelEnd(span, "ERROR", {}, err instanceof Error ? err.message : String(err))
     // Erreurs structurelles (action inconnue, connexion absente,
     // token expiré…) : remontées comme résultat ko, jamais de throw
     // dans la boucle d'outils de l'agent.

@@ -1,5 +1,7 @@
 import type { LLMCallOptions, LLMResult } from "./types"
 import { LLMError } from "./types"
+import { startSpan as otelStart, endSpan as otelEnd } from "@/lib/observability/otel"
+import { recordEngineRun } from "@/lib/observability/metrics"
 import { routeCall } from "./router"
 import { zaiChat } from "./providers/zai"
 import { compatibleChat } from "./providers/openai-compatible"
@@ -11,6 +13,47 @@ import { compatibleChat } from "./providers/openai-compatible"
  */
 
 export async function chat(opts: LLMCallOptions): Promise<LLMResult> {
+  // v3.6 — OpenTelemetry : span d'appel LLM (provider, repli, tokens).
+  const span = otelStart("llm.chat", {
+    "llm.task_type": opts.taskType ?? "CHAT",
+    "llm.temperature": opts.temperature ?? 0.5,
+    "llm.fallback_chain": routeCall(opts).fallbackChain.join(">"),
+  })
+  const started = Date.now()
+  try {
+    const result = await chatInner(opts)
+    otelEnd(span, "OK", {
+      "llm.provider": result.provider,
+      "llm.model": result.model,
+      "llm.tokens_in": result.tokensIn,
+      "llm.tokens_out": result.tokensOut,
+      "llm.duration_ms": Date.now() - started,
+    })
+    // v3.6 — télémétrie durable de santé des modèles (EngineRun LLM::*).
+    void recordEngineRun({
+      engine: `LLM::${result.provider}`,
+      ok: true,
+      durationMs: Date.now() - started,
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      detail: { model: result.model },
+    }).catch(() => undefined)
+    return result
+  } catch (err) {
+    otelEnd(span, "ERROR", {}, err instanceof Error ? err.message : String(err))
+    // v3.6 — l'échec compte aussi pour la santé du fournisseur visé.
+    void recordEngineRun({
+      engine: "LLM::routing",
+      ok: false,
+      durationMs: Date.now() - started,
+      errorCode: err instanceof LLMError ? err.code : "LLM_FAILED",
+      detail: { error: err instanceof Error ? err.message.slice(0, 300) : String(err) },
+    }).catch(() => undefined)
+    throw err
+  }
+}
+
+async function chatInner(opts: LLMCallOptions): Promise<LLMResult> {
   const decision = routeCall(opts)
   const errors: string[] = []
   let lastCode = "ALL_PROVIDERS_FAILED"
