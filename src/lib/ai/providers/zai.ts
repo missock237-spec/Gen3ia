@@ -12,7 +12,7 @@ let zaiInstance: any = null
 let zaiInitPromise: Promise<unknown> | null = null
 
  
-async function getZai(): Promise<any> {
+export async function getZai(): Promise<any> {
   if (zaiInstance) return zaiInstance
   if (!zaiInitPromise) {
     zaiInitPromise = (async () => {

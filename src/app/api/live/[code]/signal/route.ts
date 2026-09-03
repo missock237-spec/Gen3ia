@@ -9,7 +9,7 @@ const sendSchema = z.object({
   fromId: z.string().min(1),
   /** Destinataire (null = diffusion). */
   toId: z.string().nullable().optional(),
-  type: z.enum(["OFFER", "ANSWER", "ICE", "BYE", "CHAT"]),
+  type: z.enum(["OFFER", "ANSWER", "ICE", "BYE", "CHAT", "TASK"]),
   payload: z.record(z.string(), z.unknown()),
 })
 

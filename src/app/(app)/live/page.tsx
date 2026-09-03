@@ -105,6 +105,13 @@ export default function LivePage() {
           diffusez. Vos spectateurs voient votre écran en direct — idéal pour présenter l&apos;exécution
           d&apos;une tâche, un agent en action, ou faire une revue à plusieurs.
         </p>
+        <p className="mt-3 max-w-2xl rounded-xl border border-emerald-900/60 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-200">
+          <strong>Copilote IA intégré :</strong> dans le salon, activez « Partager avec l&apos;agent » —
+          l&apos;IA observe votre écran en continu (GitHub, éditeur, n&apos;importe quelle app), commente ce
+          qu&apos;elle voit, répond à vos questions et lance de vraies tâches en arrière-plan
+          (<code className="rounded bg-zinc-800 px-1 text-xs">/task votre instruction</code>).
+          Le chat flottant reste visible par-dessus vos autres applications.
+        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

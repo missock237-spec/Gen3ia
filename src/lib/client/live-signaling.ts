@@ -7,7 +7,16 @@
  * ne relaie QUE la signalisation.
  */
 
-export type SignalType = "OFFER" | "ANSWER" | "ICE" | "BYE" | "CHAT" | "VIEWER_JOINED" | "VIEWER_LEFT"
+export type SignalType =
+  | "OFFER"
+  | "ANSWER"
+  | "ICE"
+  | "BYE"
+  | "CHAT"
+  | "VIEWER_JOINED"
+  | "VIEWER_LEFT"
+  | "AGENT" // message du copilote IA (émis côté serveur)
+  | "TASK" // progression de la tâche liée (diffusée par l'hôte)
 
 export interface LiveSignal {
   id: string
