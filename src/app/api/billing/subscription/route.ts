@@ -6,7 +6,6 @@ import { requireUser } from "@/lib/auth/guards"
 import { audit } from "@/lib/engines/audit"
 import { getAppUrl } from "@/lib/config"
 import { createChariowCheckout, chariowConfigured } from "@/lib/payments/chariow"
-import { createStripeCheckout, stripeConfigured } from "@/lib/payments/stripe"
 import {
   findSubscriptionPlan,
   subscriptionPrice,
@@ -19,17 +18,15 @@ import {
  * Abonnements SaaS (v3.6 — business).
  *
  * GET    /api/billing/subscription — abonnement actif, historique, catalogues.
- * POST   /api/billing/subscription — { planKey, interval, method? } : ouvre
- *          un checkout (Chariow par défaut, Stripe au choix — les DEUX
- *          processeurs sont supportés) ; le plan interne est
- *          « sub:<planKey>:<interval> » activé par le webhook de paiement.
+ * POST   /api/billing/subscription — { planKey, interval } : ouvre un
+ *          checkout Chariow (UNIQUE processeur, ADR-0007) ; le plan interne
+ *          est « sub:<planKey>:<interval> » activé par le webhook Chariow.
  * DELETE /api/billing/subscription — annulation à l'échéance (crédits
  *          conservés jusqu'au bout de la période payée).
  */
 const subscribeSchema = z.object({
   planKey: z.enum(["starter", "pro", "business"]),
   interval: z.enum(["monthly", "yearly"]),
-  method: z.enum(["chariow", "stripe"]).optional(),
 })
 
 export async function GET(req: NextRequest) {
@@ -39,7 +36,7 @@ export async function GET(req: NextRequest) {
     return Response.json({
       ok: true,
       ...overview,
-      processors: { chariow: chariowConfigured(), stripe: stripeConfigured() },
+      processor: { chariow: chariowConfigured() },
     })
   })
 }
@@ -57,17 +54,12 @@ export async function POST(req: NextRequest) {
       `GEN3IA — Abonnement ${plan.name} ` +
       `${interval === "monthly" ? "mensuel" : "annuel"} (${plan.creditsPerPeriod} crédits/période)`
 
-    // Choix du processeur : explicite, sinon le premier configuré.
-    const method = body.method ?? (chariowConfigured() ? "chariow" : stripeConfigured() ? "stripe" : null)
-    if (!method) {
+    if (!chariowConfigured()) {
       throw new ApiError(
         503,
-        "Paiements non activés : ni CHARIOW_API_KEY ni STRIPE_SECRET_KEY configurées sur ce serveur.",
-        "NO_PROCESSOR"
+        "Paiements non activés : la clé CHARIOW_API_KEY n'est pas configurée sur ce serveur.",
+        "CHARIOW_NOT_CONFIGURED"
       )
-    }
-    if (method === "stripe" && !stripeConfigured()) {
-      throw new ApiError(503, "Stripe non configuré (STRIPE_SECRET_KEY absente).", "STRIPE_NOT_CONFIGURED")
     }
 
     const planKey = `sub:${plan.key}:${interval}`
@@ -76,7 +68,7 @@ export async function POST(req: NextRequest) {
     const payment = await db.payment.create({
       data: {
         userId: user.id,
-        provider: method,
+        provider: "chariow",
         checkoutId: "pending",
         plan: planKey,
         amount,
@@ -85,24 +77,6 @@ export async function POST(req: NextRequest) {
         status: "PENDING",
       },
     })
-
-    if (method === "stripe") {
-      const session = await createStripeCheckout({
-        amount,
-        currency: plan.currency,
-        customerEmail: user.email,
-        description,
-        successUrl: `${appUrl}/billing?payment=pending`,
-        cancelUrl: `${appUrl}/billing?payment=cancelled`,
-        metadata: { userId: user.id, planKey, credits: plan.creditsPerPeriod },
-      })
-      await db.payment.update({ where: { id: payment.id }, data: { checkoutId: session.sessionId } })
-      await audit(req, {
-        userId: user.id, action: "CHECKOUT_CREATED", entityType: "payment", entityId: payment.id,
-        detail: { plan: planKey, amount, interval, method: "stripe" },
-      })
-      return Response.json({ ok: true, paymentUrl: session.checkoutUrl, paymentId: payment.id, method: "stripe" })
-    }
 
     const checkout = await createChariowCheckout({
       amount,

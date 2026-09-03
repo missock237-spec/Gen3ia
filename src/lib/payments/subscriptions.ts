@@ -6,10 +6,11 @@ import { PLAN_OFFERS } from "./chariow"
 /**
  * Abonnements SaaS (v3.6 — business).
  *
- * Modèle PRÉPAYÉ, aligné sur les processeurs de paiement checkout (Chariow
- * et Stripe) : l'utilisateur paie une période (mensuelle ou annuelle),
- * la période est activée à la confirmation du paiement, les crédits inclus
- * sont crédités immédiatement via le Credit Ledger. À l'échéance :
+ * Modèle PRÉPAYÉ, exclusivement via le processeur Chariow (ADR-0007 —
+ * unique processeur de paiement) : l'utilisateur paie une période (mensuelle
+ * ou annuelle), la période est activée à la confirmation du paiement, les
+ * crédits inclus sont crédités immédiatement via le Credit Ledger. À
+ * l'échéance :
  *  - renouvellement payant volontaire (nouveau checkout) ;
  *  - sinon EXPIRATION paresseuse (settlement à la lecture, cf. ads) ;
  *  - annulation à l'échéance (cancelAtPeriodEnd) honorée.

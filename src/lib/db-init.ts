@@ -2050,35 +2050,47 @@ ALTER TABLE "Task" ADD COLUMN "version" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "Task" ADD COLUMN "totalRetries" INTEGER NOT NULL DEFAULT 0;
 `
 
-const globalForInit = globalThis as unknown as { gen3iaSchemaReady?: Promise<void> }
+const globalForInit = globalThis as unknown as {
+  gen3iaSchemaReady?: Promise<void>
+  gen3iaSchemaUrl?: string
+}
 
-/** Garantit que le schéma existe (une fois par processus). */
+/** Garantit que le schéma existe (une fois par processus ET par base pointée).
+ *
+ * v3.6 — la mémoïsation est désormais clée sur DATABASE_URL : si l'URL
+ * change dans le même processus (bascule de base de test, rotation de
+ * datasource), le DDL idempotent est réexécuté sur la NOUVELLE base au lieu
+ * de renvoyer une promesse obsolète pointant sur l'ancienne. En production
+ * (URL stable) : mémoïsation stricte, aucun coût supplémentaire.
+ */
 export function ensureSchema(): Promise<void> {
-  if (!globalForInit.gen3iaSchemaReady) {
-    globalForInit.gen3iaSchemaReady = (async () => {
-      const url = process.env.DATABASE_URL ?? ""
-      const isPostgres = url.startsWith("postgres://") || url.startsWith("postgresql://")
-      const dialectError =
-        /already exists|UNIQUE|duplicate key|multiple primary key|duplicate column/i
-      try {
-        const ddl = (isPostgres ? POSTGRES_DDL : SQLITE_DDL) + MIGRATION_DDL
-        for (const statement of ddl.split(";")) {
-          const trimmed = statement.trim()
-          // Ignore les commentaires et les blocs vides.
-          const cleaned = trimmed.replace(/^(--[\s\S]*?)?(?=[A-Z(])/, "").trim()
-          if (!cleaned || !/^(CREATE|ALTER)/i.test(cleaned)) continue
-          try {
-            await db.$executeRawUnsafe(cleaned + ";")
-          } catch (err) {
-            // Initialisation concurrente ou colonne déjà présente : on ignore proprement.
-            if (err instanceof Error && dialectError.test(err.message)) continue
-            throw err
-          }
-        }
-      } catch (err) {
-        console.error("[db-init] échec d'initialisation :", err)
-      }
-    })()
+  const url = process.env.DATABASE_URL ?? ""
+  if (globalForInit.gen3iaSchemaReady && globalForInit.gen3iaSchemaUrl === url) {
+    return globalForInit.gen3iaSchemaReady
   }
+  globalForInit.gen3iaSchemaUrl = url
+  globalForInit.gen3iaSchemaReady = (async () => {
+    const isPostgres = url.startsWith("postgres://") || url.startsWith("postgresql://")
+    const dialectError =
+      /already exists|UNIQUE|duplicate key|multiple primary key|duplicate column/i
+    try {
+      const ddl = (isPostgres ? POSTGRES_DDL : SQLITE_DDL) + MIGRATION_DDL
+      for (const statement of ddl.split(";")) {
+        const trimmed = statement.trim()
+        // Ignore les commentaires et les blocs vides.
+        const cleaned = trimmed.replace(/^(--[\s\S]*?)?(?=[A-Z(])/, "").trim()
+        if (!cleaned || !/^(CREATE|ALTER)/i.test(cleaned)) continue
+        try {
+          await db.$executeRawUnsafe(cleaned + ";")
+        } catch (err) {
+          // Initialisation concurrente ou colonne déjà présente : on ignore proprement.
+          if (err instanceof Error && dialectError.test(err.message)) continue
+          throw err
+        }
+      }
+    } catch (err) {
+      console.error("[db-init] échec d'initialisation :", err)
+    }
+  })()
   return globalForInit.gen3iaSchemaReady
 }

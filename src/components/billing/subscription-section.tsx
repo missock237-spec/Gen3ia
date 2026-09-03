@@ -12,8 +12,9 @@ import { RefreshCw, CalendarCheck, XCircle, Sparkles, Crown } from "lucide-react
 
 /**
  * Section abonnements SaaS (v3.6 — business) : plans mensuels/annuels,
- * crédits inclus, quotas différenciés, processeur Chariow OU Stripe.
- * Annulation à l'échéance (les crédits restent jusqu'à la fin de période).
+ * crédits inclus, quotas différenciés. Chariow UNIQUE processeur
+ * (ADR-0007). Annulation à l'échéance (les crédits restent jusqu'à
+ * la fin de période).
  */
 
 interface SubscriptionData {
@@ -49,7 +50,7 @@ interface SubscriptionData {
     maxAgents: number
     features: string[]
   }>
-  processors: { chariow: boolean; stripe: boolean }
+  processors: { chariow: boolean }
 }
 
 export function SubscriptionSection() {
@@ -57,12 +58,11 @@ export function SubscriptionSection() {
   const { t, lang } = useI18n();
   const { data, loading, reload } = usePolling<SubscriptionData>("/api/billing/subscription", 30000);
   const [interval, setIntervalChoice] = useState<"monthly" | "yearly">("monthly");
-  const [method, setMethod] = useState<"chariow" | "stripe">("chariow");
   const [subscribing, setSubscribing] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
   const locale = lang === "fr" ? "fr-FR" : "en-US";
-  const activeProcessor = data?.processors.chariow ? "chariow" : data?.processors.stripe ? "stripe" : null;
+  const chariowEnabled = data?.processors.chariow ?? false;
 
   async function subscribe(planKey: string) {
     setSubscribing(planKey);
@@ -70,7 +70,6 @@ export function SubscriptionSection() {
       const res = await apiPost<{ paymentUrl: string }>("/api/billing/subscription", {
         planKey,
         interval,
-        method: activeProcessor === "stripe" ? "stripe" : method,
       });
       if (!res.ok) throw new Error(res.error);
       toast({ title: t("billing.sub.redirecting"), description: t("billing.sub.redirectingDesc") });
@@ -159,7 +158,7 @@ export function SubscriptionSection() {
           <p className="text-xs text-zinc-500">{t("billing.sub.none")}</p>
         )}
 
-        {/* Sélecteur période + processeur */}
+        {/* Sélecteur période */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
             {(["monthly", "yearly"] as const).map((iv) => (
@@ -176,22 +175,7 @@ export function SubscriptionSection() {
               </button>
             ))}
           </div>
-          {data && data.processors.chariow && data.processors.stripe && (
-            <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
-              {(["chariow", "stripe"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMethod(m)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors font-mono uppercase ${
-                    (activeProcessor ?? method) === m ? "bg-zinc-700 text-zinc-100 font-semibold" : "text-zinc-500 hover:text-zinc-300"
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          )}
+          <span className="text-[10px] text-zinc-500">{t("billing.sub.chariowOnly")}</span>
         </div>
 
         {/* Plans */}
@@ -235,7 +219,7 @@ export function SubscriptionSection() {
                     <Button
                       size="sm"
                       onClick={() => void subscribe(plan.key)}
-                      disabled={subscribing === plan.key || !activeProcessor}
+                      disabled={subscribing === plan.key || !chariowEnabled}
                       className={`w-full h-8 text-xs font-semibold ${
                         isCurrent
                           ? "bg-zinc-800 text-zinc-300"
@@ -254,11 +238,8 @@ export function SubscriptionSection() {
                 );
               })}
         </div>
-        {data && !activeProcessor && (
+        {data && !chariowEnabled && (
           <p className="text-[11px] text-amber-300/80">{t("billing.sub.noProcessor")}</p>
-        )}
-        {data && data.processors.stripe && data.processors.chariow && (
-          <p className="text-[10px] text-zinc-600">{t("billing.sub.twoProcessors")}</p>
         )}
       </CardContent>
     </Card>

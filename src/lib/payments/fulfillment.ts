@@ -5,10 +5,11 @@ import { audit } from "@/lib/engines/audit"
 import { activateSubscription, type SubscriptionInterval } from "./subscriptions"
 
 /**
- * Fulfillment partagé des paiements (v3.6 — business).
+ * Fulfillment des paiements (v3.6 — business).
  *
- * Un SEUL chemin de créditation pour les DEUX processeurs (Chariow et
- * Stripe) : à la confirmation d'un paiement, selon son plan :
+ * Le SEUL chemin de créditation, réservé au processeur Chariow
+ * (ADR-0007 — unique processeur) : à la confirmation d'un paiement, selon
+ * son plan :
  *  - « sub:<planKey>:<interval> » → ACTIVATION D'ABONNEMENT (période,
  *    crédits inclus, plan du compte) ;
  *  - « ads_recharge » → portefeuille publicitaire ;
@@ -40,7 +41,7 @@ export async function fulfillPayment(
   payment: FulfillablePayment,
   checkoutId: string,
   rawBody: string,
-  provider: "chariow" | "stripe"
+  provider: "chariow"
 ): Promise<void> {
   const subscriptionPlan = parseSubscriptionPlan(payment.plan)
 

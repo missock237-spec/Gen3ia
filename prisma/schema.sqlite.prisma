@@ -1021,7 +1021,7 @@ model Subscription {
   currentPeriodEnd  DateTime
   cancelAtPeriodEnd Boolean  @default(false)
   lastGrantAt      DateTime?
-  provider         String    @default("chariow") // chariow | stripe
+  provider         String    @default("chariow") // TOUJOURS chariow (ADR-0007)
   providerRef      String? // référence checkout/session du paiement
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

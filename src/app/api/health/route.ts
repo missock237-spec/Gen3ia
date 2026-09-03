@@ -36,6 +36,19 @@ export async function GET(req: NextRequest) {
         i18n: true,
         ads: true,
         creditsSale: { min: 50 },
+        /** v3.6 — entreprise (7 piliers) */
+        subscriptions: true,
+        marketplace: { commission: 0.2 },
+        paymentProcessor: "chariow", // UNIQUE processeur (ADR-0007)
+        workerIsolation: true,
+        keyringRotation: true,
+        ragTuning: true,
+        debateEngine: true,
+        metaLearning: true,
+        openapi: "/api/v1/openapi",
+        sdkTypes: true,
+        otel: !!(process.env.OTEL_EXPORTER_OTLP_ENDPOINT),
+        queue: process.env.REDIS_URL ? "bullmq" : "in-memory",
       },
       time: new Date().toISOString(),
     })
