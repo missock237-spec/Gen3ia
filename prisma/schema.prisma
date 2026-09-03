@@ -49,13 +49,221 @@ model User {
   autoSkills          AutoSkill[]
   webhooks            WebhookConfig[]
   profile             UserProfile?
-  oauthIdentities     OAuthIdentity[] @relation("OAuthIdentities")
-  liveHostSessions    LiveSession[]   @relation("LiveHost")
-  liveParticipations  LiveParticipant[] @relation("LiveParticipants")
+  oauthIdentities     OAuthIdentity[]      @relation("OAuthIdentities")
+  liveHostSessions    LiveSession[]        @relation("LiveHost")
+  liveParticipations  LiveParticipant[]    @relation("LiveParticipants")
   adWallet            AdWallet?
   subscriptions       Subscription[]
   adCampaigns         AdCampaign[]
-  oauthProvider       String?  // dernier fournisseur OAuth utilisé : github | google
+  oauthProvider       String? // dernier fournisseur OAuth utilisé : github | google
+  modelSelections     ModelSelection[]
+  hfJobs              HFJob[]
+  storageObjects      StorageObject[]
+}
+
+// ─── Model & Compute Intelligence Layer (v4.0 — HF) ────────────
+// Registre central des modèles : évolue SANS modification du code source
+// (synchronisation HF Hub + éditions admin). Chaque entrée décrit un modèle
+// joignable via un provider (HF Inference Providers, HF Inference Endpoints,
+// Gemini, GLM, OpenRouter…).
+model AIModel {
+  id             String            @id @default(cuid())
+  provider       String // huggingface | gemini | glm | openrouter | zai | groq | openai | custom
+  modelId        String // identifiant exact chez le provider (ex: meta-llama/Llama-3.3-70B-Instruct)
+  name           String
+  architecture   String? // transformer | mamba | diffusion | moe…
+  modality       String            @default("text") // text | multimodal | image | audio | video
+  supportedTasks String // JSON : ["ANALYSIS","PLANNING","EXECUTION","VERIFICATION","LEARNING","CHAT","SUMMARIZATION","EMBEDDING","VISION"]
+  contextLength  Int               @default(32000)
+  parameterCount Float? // milliards de paramètres
+  quantization   String? // fp16 | int8 | int4…
+  vramGb         Float? // VRAM requise pour auto-hébergement
+  capabilities   ModelCapability[]
+  license        String?
+  commercialUse  Boolean           @default(true)
+  availability   String            @default("UNKNOWN") // AVAILABLE | DEGRADED | UNAVAILABLE | UNKNOWN
+  endpointType   String            @default("ROUTER") // ROUTER (Inference Providers) | DEDICATED (Inference Endpoint) | COMPATIBLE
+  endpointUrl    String? // URL directe (endpoint dédié ou baseUrl compatible)
+  endpointId     String? // identifiant HF de l'endpoint dédié
+  creditsPerKIn  Float             @default(0.4)
+  creditsPerKOut Float             @default(1.2)
+  costPerKTokens Float? // coût réel observé (US$/1k tokens, informatif)
+  qualityScore   Float             @default(0.5) // 0-1 — agrégat des évaluations
+  successRate    Float             @default(0.8) // 0-1 — taux de réussite réel observé
+  avgLatencyMs   Float             @default(2000) // latence observée
+  sampleCount    Int               @default(0) // exécutions mesurées
+  lastEvaluated  DateTime?
+  status         String            @default("ACTIVE") // ACTIVE | DISABLED | EXPERIMENTAL
+  isDefault      Boolean           @default(false) // modèle par défaut du provider
+  priority       Int               @default(100) // ordre de préférence statique (plus petit = prioritaire)
+  tags           String? // JSON : ["coding","reasoning","vision","fast","cheap"]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  performances ModelPerformance[]
+  selections   ModelSelection[]
+
+  @@unique([provider, modelId])
+  @@index([provider, status])
+  @@index([status, qualityScore])
+}
+
+// Capacités fines d'un modèle (recherche par capacité, extension sans code).
+model ModelCapability {
+  id        String   @id @default(cuid())
+  modelId   String
+  model     AIModel  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  key       String // ex: "json-mode" | "streaming" | "function-calling" | "vision" | "long-context"
+  value     String? // paramètre éventuel (ex: dimensions d'embedding)
+  source    String   @default("STATIC") // STATIC | SYNC (HF) | LEARNED
+  createdAt DateTime @default(now())
+
+  @@unique([modelId, key])
+  @@index([key])
+}
+
+// Performance RÉELLE mesurée après chaque exécution (boucle d'apprentissage
+// du Model Router — Phase 7/8 : influence les sélections futures).
+model ModelPerformance {
+  id             String   @id @default(cuid())
+  modelId        String
+  model          AIModel  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  provider       String
+  taskType       String // ANALYSIS | PLANNING | EXECUTION | VERIFICATION | LEARNING | CHAT | SUMMARIZATION | EMBEDDING | VISION
+  success        Boolean
+  qualityScore   Float? // score de l'évaluateur GEN3IA (0-1)
+  executionMs    Int
+  tokensIn       Int      @default(0)
+  tokensOut      Int      @default(0)
+  costCredits    Float    @default(0)
+  errorType      String? // code d'erreur normalisé
+  contextType    String? // catégorie de contexte (document, code, conversation…)
+  evaluatorScore Float? // score détaillé du Verification Engine
+  humanScore     Float? // note humaine si retour utilisateur
+  taskId         String?
+  createdAt      DateTime @default(now())
+
+  @@index([modelId, taskType, createdAt])
+  @@index([provider, createdAt])
+  @@index([taskType, createdAt])
+}
+
+// Décision de routage tracée (pourquoi CE modèle — audit + tableau de bord).
+model ModelSelection {
+  id           String   @id @default(cuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  modelId      String
+  model        AIModel  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  provider     String
+  taskType     String
+  score        Float
+  confidence   Float // 0-1
+  reason       String // justification lisible
+  alternatives String? // JSON : [{model, provider, score, reason}]
+  costEstimate Float    @default(0) // crédits estimés
+  actualCost   Float? // crédits réellement consommés
+  requestId    String? // corrélation des traces
+  taskId       String?
+  agentId      String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([modelId, createdAt])
+  @@index([taskId])
+}
+
+// Santé des providers (circuit breaker persistant + latence glissante).
+model ProviderHealth {
+  id                   String   @id @default(cuid())
+  provider             String   @unique
+  status               String   @default("UP") // UP | DEGRADED | DOWN
+  consecutiveFailures  Int      @default(0)
+  consecutiveSuccesses Int      @default(0)
+  avgLatencyMs         Float    @default(0)
+  lastError            String?
+  lastChecked          DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status])
+}
+
+// Endpoints d'inférence dédiés HF (gérés via l'API endpoints.huggingface.cloud).
+model InferenceEndpoint {
+  id              String   @id @default(cuid())
+  name            String   @unique // nom HF unique de l'endpoint
+  modelId         String // repo HF servi par l'endpoint
+  status          String   @default("PENDING") // PENDING | RUNNING | SCALED_TO_ZERO | PAUSED | FAILED | DELETED
+  hardware        String   @default("cpu-basic") // cpu-basic | cpu-upgrade | gpu-t4 …
+  accelerator     String? // gpu | cpu
+  vendor          String? // aws | gcp | aws-eu…
+  region          String? // us-east-1…
+  minReplicas     Int      @default(0)
+  maxReplicas     Int      @default(1)
+  currentReplicas Int      @default(0)
+  url             String? // URL d'inférence une fois déployé
+  type            String   @default("protected") // public | protected | private
+  tokensUsed      Int      @default(0)
+  lastSync        DateTime @default(now())
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+}
+
+// Jobs Hugging Face longs (préprocessing, embeddings batch, fine-tuning,
+// batch inference, génération massive) — checkpointés dans le HF Bucket.
+model HFJob {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind           String // preprocessing | embeddings-batch | dataset-generation | evaluation | fine-tuning | conversion | batch-inference | media-processing
+  status         String    @default("PENDING") // PENDING | RUNNING | COMPLETED | FAILED | CANCELLED
+  queueJobId     String? // identifiant BullMQ
+  hfRef          String? // référence HF (repo job / run)
+  inputRef       String? // chemin Bucket des entrées
+  outputRef      String? // chemin Bucket des sorties
+  checkpointRef  String? // chemin Bucket du dernier checkpoint
+  progress       Float     @default(0) // 0-1
+  attempt        Int       @default(0)
+  maxAttempts    Int       @default(3)
+  timeoutMs      Int       @default(600000)
+  idempotencyKey String?   @unique
+  parameters     String? // JSON
+  result         String? // JSON
+  error          String?
+  costCredits    Float     @default(0)
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+// Objets stockés dans les Buckets HF (métadonnées seulement — les octets
+// restent dans le Bucket, jamais dans PostgreSQL).
+model StorageObject {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bucket      String // models | datasets | users | agents | knowledge | embeddings | generated | checkpoints | artifacts | logs | temporary
+  path        String // chemin logique dans le bucket (ex: knowledge/report.pdf)
+  repoId      String // repo HF réel (ex: gen3ia-knowledge)
+  size        Int      @default(0) // octets
+  contentType String?
+  sha         String? // ETag/sha du blob HF
+  etag        String?
+  metadata    String? // JSON
+  deleted     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([bucket, path, userId])
+  @@index([userId, bucket])
+  @@index([repoId])
 }
 
 model Session {
@@ -423,20 +631,20 @@ model ConnectionRequest {
 // ============================================================
 
 model SwarmSession {
-  id             String   @id @default(cuid())
-  taskId         String?
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  strategy       String   @default("HIERARCHICAL")
-  status         String   @default("RUNNING")
-  prompt         String
-  plan           String?
-  result         String?
-  tokensIn       Int      @default(0)
-  tokensOut      Int      @default(0)
-  costCredits    Float    @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id          String   @id @default(cuid())
+  taskId      String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  strategy    String   @default("HIERARCHICAL")
+  status      String   @default("RUNNING")
+  prompt      String
+  plan        String?
+  result      String?
+  tokensIn    Int      @default(0)
+  tokensOut   Int      @default(0)
+  costCredits Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   subTasks       SubTask[]
   sharedMemories SharedMemory[]
@@ -447,50 +655,50 @@ model SwarmSession {
 }
 
 model SubTask {
-  id             String   @id @default(cuid())
-  sessionId      String
-  session        SwarmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  title          String
-  description    String
-  assignedAgent  String
-  status         String   @default("PENDING")
-  dependencies   String?
-  input          String?
-  result         String?
-  error          String?
-  startedAt      DateTime?
-  finishedAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String       @id @default(cuid())
+  sessionId     String
+  session       SwarmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  title         String
+  description   String
+  assignedAgent String
+  status        String       @default("PENDING")
+  dependencies  String?
+  input         String?
+  result        String?
+  error         String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@index([sessionId])
 }
 
 model SharedMemory {
-  id         String        @id @default(cuid())
-  sessionId  String?
-  session    SwarmSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  userId     String?
-  key        String
-  value      String
-  author     String
-  namespace  String   @default("default")
-  version    Int      @default(1)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String        @id @default(cuid())
+  sessionId String?
+  session   SwarmSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String?
+  key       String
+  value     String
+  author    String
+  namespace String        @default("default")
+  version   Int           @default(1)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
   @@index([sessionId, namespace, key])
 }
 
 model SwarmMessage {
-  id         String   @id @default(cuid())
-  sessionId  String
-  session    SwarmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  channel    String
-  senderId   String
-  content    String
-  payload    String?
-  createdAt  DateTime @default(now())
+  id        String       @id @default(cuid())
+  sessionId String
+  session   SwarmSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  channel   String
+  senderId  String
+  content   String
+  payload   String?
+  createdAt DateTime     @default(now())
 
   @@index([sessionId, channel])
 }
@@ -527,22 +735,22 @@ model ExplorationRun {
 // ============================================================
 
 model FineTuneJob {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name        String
-  status      String   @default("QUEUED") // QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED
+  status      String    @default("QUEUED") // QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED
   datasetPath String?
-  datasetSize Int      @default(0)
+  datasetSize Int       @default(0)
   baseModel   String
-  engine      String   @default("unsloth") // unsloth | axolotl
-  config      String?  // JSON
-  metrics     String?  // JSON : loss, eval_loss, epochs
+  engine      String    @default("unsloth") // unsloth | axolotl
+  config      String? // JSON
+  metrics     String? // JSON : loss, eval_loss, epochs
   error       String?
   startedAt   DateTime?
   finishedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([userId, status])
 }
@@ -551,12 +759,12 @@ model AutoSkill {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  pattern     String  // pattern détecté
-  code        String  // code généré
-  language    String  @default("typescript")
-  status      String  @default("DRAFT") // DRAFT | VALIDATED | PUBLISHED | REJECTED
-  usageCount  Int     @default(0)
-  successRate Float   @default(0)
+  pattern     String // pattern détecté
+  code        String // code généré
+  language    String   @default("typescript")
+  status      String   @default("DRAFT") // DRAFT | VALIDATED | PUBLISHED | REJECTED
+  usageCount  Int      @default(0)
+  successRate Float    @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -564,17 +772,17 @@ model AutoSkill {
 }
 
 model UserProfile {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  responseStyle   String   @default("balanced") // concise | balanced | detailed
-  tone            String   @default("professional") // professional | casual | formal
-  language        String   @default("fr")
-  detailLevel     Float    @default(0.5) // 0-1
-  preferences     String?  // JSON
-  interactionCount Int    @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responseStyle    String   @default("balanced") // concise | balanced | detailed
+  tone             String   @default("professional") // professional | casual | formal
+  language         String   @default("fr")
+  detailLevel      Float    @default(0.5) // 0-1
+  preferences      String? // JSON
+  interactionCount Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // ============================================================
@@ -584,8 +792,8 @@ model UserProfile {
 model ImmutableAuditLog {
   id         String   @id @default(cuid())
   userId     String?
-  prevHash   String?  // hash de l'entrée précédente (chaîne)
-  entryHash  String   // HMAC-SHA256 du contenu
+  prevHash   String? // hash de l'entrée précédente (chaîne)
+  entryHash  String // HMAC-SHA256 du contenu
   action     String
   entityType String?
   entityId   String?
@@ -598,17 +806,17 @@ model ImmutableAuditLog {
 }
 
 model AnomalyAlert {
-  id           String   @id @default(cuid())
-  userId       String?
-  type         String   // LOOP | COST_SPIKE | FAILURE_RATE | LATENCY
-  severity     String   @default("WARNING") // INFO | WARNING | CRITICAL
-  message      String
-  metric       String?
-  threshold    Float?
-  actualValue  Float?
-  action       String   @default("ALERT") // ALERT | THROTTLE | BLOCK
-  resolved     Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String?
+  type        String // LOOP | COST_SPIKE | FAILURE_RATE | LATENCY
+  severity    String   @default("WARNING") // INFO | WARNING | CRITICAL
+  message     String
+  metric      String?
+  threshold   Float?
+  actualValue Float?
+  action      String   @default("ALERT") // ALERT | THROTTLE | BLOCK
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
   @@index([createdAt])
   @@index([resolved])
@@ -629,25 +837,25 @@ model Trace {
   spans      Int      @default(0)
   createdAt  DateTime @default(now())
 
-  spanList   TraceSpan[]
+  spanList TraceSpan[]
 
   @@index([taskId])
   @@index([createdAt])
 }
 
 model TraceSpan {
-  id            String   @id @default(cuid())
-  traceId       String
-  trace        Trace     @relation(fields: [traceId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  traceId      String
+  trace        Trace    @relation(fields: [traceId], references: [id], onDelete: Cascade)
   spanId       String
   parentSpanId String?
   name         String
   startTime    Float
   endTime      Float?
   durationMs   Int      @default(0)
-  attributes   String?  // JSON
+  attributes   String? // JSON
   status       String   @default("UNSET") // OK | ERROR | UNSET
-  events       String?  // JSON
+  events       String? // JSON
   createdAt    DateTime @default(now())
 
   @@index([traceId])
@@ -658,34 +866,34 @@ model TraceSpan {
 // ============================================================
 
 model BatchTask {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String?
-  status      String   @default("PENDING") // PENDING | RUNNING | COMPLETED | PARTIAL | FAILED
-  total       Int      @default(0)
-  completed   Int      @default(0)
-  failed      Int      @default(0)
-  results     String?  // JSON agrégé
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String?
+  status    String   @default("PENDING") // PENDING | RUNNING | COMPLETED | PARTIAL | FAILED
+  total     Int      @default(0)
+  completed Int      @default(0)
+  failed    Int      @default(0)
+  results   String? // JSON agrégé
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  items       BatchItem[]
+  items BatchItem[]
 
   @@index([userId, createdAt])
 }
 
 model BatchItem {
-  id         String   @id @default(cuid())
-  batchId    String
-  batch      BatchTask @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  taskId     String?
-  prompt     String
-  status     String   @default("PENDING") // PENDING | RUNNING | DONE | FAILED
-  result     String?
-  error      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String    @id @default(cuid())
+  batchId   String
+  batch     BatchTask @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  taskId    String?
+  prompt    String
+  status    String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
+  result    String?
+  error     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([batchId])
 }
@@ -702,7 +910,7 @@ model AgentListing {
   currency    String   @default("XOF")
   commission  Float    @default(0.1) // 10% par défaut
   description String?
-  tags        String?  // JSON
+  tags        String? // JSON
   downloads   Int      @default(0)
   purchases   Int      @default(0)
   revenue     Float    @default(0)
@@ -711,17 +919,17 @@ model AgentListing {
 }
 
 model Purchase {
-  id          String   @id @default(cuid())
-  buyerId     String
-  sellerId    String
-  agentId     String
-  listingId   String
-  amount       Float
-  commission   Float
-  payout       Float
-  status       String   @default("PENDING") // PENDING | COMPLETED | REFUNDED
+  id            String   @id @default(cuid())
+  buyerId       String
+  sellerId      String
+  agentId       String
+  listingId     String
+  amount        Float
+  commission    Float
+  payout        Float
+  status        String   @default("PENDING") // PENDING | COMPLETED | REFUNDED
   forkedAgentId String? // agent cloné dans le compte de l'acheteur
-  createdAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@index([buyerId])
   @@index([sellerId])
@@ -732,8 +940,8 @@ model WebhookConfig {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   url       String
-  events    String   // JSON : ["task.completed", "task.failed"]
-  secret    String   // pour signature HMAC
+  events    String // JSON : ["task.completed", "task.failed"]
+  secret    String // pour signature HMAC
   agentId   String?
   taskId    String?
   active    Boolean  @default(true)
@@ -746,17 +954,17 @@ model WebhookConfig {
 }
 
 model WebhookDelivery {
-  id           String   @id @default(cuid())
-  webhookId    String
-  webhook      WebhookConfig @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-  event        String
-  payload      String
-  statusCode   Int?
-  response     String?
-  attempt      Int      @default(1)
-  error        String? // message d'erreur réseau (livraison impossible)
-  deliveredAt  DateTime?
-  createdAt    DateTime @default(now())
+  id          String        @id @default(cuid())
+  webhookId   String
+  webhook     WebhookConfig @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event       String
+  payload     String
+  statusCode  Int?
+  response    String?
+  attempt     Int           @default(1)
+  error       String? // message d'erreur réseau (livraison impossible)
+  deliveredAt DateTime?
+  createdAt   DateTime      @default(now())
 
   @@index([webhookId, createdAt])
 }
@@ -765,9 +973,9 @@ model ExternalConnection {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String   // postgresql | mysql | mongodb | salesforce | hubspot | notion | slack
+  type      String // postgresql | mysql | mongodb | salesforce | hubspot | notion | slack
   name      String
-  config    String   // JSON encrypté (host, port, database, credentials…)
+  config    String // JSON encrypté (host, port, database, credentials…)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -776,21 +984,21 @@ model ExternalConnection {
 }
 
 model WatchConfig {
-  id           String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  type        String   // PRICE | WEBSITE | INDICATOR | CUSTOM
-  target      String   // URL ou identifiant
-  schedule    String   // expression CRON
-  condition   String?  // JSON : { operator: "lt", value: 100 }
-  alertChannel String  @default("email") // email | slack | webhook
-  alertTarget String?  // email/Slack channel/webhook URL
-  lastValue   String?
-  lastCheckAt DateTime?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  type         String // PRICE | WEBSITE | INDICATOR | CUSTOM
+  target       String // URL ou identifiant
+  schedule     String // expression CRON
+  condition    String? // JSON : { operator: "lt", value: 100 }
+  alertChannel String    @default("email") // email | slack | webhook
+  alertTarget  String? // email/Slack channel/webhook URL
+  lastValue    String?
+  lastCheckAt  DateTime?
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   executions WatchExecution[]
 
@@ -798,14 +1006,14 @@ model WatchConfig {
 }
 
 model WatchExecution {
-  id           String   @id @default(cuid())
-  watchId      String
-  watch        WatchConfig @relation(fields: [watchId], references: [id], onDelete: Cascade)
-  value        String?
-  triggered    Boolean  @default(false)
-  alertSent    Boolean  @default(false)
-  error        String?
-  executedAt   DateTime @default(now())
+  id         String      @id @default(cuid())
+  watchId    String
+  watch      WatchConfig @relation(fields: [watchId], references: [id], onDelete: Cascade)
+  value      String?
+  triggered  Boolean     @default(false)
+  alertSent  Boolean     @default(false)
+  error      String?
+  executedAt DateTime    @default(now())
 
   @@index([watchId, executedAt])
 }
@@ -817,15 +1025,15 @@ model WatchExecution {
 // Identités OAuth rattachées à un compte utilisateur. Un utilisateur peut
 // lier plusieurs fournisseurs ; la fusion se fait par e-mail vérifié.
 model OAuthIdentity {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation("OAuthIdentities", fields: [userId], references: [id], onDelete: Cascade)
-  provider     String   // github | google
-  providerAccountId String @unique
-  email        String?
-  name         String?
-  avatarUrl    String?
-  createdAt    DateTime @default(now())
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation("OAuthIdentities", fields: [userId], references: [id], onDelete: Cascade)
+  provider          String // github | google
+  providerAccountId String   @unique
+  email             String?
+  name              String?
+  avatarUrl         String?
+  createdAt         DateTime @default(now())
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -840,17 +1048,17 @@ model OAuthIdentity {
 // OAuth utilise les identifiants de la plateforme, jamais les leurs.
 
 model OAuthAppConfig {
-  id              String   @id @default(cuid())
-  appSlug         String   @unique // ex. github, slack, notion (catalogue)
-  clientId        String
-  clientSecret    String   // chiffré AES-256-GCM
-  redirectUri     String?
-  scopes          String?  // surcharge des scopes par défaut (CSV)
-  extraConfig     String?  // JSON : endpoints spécifiques, PKCE, tenant…
-  active          Boolean  @default(true)
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String   @id @default(cuid())
+  appSlug      String   @unique // ex. github, slack, notion (catalogue)
+  clientId     String
+  clientSecret String // chiffré AES-256-GCM
+  redirectUri  String?
+  scopes       String? // surcharge des scopes par défaut (CSV)
+  extraConfig  String? // JSON : endpoints spécifiques, PKCE, tenant…
+  active       Boolean  @default(true)
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([active])
 }
@@ -860,17 +1068,17 @@ model OAuthAppConfig {
 // ---------------------------------------------------------------------------
 
 model LiveSession {
-  id          String   @id @default(cuid())
-  code        String   @unique // code court à partager
+  id          String    @id @default(cuid())
+  code        String    @unique // code court à partager
   hostId      String
-  host        User     @relation("LiveHost", fields: [hostId], references: [id], onDelete: Cascade)
-  taskId      String?  // tâche liée (optionnel)
+  host        User      @relation("LiveHost", fields: [hostId], references: [id], onDelete: Cascade)
+  taskId      String? // tâche liée (optionnel)
   title       String?
-  status      String   @default("LIVE") // LIVE | ENDED
-  viewerCount Int      @default(0)
-  createdAt   DateTime @default(now())
+  status      String    @default("LIVE") // LIVE | ENDED
+  viewerCount Int       @default(0)
+  createdAt   DateTime  @default(now())
   endedAt     DateTime?
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime  @updatedAt
 
   participants LiveParticipant[]
   signals      LiveSignal[]
@@ -879,15 +1087,15 @@ model LiveSession {
 }
 
 model LiveParticipant {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   sessionId   String
   session     LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   userId      String?
-  user        User?    @relation("LiveParticipants", fields: [userId], references: [id], onDelete: SetNull)
+  user        User?       @relation("LiveParticipants", fields: [userId], references: [id], onDelete: SetNull)
   displayName String
-  role        String   @default("VIEWER") // HOST | VIEWER
-  lastSeenAt  DateTime @default(now())
-  joinedAt    DateTime @default(now())
+  role        String      @default("VIEWER") // HOST | VIEWER
+  lastSeenAt  DateTime    @default(now())
+  joinedAt    DateTime    @default(now())
   leftAt      DateTime?
 
   signalsSent LiveSignal[] @relation("SignalFrom")
@@ -900,16 +1108,16 @@ model LiveParticipant {
 // Échangés via l'API et consommés par polling long-côté clients ; le flux
 // média lui-même voyage en P2P chiffré (DTLS/SRTP), jamais via le serveur.
 model LiveSignal {
-  id            String   @id @default(cuid())
-  sessionId     String
-  session       LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  fromId        String
-  from          LiveParticipant @relation("SignalFrom", fields: [fromId], references: [id], onDelete: Cascade)
-  toId          String?  // null = diffusion à tous les autres participants
-  type          String   // OFFER | ANSWER | ICE | BYE | CHAT
-  payload       String   // JSON (SDP, candidat ICE…)
-  createdAt     DateTime @default(now())
-  consumedAt    DateTime?
+  id         String          @id @default(cuid())
+  sessionId  String
+  session    LiveSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fromId     String
+  from       LiveParticipant @relation("SignalFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId       String? // null = diffusion à tous les autres participants
+  type       String // OFFER | ANSWER | ICE | BYE | CHAT
+  payload    String // JSON (SDP, candidat ICE…)
+  createdAt  DateTime        @default(now())
+  consumedAt DateTime?
 
   @@index([sessionId, createdAt])
   @@index([toId, consumedAt])
@@ -923,10 +1131,10 @@ model LiveSignal {
 // ============================================================
 
 model AdWallet {
-  id      String   @id @default(cuid())
-  userId  String   @unique
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance Float    @default(0) // solde publicitaire en FCFA (XOF)
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance   Float    @default(0) // solde publicitaire en FCFA (XOF)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -939,33 +1147,33 @@ model AdTransaction {
   id           String   @id @default(cuid())
   walletId     String
   wallet       AdWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  type         String   // RECHARGE | SPEND | REFUND
-  amount       Float    // + recharge / remboursement, - dépense
+  type         String // RECHARGE | SPEND | REFUND
+  amount       Float // + recharge / remboursement, - dépense
   balanceAfter Float
   description  String
-  paymentId    String?  // recharge → Payment Chariow correspondante
-  campaignId   String?  // dépense → campagne concernée
+  paymentId    String? // recharge → Payment Chariow correspondante
+  campaignId   String? // dépense → campagne concernée
   createdAt    DateTime @default(now())
 
   @@index([walletId, createdAt])
 }
 
 model AdCampaign {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String
-  platform     String   // googleads | metaads | tiktok | linkedin_ads | other
-  objective    String   @default("TRAFFIC") // AWARENESS | TRAFFIC | CONVERSION | LEADS
-  status       String   @default("DRAFT") // DRAFT | ACTIVE | PAUSED | COMPLETED
-  budgetPerDay Float    @default(0) // budget journalier en FCFA (débité du portefeuille)
-  totalSpent   Float    @default(0)
+  platform     String // googleads | metaads | tiktok | linkedin_ads | other
+  objective    String    @default("TRAFFIC") // AWARENESS | TRAFFIC | CONVERSION | LEADS
+  status       String    @default("DRAFT") // DRAFT | ACTIVE | PAUSED | COMPLETED
+  budgetPerDay Float     @default(0) // budget journalier en FCFA (débité du portefeuille)
+  totalSpent   Float     @default(0)
   targetUrl    String?
   startDate    DateTime?
   endDate      DateTime?
   lastChargeAt DateTime? // dernier règlement de budget (settlement paresseux)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   creatives AdCreative[]
 
@@ -974,15 +1182,15 @@ model AdCampaign {
 }
 
 model AdCreative {
-  id         String    @id @default(cuid())
+  id         String     @id @default(cuid())
   campaignId String
   campaign   AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   headline   String
   body       String
   mediaUrl   String?
   cta        String?
-  status     String    @default("PENDING") // PENDING | APPROVED | REJECTED
-  createdAt  DateTime  @default(now())
+  status     String     @default("PENDING") // PENDING | APPROVED | REJECTED
+  createdAt  DateTime   @default(now())
 
   @@index([campaignId])
 }
@@ -1008,23 +1216,23 @@ model CrossAgentPattern {
 
 // ─── Abonnements SaaS (v3.6 — business) ────────────────────────
 model Subscription {
-  id               String    @id @default(cuid())
-  userId           String
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  planKey          String // starter | pro | business
-  interval         String // monthly | yearly
-  status           String    @default("ACTIVE") // ACTIVE | EXPIRED | CANCELLED
-  price            Float // montant payé pour la période (FCFA)
-  currency         String    @default("XOF")
-  creditsPerPeriod Int // crédits offerts à chaque période
-  currentPeriodStart DateTime @default(now())
-  currentPeriodEnd  DateTime
-  cancelAtPeriodEnd Boolean  @default(false)
-  lastGrantAt      DateTime?
-  provider         String    @default("chariow") // TOUJOURS chariow (ADR-0007)
-  providerRef      String? // référence checkout/session du paiement
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planKey            String // starter | pro | business
+  interval           String // monthly | yearly
+  status             String    @default("ACTIVE") // ACTIVE | EXPIRED | CANCELLED
+  price              Float // montant payé pour la période (FCFA)
+  currency           String    @default("XOF")
+  creditsPerPeriod   Int // crédits offerts à chaque période
+  currentPeriodStart DateTime  @default(now())
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean   @default(false)
+  lastGrantAt        DateTime?
+  provider           String    @default("chariow") // TOUJOURS chariow (ADR-0007)
+  providerRef        String? // référence checkout/session du paiement
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([userId])
   @@index([status, currentPeriodEnd])

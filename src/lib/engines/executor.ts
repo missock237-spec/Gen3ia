@@ -33,7 +33,8 @@ export interface ExecutorCallbacks {
   onStepDone?: (entry: ExecutionLogEntry) => Promise<void> | void
   onStepFailed?: (stepIndex: number, error: string) => Promise<void> | void
   onToolCall?: (tool: string, args: Record<string, unknown>, result: ToolResult) => Promise<void> | void
-  onLLMUsage?: (tokensIn: number, tokensOut: number, credits: number) => Promise<void> | void
+  /** v4.0 — le fournisseur/modèle réels sont transmis (facturation juste). */
+  onLLMUsage?: (tokensIn: number, tokensOut: number, credits: number, provider?: string, model?: string) => Promise<void> | void
   /** Retourne false si l'opération dangereuse est refusée (garde HITL). */
   authorizeDangerousTool?: (tool: string, args: Record<string, unknown>) => Promise<boolean> | boolean
   /** v3.1 : checkpoint persisté après chaque étape (reprise après crash). */
@@ -47,12 +48,20 @@ export interface ExecutorContext {
   agentSystemPrompt?: string | null
   allowedTools: string[]
   providerOverride?: string
+  /** v4.0 — Phase 9/10 : modèle dédié du plan ("modelId", provider déduit
+   * du préfixe "provider/modelId" de plan.model quand présent). */
+  modelOverride?: string
   maxToolCallsPerStep?: number
   knowledgeContext?: string
   memories?: string[]
 }
 
 const MAX_TOOL_ROUNDS = 5
+
+/** v4.0 — Phase 10 : provider du plan (préfixe "provider/modelId"), sinon auto. */
+function planModelProvider(plan: Plan): string | undefined {
+  return plan.model?.includes("/") ? plan.model.split("/")[0] : undefined
+}
 
 /** Outil unifié pour le prompt : catalogue statique + outils connector. */
 interface PromptTool {
@@ -183,7 +192,11 @@ export async function executePlan(
             taskType: "EXECUTION",
             temperature: 0.4,
             maxTokens: 2000,
-            provider: ctx.providerOverride,
+            provider: ctx.providerOverride ?? planModelProvider(plan),
+            model: ctx.modelOverride ?? step.model,
+            userId: ctx.userId,
+            taskId: ctx.taskId,
+            agentId: ctx.agentId ?? undefined,
           },
           stepActionSchema
         )
@@ -194,7 +207,9 @@ export async function executePlan(
         await callbacks.onLLMUsage?.(
           decision.tokensIn,
           decision.tokensOut,
-          creditsForTokens(decision.provider, decision.model, decision.tokensIn, decision.tokensOut)
+          creditsForTokens(decision.provider, decision.model, decision.tokensIn, decision.tokensOut),
+          decision.provider,
+          decision.model
         )
 
         if (decision.data.action === "FINISH_STEP") {
@@ -333,14 +348,20 @@ export async function executePlan(
     taskType: "EXECUTION",
     temperature: 0.5,
     maxTokens: 3000,
-    provider: ctx.providerOverride,
-  })
+    provider: ctx.providerOverride ?? planModelProvider(plan),
+    model: ctx.modelOverride,
+    userId: ctx.userId,
+    taskId: ctx.taskId,
+    agentId: ctx.agentId ?? undefined,
+  } as never)
   tokensIn += synthesis.tokensIn
   tokensOut += synthesis.tokensOut
   await callbacks.onLLMUsage?.(
     synthesis.tokensIn,
     synthesis.tokensOut,
-    creditsForTokens(synthesis.provider, synthesis.model, synthesis.tokensIn, synthesis.tokensOut)
+    creditsForTokens(synthesis.provider, synthesis.model, synthesis.tokensIn, synthesis.tokensOut),
+    synthesis.provider,
+    synthesis.model
   )
   evidence.push({
     type: "LLM_OUTPUT",

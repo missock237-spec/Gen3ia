@@ -17,6 +17,13 @@ export interface LLMCallOptions {
   taskType?: TaskType
 }
 
+/** Options d'appel étendues (traçabilité v4.0 — jamais requises par les moteurs). */
+export type RoutingCallOptions = LLMCallOptions & {
+  userId?: string
+  taskId?: string
+  agentId?: string
+}
+
 export type TaskType =
   | "ANALYSIS"
   | "PLANNING"
@@ -25,6 +32,8 @@ export type TaskType =
   | "LEARNING"
   | "CHAT"
   | "SUMMARIZATION"
+  | "EMBEDDING"
+  | "VISION"
 
 export interface LLMResult {
   content: string

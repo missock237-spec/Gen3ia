@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { chatJSON } from "@/lib/ai/structured"
 import { getToolCatalog } from "@/lib/tools/registry"
+import { selectModelDiversity } from "@/lib/ai/router-v2"
 import type { Plan, PlanId, PlanStep, PromptAnalysis } from "./types"
 
 /**
@@ -51,6 +52,40 @@ const PLANS_SKELETON = `{"plans":[{"id":"A","name":"...","strategy":"...","steps
  * les actions des apps connectées sont ajoutées par l'executor — ADR-0014). */
 const availableToolKeys = (): string[] => getToolCatalog().map((t) => t.key)
 
+/**
+ * v4.0 — Phase 10 : assigne un modèle DÉDIÉ à chaque plan (A→E) via la
+ * sélection par diversité du Model Router. Chaque plan peut donc utiliser
+ * un modèle DIFFÉRENT (ex: A→HF 70B, B→HF 8B rapide, C→Gemini Flash,
+ * D→GLM, E→Qwen Coder). Repli : aucun modèle si le registre est vide —
+ * le routage global reste actif (comportement v3.6).
+ */
+async function assignDiverseModels(
+  prompt: string,
+  plans: Plan[],
+  context?: { userId?: string; taskId?: string; agentId?: string }
+): Promise<Plan[]> {
+  try {
+    const models = await selectModelDiversity(
+      { prompt: prompt.slice(0, 4000), taskType: "PLANNING" },
+      Math.max(1, plans.length),
+      { userId: context?.userId, taskId: context?.taskId, agentId: context?.agentId, traceSelection: false }
+    )
+    return plans.map((plan, i) => {
+      const chosen = models[i % models.length]
+      if (!chosen) return plan
+      return {
+        ...plan,
+        model: `${chosen.provider}/${chosen.model}`,
+        rationale: plan.rationale + ` Modèle : ${chosen.name} (${chosen.provider}) — ${chosen.reason}.`,
+        // Étapes : le même modèle porte le plan (cohérence de stratégie).
+        steps: plan.steps.map((s) => ({ ...s, model: chosen.model })),
+      }
+    })
+  } catch {
+    return plans // registre indisponible — routage global par défaut
+  }
+}
+
 const SYSTEM_PROMPT = `Tu es le planificateur de GEN3IA. Pour toute demande, tu produis EXACTEMENT 5 plans nommés A, B, C, D, E, chacun avec une STRATÉGIE radicalement différente :
 
 - Plan A : approche directe et rapide (minimum d'étapes).
@@ -80,6 +115,10 @@ export async function generatePlans(
     crossAgentBlock?: string
     /** Outils réellement autorisés pour cet agent (défaut : registre complet). */
     allowedTools?: string[]
+    /** v4.0 — traçabilité de la sélection de modèles (Phase 10). */
+    userId?: string
+    taskId?: string
+    agentId?: string
   }
 ): Promise<{ plans: Plan[]; tokensIn: number; tokensOut: number }> {
   const catalogKeys = availableToolKeys()
@@ -131,5 +170,8 @@ export async function generatePlans(
     requiresHumanConfirmation: p.requiresHumanConfirmation,
   }))
 
-  return { plans, tokensIn: result.tokensIn, tokensOut: result.tokensOut }
+  // v4.0 — Phase 10 : diversité multi-modèles (un modèle par plan, si registre).
+  const diversified = await assignDiverseModels(prompt, plans, context)
+
+  return { plans: diversified, tokensIn: result.tokensIn, tokensOut: result.tokensOut }
 }

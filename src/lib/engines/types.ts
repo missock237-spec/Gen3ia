@@ -38,6 +38,9 @@ export interface Plan {
   successProbability: number // 0-1
   rationale: string
   requiresHumanConfirmation: boolean
+  /** v4.0 — Phase 10 : modèle DÉDIÉ du plan (diversité multi-modèles).
+   * Format « provider/modelId » (ex: "huggingface/meta-llama/Llama-3.3-70B-Instruct"). */
+  model?: string
 }
 
 // ---------- Évaluation des plans ----------

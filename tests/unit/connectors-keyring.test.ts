@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test"
+import { createCipheriv, randomBytes } from "node:crypto"
 import {
   encryptJson,
   decryptJson,
@@ -109,7 +110,6 @@ describe("Format v2 multi-clés", () => {
 describe("Compatibilité v1 legacy", () => {
   test("un payload v1 historique reste déchiffrable", () => {
     // Re-produit le format v1 avec la clé mono-version courante.
-    const { createCipheriv, randomBytes } = require("node:crypto") as typeof import("node:crypto")
     const key = Buffer.from(KEY_A, "hex")
     const iv = randomBytes(12)
     const cipher = createCipheriv("aes-256-gcm", key, iv)

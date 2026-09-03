@@ -111,6 +111,9 @@ function resolveWeights(user: User): EvaluationWeights {
 interface TokenMeter {
   tokensIn: number
   tokensOut: number
+  /** v4.0 — fournisseur/modèle réellement utilisé (facturation juste). */
+  provider?: string
+  model?: string
 }
 
 async function chargePhase(
@@ -121,10 +124,13 @@ async function chargePhase(
   providerLabel: string
 ): Promise<void> {
   if (meter.tokensIn === 0 && meter.tokensOut === 0) return
-  const credits = Math.max(0.01, creditsForTokens(providerLabel, "auto", meter.tokensIn, meter.tokensOut))
+  // v4.0 — le fournisseur RÉELLEMENT utilisé fixe le tarif (plus de « zai »
+  // codé en dur : les exécutions HF/Gemini sont facturées au bon prix).
+  const effectiveProvider = meter.provider || providerLabel || "auto"
+  const credits = Math.max(0.01, creditsForTokens(effectiveProvider, meter.model ?? "auto", meter.tokensIn, meter.tokensOut))
   await chargeCredits(user.id, credits, {
     type: phase === "PLANNING" ? "PLAN_GENERATION" : "TASK_EXECUTION",
-    description: `Phase ${phase} — ${meter.tokensIn} tokens entrée / ${meter.tokensOut} sortie`,
+    description: `Phase ${phase} (${effectiveProvider}${meter.model ? ` · ${meter.model}` : ""}) — ${meter.tokensIn} tokens entrée / ${meter.tokensOut} sortie`,
     refType: "task",
     refId: task.id,
   })
@@ -289,6 +295,10 @@ export async function advanceTask(
           feedbackBlock: plannerFeedbackBlock(feedback),
           crossAgentBlock: await crossAgentPatternsBlock(5).catch(() => ""),
           allowedTools,
+          // v4.0 — Phase 10 : traçabilité de la sélection multi-modèles.
+          userId: user.id,
+          taskId: task.id,
+          agentId: agent?.id ?? undefined,
         }, ctx)
         if (execution.value.length === 0) {
           throw new EngineError("PLANNING_FAILED", "Le planificateur n'a produit aucun plan exploitable.")
@@ -444,6 +454,9 @@ export async function advanceTask(
 
         const meter: TokenMeter = { tokensIn: 0, tokensOut: 0 }
         let checkpointSteps: ExecutionLogEntry[] = []
+        // v4.0 — Phase 9 : le modèle DÉDIÉ du plan sélectionné guide l'exécution.
+        const planModel = selected.model
+        const planModelId = planModel?.includes("/") ? planModel.split("/").slice(1).join("/") : planModel
 
         const outcome = await runEngine(executorEngine, {
           prompt: task.prompt,
@@ -457,6 +470,8 @@ export async function advanceTask(
             allowedTools,
             knowledgeContext,
             memories: memoryStrings,
+            // v4.0 — Phase 10 : modèle dédié du plan (diversité A-E).
+            modelOverride: planModelId ?? undefined,
           },
           callbacks: {
             onStepStart: async (i, title) => {
@@ -472,9 +487,11 @@ export async function advanceTask(
             onStepFailed: async (i, error) => {
               await recordStep(task.id, "EXECUTING", i, `Étape ${i + 1} : échec`, "FAILED", { error })
             },
-            onLLMUsage: async (tIn, tOut) => {
+            onLLMUsage: async (tIn, tOut, _credits, provider?: string, model?: string) => {
               meter.tokensIn += tIn
               meter.tokensOut += tOut
+              meter.provider = provider ?? meter.provider
+              meter.model = model ?? meter.model
             },
             // v3.1 : HITL déjà donné (approbation du plan) OU confirmations désactivées.
             authorizeDangerousTool: () => settings.confirmDangerousOps === false,

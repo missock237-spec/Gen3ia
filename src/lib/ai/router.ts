@@ -92,6 +92,8 @@ const PROVIDER_PRIORITY: Record<TaskType, string[]> = {
   LEARNING: ["zai", "groq", "glm", "openrouter", "openai", "huggingface"],
   CHAT: ["zai", "glm", "openrouter", "groq", "openai", "huggingface"],
   SUMMARIZATION: ["zai", "groq", "glm", "openrouter", "openai", "huggingface"],
+  EMBEDDING: ["openai", "huggingface", "zai", "glm", "openrouter", "groq"],
+  VISION: ["gemini", "zai", "huggingface", "openrouter", "openai", "glm"],
 }
 
 /** Ordre de repli global. */

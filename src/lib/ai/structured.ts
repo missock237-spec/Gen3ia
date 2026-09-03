@@ -1,6 +1,6 @@
 import type { z } from "zod"
 import { chat } from "./index"
-import type { ChatMessage, LLMCallOptions } from "./types"
+import type { ChatMessage, RoutingCallOptions } from "./types"
 import { LLMError } from "./types"
 
 /**
@@ -100,7 +100,7 @@ function tryUnwrap(parsed: any): any {
 
 /** Appel LLM avec sortie JSON validée (une tentative de réparation incluse). */
 export async function chatJSON<T>(
-  opts: LLMCallOptions,
+  opts: RoutingCallOptions,
   schema: z.ZodType<T>
 ): Promise<JSONCallResult<T>> {
   const messages: ChatMessage[] = [JSON_GUARD_SYSTEM, ...opts.messages]

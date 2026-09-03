@@ -94,6 +94,10 @@ export interface PlannerInput {
   /** v3.6 — patrons cross-agents anonymes (leçons collectives). */
   crossAgentBlock?: string
   allowedTools: string[]
+  /** v4.0 — Phase 10 : traçabilité de la sélection multi-modèles. */
+  userId?: string
+  taskId?: string
+  agentId?: string
 }
 
 export class PlannerEngine extends BaseEngine<PlannerInput, Plan[]> {
@@ -127,6 +131,10 @@ export class PlannerEngine extends BaseEngine<PlannerInput, Plan[]> {
           feedbackBlock: input.feedbackBlock,
           crossAgentBlock: input.crossAgentBlock,
           allowedTools: input.allowedTools,
+          // v4.0 — Phase 10 : traçabilité multi-modèles.
+          userId: input.userId ?? ctx.userId,
+          taskId: input.taskId ?? ctx.taskId,
+          agentId: input.agentId,
         })
         meter.tokensIn += r.tokensIn
         meter.tokensOut += r.tokensOut

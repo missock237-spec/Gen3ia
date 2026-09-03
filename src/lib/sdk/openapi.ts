@@ -17,6 +17,12 @@ export const API_V1_ENDPOINTS = [
   "/api/v1/agents",
   "/api/v1/keys",
   "/api/v1/transactions",
+  "/api/v1/models",
+  "/api/v1/models/select",
+  "/api/v1/embeddings",
+  "/api/v1/files",
+  "/api/v1/knowledge",
+  "/api/v1/jobs",
 ] as const
 
 export function buildOpenApiDocument(): Record<string, unknown> {
@@ -24,7 +30,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
     openapi: "3.1.0",
     info: {
       title: "GEN3IA API",
-      version: "3.6.0",
+      version: "4.0.0",
       description:
         "API publique GEN3IA — plateforme d'agents IA.\n\n" +
         "Authentification : clé API `g3ia_live_...` via l'en-tête `Authorization: Bearer`.\n" +
@@ -39,6 +45,9 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       { name: "Tasks", description: "Pipeline complet d'exécution (analyse → plan → exécution → vérification)" },
       { name: "Agents", description: "Catalogue des agents accessibles" },
       { name: "Account", description: "Clés API et historique de crédits" },
+      { name: "Models", description: "Registre de modèles + routage intelligent (v4.0)" },
+      { name: "Intelligence", description: "Embeddings et Knowledge Base RAG (v4.0)" },
+      { name: "Compute", description: "Fichiers HF Bucket et jobs longs Hugging Face (v4.0)" },
     ],
     components: {
       securitySchemes: {
@@ -355,6 +364,206 @@ export function buildOpenApiDocument(): Record<string, unknown> {
               },
             },
           },
+        },
+      },
+      "/api/v1/models": {
+        get: {
+          tags: ["Models"],
+          summary: "Registre des modèles",
+          description: "Catalogue des modèles (provider, capacités, coûts, scores APPRIS).",
+          parameters: [
+            { name: "provider", in: "query", schema: { type: "string" }, description: "Filtrer par fournisseur" },
+            { name: "task", in: "query", schema: { type: "string" }, description: "Filtrer par type de tâche" },
+            { name: "stats", in: "query", schema: { type: "string", enum: ["0", "1"] }, description: "Inclure le classement de performance" },
+          ],
+          responses: {
+            200: { description: "Modèles du registre", content: { "application/json": { schema: { type: "object" } } } },
+            401: { description: "Clé API invalide", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          },
+        },
+      },
+      "/api/v1/models/select": {
+        post: {
+          tags: ["Models"],
+          summary: "Sélection intelligente de modèle",
+          description: "Model Router : meilleur modèle + raison + alternatives + coût estimé + confiance (sans exécution).",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    prompt: { type: "string", description: "Demande (pour estimer le contexte)" },
+                    task_type: { type: "string", enum: ["ANALYSIS", "PLANNING", "EXECUTION", "VERIFICATION", "LEARNING", "CHAT", "SUMMARIZATION", "EMBEDDING", "VISION"] },
+                    desired_quality: { type: "string", enum: ["fast", "balanced", "premium"] },
+                    context_tokens: { type: "integer" },
+                    budget_credits: { type: "number" },
+                    model_constraints: { type: "object", description: "Listes blanches/noires providers/modèles" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Décision de routage justifiée", content: { "application/json": { schema: { type: "object" } } } },
+            401: { description: "Clé API invalide", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          },
+        },
+      },
+      "/api/v1/embeddings": {
+        post: {
+          tags: ["Intelligence"],
+          summary: "Embeddings vectoriels",
+          description: "Embeddings (fournisseur auto : OpenAI-compat / HF / local), facturés au crédit.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["input"],
+                  properties: {
+                    input: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" }, maxItems: 64 }] },
+                    model: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Vecteurs", content: { "application/json": { schema: { type: "object" } } } },
+          },
+        },
+      },
+      "/api/v1/files": {
+        get: {
+          tags: ["Compute"],
+          summary: "Liste des fichiers (Bucket HF)",
+          parameters: [
+            { name: "bucket", in: "query", schema: { type: "string" }, description: "models|datasets|knowledge|generated|..." },
+            { name: "folder", in: "query", schema: { type: "string" }, description: "Sous-dossier" },
+          ],
+          responses: { 200: { description: "Objets du bucket", content: { "application/json": { schema: { type: "object" } } } } },
+        },
+        post: {
+          tags: ["Compute"],
+          summary: "Déposer un fichier (Bucket HF)",
+          description: "Octets stockés chez Hugging Face (HF_TOKEN côté serveur uniquement), métadonnées dans PostgreSQL.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["path", "content_base64"],
+                  properties: {
+                    path: { type: "string" },
+                    content_base64: { type: "string", description: "Contenu encodé base64" },
+                    content_type: { type: "string" },
+                    bucket: { type: "string", enum: ["models", "datasets", "users", "agents", "knowledge", "embeddings", "generated", "checkpoints", "artifacts", "logs", "temporary"] },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Objet déposé", content: { "application/json": { schema: { type: "object" } } } },
+            503: { description: "HF non configuré", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          },
+        },
+        delete: {
+          tags: ["Compute"],
+          summary: "Supprimer un fichier",
+          responses: { 200: { description: "Supprimé", content: { "application/json": { schema: { type: "object" } } } } },
+        },
+      },
+      "/api/v1/knowledge": {
+        get: {
+          tags: ["Intelligence"],
+          summary: "Documents de la Knowledge Base",
+          responses: { 200: { description: "Documents paginés", content: { "application/json": { schema: { type: "object" } } } } },
+        },
+        post: {
+          tags: ["Intelligence"],
+          summary: "Ingérer un document",
+          description: "Chunk + embeddings + archive HF Bucket ; recherche hybride prête.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["title", "content"],
+                  properties: { title: { type: "string" }, content: { type: "string" }, source_type: { type: "string", enum: ["TEXT", "FILE", "URL"] } },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Document indexé (réponse standard)", content: { "application/json": { schema: { type: "object" } } } },
+            201: { description: "Document indexé (création)", content: { "application/json": { schema: { type: "object" } } } },
+          },
+        },
+        put: {
+          tags: ["Intelligence"],
+          summary: "Recherche RAG hybride",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["query"],
+                  properties: { query: { type: "string" }, top_k: { type: "integer", default: 5, minimum: 1, maximum: 20 } },
+                },
+              },
+            },
+          },
+          responses: { 200: { description: "Morceaux pertinents scorés", content: { "application/json": { schema: { type: "object" } } } } },
+        },
+      },
+      "/api/v1/jobs": {
+        get: {
+          tags: ["Compute"],
+          summary: "Jobs HF (statut/liste)",
+          parameters: [
+            { name: "id", in: "query", schema: { type: "string" }, description: "Statut d'un job précis" },
+            { name: "status", in: "query", schema: { type: "string", enum: ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"] } },
+          ],
+          responses: { 200: { description: "Job(s)", content: { "application/json": { schema: { type: "object" } } } } },
+        },
+        post: {
+          tags: ["Compute"],
+          summary: "Soumettre un job long",
+          description: "embeddings-batch, batch-inference, fine-tuning… (worker BullMQ/asynchrone — jamais dans la requête).",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["kind"],
+                  properties: {
+                    kind: { type: "string", enum: ["preprocessing", "embeddings-batch", "dataset-generation", "evaluation", "fine-tuning", "conversion", "batch-inference", "media-processing"] },
+                    parameters: { type: "object", additionalProperties: true },
+                    input_path: { type: "string", description: "Chemin Bucket des entrées" },
+                    idempotency_key: { type: "string", description: "Clé d'idempotence" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Job accepté (traité)", content: { "application/json": { schema: { type: "object" } } } },
+            202: { description: "Job accepté (asynchrone)", content: { "application/json": { schema: { type: "object" } } } },
+            401: { description: "Clé API invalide", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          },
+        },
+        patch: {
+          tags: ["Compute"],
+          summary: "Actions job (cancel/poll/drain)",
+          responses: { 200: { description: "Résultat de l'action", content: { "application/json": { schema: { type: "object" } } } } },
         },
       },
     },

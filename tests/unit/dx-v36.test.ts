@@ -1,4 +1,6 @@
 import { describe, test, expect } from "bun:test"
+import * as tsmod from "typescript"
+import { execSync as execSyncMod } from "node:child_process"
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { buildOpenApiDocument, API_V1_ENDPOINTS } from "@/lib/sdk/openapi"
@@ -123,7 +125,7 @@ describe("SDK typés générés depuis Prisma", () => {
   })
 
   test("TypeScript : 53 interfaces, parse propre, aucun champ secret", () => {
-    const ts = require("typescript") as typeof import("typescript")
+    const ts = tsmod
     const source = readFileSync(join(ROOT, "sdks/typescript/src/types.gen.ts"), "utf8")
     const sf = ts.createSourceFile("types.gen.ts", source, ts.ScriptTarget.ES2017, true)
     expect(sf.parseDiagnostics).toHaveLength(0)
@@ -138,7 +140,7 @@ describe("SDK typés générés depuis Prisma", () => {
   })
 
   test("client TypeScript : méthodes typées de bout en bout, parse propre", () => {
-    const ts = require("typescript") as typeof import("typescript")
+    const ts = tsmod
     const source = readFileSync(join(ROOT, "sdks/typescript/src/client.ts"), "utf8")
     const sf = ts.createSourceFile("client.ts", source, ts.ScriptTarget.ES2017, true)
     expect(sf.parseDiagnostics).toHaveLength(0)
@@ -148,7 +150,7 @@ describe("SDK typés générés depuis Prisma", () => {
   })
 
   test("Python : dataclasses importables avec les champs publics", async () => {
-    const { execSync } = require("node:child_process") as typeof import("node:child_process")
+    const execSync = execSyncMod
     // Import réel (la syntaxe ET l'ordre des champs dataclass sont vérifiés).
     const code =
       "import dataclasses; from gen3ia.types_gen import Task, Agent; " +

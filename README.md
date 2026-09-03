@@ -1,10 +1,29 @@
-# ⚡ GEN3IA v3.3 — Plateforme de construction et d'orchestration d'agents IA
+# ⚡ GEN3IA v4.0 — Infrastructure d'agents IA pilotée par Model & Compute Intelligence
 
-GEN3IA analyse vos demandes, **génère 5 plans**, les **compare** avec une formule d'évaluation pondérée, **exécute** le meilleur avec des **outils réels** (recherche web, calculs, code sandboxé, RAG, **1000+ applications externes via Composio**), **vérifie** le résultat contre des critères prouvés, **corrige** les échecs automatiquement, **apprend** de chaque tâche et **livre** une réponse traçable — avec API publique et SDK.
+GEN3IA analyse vos demandes, **génère 5 plans multi-modèles**, les **compare** avec une formule d'évaluation pondérée, **route chaque tâche vers le meilleur modèle IA** (Hugging Face en couche principale : Inference Providers, Endpoints, Jobs, Storage Buckets ; Gemini/GLM/OpenRouter/Groq/OpenAI en repli), **exécute** le meilleur plan avec des **outils réels** (recherche web, calculs, code sandboxé, RAG hybride Qdrant/pgvector, **1000+ applications externes via Composio**), **vérifie** le résultat, **apprend des succès et échecs réels de chaque modèle** (Model Performance Registry — la sélection s'améliore à chaque tâche) et **livre** une réponse traçable — avec API unifiée /v1 et SDK.
 
 ```
-Comprendre → Planifier → Comparer → Exécuter → Vérifier → Corriger → Évaluer → Apprendre → Livrer
+Comprendre → Planifier (5 plans multi-modèles) → Router → Exécuter → Vérifier → Corriger → Évaluer → Apprendre (boucle modèles) → Livrer
 ```
+
+---
+
+## ✨ Nouveautés v4.0 — Model & Compute Intelligence Layer (Hugging Face)
+
+- **Model Router intelligent** : chaque appel est routé vers le meilleur modèle selon la tâche (adéquation, taux de réussite HISTORIQUE mesuré, qualité, capacités, disponibilité, latence, coût) — décision tracée avec **raison lisible, alternatives, coût estimé et confiance** (`POST /api/v1/models/select`).
+- **Model Registry** (table `AIModel`) : catalogue central des modèles — provider, capacités, contexte, coûts, statut — qui **évolue sans modification du code** (seed idempotent, synchronisation HF Hub, promotion/désactivation admin depuis le tableau de bord).
+- **Boucle d'apprentissage du routage** : chaque exécution réelle alimente `ModelPerformance` ; l'agrégat glissant (demi-vie 14 jours) met à jour successRate/qualityScore/latence par modèle — le routeur privilégie progressivement les modèles réellement efficaces par catégorie de tâche.
+- **5 plans multi-modèles** : chaque plan A-E peut utiliser un **modèle différent** (ex : A→Llama 70B HF, B→Llama 8B, C→Gemini Flash, D→GLM, E→Qwen Coder) — la diversité réduit les risques d'échec corrélé.
+- **Hugging Face Provider** complet : Inference Providers (routeur OpenAI-compatible), **streaming SSE**, embeddings, vision multimodale, modèles privés/gated selon les droits du jeton, découverte du Hub.
+- **HF Inference Endpoints** : gestion des endpoints dédiés (création, scale-to-zero/réveil, suppression, résolution d'URL par modèle) — compute garanti pour les charges critiques.
+- **HF Jobs** : tâches longues (embeddings batch, batch-inference, preprocessing, fine-tuning…) sur file BullMQ dédiée — statuts complets (PENDING/RUNNING/COMPLETED/FAILED/CANCELLED), **idempotence par clé**, retry/timeout, checkpoints Bucket, drainage serverless (`PATCH /api/v1/jobs {"action":"drain"}`).
+- **HF Storage Buckets** : 11 buckets logiques (repos datasets privés) — upload/download/list/move/copy/mount/delete — les **octets restent chez HF**, PostgreSQL ne conserve que les métadonnées ; le token HF ne sort jamais du serveur (passe-relais authentifié `/api/v1/files/download`).
+- **Compute Scheduler** : choisit la meilleure infrastructure (routeur HF partagé ↔ endpoint dédié ↔ jobs ↔ repli externe) selon VRAM, durée, priorité, budget.
+- **RAG multi-backends** : abstraction VectorStore — **Qdrant** (grande échelle), **Supabase pgvector** (proximité PostgreSQL), json portable (repli garanti) — sélection auto par environnement, fail-open, cloisonnement par utilisateur.
+- **API unifiée v1 étendue** : `/api/v1/models`, `/api/v1/models/select`, `/api/v1/embeddings`, `/api/v1/files`, `/api/v1/knowledge`, `/api/v1/jobs` (OpenAPI 3.1 : `/api/openapi.json`, Swagger UI : `/docs/api`).
+- **Tableau de bord admin « Registre & Compute »** : modèles (scores appris, activation/promotion), endpoints, jobs, buckets, classement de performance réelle, coût par modèle, dernières sélections justifiées.
+
+Documentation complète : `docs/architecture-v4.md` (diagrammes Mermaid), `docs/huggingface-setup.md` (jeton, endpoints, jobs, buckets, RAG, dépannage).
 
 ---
 
@@ -120,16 +139,16 @@ Les outils `code_runner`, `http_fetch` et `composio_execute` sont **sensibles** 
 - **Vérification E2E réelle** : `BASE_URL=… GITHUB_TOKEN=ghp_… node scripts/connectors-verify.mjs` (appel authentifié à api.github.com, catalogue, erreurs propres).
 - Page UI `/connectors` : catalogue, connexion, console d'exécution d'action. API : `/api/connectors/*`.
 
-## 🧭 Model Router
+## 🧭 Model Router (v4.0 — intelligent et apprenant)
 
-Routage par type de tâche avec basculement automatique de fournisseur :
+Routage en deux niveaux, sans jamais coupler le cœur à un fournisseur :
 
-1. **GLM (Z.AI intégré)** — moteur par défaut
-2. **GLM (Zhipu BigModel)** — `GLM_API_KEY`
-3. **OpenRouter** — `OPENROUTER_API_KEY`
-4. **Groq** — `GROQ_API_KEY`
-5. **OpenAI** — `OPENAI_API_KEY`
-6. **HuggingFace** — `HUGGINGFACE_API_KEY`
+1. **Model Router v2** (`src/lib/ai/router-v2.ts`) — pour chaque appel : score pondéré de TOUS les modèles actifs du registre (adéquation tâche 30 %, taux de réussite mesuré 22 %, qualité 16 %, capacités 12 %, disponibilité 8 %, latence 7 %, coût 5 %) → meilleur modèle + raison + alternatives + coût estimé + confiance ; contraintes dures (listes blanches/noires, fenêtre de contexte, commercial-only) ;
+2. **Provider Abstraction** (`ModelProvider`) — adapters : **Hugging Face (principal)**, Gemini, ZAI, GLM, OpenRouter, Groq, OpenAI, customs par variables d'environnement ;
+3. **Basculement de repli** — chaîne provider→provider en cas d'échec (fail-closed explicite si tout échoue) ;
+4. **Boucle d'apprentissage** — chaque exécution mesure la performance réelle (`ModelPerformance`) et met à jour les scores du registre : le routage s'améliore avec l'usage.
+
+L'ancien routage statique (`routeCall`) reste le repli garanti si le registre est indisponible — le pipeline ne casse jamais.
 
 ## 💳 Crédits & paiements
 

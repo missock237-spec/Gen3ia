@@ -1,25 +1,28 @@
 import { db } from "@/lib/db"
 import { logger } from "@/lib/observability/logger"
 import { bumpVectorSearch } from "@/lib/observability/metrics"
-import { embedText, embedTexts, embeddingProvider, cosineSimilarity, type EmbeddingVector } from "./embeddings"
+import { embedText, embedTexts, embeddingProvider, type EmbeddingVector } from "./embeddings"
 import { chunkText, type Chunk } from "./text-utils"
+import { activeBackend } from "./backends/types"
+import { backendRegistry } from "./backends/vector-backends"
+import { isHfConfigured } from "@/lib/hf/client"
 
 /**
- * Vector Store (amélioration « Remplacer TF-IDF par un Vecteur DB »).
+ * Vector Store (v3.1 → v4.0 — Phase 14/15).
  *
- * Persistance réelle des vecteurs (table `Embedding`, une ligne par
- * morceau de document) : l'embedding est calculé UNE fois à l'ingestion,
- * plus jamais à la requête. La recherche :
- *  1. embed la requête (fournisseur courant) ;
- *  2. cosinus contre les vecteurs du même modèle pour l'utilisateur ;
- *  3. hybride avec le score TF-IDF (0.6 vecteur + 0.4 lexical) —
- *     la similarité lexicale reste précise sur les termes rares et
- *     l'identifiant exact (numéros, noms propres) que les embeddings
- *     diluent parfois.
+ * Abstraction multi-backends (mêmes signatures historiques) :
+ *  - VECTOR_BACKEND=json (défaut portable SQLite/Postgres) ;
+ *  - VECTOR_BACKEND=pgvector (Supabase natif — proximité PostgreSQL) ;
+ *  - VECTOR_BACKEND=qdrant (grande échelle) ;
+ *  - auto : Qdrant si QDRANT_URL, pgvector si Postgres, sinon json.
  *
- * Backend « json » par défaut (portable SQLite/Postgres). Le
- * pgvector natif reste une évolution documentée (ADR-0003) : la
- * même interface `indexDocument`/`searchVector` sera conservée.
+ * Pipeline v4.0 (Phase 15) :
+ *   Document → HF Bucket (archive) → Parser → Chunker → Embedding Model
+ *   (sélectionnable) → Qdrant OU pgvector → Hybrid Retrieval → Context →
+ *   Model Router → LLM.
+ *
+ * Persistance : l'embedding est calculé UNE fois à l'ingestion, plus jamais
+ * à la requête. Recherche hybride 0.6·cosinus + 0.4·lexical (retriever.ts).
  */
 
 export interface IndexingResult {
@@ -27,9 +30,55 @@ export interface IndexingResult {
   chunks: number
   model: string
   dim: number
+  backend: string
 }
 
-/** (Ré)indexe un document : découpage + embeddings persistés. */
+let resolvedBackendKey: string | null = null
+let resolutionPromise: Promise<string> | null = null
+
+/** Résout le backend actif une fois (fail-open → json). */
+async function resolveBackendKey(): Promise<string> {
+  if (resolvedBackendKey) return resolvedBackendKey
+  if (resolutionPromise) return resolutionPromise
+  resolutionPromise = (async () => {
+    const wanted = activeBackend()
+    const backend = backendRegistry[wanted]
+    if (backend && (await backend.available().catch(() => false))) {
+      resolvedBackendKey = wanted
+      logger.info("vector-store: backend actif", { backend: wanted })
+      return wanted
+    }
+    resolvedBackendKey = "json"
+    logger.warn("vector-store: backend demandé indisponible — repli json", { wanted })
+    return "json"
+  })()
+  return resolutionPromise
+}
+
+function getBackendSync(): (typeof backendRegistry)["json"] {
+  return backendRegistry[resolvedBackendKey ?? activeBackend()] ?? backendRegistry.json
+}
+
+async function withBackend<T>(
+  op: (backend: (typeof backendRegistry)["json"]) => Promise<T>,
+  fallback: T
+): Promise<T> {
+  try {
+    const key = await resolveBackendKey()
+    return await op(backendRegistry[key] ?? backendRegistry.json)
+  } catch (err) {
+    logger.warn("vector-store: opération échouée — repli json", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    try {
+      return await op(backendRegistry.json)
+    } catch {
+      return fallback
+    }
+  }
+}
+
+/** (Ré)indexe un document : découpage + embeddings persistés (backend actif). */
 export async function indexDocument(
   userId: string,
   documentId: string,
@@ -45,37 +94,45 @@ export async function indexDocument(
     data: { chunks: JSON.stringify(chunks) },
   })
 
-  // Ré-indexation propre : on repart de zéro pour ce document.
-  await db.embedding.deleteMany({ where: { documentId } })
-
   if (chunks.length === 0) {
-    return { documentId, chunks: 0, model: info.model, dim: info.dim }
+    return { documentId, chunks: 0, model: info.model, dim: info.dim, backend: resolvedBackendKey ?? activeBackend() }
   }
 
   const vectors = await embedTexts(chunks.map((c) => c.text))
-  const rows = vectors.map((v: EmbeddingVector, i: number) => ({
-    userId,
-    documentId,
-    chunkIndex: chunks[i].index,
-    chunkText: chunks[i].text.slice(0, 4000),
-    embedding: JSON.stringify(v.vector.map((x) => Math.round(x * 10000) / 10000)),
-    dim: v.dim,
-    norm: v.norm,
-    model: v.model,
-  }))
 
-  // Écriture par lots raisonnables (SQLite : limite de variables liées).
-  for (let i = 0; i < rows.length; i += 64) {
-    await db.embedding.createMany({ data: rows.slice(i, i + 64) })
+  // v4.0 — Phase 13/15 : archive du document brut dans le HF Bucket
+  // (source de vérité des fichiers, PostgreSQL ne garde que les métadonnées).
+  if (isHfConfigured()) {
+    try {
+      const { hfStorage } = await import("@/lib/hf/storage")
+      await hfStorage.upload(
+        userId,
+        `knowledge/${documentId}/source.txt`,
+        new TextEncoder().encode(content.slice(0, 2_000_000)),
+        { contentType: "text/plain", metadata: { title, chunks: chunks.length } }
+      )
+    } catch (err) {
+      logger.warn("vector-store: archive Bucket best-effort", {
+        documentId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
+  await withBackend(
+    (backend) => backend.index({ userId, documentId, chunks, vectors }),
+    undefined as unknown as void
+  )
+
+  const backendKey = await resolveBackendKey()
   logger.info("vector-store: document indexé", {
     documentId,
-    chunks: rows.length,
+    chunks: chunks.length,
     model: info.model,
     dim: info.dim,
+    backend: backendKey,
   })
-  return { documentId, chunks: rows.length, model: info.model, dim: info.dim }
+  return { documentId, chunks: chunks.length, model: info.model, dim: info.dim, backend: backendKey }
 }
 
 export interface VectorSearchHit {
@@ -85,60 +142,50 @@ export interface VectorSearchHit {
   score: number
 }
 
-/** Recherche vectorielle pure (cosinus) sur les vecteurs persistés de l'utilisateur. */
+/** Recherche vectorielle pure (cosinus) sur le backend actif. */
 export async function searchVector(
   userId: string,
   query: string,
   topK = 4
 ): Promise<VectorSearchHit[]> {
-  const info = embeddingProvider()
   const queryVec = await embedText(query)
-
-  // Vecteurs du même modèle uniquement (incompatibilité de dimension sinon).
-  const rows = await db.embedding.findMany({
-    where: { userId, model: queryVec.model },
-    select: { documentId: true, chunkIndex: true, chunkText: true, embedding: true, norm: true },
-    take: 5000,
-  })
-  if (rows.length === 0) return []
-
   bumpVectorSearch()
-  const hits: VectorSearchHit[] = rows
-    .map((row) => {
-      let stored: number[]
-      try {
-        stored = JSON.parse(row.embedding) as number[]
-      } catch {
-        return { documentId: row.documentId, chunkIndex: row.chunkIndex, text: row.chunkText, score: 0 }
-      }
-      return {
-        documentId: row.documentId,
-        chunkIndex: row.chunkIndex,
-        text: row.chunkText,
-        score: cosineSimilarity(queryVec.vector, queryVec.norm, stored, row.norm),
-      }
-    })
-    .filter((h) => h.score > 0.05)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-
-  return hits.map((h) => ({ ...h, score: Math.round(h.score * 1000) / 1000 }))
+  return withBackend(
+    (backend) => backend.search(userId, queryVec, topK),
+    [] as VectorSearchHit[]
+  )
 }
 
 /** Statistiques du stockage vectoriel (tableau admin). */
 export async function vectorStoreStats() {
   const info = embeddingProvider()
+  const backendKey = await resolveBackendKey().catch(() => activeBackend())
   const [total, byModel] = await Promise.all([
-    db.embedding.count(),
-    db.embedding.groupBy({ by: ["model"], _count: { _all: true } }),
+    db.embedding.count().catch(() => 0),
+    db.embedding.groupBy({ by: ["model"], _count: { _all: true } }).catch(() => [] as Array<{ model: string; _count: { _all: number } }>),
   ])
   return {
     provider: info.provider,
     model: info.model,
     dim: info.dim,
+    backend: backendKey,
     totalVectors: total,
     byModel: byModel.map((g) => ({ model: g.model, count: g._count._all })),
   }
+}
+
+/** Suppression propre (backend + table Embedding pour repli lexical). */
+export async function deleteDocumentVectors(documentId: string): Promise<void> {
+  const backend = getBackendSync()
+  await backend.deleteDocument(documentId).catch(() => undefined)
+  await db.embedding.deleteMany({ where: { documentId } }).catch(() => undefined)
+}
+
+/** Backend actif (observabilité / santé). */
+export async function vectorBackendInfo(): Promise<{ key: string; available: boolean }> {
+  const key = await resolveBackendKey()
+  const backend = backendRegistry[key]
+  return { key, available: await backend.available().catch(() => false) }
 }
 
 // ---------- Recherche hybride (vecteur + TF-IDF) ----------

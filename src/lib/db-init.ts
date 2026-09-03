@@ -36,6 +36,166 @@ CREATE TABLE IF NOT EXISTS "User" (
     "oauthProvider" TEXT
 );
 
+CREATE TABLE IF NOT EXISTS "AIModel" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "provider" TEXT NOT NULL,
+    "modelId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "architecture" TEXT,
+    "modality" TEXT NOT NULL DEFAULT 'text',
+    "supportedTasks" TEXT NOT NULL,
+    "contextLength" INTEGER NOT NULL DEFAULT 32000,
+    "parameterCount" REAL,
+    "quantization" TEXT,
+    "vramGb" REAL,
+    "license" TEXT,
+    "commercialUse" BOOLEAN NOT NULL DEFAULT true,
+    "availability" TEXT NOT NULL DEFAULT 'UNKNOWN',
+    "endpointType" TEXT NOT NULL DEFAULT 'ROUTER',
+    "endpointUrl" TEXT,
+    "endpointId" TEXT,
+    "creditsPerKIn" REAL NOT NULL DEFAULT 0.4,
+    "creditsPerKOut" REAL NOT NULL DEFAULT 1.2,
+    "costPerKTokens" REAL,
+    "qualityScore" REAL NOT NULL DEFAULT 0.5,
+    "successRate" REAL NOT NULL DEFAULT 0.8,
+    "avgLatencyMs" REAL NOT NULL DEFAULT 2000,
+    "sampleCount" INTEGER NOT NULL DEFAULT 0,
+    "lastEvaluated" DATETIME,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "priority" INTEGER NOT NULL DEFAULT 100,
+    "tags" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "ModelCapability" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "modelId" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "value" TEXT,
+    "source" TEXT NOT NULL DEFAULT 'STATIC',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ModelCapability_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "ModelPerformance" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "modelId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "taskType" TEXT NOT NULL,
+    "success" BOOLEAN NOT NULL,
+    "qualityScore" REAL,
+    "executionMs" INTEGER NOT NULL,
+    "tokensIn" INTEGER NOT NULL DEFAULT 0,
+    "tokensOut" INTEGER NOT NULL DEFAULT 0,
+    "costCredits" REAL NOT NULL DEFAULT 0,
+    "errorType" TEXT,
+    "contextType" TEXT,
+    "evaluatorScore" REAL,
+    "humanScore" REAL,
+    "taskId" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ModelPerformance_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "ModelSelection" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT,
+    "modelId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "taskType" TEXT NOT NULL,
+    "score" REAL NOT NULL,
+    "confidence" REAL NOT NULL,
+    "reason" TEXT NOT NULL,
+    "alternatives" TEXT,
+    "costEstimate" REAL NOT NULL DEFAULT 0,
+    "actualCost" REAL,
+    "requestId" TEXT,
+    "taskId" TEXT,
+    "agentId" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ModelSelection_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "ModelSelection_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "ProviderHealth" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "provider" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'UP',
+    "consecutiveFailures" INTEGER NOT NULL DEFAULT 0,
+    "consecutiveSuccesses" INTEGER NOT NULL DEFAULT 0,
+    "avgLatencyMs" REAL NOT NULL DEFAULT 0,
+    "lastError" TEXT,
+    "lastChecked" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "InferenceEndpoint" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "modelId" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "hardware" TEXT NOT NULL DEFAULT 'cpu-basic',
+    "accelerator" TEXT,
+    "vendor" TEXT,
+    "region" TEXT,
+    "minReplicas" INTEGER NOT NULL DEFAULT 0,
+    "maxReplicas" INTEGER NOT NULL DEFAULT 1,
+    "currentReplicas" INTEGER NOT NULL DEFAULT 0,
+    "url" TEXT,
+    "type" TEXT NOT NULL DEFAULT 'protected',
+    "tokensUsed" INTEGER NOT NULL DEFAULT 0,
+    "lastSync" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "error" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "HFJob" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "queueJobId" TEXT,
+    "hfRef" TEXT,
+    "inputRef" TEXT,
+    "outputRef" TEXT,
+    "checkpointRef" TEXT,
+    "progress" REAL NOT NULL DEFAULT 0,
+    "attempt" INTEGER NOT NULL DEFAULT 0,
+    "maxAttempts" INTEGER NOT NULL DEFAULT 3,
+    "timeoutMs" INTEGER NOT NULL DEFAULT 600000,
+    "idempotencyKey" TEXT,
+    "parameters" TEXT,
+    "result" TEXT,
+    "error" TEXT,
+    "costCredits" REAL NOT NULL DEFAULT 0,
+    "startedAt" DATETIME,
+    "finishedAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "HFJob_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "StorageObject" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "bucket" TEXT NOT NULL,
+    "path" TEXT NOT NULL,
+    "repoId" TEXT NOT NULL,
+    "size" INTEGER NOT NULL DEFAULT 0,
+    "contentType" TEXT,
+    "sha" TEXT,
+    "etag" TEXT,
+    "metadata" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "StorageObject_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS "Session" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "token" TEXT NOT NULL,
@@ -791,6 +951,48 @@ CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_googleId_key" ON "User"("googleId");
 
+CREATE INDEX IF NOT EXISTS "AIModel_provider_status_idx" ON "AIModel"("provider", "status");
+
+CREATE INDEX IF NOT EXISTS "AIModel_status_qualityScore_idx" ON "AIModel"("status", "qualityScore");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "AIModel_provider_modelId_key" ON "AIModel"("provider", "modelId");
+
+CREATE INDEX IF NOT EXISTS "ModelCapability_key_idx" ON "ModelCapability"("key");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ModelCapability_modelId_key_key" ON "ModelCapability"("modelId", "key");
+
+CREATE INDEX IF NOT EXISTS "ModelPerformance_modelId_taskType_createdAt_idx" ON "ModelPerformance"("modelId", "taskType", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelPerformance_provider_createdAt_idx" ON "ModelPerformance"("provider", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelPerformance_taskType_createdAt_idx" ON "ModelPerformance"("taskType", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelSelection_userId_createdAt_idx" ON "ModelSelection"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelSelection_modelId_createdAt_idx" ON "ModelSelection"("modelId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelSelection_taskId_idx" ON "ModelSelection"("taskId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ProviderHealth_provider_key" ON "ProviderHealth"("provider");
+
+CREATE INDEX IF NOT EXISTS "ProviderHealth_status_idx" ON "ProviderHealth"("status");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "InferenceEndpoint_name_key" ON "InferenceEndpoint"("name");
+
+CREATE INDEX IF NOT EXISTS "InferenceEndpoint_status_idx" ON "InferenceEndpoint"("status");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "HFJob_idempotencyKey_key" ON "HFJob"("idempotencyKey");
+
+CREATE INDEX IF NOT EXISTS "HFJob_userId_status_idx" ON "HFJob"("userId", "status");
+
+CREATE INDEX IF NOT EXISTS "HFJob_status_createdAt_idx" ON "HFJob"("status", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "StorageObject_userId_bucket_idx" ON "StorageObject"("userId", "bucket");
+
+CREATE INDEX IF NOT EXISTS "StorageObject_repoId_idx" ON "StorageObject"("repoId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "StorageObject_bucket_path_userId_key" ON "StorageObject"("bucket", "path", "userId");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "Session_token_key" ON "Session"("token");
 
 CREATE INDEX IF NOT EXISTS "Session_userId_idx" ON "Session"("userId");
@@ -975,6 +1177,176 @@ CREATE TABLE IF NOT EXISTS "User" (
     "oauthProvider" TEXT,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "AIModel" (
+    "id" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "modelId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "architecture" TEXT,
+    "modality" TEXT NOT NULL DEFAULT 'text',
+    "supportedTasks" TEXT NOT NULL,
+    "contextLength" INTEGER NOT NULL DEFAULT 32000,
+    "parameterCount" DOUBLE PRECISION,
+    "quantization" TEXT,
+    "vramGb" DOUBLE PRECISION,
+    "license" TEXT,
+    "commercialUse" BOOLEAN NOT NULL DEFAULT true,
+    "availability" TEXT NOT NULL DEFAULT 'UNKNOWN',
+    "endpointType" TEXT NOT NULL DEFAULT 'ROUTER',
+    "endpointUrl" TEXT,
+    "endpointId" TEXT,
+    "creditsPerKIn" DOUBLE PRECISION NOT NULL DEFAULT 0.4,
+    "creditsPerKOut" DOUBLE PRECISION NOT NULL DEFAULT 1.2,
+    "costPerKTokens" DOUBLE PRECISION,
+    "qualityScore" DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+    "successRate" DOUBLE PRECISION NOT NULL DEFAULT 0.8,
+    "avgLatencyMs" DOUBLE PRECISION NOT NULL DEFAULT 2000,
+    "sampleCount" INTEGER NOT NULL DEFAULT 0,
+    "lastEvaluated" TIMESTAMP(3),
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "priority" INTEGER NOT NULL DEFAULT 100,
+    "tags" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AIModel_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "ModelCapability" (
+    "id" TEXT NOT NULL,
+    "modelId" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "value" TEXT,
+    "source" TEXT NOT NULL DEFAULT 'STATIC',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ModelCapability_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "ModelPerformance" (
+    "id" TEXT NOT NULL,
+    "modelId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "taskType" TEXT NOT NULL,
+    "success" BOOLEAN NOT NULL,
+    "qualityScore" DOUBLE PRECISION,
+    "executionMs" INTEGER NOT NULL,
+    "tokensIn" INTEGER NOT NULL DEFAULT 0,
+    "tokensOut" INTEGER NOT NULL DEFAULT 0,
+    "costCredits" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "errorType" TEXT,
+    "contextType" TEXT,
+    "evaluatorScore" DOUBLE PRECISION,
+    "humanScore" DOUBLE PRECISION,
+    "taskId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ModelPerformance_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "ModelSelection" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT,
+    "modelId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "taskType" TEXT NOT NULL,
+    "score" DOUBLE PRECISION NOT NULL,
+    "confidence" DOUBLE PRECISION NOT NULL,
+    "reason" TEXT NOT NULL,
+    "alternatives" TEXT,
+    "costEstimate" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "actualCost" DOUBLE PRECISION,
+    "requestId" TEXT,
+    "taskId" TEXT,
+    "agentId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ModelSelection_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "ProviderHealth" (
+    "id" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'UP',
+    "consecutiveFailures" INTEGER NOT NULL DEFAULT 0,
+    "consecutiveSuccesses" INTEGER NOT NULL DEFAULT 0,
+    "avgLatencyMs" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "lastError" TEXT,
+    "lastChecked" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ProviderHealth_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "InferenceEndpoint" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "modelId" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "hardware" TEXT NOT NULL DEFAULT 'cpu-basic',
+    "accelerator" TEXT,
+    "vendor" TEXT,
+    "region" TEXT,
+    "minReplicas" INTEGER NOT NULL DEFAULT 0,
+    "maxReplicas" INTEGER NOT NULL DEFAULT 1,
+    "currentReplicas" INTEGER NOT NULL DEFAULT 0,
+    "url" TEXT,
+    "type" TEXT NOT NULL DEFAULT 'protected',
+    "tokensUsed" INTEGER NOT NULL DEFAULT 0,
+    "lastSync" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "error" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "InferenceEndpoint_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "HFJob" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "queueJobId" TEXT,
+    "hfRef" TEXT,
+    "inputRef" TEXT,
+    "outputRef" TEXT,
+    "checkpointRef" TEXT,
+    "progress" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "attempt" INTEGER NOT NULL DEFAULT 0,
+    "maxAttempts" INTEGER NOT NULL DEFAULT 3,
+    "timeoutMs" INTEGER NOT NULL DEFAULT 600000,
+    "idempotencyKey" TEXT,
+    "parameters" TEXT,
+    "result" TEXT,
+    "error" TEXT,
+    "costCredits" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "startedAt" TIMESTAMP(3),
+    "finishedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "HFJob_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "StorageObject" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "bucket" TEXT NOT NULL,
+    "path" TEXT NOT NULL,
+    "repoId" TEXT NOT NULL,
+    "size" INTEGER NOT NULL DEFAULT 0,
+    "contentType" TEXT,
+    "sha" TEXT,
+    "etag" TEXT,
+    "metadata" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "StorageObject_pkey" PRIMARY KEY ("id")
 );
 
 CREATE TABLE IF NOT EXISTS "Session" (
@@ -1794,6 +2166,48 @@ CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_googleId_key" ON "User"("googleId");
 
+CREATE INDEX IF NOT EXISTS "AIModel_provider_status_idx" ON "AIModel"("provider", "status");
+
+CREATE INDEX IF NOT EXISTS "AIModel_status_qualityScore_idx" ON "AIModel"("status", "qualityScore");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "AIModel_provider_modelId_key" ON "AIModel"("provider", "modelId");
+
+CREATE INDEX IF NOT EXISTS "ModelCapability_key_idx" ON "ModelCapability"("key");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ModelCapability_modelId_key_key" ON "ModelCapability"("modelId", "key");
+
+CREATE INDEX IF NOT EXISTS "ModelPerformance_modelId_taskType_createdAt_idx" ON "ModelPerformance"("modelId", "taskType", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelPerformance_provider_createdAt_idx" ON "ModelPerformance"("provider", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelPerformance_taskType_createdAt_idx" ON "ModelPerformance"("taskType", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelSelection_userId_createdAt_idx" ON "ModelSelection"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelSelection_modelId_createdAt_idx" ON "ModelSelection"("modelId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ModelSelection_taskId_idx" ON "ModelSelection"("taskId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ProviderHealth_provider_key" ON "ProviderHealth"("provider");
+
+CREATE INDEX IF NOT EXISTS "ProviderHealth_status_idx" ON "ProviderHealth"("status");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "InferenceEndpoint_name_key" ON "InferenceEndpoint"("name");
+
+CREATE INDEX IF NOT EXISTS "InferenceEndpoint_status_idx" ON "InferenceEndpoint"("status");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "HFJob_idempotencyKey_key" ON "HFJob"("idempotencyKey");
+
+CREATE INDEX IF NOT EXISTS "HFJob_userId_status_idx" ON "HFJob"("userId", "status");
+
+CREATE INDEX IF NOT EXISTS "HFJob_status_createdAt_idx" ON "HFJob"("status", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "StorageObject_userId_bucket_idx" ON "StorageObject"("userId", "bucket");
+
+CREATE INDEX IF NOT EXISTS "StorageObject_repoId_idx" ON "StorageObject"("repoId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "StorageObject_bucket_path_userId_key" ON "StorageObject"("bucket", "path", "userId");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "Session_token_key" ON "Session"("token");
 
 CREATE INDEX IF NOT EXISTS "Session_userId_idx" ON "Session"("userId");
@@ -1953,6 +2367,18 @@ CREATE INDEX IF NOT EXISTS "CrossAgentPattern_category_lastSeenAt_idx" ON "Cross
 CREATE INDEX IF NOT EXISTS "Subscription_userId_idx" ON "Subscription"("userId");
 
 CREATE INDEX IF NOT EXISTS "Subscription_status_currentPeriodEnd_idx" ON "Subscription"("status", "currentPeriodEnd");
+
+ALTER TABLE "ModelCapability" ADD CONSTRAINT "ModelCapability_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ModelPerformance" ADD CONSTRAINT "ModelPerformance_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ModelSelection" ADD CONSTRAINT "ModelSelection_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+ALTER TABLE "ModelSelection" ADD CONSTRAINT "ModelSelection_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "HFJob" ADD CONSTRAINT "HFJob_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "StorageObject" ADD CONSTRAINT "StorageObject_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

@@ -4,6 +4,8 @@ import { handleRoute } from "@/lib/api"
 import { getProviderStatuses, APP_NAME } from "@/lib/config"
 import { listApps, appAvailability } from "@/lib/connectors/apps"
 import { catalogStats } from "@/lib/connectors/catalog"
+import { isHfConfigured } from "@/lib/hf/client"
+import { activeBackend } from "@/lib/rag/backends/types"
 import pkg from "../../../../package.json"
 
 /** Health check — état base de données + fournisseurs IA configurés. */
@@ -19,6 +21,12 @@ export async function GET(req: NextRequest) {
     // Connecteurs : nombre d'apps connectables (moteur local — ADR-0014).
     const connectableApps = listApps().filter((a) => appAvailability(a).connectable).length
     const catalog = catalogStats()
+    let registryCount: number | null = null
+    try {
+      registryCount = await db.aIModel.count()
+    } catch {
+      registryCount = null
+    }
     return Response.json({
       ok: true,
       app: APP_NAME,
@@ -49,6 +57,18 @@ export async function GET(req: NextRequest) {
         sdkTypes: true,
         otel: !!(process.env.OTEL_EXPORTER_OTLP_ENDPOINT),
         queue: process.env.REDIS_URL ? "bullmq" : "in-memory",
+        /** v4.0 — Model & Compute Intelligence Layer (Hugging Face) */
+        huggingFace: {
+          inferenceProviders: isHfConfigured(),
+          inferenceEndpoints: isHfConfigured(),
+          jobs: isHfConfigured() || !!process.env.REDIS_URL,
+          storageBuckets: isHfConfigured(),
+        },
+        modelRegistry: { models: registryCount, learning: true },
+        modelRouter: { intelligent: true, performanceRegistry: true },
+        multiModelPlans: true,
+        vectorStore: activeBackend(),
+        unifiedApi: ["/api/v1/chat", "/api/v1/models", "/api/v1/models/select", "/api/v1/embeddings", "/api/v1/files", "/api/v1/knowledge", "/api/v1/jobs"],
       },
       time: new Date().toISOString(),
     })
