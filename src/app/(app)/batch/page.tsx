@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import { Loader2, Layers, PlayCircle, RefreshCw } from "lucide-react";
 
 /**
@@ -24,15 +26,17 @@ interface BatchView {
   createdAt: string;
 }
 
-const STATUS_META: Record<string, { label: string; cls: string }> = {
-  PENDING: { label: "En attente", cls: "border-zinc-700 text-zinc-400" },
-  RUNNING: { label: "En cours", cls: "border-blue-700/50 text-blue-300" },
-  COMPLETED: { label: "Terminé", cls: "border-emerald-700/50 text-emerald-300" },
-  FAILED: { label: "Échec", cls: "border-red-800/60 text-red-300" },
+const STATUS_META: Record<string, { labelKey: TranslationKey; cls: string }> = {
+  PENDING: { labelKey: "batch.status.PENDING", cls: "border-zinc-700 text-zinc-400" },
+  RUNNING: { labelKey: "batch.status.RUNNING", cls: "border-blue-700/50 text-blue-300" },
+  COMPLETED: { labelKey: "batch.status.COMPLETED", cls: "border-emerald-700/50 text-emerald-300" },
+  FAILED: { labelKey: "batch.status.FAILED", cls: "border-red-800/60 text-red-300" },
 };
 
 export default function BatchPage() {
   const { toast } = useToast();
+  const { t, lang } = useI18n();
+  const locale = lang === "fr" ? "fr-FR" : "en-US";
   const [batches, setBatches] = useState<BatchView[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -61,11 +65,11 @@ export default function BatchPage() {
       .map((l) => l.trim())
       .filter((l) => l.length > 0)
     if (list.length === 0) {
-      toast({ title: "Aucun prompt", description: "Saisissez un prompt par ligne.", variant: "destructive" })
+      toast({ title: t("batch.errors.noPrompts"), description: t("batch.errors.noPromptsDesc"), variant: "destructive" })
       return
     }
     if (list.length > 50) {
-      toast({ title: "Trop de prompts", description: "Maximum 50 prompts par lot.", variant: "destructive" })
+      toast({ title: t("batch.errors.tooMany"), description: t("batch.errors.tooManyDesc"), variant: "destructive" })
       return
     }
     setRunning(true)
@@ -77,12 +81,12 @@ export default function BatchPage() {
       })
       const json = (await res.json()) as { ok: boolean; batchId?: string; error?: string }
       if (json.ok) {
-        toast({ title: "Lot lancé", description: `${list.length} tâches en exécution.` })
+        toast({ title: t("batch.launched.title"), description: t("batch.launched.desc", { count: list.length }) })
         setPrompts("")
         setName("")
         await refresh()
       } else {
-        toast({ title: "Lancement refusé", description: json.error, variant: "destructive" })
+        toast({ title: t("batch.errors.launchFailed"), description: json.error, variant: "destructive" })
       }
     } finally {
       setRunning(false)
@@ -103,10 +107,10 @@ export default function BatchPage() {
       const res = await fetch(`/api/batch/${id}`, { method: "POST" })
       const json = (await res.json()) as { ok: boolean; error?: string }
       if (json.ok) {
-        toast({ title: "Ré-exécution lancée", description: "Le lot redémarre." })
+        toast({ title: t("batch.rerun.title"), description: t("batch.rerun.desc") })
         await refresh()
       } else {
-        toast({ title: "Refusé", description: json.error, variant: "destructive" })
+        toast({ title: t("batch.errors.rerunFailed"), description: json.error, variant: "destructive" })
       }
     } finally {
       setRunning(false)
@@ -116,10 +120,9 @@ export default function BatchPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Batch Tasks</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("batch.title")}</h1>
         <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-          Exécutez un lot de prompts (jusqu&apos;à 50) en une opération : chaque ligne devient une
-          tâche suivie individuellement, avec suivi de progression et relance possible.
+          {t("batch.subtitle")}
         </p>
       </div>
 
@@ -127,23 +130,23 @@ export default function BatchPage() {
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Nom du lot (optionnel)"
+          placeholder={t("batch.namePlaceholder")}
           className="bg-zinc-950 border-zinc-800"
         />
         <Textarea
           value={prompts}
           onChange={(e) => setPrompts(e.target.value)}
           rows={6}
-          placeholder={"Un prompt par ligne :\nAnalyse le marché des énergies renouvelables au Cameroun\nCompare les 3 meilleures solutions CRM pour PME\nRédige un plan de lancement produit…"}
+          placeholder={t("batch.promptsPlaceholder")}
           className="bg-zinc-950 border-zinc-880 font-mono text-xs"
         />
         <div className="flex items-center justify-between">
           <span className="text-xs text-zinc-500">
-            {prompts.split("\n").filter((l) => l.trim()).length} / 50 prompts
+            {t("batch.counter", { count: prompts.split("\n").filter((l) => l.trim()).length })}
           </span>
           <Button onClick={() => void launch()} disabled={running} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-            Lancer le lot
+            {t("batch.launch")}
           </Button>
         </div>
       </div>
@@ -156,24 +159,27 @@ export default function BatchPage() {
         </div>
       ) : batches.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center text-zinc-400">
-          Aucun lot. Créez votre premier batch ci-dessus.
+          {t("batch.empty")}
         </div>
       ) : (
         <div className="space-y-3">
           {batches.map((b) => {
-            const meta = STATUS_META[b.status] ?? { label: b.status, cls: "border-zinc-700 text-zinc-400" }
+            const statusMeta = STATUS_META[b.status];
+            const meta = statusMeta
+              ? { label: t(statusMeta.labelKey), cls: statusMeta.cls }
+              : { label: b.status, cls: "border-zinc-700 text-zinc-400" };
             const pct = b.total > 0 ? Math.round((b.completed / b.total) * 100) : 0
             return (
               <div key={b.id} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Layers className="h-4 w-4 text-emerald-400" />
-                    <span className="font-semibold text-zinc-100">{b.name ?? `Lot ${b.id.slice(0, 8)}`}</span>
+                    <span className="font-semibold text-zinc-100">{b.name ?? t("batch.defaultName", { id: b.id.slice(0, 8) })}</span>
                     <Badge variant="outline" className={meta.cls}>{meta.label}</Badge>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="outline" onClick={() => void openBatch(b.id)}>
-                      Détails
+                      {t("common.details")}
                     </Button>
                     <Button size="sm" variant="outline" disabled={running} onClick={() => void rerun(b.id)}>
                       <RefreshCw className="h-3.5 w-3.5" />
@@ -182,7 +188,10 @@ export default function BatchPage() {
                 </div>
                 <div className="mt-3">
                   <div className="flex justify-between text-xs text-zinc-500">
-                    <span>{b.completed}/{b.total} terminées{b.failed > 0 && ` · ${b.failed} échecs`}</span>
+                    <span>
+                      {t("batch.progress", { completed: b.completed, total: b.total })}
+                      {b.failed > 0 && ` · ${t("batch.failures", { count: b.failed })}`}
+                    </span>
                     <span>{pct}%</span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
@@ -190,7 +199,7 @@ export default function BatchPage() {
                   </div>
                 </div>
                 <span className="mt-2 block text-[11px] text-zinc-600">
-                  {new Date(b.createdAt).toLocaleString("fr-FR")}
+                  {new Date(b.createdAt).toLocaleString(locale)}
                 </span>
 
                 {activeId === b.id && (

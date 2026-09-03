@@ -11,19 +11,14 @@ import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { apiPost } from "@/lib/client/hooks";
 import { usePolling } from "@/lib/client/hooks";
+import { useI18n } from "@/lib/i18n";
 import { Loader2, Bot, ArrowRight, Wrench, Sparkles, Wand2, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-const TOOLS = [
-  { key: "web_search", label: "Recherche web", desc: "Résultats en direct du web" },
-  { key: "page_reader", label: "Lecteur de page", desc: "Lit le contenu d'une URL" },
-  { key: "calculator", label: "Calculatrice", desc: "Évaluations mathématiques exactes" },
-  { key: "code_runner", label: "Exécuteur de code", desc: "JavaScript sandboxé (sensible)" },
-  { key: "knowledge_search", label: "Base de connaissances", desc: "Recherche RAG sur vos documents" },
-  { key: "memory_recall", label: "Rappel mémoire", desc: "Leçons et préférences mémorisées" },
-  { key: "http_fetch", label: "Requête HTTP", desc: "APIs publiques (sensible)" },
-  { key: "datetime", label: "Date et heure", desc: "Horodatage courant" },
-];
+const TOOL_KEYS = [
+  "web_search", "page_reader", "calculator", "code_runner",
+  "knowledge_search", "memory_recall", "http_fetch", "datetime",
+] as const;
 
 interface TemplatePreview {
   key: string
@@ -39,6 +34,7 @@ interface TemplatePreview {
 export default function NewAgentPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useI18n();
   const { data: providersData } = usePolling<{ ok: boolean; providers: { key: string; name: string; available: boolean }[] }>("/api/auth/me");
   const providers = providersData?.providers ?? [];
   // v3.1 — galerie de templates pré-configurés.
@@ -56,21 +52,21 @@ export default function NewAgentPage() {
   const [tools, setTools] = useState<string[]>(["web_search", "knowledge_search", "memory_recall"]);
 
   function toggleTool(key: string) {
-    setTools((t) => (t.includes(key) ? t.filter((x) => x !== key) : [...t, key]));
+    setTools((current) => (current.includes(key) ? current.filter((x) => x !== key) : [...current, key]));
   }
 
   /** Pré-remplit le formulaire à partir d'un template (tout reste modifiable). */
-  function applyTemplate(t: TemplatePreview) {
-    setName(t.name);
-    setDescription(t.description);
+  function applyTemplate(tpl: TemplatePreview) {
+    setName(tpl.name);
+    setDescription(tpl.description);
     setSystemPrompt(""); // Le prompt complet est appliqué à la création ; l'édition manuelle reste libre.
-    setPendingTemplate(t);
-    setCategory(t.category);
-    setTemperature(t.temperature);
-    setTools(t.tools);
+    setPendingTemplate(tpl);
+    setCategory(tpl.category);
+    setTemperature(tpl.temperature);
+    setTools(tpl.tools);
     toast({
-      title: `Template « ${t.name} » chargé`,
-      description: "Formulaire pré-rempli — ajustez librement avant de créer, ou cliquez « Créer en 1 clic ».",
+      title: t("agents.templates.loadedTitle", { name: tpl.name }),
+      description: t("agents.templates.loadedDesc"),
     });
   }
 
@@ -83,13 +79,13 @@ export default function NewAgentPage() {
       const res = await apiPost<{ agent: { id: string; name: string } }>("/api/agents/templates", {
         templateKey: key,
       });
-      if (!res.ok) throw new Error(res.error ?? "Création impossible.");
-      toast({ title: "Agent créé depuis le template", description: `« ${res.agent.name} » est prêt — prompt et outils pré-configurés.` });
+      if (!res.ok) throw new Error(res.error ?? t("agents.errors.create"));
+      toast({ title: t("agents.instantiated.title"), description: t("agents.instantiated.desc", { name: res.agent.name }) });
       router.push(`/agents/${res.agent.id}`);
     } catch (err) {
       toast({
-        title: "Échec de création",
-        description: err instanceof Error ? err.message : "Erreur inconnue.",
+        title: t("agents.errors.createFailed"),
+        description: err instanceof Error ? err.message : t("agents.errors.unknown"),
         variant: "destructive",
       });
     } finally {
@@ -100,7 +96,7 @@ export default function NewAgentPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || name.trim().length < 2) {
-      toast({ title: "Nom trop court", description: "Donnez un nom d'au moins 2 caractères.", variant: "destructive" });
+      toast({ title: t("agents.errors.nameShort"), description: t("agents.errors.nameShortDesc"), variant: "destructive" });
       return;
     }
     // Template sélectionné sans édition manuelle → création directe via l'API
@@ -120,13 +116,13 @@ export default function NewAgentPage() {
         temperature,
         tools,
       });
-      if (!res.ok) throw new Error(res.error ?? "Création impossible.");
-      toast({ title: "Agent créé", description: `« ${name} » est prêt à être testé.` });
+      if (!res.ok) throw new Error(res.error ?? t("agents.errors.create"));
+      toast({ title: t("agents.created.title"), description: t("agents.created.desc", { name }) });
       router.push(`/agents/${res.agent.id}`);
     } catch (err) {
       toast({
-        title: "Échec de création",
-        description: err instanceof Error ? err.message : "Erreur inconnue.",
+        title: t("agents.errors.createFailed"),
+        description: err instanceof Error ? err.message : t("agents.errors.unknown"),
         variant: "destructive",
       });
     } finally {
@@ -137,9 +133,9 @@ export default function NewAgentPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Créer un agent</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("agents.createAgent")}</h1>
         <p className="text-sm text-zinc-400 mt-1">
-          Définissez son identité, son moteur et ses outils. Vous pourrez le tester puis le déployer en API.
+          {t("agents.new.subtitle")}
         </p>
       </div>
 
@@ -148,30 +144,30 @@ export default function NewAgentPage() {
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="h-4 w-4 text-amber-400" />
-            <h2 className="text-sm font-semibold text-zinc-200">Partir d'un template pré-configuré</h2>
-            <span className="text-xs text-zinc-500">— 8 profils éprouvés, entièrement modifiables après création</span>
+            <h2 className="text-sm font-semibold text-zinc-200">{t("agents.templates.title")}</h2>
+            <span className="text-xs text-zinc-500">{t("agents.templates.subtitle")}</span>
           </div>
           <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            {templates.map((t) => (
+            {templates.map((tpl) => (
               <div
-                key={t.key}
+                key={tpl.key}
                 className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 flex flex-col hover:border-amber-500/40 transition-colors"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="font-medium text-sm text-zinc-100">{t.name}</div>
+                  <div className="font-medium text-sm text-zinc-100">{tpl.name}</div>
                   <Badge variant="outline" className="border-zinc-700 text-zinc-500 text-[9px] shrink-0">
-                    {t.category}
+                    {tpl.category}
                   </Badge>
                 </div>
-                <p className="text-xs text-zinc-500 mt-1.5 line-clamp-3 flex-1">{t.description}</p>
+                <p className="text-xs text-zinc-500 mt-1.5 line-clamp-3 flex-1">{tpl.description}</p>
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {t.tools.slice(0, 3).map((tool) => (
+                  {tpl.tools.slice(0, 3).map((tool) => (
                     <span key={tool} className="text-[9px] font-mono text-zinc-600 border border-zinc-800 rounded px-1.5 py-0.5">
                       {tool}
                     </span>
                   ))}
-                  {t.tools.length > 3 && (
-                    <span className="text-[9px] font-mono text-zinc-600">+{t.tools.length - 3}</span>
+                  {tpl.tools.length > 3 && (
+                    <span className="text-[9px] font-mono text-zinc-600">+{tpl.tools.length - 3}</span>
                   )}
                 </div>
                 <div className="mt-3 flex gap-2">
@@ -179,25 +175,25 @@ export default function NewAgentPage() {
                     type="button"
                     size="sm"
                     className="h-7 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold flex-1"
-                    disabled={instantiating === t.key}
-                    onClick={() => instantiateTemplate(t.key)}
+                    disabled={instantiating === tpl.key}
+                    onClick={() => instantiateTemplate(tpl.key)}
                   >
-                    {instantiating === t.key ? (
+                    {instantiating === tpl.key ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
                       <Wand2 className="h-3 w-3" />
                     )}
-                    <span className="ml-1.5 text-xs">Créer en 1 clic</span>
+                    <span className="ml-1.5 text-xs">{t("agents.templates.instantiate")}</span>
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     className="h-7 border-zinc-700 text-zinc-400"
-                    onClick={() => applyTemplate(t)}
+                    onClick={() => applyTemplate(tpl)}
                   >
                     <Eye className="h-3 w-3" />
-                    <span className="ml-1.5 text-xs">Pré-remplir</span>
+                    <span className="ml-1.5 text-xs">{t("agents.templates.prefill")}</span>
                   </Button>
                 </div>
               </div>
@@ -210,74 +206,74 @@ export default function NewAgentPage() {
         <Card className="bg-zinc-900/40 border-zinc-800">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Bot className="h-4 w-4 text-emerald-400" /> Identité
+              <Bot className="h-4 w-4 text-emerald-400" /> {t("agents.form.identity")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="name">Nom de l'agent *</Label>
+              <Label htmlFor="name">{t("agents.form.name")}</Label>
               <Input
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex. Analyste de marché"
+                placeholder={t("agents.form.namePlaceholder")}
                 className="bg-zinc-950 border-zinc-800 focus-visible:ring-emerald-500/40"
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description / mission</Label>
+              <Label htmlFor="description">{t("agents.form.description")}</Label>
               <Input
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ce que fait l'agent, en une phrase"
+                placeholder={t("agents.form.descriptionPlaceholder")}
                 className="bg-zinc-950 border-zinc-800 focus-visible:ring-emerald-500/40"
               />
             </div>
             <div className="grid sm:grid-cols-2 gap-5">
               <div className="space-y-2">
-                <Label htmlFor="category">Catégorie</Label>
+                <Label htmlFor="category">{t("agents.form.category")}</Label>
                 <Input
                   id="category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  placeholder="Ex. ANALYSE, REDACTION"
+                  placeholder={t("agents.form.categoryPlaceholder")}
                   className="bg-zinc-950 border-zinc-800 focus-visible:ring-emerald-500/40"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="provider">Moteur d'inférence</Label>
+                <Label htmlFor="provider">{t("agents.form.provider")}</Label>
                 <select
                   id="provider"
                   value={provider}
                   onChange={(e) => setProvider(e.target.value)}
                   className="w-full h-9 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
                 >
-                  <option value="auto">Automatique (Model Router)</option>
+                  <option value="auto">{t("agents.form.providerAuto")}</option>
                   {providers.map((p) => (
                     <option key={p.key} value={p.key} disabled={!p.available}>
-                      {p.name} {p.available ? "" : "— non configuré"}
+                      {p.name} {p.available ? "" : t("agents.form.providerUnavailable")}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="systemPrompt">Prompt système (instructions de l'agent)</Label>
+              <Label htmlFor="systemPrompt">{t("agents.form.systemPrompt")}</Label>
               <Textarea
                 id="systemPrompt"
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="Tu es un analyste rigoureux. Tu vérifies tes affirmations avec des sources avant de conclure…"
+                placeholder={t("agents.form.systemPromptPlaceholder")}
                 className="min-h-[120px] bg-zinc-950 border-zinc-800 focus-visible:ring-emerald-500/40 font-mono text-sm"
               />
               <p className="text-xs text-zinc-500">
-                Requis pour le déploiement : un agent publié doit avoir des instructions claires.
+                {t("agents.form.systemPromptHint")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Créativité (température) : <span className="font-mono text-emerald-400">{temperature.toFixed(1)}</span></Label>
+              <Label>{t("agents.form.creativity")} <span className="font-mono text-emerald-400">{temperature.toFixed(1)}</span></Label>
               <Slider
                 value={[temperature]}
                 onValueChange={([v]) => setTemperature(v)}
@@ -286,7 +282,7 @@ export default function NewAgentPage() {
                 step={0.1}
                 className="[&_[role=slider]]:border-emerald-500"
               />
-              <p className="text-xs text-zinc-500">0 = déterministe · 1.5 = très créatif</p>
+              <p className="text-xs text-zinc-500">{t("agents.form.temperatureHint")}</p>
             </div>
           </CardContent>
         </Card>
@@ -294,24 +290,25 @@ export default function NewAgentPage() {
         <Card className="bg-zinc-900/40 border-zinc-800">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Wrench className="h-4 w-4 text-emerald-400" /> Outils accessibles
+              <Wrench className="h-4 w-4 text-emerald-400" /> {t("agents.form.tools")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid sm:grid-cols-2 gap-3">
-              {TOOLS.map((tool) => {
-                const enabled = tools.includes(tool.key)
+              {TOOL_KEYS.map((toolKey) => {
+                const enabled = tools.includes(toolKey)
                 return (
                   <div
                     role="checkbox"
                     aria-checked={enabled}
+                    aria-label={t(`agents.tools.${toolKey}.label`)}
                     tabIndex={0}
-                    key={tool.key}
-                    onClick={() => toggleTool(tool.key)}
+                    key={toolKey}
+                    onClick={() => toggleTool(toolKey)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault()
-                        toggleTool(tool.key)
+                        toggleTool(toolKey)
                       }
                     }}
                     className={`flex items-start justify-between gap-3 rounded-lg border p-3.5 text-left transition-colors cursor-pointer ${
@@ -321,8 +318,8 @@ export default function NewAgentPage() {
                     }`}
                   >
                     <div>
-                      <div className="text-sm font-medium text-zinc-200">{tool.label}</div>
-                      <div className="text-xs text-zinc-500 mt-0.5">{tool.desc}</div>
+                      <div className="text-sm font-medium text-zinc-200">{t(`agents.tools.${toolKey}.label`)}</div>
+                      <div className="text-xs text-zinc-500 mt-0.5">{t(`agents.tools.${toolKey}.desc`)}</div>
                     </div>
                     <span
                       aria-hidden
@@ -350,7 +347,7 @@ export default function NewAgentPage() {
             className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold h-11 px-6"
           >
             {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (
-              <>Créer l'agent <ArrowRight className="h-4 w-4 ml-2" /></>
+              <>{t("agents.form.submit")} <ArrowRight className="h-4 w-4 ml-2" /></>
             )}
           </Button>
         </div>

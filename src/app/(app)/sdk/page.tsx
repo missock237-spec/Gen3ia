@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePolling } from "@/lib/client/hooks";
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import { Code2, Copy, Check, Download, Terminal, BookOpen } from "lucide-react";
 
-const JS_SDK = `/**
- * SDK GEN3IA — JavaScript/TypeScript (aucune dépendance, Node 18+)
+function jsSdkSource(t: (key: TranslationKey) => string): string {
+  return `/**
+ * ${t("sdk.code.js.header")}
  */
 const BASE_URL = process.env.GEN3IA_URL || "https://votre-deploiement.vercel.app";
 const API_KEY = process.env.GEN3IA_API_KEY; // g3ia_live_...
@@ -21,7 +24,7 @@ export class Gen3iaClient {
     this.baseUrl = baseUrl;
   }
 
-  // Conversation directe avec un agent publié
+  // ${t("sdk.code.js.chat")}
   async chat(message, { agentSlug, history = [] } = {}) {
     const res = await fetch(this.baseUrl + "/api/v1/chat", {
       method: "POST",
@@ -35,7 +38,7 @@ export class Gen3iaClient {
     return res.json();
   }
 
-  // Tâche d'orchestration complète (analyse → plans → exécution → vérification)
+  // ${t("sdk.code.js.task")}
   async runTask(prompt, { agentSlug, wait = true, pollMs = 2000 } = {}) {
     const res = await fetch(this.baseUrl + "/api/v1/task", {
       method: "POST",
@@ -49,7 +52,7 @@ export class Gen3iaClient {
     const { task_id } = await res.json();
     if (!wait) return { taskId: task_id };
 
-    // Le sondage fait avancer le pipeline (exécution reprise-ez)
+    // ${t("sdk.code.js.poll")}
     for (;;) {
       const r = await fetch(this.baseUrl + "/api/v1/task/" + task_id, {
         headers: { Authorization: "Bearer " + this.apiKey },
@@ -61,14 +64,16 @@ export class Gen3iaClient {
   }
 }
 
-// --- Exemple ---
+// ${t("sdk.code.example")}
 // const client = new Gen3iaClient();
 // const { answer } = await client.chat("Résume les actus IA du jour", { agentSlug: "analyste" });
 // const result = await client.runTask("Analyse le marché solaire au Sénégal");
 // console.log(result.result.answer, result.result.verification);`;
+}
 
-const PY_SDK = `"""
-SDK GEN3IA — Python (aucune dépendance, Python 3.9+)
+function pySdkSource(t: (key: TranslationKey) => string): string {
+  return `"""
+${t("sdk.code.py.header")}
 """
 import json
 import os
@@ -101,7 +106,7 @@ class Gen3iaClient:
             return json.loads(res.read().decode())
 
     def chat(self, message, agent_slug=None, history=None):
-        """Conversation directe avec un agent publié."""
+        """${t("sdk.code.py.chat")}"""
         return self._request("POST", "/api/v1/chat", {
             "message": message,
             "agent_slug": agent_slug,
@@ -109,7 +114,7 @@ class Gen3iaClient:
         })
 
     def run_task(self, prompt, agent_slug=None, wait=True, poll_s=2.0):
-        """Tâche d'orchestration complète (pipeline 9 phases)."""
+        """${t("sdk.code.py.task")}"""
         task = self._request("POST", "/api/v1/task", {
             "prompt": prompt,
             "agent_slug": agent_slug,
@@ -125,13 +130,15 @@ class Gen3iaClient:
             time.sleep(poll_s)
 
 
-# --- Exemple ---
+# ${t("sdk.code.example")}
 # client = Gen3iaClient()
 # print(client.chat("Bonjour")["answer"])
 # result = client.run_task("Analyse le marché solaire au Sénégal")
 # print(result["result"]["answer"])`;
+}
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden">
@@ -148,7 +155,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
             }}
           >
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-            <span className="text-xs ml-1">{copied ? "Copié" : "Copier"}</span>
+            <span className="text-xs ml-1">{copied ? t("sdk.copied") : t("sdk.copy")}</span>
           </Button>
           <Button
             size="sm" variant="ghost"
@@ -175,6 +182,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 }
 
 export default function SdkPage() {
+  const { t } = useI18n();
   const { data, loading } = usePolling<{ ok: boolean; agents: { slug: string; name: string; status: string }[] }>("/api/agents");
   const published = (data?.agents ?? []).filter((a) => a.status === "PUBLISHED");
 
@@ -182,33 +190,33 @@ export default function SdkPage() {
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Code2 className="h-6 w-6 text-emerald-400" /> SDK GEN3IA
+          <Code2 className="h-6 w-6 text-emerald-400" /> {t("sdk.title")}
         </h1>
         <p className="text-sm text-zinc-400 mt-1">
-          Intégrez vos agents dans n'importe quelle application. Aucune dépendance requise.
+          {t("sdk.subtitle")}
         </p>
       </div>
 
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
-          <CardTitle className="text-base">Configuration</CardTitle>
+          <CardTitle className="text-base">{t("sdk.configuration")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-zinc-300">
           <div className="font-mono text-xs bg-zinc-950 border border-zinc-800 rounded-lg p-3 space-y-1">
-            <div><span className="text-emerald-400">GEN3IA_URL</span> = URL de votre déploiement</div>
-            <div><span className="text-emerald-400">GEN3IA_API_KEY</span> = votre clé g3ia_live_…</div>
+            <div><span className="text-emerald-400">GEN3IA_URL</span> = {t("sdk.config.url")}</div>
+            <div><span className="text-emerald-400">GEN3IA_API_KEY</span> = {t("sdk.config.key")}</div>
           </div>
           {loading ? (
             <Skeleton className="h-4 w-48 bg-zinc-800/60" />
           ) : published.length > 0 ? (
             <p className="text-xs text-zinc-500">
-              Vos agents publiés : {published.map((a) => (
+              {t("sdk.publishedAgents")} {published.map((a) => (
                 <code key={a.slug} className="text-emerald-400/80 font-mono mr-2">{a.slug}</code>
               ))}
             </p>
           ) : (
             <p className="text-xs text-zinc-500">
-              Aucun agent publié — déployez un agent pour obtenir son slug public.
+              {t("sdk.noPublished")}
             </p>
           )}
         </CardContent>
@@ -224,29 +232,29 @@ export default function SdkPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="js">
-          <CodeBlock code={JS_SDK} language="JavaScript" />
+          <CodeBlock code={jsSdkSource(t)} language="JavaScript" />
         </TabsContent>
         <TabsContent value="py">
-          <CodeBlock code={PY_SDK} language="Python" />
+          <CodeBlock code={pySdkSource(t)} language="Python" />
         </TabsContent>
       </Tabs>
 
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
-          <CardTitle className="text-base">Référence API v1</CardTitle>
+          <CardTitle className="text-base">{t("sdk.apiReference")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="space-y-1.5">
             <div className="font-mono text-emerald-400 text-xs">POST /api/v1/chat</div>
-            <p className="text-xs text-zinc-400">Conversation avec un agent publié. Corps : {"{"} message, agent_slug?, history? {"}"}.</p>
+            <p className="text-xs text-zinc-400">{t("sdk.endpoint.chat.desc")}</p>
           </div>
           <div className="space-y-1.5">
             <div className="font-mono text-emerald-400 text-xs">POST /api/v1/task</div>
-            <p className="text-xs text-zinc-400">Lance le pipeline d'orchestration complet. Corps : {"{"} prompt, agent_slug?, mode: sync|async {"}"}.</p>
+            <p className="text-xs text-zinc-400">{t("sdk.endpoint.task.desc")}</p>
           </div>
           <div className="space-y-1.5">
             <div className="font-mono text-emerald-400 text-xs">GET /api/v1/task/{"{id}"}</div>
-            <p className="text-xs text-zinc-400">Statut et résultat d'une tâche — chaque appel fait avancer le pipeline.</p>
+            <p className="text-xs text-zinc-400">{t("sdk.endpoint.get.desc")}</p>
           </div>
         </CardContent>
       </Card>

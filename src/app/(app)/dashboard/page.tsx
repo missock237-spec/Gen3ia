@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/app/status-badge";
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import { Bot, ListChecks, Coins, CheckCircle2, Plus, ArrowRight, Coins as CoinsIcon } from "lucide-react";
 
 interface TaskRow {
@@ -34,6 +36,7 @@ interface DashboardData {
 
 export default function DashboardPage() {
   const { user } = useUser();
+  const { t } = useI18n();
   const { data, loading } = usePolling<DashboardData>("/api/tasks", 8000);
   const { data: agentsData } = usePolling<{ ok: boolean; agents: AgentRow[] }>("/api/agents");
 
@@ -50,22 +53,22 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.title")}</h1>
           <p className="text-sm text-zinc-400 mt-1">
-            Bonjour {user?.name ?? ""} — voici l'état de votre plateforme d'agents.
+            {t("dashboard.welcome", { name: user?.name ?? "" })}
           </p>
         </div>
         <div className="flex gap-3">
           <Link href="/agents/new">
             <Button variant="outline" className="border-zinc-700 text-zinc-200 hover:bg-zinc-800/60">
               <Bot className="h-4 w-4 mr-2" />
-              Nouvel agent
+              {t("dashboard.newAgent")}
             </Button>
           </Link>
           <Link href="/tasks">
             <Button className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold">
               <Plus className="h-4 w-4 mr-2" />
-              Nouvelle tâche
+              {t("dashboard.newTask")}
             </Button>
           </Link>
         </div>
@@ -75,29 +78,29 @@ export default function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-zinc-900/40 border-zinc-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Agents</CardTitle>
+            <CardTitle className="text-sm font-medium text-zinc-400">{t("dashboard.stats.agents")}</CardTitle>
             <Bot className="h-4 w-4 text-emerald-400" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{agents.length}</div>
-            <p className="text-xs text-zinc-500 mt-1">{publishedAgents} publié(s)</p>
+            <p className="text-xs text-zinc-500 mt-1">{t("dashboard.stats.published", { count: publishedAgents })}</p>
           </CardContent>
         </Card>
 
         <Card className="bg-zinc-900/40 border-zinc-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Tâches</CardTitle>
+            <CardTitle className="text-sm font-medium text-zinc-400">{t("dashboard.stats.tasks")}</CardTitle>
             <ListChecks className="h-4 w-4 text-emerald-400" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{tasks.length}</div>
-            <p className="text-xs text-zinc-500 mt-1">{active} active(s)</p>
+            <p className="text-xs text-zinc-500 mt-1">{t("dashboard.stats.active", { count: active })}</p>
           </CardContent>
         </Card>
 
         <Card className="bg-zinc-900/40 border-zinc-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Taux de réussite</CardTitle>
+            <CardTitle className="text-sm font-medium text-zinc-400">{t("dashboard.stats.successRate")}</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-emerald-400" />
           </CardHeader>
           <CardContent>
@@ -110,12 +113,12 @@ export default function DashboardPage() {
 
         <Card className="bg-zinc-900/40 border-zinc-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-400">Crédits</CardTitle>
+            <CardTitle className="text-sm font-medium text-zinc-400">{t("dashboard.stats.credits")}</CardTitle>
             <CoinsIcon className="h-4 w-4 text-emerald-400" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-emerald-400">{formatCredits(user?.credits ?? 0)}</div>
-            <p className="text-xs text-zinc-500 mt-1">{formatCredits(totalCredits)} consommés</p>
+            <p className="text-xs text-zinc-500 mt-1">{t("dashboard.stats.consumed", { credits: formatCredits(totalCredits) })}</p>
           </CardContent>
         </Card>
       </div>
@@ -124,17 +127,17 @@ export default function DashboardPage() {
       <Card className="bg-gradient-to-r from-emerald-500/5 via-zinc-900/40 to-zinc-900/40 border-zinc-800">
         <CardContent className="p-5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs">
-            {["Analyse", "5 Plans", "Évaluation", "Exécution", "Vérification", "Apprentissage", "Livraison"].map((phase, i) => (
-              <span key={phase} className="flex items-center gap-2">
+            {(["dashboard.pipeline.analyse", "dashboard.pipeline.plans", "dashboard.pipeline.eval", "dashboard.pipeline.exec", "dashboard.pipeline.verify", "dashboard.pipeline.learn", "dashboard.pipeline.deliver"] as TranslationKey[]).map((key, i) => (
+              <span key={key} className="flex items-center gap-2">
                 <Badge variant="outline" className="border-emerald-500/25 text-emerald-300/90 font-normal">
-                  {phase}
+                  {t(key)}
                 </Badge>
                 {i < 6 && <ArrowRight className="h-3 w-3 text-zinc-700" />}
               </span>
             ))}
           </div>
           <p className="text-xs text-zinc-500 mt-3">
-            Chaque tâche traverse ce pipeline — visible en direct dans le Task Center.
+            {t("dashboard.pipeline.hint")}
           </p>
         </CardContent>
       </Card>
@@ -142,10 +145,10 @@ export default function DashboardPage() {
       {/* Tâches récentes */}
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Tâches récentes</CardTitle>
+          <CardTitle className="text-base">{t("dashboard.recentTasks")}</CardTitle>
           <Link href="/tasks">
             <Button variant="ghost" size="sm" className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10">
-              Tout voir <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              {t("dashboard.viewAll")} <ArrowRight className="h-3.5 w-3.5 ml-1" />
             </Button>
           </Link>
         </CardHeader>
@@ -157,28 +160,28 @@ export default function DashboardPage() {
           ) : tasks.length === 0 ? (
             <div className="text-center py-10 text-zinc-500">
               <ListChecks className="h-10 w-10 mx-auto mb-3 text-zinc-700" />
-              <p className="text-sm">Aucune tâche pour l'instant.</p>
+              <p className="text-sm">{t("dashboard.empty")}</p>
               <Link href="/tasks" className="mt-3 inline-block">
                 <Button size="sm" className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-                  <Plus className="h-4 w-4 mr-2" /> Lancer votre première tâche
+                  <Plus className="h-4 w-4 mr-2" /> {t("dashboard.firstTask")}
                 </Button>
               </Link>
             </div>
           ) : (
             <div className="space-y-2">
-              {tasks.slice(0, 6).map((t) => (
+              {tasks.slice(0, 6).map((task) => (
                 <Link
-                  key={t.id}
-                  href={`/tasks/${t.id}`}
+                  key={task.id}
+                  href={`/tasks/${task.id}`}
                   className="flex items-center justify-between gap-4 rounded-lg border border-zinc-800/60 bg-zinc-950 px-4 py-3 hover:border-zinc-700 transition-colors"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-zinc-200 truncate">{t.prompt}</p>
+                    <p className="text-sm text-zinc-200 truncate">{task.prompt}</p>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      {formatDate(t.createdAt)} · {t.costCredits > 0 ? `${formatCredits(t.costCredits)} crédits` : "—"}
+                      {formatDate(task.createdAt)} · {task.costCredits > 0 ? `${formatCredits(task.costCredits)} ${t("dashboard.creditsUnit")}` : "—"}
                     </p>
                   </div>
-                  <StatusBadge status={t.status} />
+                  <StatusBadge status={task.status} />
                 </Link>
               ))}
             </div>

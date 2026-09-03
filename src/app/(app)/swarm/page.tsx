@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import { Loader2, Users, Network, ChevronDown, ChevronUp, PlayCircle } from "lucide-react";
 
 /**
@@ -35,14 +37,16 @@ interface SwarmDetail {
   };
 }
 
-const STATUS_META: Record<string, { label: string; cls: string }> = {
-  RUNNING: { label: "En cours", cls: "border-blue-700/50 text-blue-300" },
-  COMPLETED: { label: "Terminée", cls: "border-emerald-700/50 text-emerald-300" },
-  FAILED: { label: "Échec", cls: "border-red-800/60 text-red-300" },
+const STATUS_META: Record<string, { labelKey: TranslationKey; cls: string }> = {
+  RUNNING: { labelKey: "swarm.status.RUNNING", cls: "border-blue-700/50 text-blue-300" },
+  COMPLETED: { labelKey: "swarm.status.COMPLETED", cls: "border-emerald-700/50 text-emerald-300" },
+  FAILED: { labelKey: "swarm.status.FAILED", cls: "border-red-800/60 text-red-300" },
 };
 
 export default function SwarmPage() {
   const { toast } = useToast();
+  const { t, lang } = useI18n();
+  const locale = lang === "fr" ? "fr-FR" : "en-US";
   const [sessions, setSessions] = useState<SwarmSessionView[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -68,7 +72,7 @@ export default function SwarmPage() {
 
   async function launch() {
     if (prompt.trim().length < 10) {
-      toast({ title: "Prompt trop court", description: "Décrivez la mission (10 caractères minimum).", variant: "destructive" });
+      toast({ title: t("swarm.errors.promptShort"), description: t("swarm.errors.promptShortDesc"), variant: "destructive" });
       return;
     }
     setRunning(true);
@@ -80,11 +84,11 @@ export default function SwarmPage() {
       });
       const json = (await res.json()) as { ok: boolean; error?: string; sessionId?: string };
       if (json.ok) {
-        toast({ title: "Swarm lancé", description: strategy === "DEBATE" ? "Débat multi-agents en cours…" : "Orchestration hiérarchique en cours…" });
+        toast({ title: t("swarm.launched.title"), description: strategy === "DEBATE" ? t("swarm.launched.debate") : t("swarm.launched.hierarchical") });
         setPrompt("");
         await refresh();
       } else {
-        toast({ title: "Lancement refusé", description: json.error, variant: "destructive" });
+        toast({ title: t("swarm.errors.launchFailed"), description: json.error, variant: "destructive" });
       }
     } finally {
       setRunning(false);
@@ -111,11 +115,9 @@ export default function SwarmPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Swarm Intelligence</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("swarm.title")}</h1>
         <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-          Missions multi-agents : un orchestrateur coordonne plusieurs agents spécialisés
-          (hiérarchique) ou les oppose en débat argumenté pour affiner la réponse. Mémoire
-          partagée et bus de messages temps réel entre agents.
+          {t("swarm.subtitle")}
         </p>
       </div>
 
@@ -125,25 +127,25 @@ export default function SwarmPage() {
             onClick={() => setStrategy("HIERARCHICAL")}
             className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm ${strategy === "HIERARCHICAL" ? "border-emerald-600 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 text-zinc-400 hover:border-zinc-600"}`}
           >
-            <Network className="h-4 w-4" /> Hiérarchique
+            <Network className="h-4 w-4" /> {t("swarm.hierarchical")}
           </button>
           <button
             onClick={() => setStrategy("DEBATE")}
             className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm ${strategy === "DEBATE" ? "border-emerald-600 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 text-zinc-400 hover:border-zinc-600"}`}
           >
-            <Users className="h-4 w-4" /> Débat
+            <Users className="h-4 w-4" /> {t("swarm.debate")}
           </button>
         </div>
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={4}
-          placeholder="Mission du swarm : « Analysez le marché des fintech africaines et proposez 3 stratégies d'entrée… »"
+          placeholder={t("swarm.promptPlaceholder")}
           className="bg-zinc-950 border-zinc-800"
         />
         <Button onClick={() => void launch()} disabled={running} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
           {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-          Lancer le swarm
+          {t("swarm.launch")}
         </Button>
       </div>
 
@@ -155,12 +157,15 @@ export default function SwarmPage() {
         </div>
       ) : sessions.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center text-zinc-400">
-          Aucune session swarm. Lancez votre première mission multi-agents ci-dessus.
+          {t("swarm.empty")}
         </div>
       ) : (
         <div className="space-y-3">
           {sessions.map((s) => {
-            const meta = STATUS_META[s.status] ?? { label: s.status, cls: "border-zinc-700 text-zinc-400" };
+            const statusMeta = STATUS_META[s.status];
+            const meta = statusMeta
+              ? { label: t(statusMeta.labelKey), cls: statusMeta.cls }
+              : { label: s.status, cls: "border-zinc-700 text-zinc-400" };
             return (
               <div key={s.id} className="rounded-xl border border-zinc-800 bg-zinc-900/40">
                 <button
@@ -171,10 +176,10 @@ export default function SwarmPage() {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className={meta.cls}>{meta.label}</Badge>
                       <Badge variant="outline" className="border-zinc-700 text-zinc-400">
-                        {s.strategy === "DEBATE" ? "Débat" : "Hiérarchique"}
+                        {s.strategy === "DEBATE" ? t("swarm.debate") : t("swarm.hierarchical")}
                       </Badge>
                       <span className="text-[11px] text-zinc-600">
-                        {new Date(s.createdAt).toLocaleString("fr-FR")} · {s.costCredits.toFixed(1)} crédits
+                        {new Date(s.createdAt).toLocaleString(locale)} · {s.costCredits.toFixed(1)} {t("swarm.credits")}
                       </span>
                     </div>
                     <p className="mt-1 truncate text-sm text-zinc-300">{s.prompt}</p>
@@ -197,7 +202,7 @@ export default function SwarmPage() {
                         {detail.session.subTasks.length > 0 && (
                           <div>
                             <h4 className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
-                              Sous-tâches ({detail.session.subTasks.length})
+                              {t("swarm.subTasks", { count: detail.session.subTasks.length })}
                             </h4>
                             <div className="space-y-1.5">
                               {detail.session.subTasks.map((st) => (
@@ -213,7 +218,7 @@ export default function SwarmPage() {
                         {detail.session.messages.length > 0 && (
                           <div>
                             <h4 className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
-                              Bus de messages ({detail.session.messages.length})
+                              {t("swarm.messages", { count: detail.session.messages.length })}
                             </h4>
                             <div className="max-h-64 space-y-1.5 overflow-y-auto">
                               {detail.session.messages.map((m, i) => (
@@ -227,7 +232,7 @@ export default function SwarmPage() {
                         )}
                         {detail.session.result && (
                           <div>
-                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">Résultat</h4>
+                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">{t("swarm.result")}</h4>
                             <pre className="max-h-72 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-[11px] leading-relaxed text-zinc-300">
                               {typeof detail.session.result === "string"
                                 ? detail.session.result

@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import { Loader2, Brain, Trash2, PlusCircle, RefreshCw } from "lucide-react";
 
 /**
@@ -27,16 +29,18 @@ interface JobView {
   finishedAt: string | null;
 }
 
-const STATUS_META: Record<string, { label: string; cls: string }> = {
-  QUEUED: { label: "En file", cls: "border-zinc-700 text-zinc-400" },
-  RUNNING: { label: "En cours", cls: "border-blue-700/50 text-blue-300" },
-  COMPLETED: { label: "Terminé", cls: "border-emerald-700/50 text-emerald-300" },
-  FAILED: { label: "Échec", cls: "border-red-800/60 text-red-300" },
-  CANCELLED: { label: "Annulé", cls: "border-zinc-700 text-zinc-500" },
+const STATUS_META: Record<string, { labelKey: TranslationKey; cls: string }> = {
+  QUEUED: { labelKey: "finetune.status.QUEUED", cls: "border-zinc-700 text-zinc-400" },
+  RUNNING: { labelKey: "finetune.status.RUNNING", cls: "border-blue-700/50 text-blue-300" },
+  COMPLETED: { labelKey: "finetune.status.COMPLETED", cls: "border-emerald-700/50 text-emerald-300" },
+  FAILED: { labelKey: "finetune.status.FAILED", cls: "border-red-800/60 text-red-300" },
+  CANCELLED: { labelKey: "finetune.status.CANCELLED", cls: "border-zinc-700 text-zinc-500" },
 };
 
 export default function FinetunePage() {
   const { toast } = useToast();
+  const { t, lang } = useI18n();
+  const locale = lang === "fr" ? "fr-FR" : "en-US";
   const [jobs, setJobs] = useState<JobView[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -61,7 +65,7 @@ export default function FinetunePage() {
 
   async function create() {
     if (!name) {
-      toast({ title: "Nom requis", description: "Donnez un nom au job d'affinage.", variant: "destructive" });
+      toast({ title: t("finetune.errors.nameRequired"), description: t("finetune.errors.nameRequiredDesc"), variant: "destructive" });
       return;
     }
     setBusy(true);
@@ -73,13 +77,13 @@ export default function FinetunePage() {
       });
       const json = (await res.json()) as { ok: boolean; jobId?: string; error?: string };
       if (json.ok) {
-        toast({ title: "Job créé", description: "L'affinage démarre — le dataset est construit depuis vos apprentissages." });
+        toast({ title: t("finetune.created.title"), description: t("finetune.created.desc") });
         setShowForm(false);
         setName("");
         setBaseModel("");
         await refresh();
       } else {
-        toast({ title: "Création refusée", description: json.error, variant: "destructive" });
+        toast({ title: t("finetune.errors.createFailed"), description: json.error, variant: "destructive" });
       }
     } finally {
       setBusy(false);
@@ -90,7 +94,7 @@ export default function FinetunePage() {
     setBusy(true);
     try {
       await fetch(`/api/finetune/${id}`, { method: "DELETE" });
-      toast({ title: "Job annulé" });
+      toast({ title: t("finetune.cancelled") });
       await refresh();
     } finally {
       setBusy(false);
@@ -101,10 +105,9 @@ export default function FinetunePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Fine-tuning</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("finetune.title")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Affinez vos modèles sur les apprentissages accumulés (skill-creator, profils, mémoire) —
-            jobs asynchrones avec métriques de convergence et suivi détaillé.
+            {t("finetune.subtitle")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -112,7 +115,7 @@ export default function FinetunePage() {
             <RefreshCw className="h-4 w-4" />
           </Button>
           <Button onClick={() => setShowForm((s) => !s)} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-            <PlusCircle className="h-4 w-4" /> {showForm ? "Fermer" : "Nouveau job"}
+            <PlusCircle className="h-4 w-4" /> {showForm ? t("common.close") : t("finetune.new")}
           </Button>
         </div>
       </div>
@@ -121,11 +124,11 @@ export default function FinetunePage() {
         <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
-              <Label htmlFor="name">Nom du job</Label>
+              <Label htmlFor="name">{t("finetune.name")}</Label>
               <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Agent-support-v2" className="bg-zinc-950 border-zinc-800" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="engine">Moteur</Label>
+              <Label htmlFor="engine">{t("finetune.engine")}</Label>
               <select
                 id="engine"
                 value={engine}
@@ -137,12 +140,12 @@ export default function FinetunePage() {
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="baseModel">Modèle de base (optionnel)</Label>
+              <Label htmlFor="baseModel">{t("finetune.baseModel")}</Label>
               <Input id="baseModel" value={baseModel} onChange={(e) => setBaseModel(e.target.value)} placeholder="auto" className="bg-zinc-950 border-zinc-800" />
             </div>
           </div>
           <Button onClick={() => void create()} disabled={busy} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Lancer l'affinage"}
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t("finetune.launch")}
           </Button>
         </div>
       )}
@@ -155,12 +158,15 @@ export default function FinetunePage() {
         </div>
       ) : jobs.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center text-zinc-400">
-          Aucun job d&apos;affinage. Créez-en un pour spécialiser vos modèles sur vos données.
+          {t("finetune.empty")}
         </div>
       ) : (
         <div className="space-y-3">
           {jobs.map((job) => {
-            const meta = STATUS_META[job.status] ?? { label: job.status, cls: "border-zinc-700 text-zinc-400" };
+            const statusMeta = STATUS_META[job.status];
+            const meta = statusMeta
+              ? { label: t(statusMeta.labelKey), cls: statusMeta.cls }
+              : { label: job.status, cls: "border-zinc-700 text-zinc-400" };
             return (
               <div key={job.id} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -172,18 +178,18 @@ export default function FinetunePage() {
                   </div>
                   {(job.status === "QUEUED" || job.status === "RUNNING") && (
                     <Button size="sm" variant="destructive" disabled={busy} onClick={() => void cancel(job.id)}>
-                      <Trash2 className="h-3.5 w-3.5" /> Annuler
+                      <Trash2 className="h-3.5 w-3.5" /> {t("common.cancel")}
                     </Button>
                   )}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-4 text-xs text-zinc-500">
-                  <span>Dataset : <span className="text-zinc-400">{job.datasetSize} échantillons</span></span>
-                  {job.baseModel && <span>Base : <span className="text-zinc-400">{job.baseModel}</span></span>}
+                  <span>{t("finetune.dataset")} <span className="text-zinc-400">{t("finetune.samples", { count: job.datasetSize })}</span></span>
+                  {job.baseModel && <span>{t("finetune.base")} <span className="text-zinc-400">{job.baseModel}</span></span>}
                   {job.startedAt && (
-                    <span>Démarré : <span className="text-zinc-400">{new Date(job.startedAt).toLocaleString("fr-FR")}</span></span>
+                    <span>{t("finetune.started")} <span className="text-zinc-400">{new Date(job.startedAt).toLocaleString(locale)}</span></span>
                   )}
                   {job.finishedAt && (
-                    <span>Terminé : <span className="text-zinc-400">{new Date(job.finishedAt).toLocaleString("fr-FR")}</span></span>
+                    <span>{t("finetune.finished")} <span className="text-zinc-400">{new Date(job.finishedAt).toLocaleString(locale)}</span></span>
                   )}
                 </div>
                 {job.metrics && (

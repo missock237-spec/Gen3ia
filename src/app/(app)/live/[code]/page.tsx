@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
 import { LiveSignaling, ICE_SERVERS, type LiveSignal } from "@/lib/client/live-signaling";
 import {
   Loader2, MonitorUp, PhoneOff, Copy, Radio, Users, MessageSquare, Bot, Eye,
@@ -65,7 +66,8 @@ declare global {
 const TERMINAL_TASK_STATUSES = ["COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_HUMAN", "WAITING_PLAN_APPROVAL"];
 
 export default function LiveRoomPage({ params }: { params: Promise<{ code: string }> }) {
-  const { toast } = useToast()
+  const { toast } = useToast();
+  const { t, lang } = useI18n();
   const [code, setCode] = useState<string | null>(null)
   const [session, setSession] = useState<SessionInfo | null>(null)
   const [role, setRole] = useState<"HOST" | "VIEWER" | null>(null)
@@ -392,7 +394,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           error?: string
         }
         if (!join.ok) {
-          toast({ title: "Session inaccessible", description: join.error, variant: "destructive" })
+          toast({ title: t("live.room.inaccessible"), description: join.error, variant: "destructive" })
           setLoading(false)
           return
         }
@@ -424,8 +426,8 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
   async function startScreenShare() {
     if (!navigator.mediaDevices?.getDisplayMedia) {
       toast({
-        title: "Partage indisponible",
-        description: "Votre navigateur ne supporte pas getDisplayMedia (essayez Chrome/Edge desktop).",
+        title: t("live.room.unavailable"),
+        description: t("live.room.unavailableDesc"),
         variant: "destructive",
       })
       return
@@ -445,7 +447,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
       })
       setSharing(true)
       setStreaming(true)
-      toast({ title: "Écran partagé", description: "Les spectateurs connectés voient maintenant votre écran." })
+      toast({ title: t("live.room.shared"), description: t("live.room.sharedDesc") })
 
       // Démarre la signalisation si pas déjà active.
       if (!signalingRef.current && participantId) {
@@ -468,8 +470,8 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
       }
     } catch (err) {
       toast({
-        title: "Partage annulé",
-        description: err instanceof Error ? err.message : "Capture refusée.",
+        title: t("live.room.shareCancelled"),
+        description: err instanceof Error ? err.message : t("live.room.captureRefused"),
         variant: "destructive",
       })
     }
@@ -525,8 +527,8 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
 
     setAgentActive(true)
     toast({
-      title: "Copilote IA activé",
-      description: `L'agent observe votre écran toutes les ${agentIntervalSec} s et commente ce qu'il voit. Discutez-lui en direct.`,
+      title: t("live.copilot.activated"),
+      description: t("live.copilot.activatedDesc", { interval: agentIntervalSec }),
     })
 
     // Première observation après stabilisation du flux, puis boucle.
@@ -576,7 +578,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
         error?: string
       }
       if (!json.ok) {
-        toast({ title: "Agent IA indisponible", description: json.error, variant: "destructive" })
+        toast({ title: t("live.agent.unavailable"), description: json.error, variant: "destructive" })
         return
       }
       if (json.reply) {
@@ -597,8 +599,8 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
       }
     } catch (err) {
       toast({
-        title: "Erreur copilote",
-        description: err instanceof Error ? err.message : "Appel impossible.",
+        title: t("live.agent.error"),
+        description: err instanceof Error ? err.message : t("live.agent.callFailed"),
         variant: "destructive",
       })
     } finally {
@@ -615,8 +617,8 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
     const dpip = window.documentPictureInPicture
     if (!dpip?.requestWindow) {
       toast({
-        title: "Fenêtre flottante indisponible",
-        description: "Document Picture-in-Picture nécessite Chrome/Edge 116+ sur ordinateur. Le chat reste disponible ici.",
+        title: t("live.pip.unavailable"),
+        description: t("live.pip.unavailableDesc"),
         variant: "destructive",
       })
       return
@@ -628,7 +630,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
     try {
       const win = await dpip.requestWindow({ width: 420, height: 580 })
       pipWindowRef.current = win
-      win.document.title = "GEN3IA — Chat live"
+      win.document.title = t("live.pip.title")
       win.document.body.style.cssText =
         "margin:0;background:#09090b;color:#f4f4f5;font-family:system-ui,sans-serif;overflow:hidden;"
       // Copie les feuilles de style de l'application.
@@ -654,8 +656,8 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
       setPipOpen(true)
     } catch (err) {
       toast({
-        title: "Fenêtre flottante refusée",
-        description: err instanceof Error ? err.message : "Ouverture impossible.",
+        title: t("live.pip.refused"),
+        description: err instanceof Error ? err.message : "",
         variant: "destructive",
       })
     }
@@ -716,7 +718,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
   function copyLink() {
     const url = `${window.location.origin}/live/${code}`
     void navigator.clipboard.writeText(url)
-    toast({ title: "Lien copié", description: url })
+    toast({ title: t("common.copied"), description: url })
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -729,10 +731,10 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
           <MessageSquare className="h-3.5 w-3.5" />
-          {agentTarget === "agent" ? "Discussion avec l'agent IA" : "Chat de session"}
+          {agentTarget === "agent" ? t("live.room.chatAgent") : t("live.room.chat")}
           {agentTarget === "agent" && agentActive && (
             <Badge variant="outline" className="border-emerald-800/60 text-emerald-300">
-              <Eye className="mr-1 h-3 w-3" /> vision active
+              <Eye className="mr-1 h-3 w-3" /> {t("live.room.visionActive")}
             </Badge>
           )}
         </h3>
@@ -743,7 +745,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
             className={`h-6 px-2 text-[11px] ${agentTarget === "room" ? "bg-zinc-700 hover:bg-zinc-600" : "border-zinc-700"}`}
             onClick={() => setAgentTarget("room")}
           >
-            Salon
+            {t("live.room.chatRoomTab")}
           </Button>
           <Button
             size="sm"
@@ -751,7 +753,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
             className={`h-6 px-2 text-[11px] ${agentTarget === "agent" ? "bg-emerald-500 text-zinc-950 hover:bg-emerald-400" : "border-zinc-700"}`}
             onClick={() => setAgentTarget("agent")}
           >
-            <Bot className="mr-1 h-3 w-3" /> Agent IA
+            <Bot className="mr-1 h-3 w-3" /> {t("live.room.chatAgentTab")}
           </Button>
         </div>
       </div>
@@ -759,7 +761,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
         ref={compact ? undefined : chatScrollRef}
         className={`mt-3 flex flex-col justify-end gap-1.5 overflow-y-auto ${compact ? "min-h-0 flex-1" : "max-h-48 min-h-16"}`}
       >
-        {chat.length === 0 && <p className="text-xs text-zinc-600">Aucun message.</p>}
+        {chat.length === 0 && <p className="text-xs text-zinc-600">{t("live.room.noMessages")}</p>}
         {chat.map((m, i) => (
           <div key={i} className={`text-xs ${m.agent ? "rounded-lg bg-emerald-950/40 px-2.5 py-1.5" : ""}`}>
             <span className="font-medium text-emerald-400">
@@ -772,7 +774,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
         ))}
         {agentBusy && (
           <div className="flex items-center gap-2 text-xs text-emerald-400">
-            <Loader2 className="h-3 w-3 animate-spin" /> L'agent analyse l'écran…
+            <Loader2 className="h-3 w-3 animate-spin" /> {t("live.room.agentAnalyzing")}
           </div>
         )}
       </div>
@@ -784,9 +786,9 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           placeholder={
             agentTarget === "agent"
               ? agentActive
-                ? "Demandez à l'agent ce qu'il voit… /task <instruction> pour lancer une tâche"
-                : "Activez le copilote pour que l'agent voie votre écran…"
-              : "Message…"
+                ? t("live.room.placeholder.agentOn")
+                : t("live.room.placeholder.agentOff")
+              : t("live.room.placeholder.room")
           }
           className="bg-zinc-950 border-zinc-800"
           disabled={ended || (agentTarget === "agent" && agentBusy)}
@@ -799,7 +801,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           className={agentTarget === "agent" ? "border-emerald-800 text-emerald-300 hover:bg-emerald-950" : ""}
         >
           {agentTarget === "agent" ? <Sparkles className="h-4 w-4" /> : null}
-          Envoyer
+          {t("live.room.send")}
         </Button>
       </div>
     </div>
@@ -816,10 +818,10 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
   if (!session) {
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
-        <h1 className="text-xl font-bold text-zinc-100">Session introuvable</h1>
-        <p className="mt-2 text-sm text-zinc-400">Le code « {code} » ne correspond à aucune session live.</p>
+        <h1 className="text-xl font-bold text-zinc-100">{t("live.room.notFound")}</h1>
+        <p className="mt-2 text-sm text-zinc-400">{t("live.room.notFoundDesc", { code: code ?? "" })}</p>
         <Button variant="outline" className="mt-4" onClick={() => window.history.back()}>
-          Retour
+          {t("common.back")}
         </Button>
       </div>
     )
@@ -832,32 +834,32 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           <Radio className={`h-6 w-6 ${ended ? "text-zinc-500" : connected || sharing ? "text-red-500" : "text-emerald-400"} ${!ended && (connected || sharing) ? "animate-pulse" : ""}`} />
           <div>
             <h1 className="text-xl font-bold tracking-tight">
-              {session.title ?? "Session live"} <span className="font-mono text-sm text-zinc-500">{session.code}</span>
+              {session.title ?? t("live.untitled")} <span className="font-mono text-sm text-zinc-500">{session.code}</span>
             </h1>
             <p className="text-xs text-zinc-500">
-              Hôte : {session.host.name} · {session.viewerCount} spectateur{session.viewerCount > 1 ? "s" : ""}
-              {role === "HOST" && " · vous diffusez"}
-              {agentActive && " · copilote IA actif"}
+              {t("live.room.hostIs", { name: session.host.name })} · {t("live.viewers", { count: session.viewerCount })}
+              {role === "HOST" && ` · ${t("live.room.youBroadcast")}`}
+              {agentActive && ` · ${t("live.room.copilotOn")}`}
             </p>
           </div>
-          {!ended && <Badge variant="outline" className="border-red-800/60 text-red-300">EN DIRECT</Badge>}
-          {ended && <Badge variant="outline" className="border-zinc-700 text-zinc-500">TERMINÉ</Badge>}
+          {!ended && <Badge variant="outline" className="border-red-800/60 text-red-300">{t("common.statuses.LIVE")}</Badge>}
+          {ended && <Badge variant="outline" className="border-zinc-700 text-zinc-500">{t("common.statuses.ENDED")}</Badge>}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={copyLink}>
-            <Copy className="h-4 w-4" /> Copier le lien
+            <Copy className="h-4 w-4" /> {t("common.copy")}
           </Button>
           <Button variant="outline" size="sm" onClick={() => void openFloatingChat()}>
-            <PictureInPicture2 className="h-4 w-4" /> Chat flottant
+            <PictureInPicture2 className="h-4 w-4" /> {t("live.room.floatingChat")}
           </Button>
           {role === "HOST" && !ended && (
             !sharing ? (
               <Button size="sm" onClick={() => void startScreenShare()} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-                <MonitorUp className="h-4 w-4" /> Partager mon écran
+                <MonitorUp className="h-4 w-4" /> {t("live.room.shareScreen")}
               </Button>
             ) : (
               <Button size="sm" variant="destructive" onClick={() => void stopScreenShare()}>
-                Arrêter le partage
+                {t("live.room.stopShare")}
               </Button>
             )
           )}
@@ -883,27 +885,25 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-950/80 text-zinc-400">
             <MonitorUp className="h-10 w-10" />
             <p className="text-sm">
-              {role === "HOST"
-                ? "Cliquez « Partager mon écran » pour démarrer la diffusion."
-                : "En attente de la diffusion de l'hôte…"}
+              {role === "HOST" ? t("live.room.hostPlaceholder") : t("live.room.viewerPlaceholder")}
             </p>
           </div>
         )}
         {ended && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-zinc-950/90 text-zinc-400">
             <PhoneOff className="h-10 w-10" />
-            <p className="text-sm">La session est terminée.</p>
+            <p className="text-sm">{t("live.room.sessionEnded")}</p>
           </div>
         )}
         {(streaming || connected) && !ended && (
           <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-red-950/80 px-3 py-1 text-xs font-medium text-red-300">
             <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-            {role === "HOST" ? "VOUS DIFFUSEZ" : "EN DIRECT"}
+            {role === "HOST" ? t("live.room.youBroadcastBadge") : t("live.room.liveBadge")}
           </div>
         )}
         {agentActive && !ended && (
           <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-emerald-950/80 px-3 py-1 text-xs font-medium text-emerald-300">
-            <Bot className="h-3 w-3" /> L'AGENT VOIT VOTRE ÉCRAN
+            <Bot className="h-3 w-3" /> {t("live.room.agentSees")}
           </div>
         )}
       </div>
@@ -917,11 +917,11 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
                 <Bot className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-zinc-100">Copilote IA — vision d'écran</h3>
+                <h3 className="text-sm font-semibold text-zinc-100">{t("live.copilot.title")}</h3>
                 <p className="text-xs text-zinc-500">
                   {agentActive
-                    ? `L'agent observe votre écran toutes les ${agentIntervalSec} s, explique ce qu'il voit et répond à vos questions — même si vous travaillez dans une autre application.`
-                    : "Partagez votre écran avec l'agent : il commente en direct, explique ce qu'il crée, et corrige ce qui ne convient pas."}
+                    ? t("live.copilot.desc.on", { interval: agentIntervalSec })
+                    : t("live.copilot.desc.off")}
                 </p>
               </div>
             </div>
@@ -931,19 +931,19 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="border-zinc-800 bg-zinc-900">
-                  <SelectItem value="8">toutes les 8 s</SelectItem>
-                  <SelectItem value="10">toutes les 10 s</SelectItem>
-                  <SelectItem value="15">toutes les 15 s</SelectItem>
-                  <SelectItem value="30">toutes les 30 s</SelectItem>
+                  <SelectItem value="8">{t("live.copilot.interval", { sec: 8 })}</SelectItem>
+                  <SelectItem value="10">{t("live.copilot.interval", { sec: 10 })}</SelectItem>
+                  <SelectItem value="15">{t("live.copilot.interval", { sec: 15 })}</SelectItem>
+                  <SelectItem value="30">{t("live.copilot.interval", { sec: 30 })}</SelectItem>
                 </SelectContent>
               </Select>
               {!agentActive ? (
                 <Button size="sm" onClick={() => void startAgentShare()} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-                  <Eye className="h-4 w-4" /> Partager avec l'agent
+                  <Eye className="h-4 w-4" /> {t("live.copilot.share")}
                 </Button>
               ) : (
                 <Button size="sm" variant="destructive" onClick={stopAgentShare}>
-                  Arrêter la vision
+                  {t("live.copilot.stop")}
                 </Button>
               )}
             </div>
@@ -951,7 +951,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           {agentActive && (
             <div className="mt-3 flex items-center gap-2 rounded-lg bg-zinc-950/60 px-3 py-2 text-xs text-zinc-400">
               <PlayCircle className="h-3.5 w-3.5 text-emerald-400" />
-              Astuce : tapez <code className="rounded bg-zinc-800 px-1 py-0.5 text-emerald-300">/task ton instruction</code> dans le chat Agent — l'agent exécute une vraie tâche GEN3IA en arrière-plan pendant que vous continuez à discuter.
+              {t("live.copilot.tip")} <code className="rounded bg-zinc-800 px-1 py-0.5 text-emerald-300">/task ton instruction</code> {t("live.copilot.tipRest")}
             </div>
           )}
         </div>
@@ -963,7 +963,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           <div className="flex items-center justify-between gap-3">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
               <PlayCircle className="h-4 w-4 text-blue-400" />
-              Tâche en arrière-plan <span className="font-mono text-xs text-zinc-500">#{taskInfo.taskId.slice(0, 8)}</span>
+              {t("live.task.title")} <span className="font-mono text-xs text-zinc-500">#{taskInfo.taskId.slice(0, 8)}</span>
             </h3>
             <Badge
               variant="outline"
@@ -991,7 +991,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           )}
           {role === "HOST" && taskInfo.status === "COMPLETED" && (
             <a href={`/tasks/${taskInfo.taskId}`} className="mt-3 inline-flex items-center gap-1 text-xs text-blue-300 hover:underline">
-              Voir le résultat complet →
+              {t("live.task.seeResult")} →
             </a>
           )}
         </div>
@@ -1001,14 +1001,14 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
           <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
-            <Users className="h-3.5 w-3.5" /> Participants
+            <Users className="h-3.5 w-3.5" /> {t("live.room.participants")}
           </h3>
           <div className="mt-3 space-y-1.5">
             {session.participants.map((p) => (
               <div key={p.id} className="flex items-center gap-2 text-xs">
                 <span className={`h-2 w-2 rounded-full ${p.role === "HOST" ? "bg-emerald-500" : "bg-blue-500"}`} />
                 <span className="text-zinc-300">{p.displayName}</span>
-                <span className="ml-auto text-zinc-600">{p.role === "HOST" ? "hôte" : "spectateur"}</span>
+                <span className="ml-auto text-zinc-600">{p.role === "HOST" ? t("live.room.hostRole") : t("live.room.viewerRole")}</span>
               </div>
             ))}
           </div>
@@ -1020,9 +1020,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
       {pipOpen && pipWindowRef.current && createPortal(pipWindowContent(), pipWindowRef.current.document.body)}
 
       <p className="text-[11px] leading-relaxed text-zinc-600">
-        Flux vidéo chiffré de bout en bout (DTLS/SRTP) en P2P — le serveur ne relaie que la
-        signalisation. Les captures envoyées au copilote IA sont traitées à la volée et ne
-        sont jamais stockées. La session expire automatiquement à la fin de la diffusion.
+        {t("live.room.encrypted")}
       </p>
     </div>
   )
@@ -1034,7 +1032,7 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
       <div className="flex h-screen w-full flex-col gap-2 overflow-hidden bg-zinc-950 p-3 text-zinc-100">
         <div className="flex items-center gap-2">
           <Radio className="h-4 w-4 text-red-500" />
-          <span className="text-sm font-bold">{session?.title ?? "Session live"}</span>
+          <span className="text-sm font-bold">{session?.title ?? t("live.untitled")}</span>
           <span className="font-mono text-xs text-zinc-500">{session?.code}</span>
           {agentActive && <Badge variant="outline" className="ml-auto border-emerald-800 text-emerald-300">IA</Badge>}
         </div>

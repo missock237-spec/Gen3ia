@@ -8,8 +8,9 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { apiPost, useUser, formatDate, type CurrentUser } from "@/lib/client/hooks";
-import { Settings, Loader2, Save, ShieldCheck, Cpu, ListChecks } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
+import { apiPost, useUser, type CurrentUser } from "@/lib/client/hooks";
+import { Settings, Loader2, Save, ShieldCheck, Cpu, ListChecks, Languages, Check } from "lucide-react";
 
 /** Formulaire initialisé UNE fois au montage à partir des préférences. */
 function SettingsForm({
@@ -22,6 +23,7 @@ function SettingsForm({
   onSaved: () => void
 }) {
   const { toast } = useToast();
+  const { t } = useI18n();
   const [maxAttempts, setMaxAttempts] = useState(user.settings.maxAttempts)
   const [confirmDangerousOps, setConfirmDangerousOps] = useState(user.settings.confirmDangerousOps)
   const [defaultProvider, setDefaultProvider] = useState(user.settings.defaultProvider)
@@ -39,11 +41,11 @@ function SettingsForm({
     })
     setSaving(false)
     if (!res.ok) {
-      toast({ title: "Enregistrement impossible", description: res.error, variant: "destructive" })
+      toast({ title: t("settings.errors.saveFailed"), description: res.error, variant: "destructive" })
       return
     }
     onSaved()
-    toast({ title: "Paramètres enregistrés" })
+    toast({ title: t("settings.saved") })
   }
 
   return (
@@ -51,21 +53,21 @@ function SettingsForm({
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Cpu className="h-4 w-4 text-emerald-400" /> Moteur d'exécution
+            <Cpu className="h-4 w-4 text-emerald-400" /> {t("settings.engine.title")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label>Fournisseur par défaut</Label>
+            <Label>{t("settings.engine.provider")}</Label>
             <select
               value={defaultProvider}
               onChange={(e) => setDefaultProvider(e.target.value)}
               className="w-full h-9 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
             >
-              <option value="auto">Automatique (Model Router)</option>
+              <option value="auto">{t("settings.engine.providerAuto")}</option>
               {providers.map((p) => (
                 <option key={p.key} value={p.key} disabled={!p.available}>
-                  {p.name} {p.available ? "" : "— non configuré"}
+                  {p.name} {p.available ? "" : t("settings.engine.providerUnavailable")}
                 </option>
               ))}
             </select>
@@ -85,11 +87,11 @@ function SettingsForm({
 
           <div className="space-y-2">
             <Label>
-              Tentatives d'auto-correction max : <span className="font-mono text-emerald-400">{maxAttempts}</span>
+              {t("settings.engine.maxAttempts")} <span className="font-mono text-emerald-400">{maxAttempts}</span>
             </Label>
             <Slider value={[maxAttempts]} onValueChange={([v]) => setMaxAttempts(v)} min={1} max={5} step={1} />
             <p className="text-xs text-zinc-500">
-              Nombre de tentatives de correction avant replanification ou échec déclaré.
+              {t("settings.engine.maxAttemptsHint")}
             </p>
           </div>
         </CardContent>
@@ -98,16 +100,15 @@ function SettingsForm({
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-400" /> Sécurité des opérations
+            <ShieldCheck className="h-4 w-4 text-emerald-400" /> {t("settings.security.title")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-sm font-medium text-zinc-200">Confirmation humaine des opérations sensibles</div>
+              <div className="text-sm font-medium text-zinc-200">{t("settings.security.confirmTitle")}</div>
               <p className="text-xs text-zinc-500 mt-1 max-w-md">
-                Exige votre approbation avant l'exécution de code ou de requêtes HTTP sortantes (Human-in-the-loop).
-                Désactivé, le pipeline s'exécute sans interruption.
+                {t("settings.security.confirmDesc")}
               </p>
             </div>
             <Switch
@@ -123,17 +124,15 @@ function SettingsForm({
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <ListChecks className="h-4 w-4 text-teal-400" /> Mode Explain — validation des plans
+            <ListChecks className="h-4 w-4 text-teal-400" /> {t("settings.explain.title")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-sm font-medium text-zinc-200">Approuver les plans avant l'exécution</div>
+              <div className="text-sm font-medium text-zinc-200">{t("settings.explain.toggleTitle")}</div>
               <p className="text-xs text-zinc-500 mt-1 max-w-md">
-                Avant d'exécuter, GEN3IA vous présente les 5 plans notés : sélectionnez le plan de votre choix,
-                éditez ses étapes, ou régénérez-les. Désactivé, l'évaluateur sélectionne et exécute
-                automatiquement le meilleur plan.
+                {t("settings.explain.toggleDesc")}
               </p>
             </div>
             <Switch
@@ -148,7 +147,7 @@ function SettingsForm({
       <div className="flex justify-end">
         <Button onClick={save} disabled={saving} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold h-10 px-6">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="ml-2">Enregistrer les paramètres</span>
+          <span className="ml-2">{t("settings.saveAll")}</span>
         </Button>
       </div>
     </>
@@ -157,6 +156,7 @@ function SettingsForm({
 
 export default function SettingsPage() {
   const { user, providers, loading, refresh } = useUser();
+  const { t, lang, setLang } = useI18n();
 
   if (loading || !user) {
     return <Skeleton className="h-96 w-full bg-zinc-800/60" />
@@ -166,22 +166,65 @@ export default function SettingsPage() {
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Settings className="h-6 w-6 text-emerald-400" /> Paramètres
+          <Settings className="h-6 w-6 text-emerald-400" /> {t("settings.title")}
         </h1>
-        <p className="text-sm text-zinc-400 mt-1">Compte, autonomie du moteur et sécurité des opérations.</p>
+        <p className="text-sm text-zinc-400 mt-1">{t("settings.subtitle")}</p>
       </div>
 
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
-          <CardTitle className="text-base">Compte</CardTitle>
+          <CardTitle className="text-base">{t("settings.account.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-500">Nom</span><span className="text-zinc-200">{user.name ?? "—"}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">E-mail</span><span className="text-zinc-200 font-mono text-xs">{user.email}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Rôle</span><span className="text-zinc-200">{user.role}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Plan</span><span className="text-emerald-400">{user.plan}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Crédits</span><span className="text-emerald-400 font-mono">{user.credits.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Membre depuis</span><span className="text-zinc-400">{formatDate(user.createdAt)}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">{t("common.name")}</span><span className="text-zinc-200">{user.name ?? "—"}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">{t("settings.account.email")}</span><span className="text-zinc-200 font-mono text-xs">{user.email}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">{t("settings.account.role")}</span><span className="text-zinc-200">{user.role}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">{t("settings.account.plan")}</span><span className="text-emerald-400">{user.plan}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">{t("common.credits")}</span><span className="text-emerald-400 font-mono">{user.credits.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">{t("settings.account.memberSince")}</span><span className="text-zinc-400">{new Date(user.createdAt).toLocaleString(lang === "fr" ? "fr-FR" : "en-US")}</span></div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-zinc-900/40 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Languages className="h-4 w-4 text-emerald-400" /> {t("settings.language.title")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <p className="text-xs text-zinc-500 max-w-md">{t("settings.language.desc")}</p>
+            <div className="flex gap-2" role="group" aria-label={t("settings.language.title")}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLang("fr")}
+                aria-pressed={lang === "fr"}
+                className={`h-9 ${
+                  lang === "fr"
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
+                    : "border-zinc-700 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                {lang === "fr" ? <Check className="h-4 w-4 mr-1.5" /> : null}
+                🇫🇷 {t("common.french")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLang("en")}
+                aria-pressed={lang === "en"}
+                className={`h-9 ${
+                  lang === "en"
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15"
+                    : "border-zinc-700 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                {lang === "en" ? <Check className="h-4 w-4 mr-1.5" /> : null}
+                🇬🇧 {t("common.english")}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

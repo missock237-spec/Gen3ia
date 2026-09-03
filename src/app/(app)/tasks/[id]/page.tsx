@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/app/status-badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
 import { usePolling, apiPost, formatCredits, formatDate } from "@/lib/client/hooks";
 import { PipelineDag } from "@/components/tasks/pipeline-dag";
 import { StepInterceptor } from "@/components/tasks/step-interceptor";
@@ -111,6 +112,7 @@ const ACTIVE_STATUSES = ["QUEUED", "ANALYZING", "PLANNING", "SIMULATING", "EXECU
 export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { t } = useI18n();
   const [approving, setApproving] = useState(false)
   
   // Chat Multimodal
@@ -129,15 +131,15 @@ export default function TaskDetailPage() {
     try {
       const json = await apiPost<{ session?: { code: string } }>(`/api/live`, {
         taskId: id,
-        title: `Diffusion — ${(data?.task?.prompt ?? "tâche").slice(0, 60)}`,
+        title: t("tasks.live.sessionTitle", { prompt: (data?.task?.prompt ?? t("tasks.live.defaultPrompt")).slice(0, 60) }),
       })
       if (json.ok && json.session) {
         window.location.href = `/live/${json.session.code}`
       } else {
-        toast({ title: "Lancement refusé", description: json.error, variant: "destructive" })
+        toast({ title: t("tasks.errors.liveRefused"), description: json.error, variant: "destructive" })
       }
     } catch (err) {
-      toast({ title: "Erreur réseau", description: err instanceof Error ? err.message : String(err), variant: "destructive" })
+      toast({ title: t("common.errorNetwork"), description: err instanceof Error ? err.message : String(err), variant: "destructive" })
     } finally {
       setStartingLive(false)
     }
@@ -155,12 +157,12 @@ export default function TaskDetailPage() {
       const res = await apiPost(`/api/tasks/${id}/approve`, { approved })
       if (!res.ok) throw new Error(res.error)
       toast({
-        title: approved ? "Opération approuvée" : "Opération refusée",
-        description: approved ? "L'exécution reprend." : "La tâche est annulée.",
+        title: approved ? t("tasks.approval.approvedTitle") : t("tasks.approval.rejectedTitle"),
+        description: approved ? t("tasks.approval.approvedDesc") : t("tasks.approval.rejectedDesc"),
       })
       window.location.reload()
     } catch (err) {
-      toast({ title: "Action impossible", description: err instanceof Error ? err.message : "", variant: "destructive" })
+      toast({ title: t("tasks.errors.actionFailed"), description: err instanceof Error ? err.message : "", variant: "destructive" })
     } finally {
       setApproving(false)
     }
@@ -182,13 +184,13 @@ export default function TaskDetailPage() {
       setGeneratedMediaList((prev) => [res.media, ...prev])
       setMultimodalPrompt("")
       toast({
-        title: "Contenu multimodal généré !",
+        title: t("tasks.multimodal.generatedTitle"),
         description: `${res.media.caption}`,
       })
     } catch (err) {
       toast({
-        title: "Échec de génération",
-        description: err instanceof Error ? err.message : "Erreur réseau",
+        title: t("tasks.multimodal.errorTitle"),
+        description: err instanceof Error ? err.message : t("common.errorNetwork"),
         variant: "destructive",
       })
     } finally {
@@ -212,13 +214,13 @@ export default function TaskDetailPage() {
         <div>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl font-bold tracking-tight flex items-center gap-3">
-              <Link href="/tasks" className="text-zinc-500 hover:text-zinc-300 text-base font-normal">← Tâches</Link>
+              <Link href="/tasks" className="text-zinc-500 hover:text-zinc-300 text-base font-normal">{t("tasks.backToTasks")}</Link>
               <span className="font-mono text-sm text-zinc-500">{task.id.slice(0, 12)}…</span>
             </h1>
             <StatusBadge status={task.status} />
             {task.attempts > 1 && (
               <Badge variant="outline" className="border-amber-600/40 text-amber-300 text-[11px]">
-                {task.attempts} tentatives
+                {t("tasks.attempts", { count: task.attempts })}
               </Badge>
             )}
           </div>
@@ -236,11 +238,11 @@ export default function TaskDetailPage() {
             className="border-red-800/60 text-red-300 hover:bg-red-950/30"
           >
             {startingLive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-            Mode live
+            {t("tasks.live.button")}
           </Button>
           <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 font-mono text-xs px-3 py-1">
             <Coins className="h-3.5 w-3.5 mr-1.5" />
-            {formatCredits(task.costCredits)} crédits
+            {t("tasks.credits", { credits: formatCredits(task.costCredits) })}
           </Badge>
         </div>
       </div>
@@ -252,7 +254,7 @@ export default function TaskDetailPage() {
             <div className="flex items-start gap-3">
               <ShieldAlert className="h-6 w-6 text-orange-400 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <h3 className="font-semibold text-orange-200">Confirmation humaine requise</h3>
+                <h3 className="font-semibold text-orange-200">{t("tasks.approval.title")}</h3>
                 <p className="text-sm text-orange-200/80 mt-1">{task.pendingApproval.reason}</p>
                 <ul className="mt-3 space-y-1.5">
                   {task.pendingApproval.dangerousOperations.map((op) => (
@@ -264,10 +266,10 @@ export default function TaskDetailPage() {
                 <div className="mt-4 flex gap-3">
                   <Button onClick={() => approve(true)} disabled={approving} className="bg-orange-500 hover:bg-orange-400 text-zinc-950 font-semibold">
                     {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    <span className="ml-2">Approuver et continuer</span>
+                    <span className="ml-2">{t("tasks.approval.approve")}</span>
                   </Button>
                   <Button onClick={() => approve(false)} disabled={approving} variant="outline" className="border-orange-500/40 text-orange-300 hover:bg-orange-500/10">
-                    <XCircle className="h-4 w-4" /><span className="ml-2">Refuser</span>
+                    <XCircle className="h-4 w-4" /><span className="ml-2">{t("tasks.approval.reject")}</span>
                   </Button>
                 </div>
               </div>
@@ -285,16 +287,16 @@ export default function TaskDetailPage() {
       <Tabs defaultValue="pas-a-pas" className="space-y-4">
         <TabsList className="bg-zinc-900/80 border border-zinc-800 p-1 grid grid-cols-2 sm:grid-cols-4 gap-1">
           <TabsTrigger value="pas-a-pas" className="text-xs font-medium gap-1.5">
-            <SlidersHorizontal className="h-3.5 w-3.5 text-teal-400" /> Mode Pas-à-Pas
+            <SlidersHorizontal className="h-3.5 w-3.5 text-teal-400" /> {t("tasks.tabs.stepByStep")}
           </TabsTrigger>
           <TabsTrigger value="multimodal" className="text-xs font-medium gap-1.5">
-            <Sparkles className="h-3.5 w-3.5 text-purple-400" /> Chat Multimodal
+            <Sparkles className="h-3.5 w-3.5 text-purple-400" /> {t("tasks.tabs.multimodal")}
           </TabsTrigger>
           <TabsTrigger value="debug" className="text-xs font-medium gap-1.5">
-            <Bug className="h-3.5 w-3.5 text-amber-400" /> Mode Débug (Replay)
+            <Bug className="h-3.5 w-3.5 text-amber-400" /> {t("tasks.tabs.debug")}
           </TabsTrigger>
           <TabsTrigger value="details" className="text-xs font-medium gap-1.5">
-            <ListChecks className="h-3.5 w-3.5 text-emerald-400" /> Détails Pipeline
+            <ListChecks className="h-3.5 w-3.5 text-emerald-400" /> {t("tasks.tabs.details")}
           </TabsTrigger>
         </TabsList>
 
@@ -309,7 +311,7 @@ export default function TaskDetailPage() {
             <CardHeader className="pb-3 border-b border-zinc-800">
               <CardTitle className="text-base text-zinc-100 flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-purple-400" />
-                Génération Multimodale Inline (DALL-E / Diagrammes SVG / Graphiques)
+                {t("tasks.multimodal.title")}
               </CardTitle>
             </CardHeader>
 
@@ -319,7 +321,7 @@ export default function TaskDetailPage() {
                   <Input
                     value={multimodalPrompt}
                     onChange={(e) => setMultimodalPrompt(e.target.value)}
-                    placeholder="Ex: Diagramme d'architecture du système ou Graphique de vente trimestrielle..."
+                    placeholder={t("tasks.multimodal.placeholder")}
                     className="bg-zinc-900 border-zinc-800 text-xs text-zinc-100 placeholder:text-zinc-500"
                     onKeyDown={(e) => e.key === "Enter" && handleGenerateMultimodal()}
                   />
@@ -332,7 +334,7 @@ export default function TaskDetailPage() {
                     onClick={() => setMultimodalType("image")}
                     className={`h-9 text-xs gap-1 ${multimodalType === "image" ? "bg-purple-600 text-white" : "border-zinc-700"}`}
                   >
-                    <ImageIcon className="h-3.5 w-3.5" /> Image
+                    <ImageIcon className="h-3.5 w-3.5" /> {t("tasks.multimodal.image")}
                   </Button>
                   <Button
                     size="sm"
@@ -340,7 +342,7 @@ export default function TaskDetailPage() {
                     onClick={() => setMultimodalType("diagram")}
                     className={`h-9 text-xs gap-1 ${multimodalType === "diagram" ? "bg-purple-600 text-white" : "border-zinc-700"}`}
                   >
-                    <Network className="h-3.5 w-3.5" /> Diagramme
+                    <Network className="h-3.5 w-3.5" /> {t("tasks.multimodal.diagram")}
                   </Button>
                   <Button
                     size="sm"
@@ -348,7 +350,7 @@ export default function TaskDetailPage() {
                     onClick={() => setMultimodalType("chart")}
                     className={`h-9 text-xs gap-1 ${multimodalType === "chart" ? "bg-purple-600 text-white" : "border-zinc-700"}`}
                   >
-                    <BarChart3 className="h-3.5 w-3.5" /> Graphique
+                    <BarChart3 className="h-3.5 w-3.5" /> {t("tasks.multimodal.chart")}
                   </Button>
 
                   <Button
@@ -378,7 +380,7 @@ export default function TaskDetailPage() {
                           rel="noreferrer"
                           className="text-xs text-zinc-400 hover:text-white flex items-center gap-1"
                         >
-                          <Download className="h-3 w-3" /> Télécharger
+                          <Download className="h-3 w-3" /> {t("tasks.multimodal.download")}
                         </a>
                       </div>
 
@@ -396,7 +398,7 @@ export default function TaskDetailPage() {
                 </div>
               ) : (
                 <div className="text-center py-8 text-zinc-500 text-xs border border-dashed border-zinc-800/80 rounded-lg">
-                  Demandez la génération d'une image DALL-E, d'un diagramme d'architecture SVG ou d'un graphique interactif.
+                  {t("tasks.multimodal.empty")}
                 </div>
               )}
             </CardContent>
@@ -415,7 +417,7 @@ export default function TaskDetailPage() {
             <Card className="border-emerald-500/30 bg-emerald-500/5">
               <CardHeader>
                 <CardTitle className="text-base text-emerald-300 flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5" /> Résultat de la tâche
+                  <CheckCircle2 className="h-5 w-5" /> {t("tasks.result.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -431,17 +433,17 @@ export default function TaskDetailPage() {
             <Card className="bg-zinc-900/40 border-zinc-800">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 text-zinc-200">
-                  <Brain className="h-4 w-4 text-emerald-400" /> Analyse de la demande
+                  <Brain className="h-4 w-4 text-emerald-400" /> {t("tasks.analysis.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-xs">
                 <div>
-                  <span className="text-zinc-500 font-medium">Intention :</span>
+                  <span className="text-zinc-500 font-medium">{t("tasks.analysis.intent")}</span>
                   <p className="text-zinc-200 mt-1 font-mono bg-zinc-950 p-2.5 rounded border border-zinc-800">{task.analysis.intent}</p>
                 </div>
                 {task.analysis.goals?.length > 0 && (
                   <div>
-                    <span className="text-zinc-500 font-medium">Objectifs :</span>
+                    <span className="text-zinc-500 font-medium">{t("tasks.analysis.goals")}</span>
                     <ul className="list-disc list-inside mt-1 text-zinc-300 space-y-1">
                       {task.analysis.goals.map((g, i) => (
                         <li key={i}>{g}</li>

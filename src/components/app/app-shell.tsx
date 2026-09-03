@@ -6,39 +6,44 @@ import { useRouter, usePathname } from "next/navigation";
 import { useUser, formatCredits } from "@/lib/client/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { LanguageSwitcher } from "@/components/lang-switch";
+import { useI18n } from "@/lib/i18n";
 import { Loader2, LogOut, Menu, X, Coins, ShieldCheck } from "lucide-react";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Tableau de bord", icon: "gauge" },
-  { href: "/agents", label: "Mes agents", icon: "bot" },
-  { href: "/tasks", label: "Task Center", icon: "list-checks" },
-  { href: "/swarm", label: "Swarm IA", icon: "network" },
-  { href: "/batch", label: "Batch Tasks", icon: "layers" },
-  { href: "/knowledge", label: "Connaissances", icon: "book-open" },
-  { href: "/skills", label: "Compétences", icon: "graduation-cap" },
-  { href: "/tools", label: "Outils", icon: "wrench" },
-  { href: "/connectors", label: "Connecteurs", icon: "plug" },
-  { href: "/memory", label: "Mémoire", icon: "database" },
-  { href: "/finetune", label: "Fine-tuning", icon: "brain" },
-  { href: "/watchdog", label: "Watchdog", icon: "eye" },
-  { href: "/webhooks", label: "Webhooks", icon: "webhook" },
-  { href: "/traces", label: "Traces", icon: "activity" },
-  { href: "/live", label: "Mode live", icon: "radio" },
-  { href: "/marketplace", label: "Marketplace", icon: "store" },
-  { href: "/api", label: "Clés API", icon: "key-round" },
-  { href: "/sdk", label: "SDK", icon: "code-2" },
-  { href: "/billing", label: "Facturation", icon: "credit-card" },
-  { href: "/settings", label: "Paramètres", icon: "settings" },
+const NAV_ITEMS: Array<{ href: string; key: TranslationKey; icon: string }> = [
+  { href: "/dashboard", key: "nav.dashboard", icon: "gauge" },
+  { href: "/agents", key: "nav.agents", icon: "bot" },
+  { href: "/tasks", key: "nav.tasks", icon: "list-checks" },
+  { href: "/swarm", key: "nav.swarm", icon: "network" },
+  { href: "/batch", key: "nav.batch", icon: "layers" },
+  { href: "/knowledge", key: "nav.knowledge", icon: "book-open" },
+  { href: "/skills", key: "nav.skills", icon: "graduation-cap" },
+  { href: "/tools", key: "nav.tools", icon: "wrench" },
+  { href: "/connectors", key: "nav.connectors", icon: "plug" },
+  { href: "/memory", key: "nav.memory", icon: "database" },
+  { href: "/finetune", key: "nav.finetune", icon: "brain" },
+  { href: "/watchdog", key: "nav.watchdog", icon: "eye" },
+  { href: "/webhooks", key: "nav.webhooks", icon: "webhook" },
+  { href: "/traces", key: "nav.traces", icon: "activity" },
+  { href: "/live", key: "nav.live", icon: "radio" },
+  { href: "/marketplace", key: "nav.marketplace", icon: "store" },
+  { href: "/api", key: "nav.api", icon: "key-round" },
+  { href: "/sdk", key: "nav.sdk", icon: "code-2" },
+  { href: "/billing", key: "nav.billing", icon: "credit-card" },
+  { href: "/ads", key: "nav.ads", icon: "megaphone" },
+  { href: "/settings", key: "nav.settings", icon: "settings" },
 ];
 
 // Icônes lucide importées statiquement pour rester simple avec le bundle.
- 
+
 import * as Icons from "lucide-react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, refresh } = useUser();
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
 
   async function logout() {
@@ -53,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-          <span className="text-sm">Chargement de votre espace…</span>
+          <span className="text-sm">{t("common.loadingSpace")}</span>
         </div>
       </div>
     );
@@ -71,7 +76,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const nav = user.role === "ADMIN"
-    ? [...NAV_ITEMS, { href: "/admin", label: "Administration", icon: "shield-check" }, { href: "/admin/oauth", label: "OAuth plateforme", icon: "key-round" }]
+    ? [
+        ...NAV_ITEMS,
+        { href: "/admin", key: "nav.admin" as TranslationKey, icon: "shield-check" },
+        { href: "/admin/oauth", key: "nav.adminOauth" as TranslationKey, icon: "key-round" },
+      ]
     : NAV_ITEMS;
 
   const sidebar = (
@@ -86,7 +95,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
         {nav.map((item) => {
-           
           const Icon = (Icons as any)[
             item.icon.split("-").map((p: string) => p.charAt(0).toUpperCase() + p.slice(1)).join("")
           ] ?? Icons.Circle;
@@ -103,7 +111,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {item.label}
+              {t(item.key)}
             </Link>
           );
         })}
@@ -112,7 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="border-t border-zinc-800/60 p-4">
         <div className="rounded-lg bg-zinc-900/50 border border-zinc-800 p-3">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-zinc-400">Crédits</span>
+            <span className="text-zinc-400">{t("nav.credits")}</span>
             <span className="font-mono font-semibold text-emerald-400">{formatCredits(user.credits)}</span>
           </div>
           <div className="mt-2 flex items-center gap-1.5">
@@ -130,7 +138,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Link href="/billing" className="mt-3 block">
           <Button size="sm" className="w-full bg-emerald-500/90 hover:bg-emerald-400 text-zinc-950 font-medium h-8 text-xs">
             <Coins className="h-3.5 w-3.5 mr-1.5" />
-            Recharger
+            {t("nav.recharge")}
           </Button>
         </Link>
       </div>
@@ -162,17 +170,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button
             className="lg:hidden p-2 -ml-2 text-zinc-400 hover:text-white"
             onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Ouvrir le menu"
+            aria-label={t("nav.openMenu")}
           >
             {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
 
           <div className="flex items-center gap-2 text-sm text-zinc-500 font-mono">
-            <span className="hidden sm:inline">crédits :</span>
+            <span className="hidden sm:inline">{t("nav.creditsLabel")}</span>
             <span className="text-emerald-400 font-semibold">{formatCredits(user.credits)}</span>
           </div>
 
           <div className="flex items-center gap-3">
+            <LanguageSwitcher />
             <div className="hidden sm:block text-right leading-tight">
               <div className="text-sm font-medium text-zinc-200">{user.name ?? user.email}</div>
               <div className="text-[11px] text-zinc-500">{user.email}</div>
@@ -184,7 +193,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className="text-zinc-400 hover:text-white hover:bg-zinc-800/60 h-9"
             >
               <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline ml-2">Déconnexion</span>
+              <span className="hidden sm:inline ml-2">{t("nav.logout")}</span>
             </Button>
           </div>
         </header>

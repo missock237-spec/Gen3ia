@@ -1,0 +1,58 @@
+/** Clés API — création, révocation, utilisation (v1). */
+
+export const apikeys = {
+  fr: {
+    "apikeys.title": "Clés API",
+    "apikeys.subtitle":
+      "Authentifiez vos appels à l'API v1. Seule l'empreinte SHA-256 est stockée — le secret n'est visible qu'à la création.",
+    "apikeys.newKeyTitle": "Nouvelle clé — copiez-la maintenant",
+    "apikeys.copy": "Copier",
+    "apikeys.copied": "Copiée",
+    "apikeys.create": "Créer une clé",
+    "apikeys.namePlaceholder": "Ex. Production — app mobile",
+    "apikeys.linkAgent": "Lier à un agent (optionnel)",
+    "apikeys.noAgent": "Aucun agent spécifique",
+    "apikeys.generate": "Générer",
+    "apikeys.myKeys": "Mes clés ({count} actives)",
+    "apikeys.empty": "Aucune clé. Générez-en une pour appeler l'API.",
+    "apikeys.revoked": "révoquée",
+    "apikeys.requestsCount": "{count} requête(s)",
+    "apikeys.lastUsed": "dernière utilisation {date}",
+    "apikeys.usage": "Utilisation",
+    "apikeys.limit":
+      "Limite : 60 requêtes/minute par clé. Endpoints : POST /api/v1/chat, POST /api/v1/task, GET /api/v1/task/{id}.",
+    "apikeys.sdkLink": "→ Voir les SDK JavaScript et Python complets",
+    "apikeys.defaultName": "Ma clé",
+    "apikeys.errors.create": "Création impossible",
+    "apikeys.errors.revoke": "Révocation impossible",
+    "apikeys.revoked.title": "Clé révoquée",
+    "apikeys.revoked.desc": "Elle n'est plus acceptée par l'API.",
+  },
+  en: {
+    "apikeys.title": "API keys",
+    "apikeys.subtitle":
+      "Authenticate your calls to the API v1. Only the SHA-256 fingerprint is stored — the secret is visible only at creation.",
+    "apikeys.newKeyTitle": "New key — copy it now",
+    "apikeys.copy": "Copy",
+    "apikeys.copied": "Copied",
+    "apikeys.create": "Create a key",
+    "apikeys.namePlaceholder": "E.g. Production — mobile app",
+    "apikeys.linkAgent": "Link to an agent (optional)",
+    "apikeys.noAgent": "No specific agent",
+    "apikeys.generate": "Generate",
+    "apikeys.myKeys": "My keys ({count} active)",
+    "apikeys.empty": "No keys yet. Generate one to call the API.",
+    "apikeys.revoked": "revoked",
+    "apikeys.requestsCount": "{count} request(s)",
+    "apikeys.lastUsed": "last used {date}",
+    "apikeys.usage": "Usage",
+    "apikeys.limit":
+      "Limit: 60 requests/minute per key. Endpoints: POST /api/v1/chat, POST /api/v1/task, GET /api/v1/task/{id}.",
+    "apikeys.sdkLink": "→ View the full JavaScript and Python SDKs",
+    "apikeys.defaultName": "My key",
+    "apikeys.errors.create": "Creation failed",
+    "apikeys.errors.revoke": "Revocation failed",
+    "apikeys.revoked.title": "Key revoked",
+    "apikeys.revoked.desc": "It is no longer accepted by the API.",
+  },
+};

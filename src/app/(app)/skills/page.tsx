@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
 import { usePolling, apiPost, apiDelete } from "@/lib/client/hooks";
 import { GraduationCap, Plus, Trash2, Sparkles } from "lucide-react";
 
@@ -21,6 +22,7 @@ interface Skill {
 
 export default function SkillsPage() {
   const { toast } = useToast();
+  const { t } = useI18n();
   const { data, loading, reload } = usePolling<{ ok: boolean; builtIn: Skill[]; custom: (Skill & { id: string })[] }>("/api/skills");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -29,7 +31,7 @@ export default function SkillsPage() {
 
   async function addSkill() {
     if (name.trim().length < 2 || description.trim().length < 10) {
-      toast({ title: "Informations incomplètes", description: "Nom (2+) et description (10+) requis.", variant: "destructive" })
+      toast({ title: t("skills.errors.incomplete"), description: t("skills.errors.incompleteDesc"), variant: "destructive" })
       return
     }
     setAdding(true)
@@ -40,10 +42,10 @@ export default function SkillsPage() {
     })
     setAdding(false)
     if (!res.ok) {
-      toast({ title: "Création impossible", description: res.error, variant: "destructive" })
+      toast({ title: t("skills.errors.create"), description: res.error, variant: "destructive" })
       return
     }
-    toast({ title: "Compétence créée", description: "Réutilisable par vos agents." })
+    toast({ title: t("skills.created.title"), description: t("skills.created.desc") })
     setName(""); setDescription(""); setInstructions("")
     await reload()
   }
@@ -51,7 +53,7 @@ export default function SkillsPage() {
   async function removeSkill(id: string) {
     const res = await apiDelete(`/api/skills/${id}`)
     if (!res.ok) {
-      toast({ title: "Suppression impossible", description: res.error, variant: "destructive" })
+      toast({ title: t("skills.errors.delete"), description: res.error, variant: "destructive" })
       return
     }
     await reload()
@@ -63,9 +65,9 @@ export default function SkillsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Compétences</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("skills.title")}</h1>
         <p className="text-sm text-zinc-400 mt-1">
-          Des savoir-faire réutilisables qui enrichissent les instructions de vos agents.
+          {t("skills.subtitle")}
         </p>
       </div>
 
@@ -77,7 +79,7 @@ export default function SkillsPage() {
         <>
           <div>
             <h2 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-emerald-400" /> Compétences intégrées
+              <Sparkles className="h-4 w-4 text-emerald-400" /> {t("skills.builtIn")}
             </h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {builtIn.map((s) => (
@@ -96,7 +98,7 @@ export default function SkillsPage() {
 
           <div>
             <h2 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 text-emerald-400" /> Mes compétences ({custom.length})
+              <GraduationCap className="h-4 w-4 text-emerald-400" /> {t("skills.mine", { count: custom.length })}
             </h2>
             {custom.length > 0 && (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
@@ -122,25 +124,25 @@ export default function SkillsPage() {
 
             <Card className="bg-zinc-900/40 border-zinc-800">
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Plus className="h-4 w-4 text-emerald-400" />Créer une compétence</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2"><Plus className="h-4 w-4 text-emerald-400" />{t("skills.create")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Nom</Label>
-                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Veille concurrentielle" className="bg-zinc-950 border-zinc-800" />
+                    <Label>{t("common.name")}</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("skills.namePlaceholder")} className="bg-zinc-950 border-zinc-800" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Description</Label>
-                    <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="En une phrase, le savoir-faire" className="bg-zinc-950 border-zinc-800" />
+                    <Label>{t("common.description")}</Label>
+                    <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("skills.descriptionPlaceholder")} className="bg-zinc-950 border-zinc-800" />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Instructions détaillées (injectées aux agents)</Label>
-                  <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Méthode, étapes, pièges à éviter…" className="min-h-[100px] bg-zinc-950 border-zinc-800 font-mono text-sm" />
+                  <Label>{t("skills.instructions")}</Label>
+                  <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={t("skills.instructionsPlaceholder")} className="min-h-[100px] bg-zinc-950 border-zinc-800 font-mono text-sm" />
                 </div>
                 <Button onClick={addSkill} disabled={adding} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold">
-                  {adding ? "Création…" : "Créer la compétence"}
+                  {adding ? t("skills.creating") : t("skills.submit")}
                 </Button>
               </CardContent>
             </Card>

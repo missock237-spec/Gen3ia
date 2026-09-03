@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
+import { renderRich } from "@/lib/i18n/rich";
 import { Loader2, Webhook, Trash2, PlusCircle, ShieldAlert, CheckCircle2, XCircle } from "lucide-react";
 
 /**
@@ -38,6 +40,8 @@ const EVENTS = ["task.completed", "task.failed", "credits.low", "payment.receive
 
 export default function WebhooksPage() {
   const { toast } = useToast();
+  const { t, lang } = useI18n();
+  const locale = lang === "fr" ? "fr-FR" : "en-US";
   const [webhooks, setWebhooks] = useState<WebhookView[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -61,11 +65,11 @@ export default function WebhooksPage() {
 
   async function create() {
     if (!url.startsWith("https://") && !url.startsWith("http://")) {
-      toast({ title: "URL invalide", description: "L'URL du webhook doit commencer par http(s)://.", variant: "destructive" });
+      toast({ title: t("webhooks.errors.invalidUrl"), description: t("webhooks.errors.invalidUrlDesc"), variant: "destructive" });
       return;
     }
     if (selectedEvents.length === 0) {
-      toast({ title: "Aucun événement", description: "Sélectionnez au moins un événement.", variant: "destructive" });
+      toast({ title: t("webhooks.errors.noEvents"), description: t("webhooks.errors.noEventsDesc"), variant: "destructive" });
       return;
     }
     setBusy(true);
@@ -78,14 +82,14 @@ export default function WebhooksPage() {
       const json = (await res.json()) as { ok: boolean; secret?: string; error?: string };
       if (json.ok) {
         toast({
-          title: "Webhook créé",
-          description: "Secret de signature affiché une seule fois — copiez-le maintenant.",
+          title: t("webhooks.created.title"),
+          description: t("webhooks.created.desc"),
         });
         setShowForm(false);
         setUrl("");
         await refresh();
       } else {
-        toast({ title: "Création refusée", description: json.error, variant: "destructive" });
+        toast({ title: t("webhooks.errors.createFailed"), description: json.error, variant: "destructive" });
       }
     } finally {
       setBusy(false);
@@ -110,7 +114,7 @@ export default function WebhooksPage() {
     setBusy(true);
     try {
       await fetch(`/api/webhooks/${id}`, { method: "DELETE" });
-      toast({ title: "Webhook supprimé" });
+      toast({ title: t("webhooks.deleted") });
       await refresh();
     } finally {
       setBusy(false);
@@ -121,21 +125,20 @@ export default function WebhooksPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Webhooks sortants</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("webhooks.title")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Recevez les événements GEN3IA sur vos systèmes : chaque livraison est signée (HMAC) et
-            journalisée avec son code HTTP de réponse.
+            {t("webhooks.subtitle")}
           </p>
         </div>
         <Button onClick={() => setShowForm((s) => !s)} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-          <PlusCircle className="h-4 w-4" /> {showForm ? "Fermer" : "Créer un webhook"}
+          <PlusCircle className="h-4 w-4" /> {showForm ? t("common.close") : t("webhooks.create")}
         </Button>
       </div>
 
       {showForm && (
         <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <div className="space-y-2">
-            <Label htmlFor="url">URL de destination</Label>
+            <Label htmlFor="url">{t("webhooks.url")}</Label>
             <Input
               id="url"
               value={url}
@@ -145,7 +148,7 @@ export default function WebhooksPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Événements</Label>
+            <Label>{t("webhooks.events")}</Label>
             <div className="flex flex-wrap gap-2">
               {EVENTS.map((ev) => {
                 const on = selectedEvents.includes(ev);
@@ -162,7 +165,7 @@ export default function WebhooksPage() {
             </div>
           </div>
           <Button onClick={() => void create()} disabled={busy} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Créer"}
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t("common.create")}
           </Button>
         </div>
       )}
@@ -175,7 +178,7 @@ export default function WebhooksPage() {
         </div>
       ) : webhooks.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center text-zinc-400">
-          Aucun webhook. Créez-en un pour être notifié automatiquement.
+          {t("webhooks.empty")}
         </div>
       ) : (
         <div className="space-y-3">
@@ -186,14 +189,14 @@ export default function WebhooksPage() {
                   <Webhook className="h-4 w-4 text-emerald-400" />
                   <code className="max-w-xs truncate text-xs text-zinc-300">{w.url}</code>
                   {w.active ? (
-                    <Badge variant="outline" className="border-emerald-700/50 text-emerald-300">Actif</Badge>
+                    <Badge variant="outline" className="border-emerald-700/50 text-emerald-300">{t("webhooks.active")}</Badge>
                   ) : (
-                    <Badge variant="outline" className="border-zinc-700 text-zinc-500">Suspendu</Badge>
+                    <Badge variant="outline" className="border-zinc-700 text-zinc-500">{t("webhooks.suspended")}</Badge>
                   )}
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => void toggle(w)}>
-                    {w.active ? "Suspendre" : "Réactiver"}
+                    {w.active ? t("webhooks.suspend") : t("webhooks.resume")}
                   </Button>
                   <Button size="sm" variant="destructive" disabled={busy} onClick={() => void remove(w.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
@@ -210,7 +213,7 @@ export default function WebhooksPage() {
               {w.deliveries.length > 0 && (
                 <div className="mt-3 border-t border-zinc-800 pt-3">
                   <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-                    Dernières livraisons
+                    {t("webhooks.deliveries")}
                   </h4>
                   <div className="max-h-40 space-y-1 overflow-y-auto">
                     {w.deliveries.map((d) => (
@@ -223,7 +226,7 @@ export default function WebhooksPage() {
                         <span className="text-zinc-400">{d.event}</span>
                         <span className="text-zinc-600">HTTP {d.statusCode ?? "—"}</span>
                         <span className="ml-auto text-zinc-600">
-                          {new Date(d.createdAt).toLocaleString("fr-FR")}
+                          {new Date(d.createdAt).toLocaleString(locale)}
                         </span>
                       </div>
                     ))}
@@ -239,9 +242,7 @@ export default function WebhooksPage() {
         <div className="flex gap-3">
           <ShieldAlert className="h-5 w-5 shrink-0 text-amber-400" />
           <p className="text-xs leading-relaxed text-amber-200/80">
-            Vérifiez la signature <code className="text-amber-300">X-GEN3IA-Signature</code> (HMAC-SHA256 du
-            corps brut avec le secret fourni à la création) côté destinataire pour rejeter toute requête
-            falsifiée.
+            {renderRich(t("webhooks.signatureHint"))}
           </p>
         </div>
       </div>

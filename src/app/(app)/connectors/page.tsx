@@ -16,6 +16,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
+import { renderRich } from "@/lib/i18n/rich";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import {
   Plug,
   PlugZap,
@@ -75,28 +78,29 @@ interface AppView {
   } | null;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  DEVELOPMENT: "Développement",
-  COMMUNICATION: "Communication",
-  PRODUCTIVITY: "Productivité",
-  CRM: "CRM",
-  PAYMENTS: "Paiements",
-  SOCIAL: "Réseaux sociaux",
-  DATA: "Données",
-  CLOUD: "Cloud",
+const CATEGORY_LABELS: Record<string, TranslationKey> = {
+  DEVELOPMENT: "connectors.categories.DEVELOPMENT",
+  COMMUNICATION: "connectors.categories.COMMUNICATION",
+  PRODUCTIVITY: "connectors.categories.PRODUCTIVITY",
+  CRM: "connectors.categories.CRM",
+  PAYMENTS: "connectors.categories.PAYMENTS",
+  SOCIAL: "connectors.categories.SOCIAL",
+  DATA: "connectors.categories.DATA",
+  CLOUD: "connectors.categories.CLOUD",
 };
 
-const STATUS_BADGES: Record<string, { label: string; cls: string }> = {
-  ACTIVE: { label: "Connecté", cls: "border-emerald-700/50 text-emerald-300" },
-  INITIALIZING: { label: "Initialisation", cls: "border-zinc-700 text-zinc-400" },
-  INITIATED: { label: "En attente", cls: "border-blue-700/50 text-blue-300" },
-  FAILED: { label: "Échec", cls: "border-red-800/60 text-red-300" },
-  EXPIRED: { label: "Expiré", cls: "border-orange-700/50 text-orange-300" },
-  REVOKED: { label: "Révoqué", cls: "border-zinc-700 text-zinc-500" },
+const STATUS_BADGES: Record<string, { labelKey: TranslationKey; cls: string }> = {
+  ACTIVE: { labelKey: "common.connected", cls: "border-emerald-700/50 text-emerald-300" },
+  INITIALIZING: { labelKey: "connectors.status.INITIALIZING", cls: "border-zinc-700 text-zinc-400" },
+  INITIATED: { labelKey: "connectors.status.INITIATED", cls: "border-blue-700/50 text-blue-300" },
+  FAILED: { labelKey: "connectors.status.FAILED", cls: "border-red-800/60 text-red-300" },
+  EXPIRED: { labelKey: "connectors.status.EXPIRED", cls: "border-orange-700/50 text-orange-300" },
+  REVOKED: { labelKey: "connectors.status.REVOKED", cls: "border-zinc-700 text-zinc-500" },
 };
 
 export default function ConnectorsPage() {
   const { toast } = useToast();
+  const { t } = useI18n();
   const [apps, setApps] = useState<AppView[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -137,8 +141,10 @@ export default function ConnectorsPage() {
     if (callback) {
       const detail = params.get("detail") ?? "";
       toast({
-        title: status === "connected" ? `Connexion ${callback} établie` : `Connexion ${callback} échouée`,
-        description: detail || (status === "connected" ? "L'application est utilisable par vos agents." : undefined),
+        title: status === "connected"
+          ? t("connectors.oauth.callbackConnected", { app: callback })
+          : t("connectors.oauth.callbackFailed", { app: callback }),
+        description: detail || (status === "connected" ? t("connectors.oauth.usable") : undefined),
       });
       window.history.replaceState({}, "", "/connectors");
     }
@@ -172,14 +178,14 @@ export default function ConnectorsPage() {
         return;
       }
       if (json.ok && json.mode === "DIRECT") {
-        toast({ title: "Connexion enregistrée", description: `${app.name} est connecté.` });
+        toast({ title: t("connectors.toast.saved"), description: t("connectors.toast.savedDesc", { app: app.name }) });
         await refresh();
         return;
       }
-      toast({ title: "Connexion impossible", description: json.error ?? "Erreur inconnue", variant: "destructive" });
+      toast({ title: t("connectors.toast.connectFailed"), description: json.error ?? t("connectors.errors.unknown"), variant: "destructive" });
     } catch (err) {
       toast({
-        title: "Erreur réseau",
+        title: t("common.errorNetwork"),
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
@@ -199,12 +205,12 @@ export default function ConnectorsPage() {
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (json.ok) {
-        toast({ title: "Token enregistré", description: `${tokenApp.name} est connecté (secret chiffré AES-256-GCM).` });
+        toast({ title: t("connectors.toast.tokenSaved"), description: t("connectors.toast.tokenSavedDesc", { app: tokenApp.name }) });
         setTokenApp(null);
         setTokenValue("");
         await refresh();
       } else {
-        toast({ title: "Import refusé", description: json.error, variant: "destructive" });
+        toast({ title: t("connectors.toast.importRefused"), description: json.error, variant: "destructive" });
       }
     } finally {
       setBusy(null);
@@ -226,14 +232,14 @@ export default function ConnectorsPage() {
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (json.ok) {
-        toast({ title: "Jira connecté", description: "Identifiants chiffrés et prêts à l'usage." });
+        toast({ title: t("connectors.toast.jiraSaved"), description: t("connectors.toast.jiraSavedDesc") });
         setTokenApp(null);
         setJiraDomain("");
         setJiraEmail("");
         setJiraToken("");
         await refresh();
       } else {
-        toast({ title: "Connexion refusée", description: json.error, variant: "destructive" });
+        toast({ title: t("connectors.toast.refused"), description: json.error, variant: "destructive" });
       }
     } finally {
       setBusy(null);
@@ -247,7 +253,7 @@ export default function ConnectorsPage() {
       const res = await fetch(`/api/connectors/connections/${app.connection.id}`, { method: "DELETE" });
       const json = (await res.json()) as { ok: boolean };
       if (json.ok) {
-        toast({ title: "Connexion supprimée", description: `${app.name} a été déconnecté.` });
+        toast({ title: t("connectors.toast.disconnected"), description: t("connectors.toast.disconnectedDesc", { app: app.name }) });
         await refresh();
       }
     } finally {
@@ -281,12 +287,12 @@ export default function ConnectorsPage() {
         latencyMs: number;
       };
       setExecResult(
-        `${json.ok ? "OK" : "ECHEC"} HTTP ${json.status} — ${json.latencyMs} ms\n${
-          json.error ? `erreur : ${json.error}\n` : ""
+        `${json.ok ? t("connectors.console.ok") : t("connectors.console.fail")} HTTP ${json.status} — ${json.latencyMs} ms\n${
+          json.error ? `${t("connectors.console.errorPrefix", { error: json.error })}\n` : ""
         }${json.output}`
       );
     } catch (err) {
-      setExecResult(`ECHEC ${err instanceof Error ? err.message : String(err)}`);
+      setExecResult(`${t("connectors.console.fail")} ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setExecuting(false);
     }
@@ -298,15 +304,13 @@ export default function ConnectorsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Connecteurs</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("connectors.title")}</h1>
           <p className="text-sm text-zinc-400 mt-1 max-w-2xl">
-            Connectez vos applications (OAuth2/OAuth1 ou clés) — les agents GEN3IA peuvent alors
-            exécuter leurs actions réelles pendant les tâches. Les secrets sont chiffrés
-            (AES-256-GCM) et jamais exposés à l&apos;interface.
+            {t("connectors.subtitle")}
           </p>
         </div>
         <Badge variant="outline" className="border-emerald-700/40 text-emerald-300">
-          {connectedCount} / {apps.length} apps natives connectées
+          {t("connectors.connectedCount", { connected: connectedCount, total: apps.length })}
         </Badge>
       </div>
 
@@ -315,10 +319,10 @@ export default function ConnectorsPage() {
 
       <div className="pt-2">
         <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-1">
-          Apps natives GEN3IA — actions exécutables en local
+          {t("connectors.native.title")}
         </h2>
         <p className="text-xs text-zinc-500 mb-4">
-          Ces applications disposent d&apos;actions intégrées au moteur (exécution directe par vos agents).
+          {t("connectors.native.desc")}
         </p>
       </div>
 
@@ -332,16 +336,19 @@ export default function ConnectorsPage() {
         categories.map((cat) => (
           <div key={cat}>
             <h2 className="text-sm font-semibold text-zinc-300 mb-3">
-              {CATEGORY_LABELS[cat] ?? cat}
+              {CATEGORY_LABELS[cat] ? t(CATEGORY_LABELS[cat]) : cat}
             </h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {apps
                 .filter((a) => a.category === cat)
                 .map((app) => {
                   const conn = app.connection;
-                  const status = conn
-                    ? STATUS_BADGES[conn.status] ?? { label: conn.status, cls: "border-zinc-700 text-zinc-400" }
-                    : null;
+                  const statusMeta = conn ? STATUS_BADGES[conn.status] : undefined;
+                  const status = statusMeta
+                    ? { label: t(statusMeta.labelKey), cls: statusMeta.cls }
+                    : conn
+                      ? { label: conn.status, cls: "border-zinc-700 text-zinc-400" }
+                      : null;
                   return (
                     <Card key={app.slug} className="bg-zinc-900/40 border-zinc-800">
                       <CardContent className="p-4 flex flex-col h-full">
@@ -358,7 +365,7 @@ export default function ConnectorsPage() {
                                 rel="noreferrer"
                                 className="text-[10px] text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1"
                               >
-                                documentation <ExternalLink className="h-2.5 w-2.5" />
+                                {t("connectors.docsLink")} <ExternalLink className="h-2.5 w-2.5" />
                               </a>
                             </div>
                           </div>
@@ -379,7 +386,7 @@ export default function ConnectorsPage() {
                             {app.authScheme}
                           </Badge>
                           <Badge variant="outline" className="text-[10px] border-zinc-700 text-zinc-500">
-                            {app.actionCount} actions
+                            {t("connectors.actionsCount", { count: app.actionCount })}
                           </Badge>
                           {conn?.accountHint && (
                             <Badge variant="outline" className="text-[10px] font-mono border-zinc-700 text-zinc-400">
@@ -418,7 +425,7 @@ export default function ConnectorsPage() {
                                 }}
                               >
                                 <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
-                                Tester
+                                {t("connectors.test")}
                               </Button>
                               <Button
                                 size="sm"
@@ -428,7 +435,7 @@ export default function ConnectorsPage() {
                                 onClick={() => void disconnect(app)}
                               >
                                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                                Déconnecter
+                                {t("connectors.disconnect")}
                               </Button>
                             </>
                           ) : (
@@ -452,7 +459,7 @@ export default function ConnectorsPage() {
                               ) : (
                                 <PlugZap className="h-3.5 w-3.5 mr-1.5" />
                               )}
-                              {app.mode === "OAUTH" ? "Connecter (OAuth)" : "Ajouter un token"}
+                              {app.mode === "OAUTH" ? t("connectors.connectOauth") : t("connectors.addToken")}
                             </Button>
                           )}
                         </div>
@@ -471,59 +478,59 @@ export default function ConnectorsPage() {
           {tokenApp?.slug === "jira" ? (
             <>
               <DialogHeader>
-                <DialogTitle>Connecter Jira Cloud</DialogTitle>
+                <DialogTitle>{t("connectors.jira.title")}</DialogTitle>
                 <DialogDescription>
-                  Créez un token API sur id.atlassian.com → Sécurité → Token API.
+                  {t("connectors.jira.desc")}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Domaine Atlassian (sans .atlassian.com)</Label>
-                  <Input value={jiraDomain} onChange={(e) => setJiraDomain(e.target.value)} placeholder="mon-entreprise" />
+                  <Label className="text-xs">{t("connectors.jira.domain")}</Label>
+                  <Input value={jiraDomain} onChange={(e) => setJiraDomain(e.target.value)} placeholder={t("connectors.jira.domainPlaceholder")} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Email du compte</Label>
-                  <Input value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} placeholder="vous@entreprise.com" type="email" />
+                  <Label className="text-xs">{t("connectors.jira.email")}</Label>
+                  <Input value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} placeholder={t("connectors.jira.emailPlaceholder")} type="email" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Token API</Label>
-                  <Input value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} placeholder="ATATT…" type="password" />
+                  <Label className="text-xs">{t("connectors.jira.token")}</Label>
+                  <Input value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} placeholder={t("connectors.jira.tokenPlaceholder")} type="password" />
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="ghost" onClick={() => setTokenApp(null)}>Annuler</Button>
+                <Button variant="ghost" onClick={() => setTokenApp(null)}>{t("common.cancel")}</Button>
                 <Button disabled={busy === "jira" || !jiraDomain || !jiraEmail || !jiraToken} onClick={() => void connectJira()}>
-                  {busy === "jira" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connecter"}
+                  {busy === "jira" ? <Loader2 className="h-4 w-4 animate-spin" /> : t("connectors.connect")}
                 </Button>
               </DialogFooter>
             </>
           ) : (
             <>
               <DialogHeader>
-                <DialogTitle>Connecter {tokenApp?.name}</DialogTitle>
+                <DialogTitle>{t("connectors.token.title", { app: tokenApp?.name ?? "" })}</DialogTitle>
                 <DialogDescription>
-                  {tokenApp?.tokenImportLabel ?? "Collez votre token — il sera chiffré (AES-256-GCM) avant stockage."}
+                  {tokenApp?.tokenImportLabel ?? t("connectors.token.desc")}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Token / clé d&apos;API</Label>
+                  <Label className="text-xs">{t("connectors.token.label")}</Label>
                   <Input
                     value={tokenValue}
                     onChange={(e) => setTokenValue(e.target.value)}
-                    placeholder="ghp_… / xoxb-… / secret_…"
+                    placeholder={t("connectors.token.placeholder")}
                     type="password"
                   />
                 </div>
                 <p className="text-[11px] text-zinc-500 flex items-start gap-1.5">
                   <KeyRound className="h-3 w-3 mt-0.5 shrink-0" />
-                  Le token ne transite jamais en clair en base et n&apos;est jamais renvoyé par l&apos;API.
+                  {t("connectors.token.hint")}
                 </p>
               </div>
               <DialogFooter>
-                <Button variant="ghost" onClick={() => setTokenApp(null)}>Annuler</Button>
+                <Button variant="ghost" onClick={() => setTokenApp(null)}>{t("common.cancel")}</Button>
                 <Button disabled={busy === tokenApp?.slug || tokenValue.length < 8} onClick={() => void connectWithToken()}>
-                  {busy === tokenApp?.slug ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enregistrer"}
+                  {busy === tokenApp?.slug ? <Loader2 className="h-4 w-4 animate-spin" /> : t("common.save")}
                 </Button>
               </DialogFooter>
             </>
@@ -535,14 +542,14 @@ export default function ConnectorsPage() {
       <Dialog open={!!consoleApp} onOpenChange={(o) => !o && setConsoleApp(null)}>
         <DialogContent className="bg-zinc-900 border-zinc-800 max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Tester {consoleApp?.name}</DialogTitle>
+            <DialogTitle>{t("connectors.console.title", { app: consoleApp?.name ?? "" })}</DialogTitle>
             <DialogDescription>
-              Exécution réelle contre l&apos;API de l&apos;application connectée.
+              {t("connectors.console.desc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Action</Label>
+              <Label className="text-xs">{t("connectors.console.action")}</Label>
               <select
                 className="w-full h-9 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-200"
                 value={consoleAction?.slug ?? ""}
@@ -553,7 +560,7 @@ export default function ConnectorsPage() {
                   setExecResult(null);
                 }}
               >
-                <option value="">— choisir une action —</option>
+                <option value="">{t("connectors.console.chooseAction")}</option>
                 {consoleApp?.actions.map((a) => (
                   <option key={a.slug} value={a.slug}>
                     {a.method} · {a.name}
@@ -565,7 +572,7 @@ export default function ConnectorsPage() {
             {consoleAction && (
               <div className="grid sm:grid-cols-2 gap-2.5">
                 {consoleAction.parameters.length === 0 ? (
-                  <p className="text-xs text-zinc-500 sm:col-span-2">Cette action n&apos;a aucun paramètre.</p>
+                  <p className="text-xs text-zinc-500 sm:col-span-2">{t("connectors.console.noParams")}</p>
                 ) : (
                   consoleAction.parameters.map((p) => (
                     <div key={p.name} className="space-y-1">
@@ -588,7 +595,7 @@ export default function ConnectorsPage() {
                 {consoleAction.dangerous && (
                   <p className="text-[11px] text-orange-300/80 sm:col-span-2 flex items-center gap-1.5">
                     <ShieldAlert className="h-3 w-3" />
-                    Action en écriture : impact réel sur le compte connecté.
+                    {t("connectors.console.dangerous")}
                   </p>
                 )}
               </div>
@@ -601,10 +608,10 @@ export default function ConnectorsPage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setConsoleApp(null)}>Fermer</Button>
+            <Button variant="ghost" onClick={() => setConsoleApp(null)}>{t("common.close")}</Button>
             <Button disabled={!consoleAction || executing} onClick={() => void executeConsoleAction()}>
               {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-1.5" />}
-              Exécuter
+              {t("connectors.console.execute")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -616,17 +623,10 @@ export default function ConnectorsPage() {
             <Plug className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
             <div className="text-xs text-zinc-400 leading-relaxed">
               <p className="text-zinc-300 font-medium mb-1">
-                Moteur de connecteurs local (architecture Composio adaptée, MIT)
+                {t("connectors.engine.title")}
               </p>
               <p>
-                Flux OAuth2 (PKCE), OAuth1.0a (HMAC-SHA1) et clés — exécution directe des API des
-                applications, sans intermédiaire. Pour activer le flux OAuth d&apos;une app,
-                renseignez ses variables serveur (ex.{" "}
-                <code className="text-zinc-300">GITHUB_CLIENT_ID</code> /{" "}
-                <code className="text-zinc-300">GITHUB_CLIENT_SECRET</code>). Les agents peuvent
-                utiliser les actions via la clé d&apos;outil{" "}
-                <code className="text-zinc-300">connector_&lt;app&gt;_&lt;action&gt;</code> (ou{" "}
-                <code className="text-zinc-300">connectors</code> pour tout activer).
+                {renderRich(t("connectors.engine.desc"))}
               </p>
             </div>
           </div>

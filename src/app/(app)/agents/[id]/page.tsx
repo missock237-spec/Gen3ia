@@ -13,6 +13,8 @@ import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/app/status-badge";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
+import { renderRich } from "@/lib/i18n/rich";
 import { apiPost, apiPatch, formatCredits, usePolling } from "@/lib/client/hooks";
 import {
   Loader2, Send, Save, Rocket, Copy, Check, MessageSquare, Wrench, Wrench as WrenchIcon,
@@ -44,6 +46,7 @@ export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useI18n();
   const { data, loading, reload } = usePolling<{ ok: boolean; agent: AgentDetail }>(`/api/agents/${id}`);
   const agent = data?.agent;
 
@@ -80,10 +83,10 @@ export default function AgentDetailPage() {
         tools,
       })
       if (!res.ok) throw new Error(res.error)
-      toast({ title: "Agent enregistré", description: "Les modifications sont actives." })
+      toast({ title: t("agents.saved.title"), description: t("agents.saved.desc") })
       await reload()
     } catch (err) {
-      toast({ title: "Échec de l'enregistrement", description: err instanceof Error ? err.message : "", variant: "destructive" })
+      toast({ title: t("agents.errors.saveFailed"), description: err instanceof Error ? err.message : "", variant: "destructive" })
     } finally {
       setSaving(false)
     }
@@ -124,7 +127,7 @@ export default function AgentDetailPage() {
         const copy = [...m]
         copy[copy.length - 1] = {
           role: "assistant",
-          content: `⚠️ ${err instanceof Error ? err.message : "Erreur de test."}`,
+          content: `⚠️ ${err instanceof Error ? err.message : t("agents.errors.testError")}`,
         }
         return copy
       })
@@ -148,14 +151,14 @@ export default function AgentDetailPage() {
     try {
       const res = await apiPost<typeof deployResult & { ok: boolean }>(`/api/agents/${agent.id}/deploy`, {
         generateKey: true,
-        keyName: `Clé — ${agent.name}`,
+        keyName: t("agents.deploy.keyName", { name: agent.name }),
       })
       if (!res.ok) throw new Error(res.error)
       setDeployResult(res)
       await reload()
-      toast({ title: "Agent déployé 🚀", description: "Endpoint public et clé API générés." })
+      toast({ title: t("agents.deploy.deployedTitle"), description: t("agents.deploy.deployedDesc") })
     } catch (err) {
-      toast({ title: "Échec du déploiement", description: err instanceof Error ? err.message : "", variant: "destructive" })
+      toast({ title: t("agents.errors.deployFailed"), description: err instanceof Error ? err.message : "", variant: "destructive" })
     } finally {
       setDeploying(false)
     }
@@ -165,12 +168,12 @@ export default function AgentDetailPage() {
     if (!agent) return
     const res = await apiPost("/api/marketplace", { agentId: agent.id, action: agent.visibility === "MARKETPLACE" ? "unpublish" : "publish" })
     if (!res.ok) {
-      toast({ title: "Action impossible", description: res.error, variant: "destructive" })
+      toast({ title: t("agents.errors.actionFailed"), description: res.error, variant: "destructive" })
       return
     }
     await reload()
     toast({
-      title: agent.visibility === "MARKETPLACE" ? "Retiré de la marketplace" : "Publié sur la marketplace",
+      title: agent.visibility === "MARKETPLACE" ? t("agents.marketplace.unpublish") : t("agents.marketplace.publish"),
     })
   }
 
@@ -186,9 +189,10 @@ export default function AgentDetailPage() {
   const stats = agent.stats ? JSON.parse(agent.stats) : null
   const TOOL_KEYS = ["web_search", "page_reader", "calculator", "code_runner", "knowledge_search", "memory_recall", "http_fetch", "datetime"]
   const TOOL_LABELS: Record<string, string> = {
-    web_search: "Recherche web", page_reader: "Lecteur de page", calculator: "Calculatrice",
-    code_runner: "Exécuteur de code", knowledge_search: "Connaissances", memory_recall: "Mémoire",
-    http_fetch: "HTTP", datetime: "Date/heure",
+    web_search: t("agents.toolShort.web_search"), page_reader: t("agents.toolShort.page_reader"),
+    calculator: t("agents.toolShort.calculator"), code_runner: t("agents.toolShort.code_runner"),
+    knowledge_search: t("agents.toolShort.knowledge_search"), memory_recall: t("agents.toolShort.memory_recall"),
+    http_fetch: t("agents.toolShort.http_fetch"), datetime: t("agents.toolShort.datetime"),
   }
 
   return (
@@ -199,7 +203,7 @@ export default function AgentDetailPage() {
             <h1 className="text-2xl font-bold tracking-tight truncate">{agent.name}</h1>
             <StatusBadge status={agent.status} />
           </div>
-          <p className="text-sm text-zinc-500 font-mono mt-1">/{agent.slug} · {agent._count.tasks} tâche(s)</p>
+          <p className="text-sm text-zinc-500 font-mono mt-1">/{agent.slug} · {t("agents.tasksCount", { count: agent._count.tasks })}</p>
         </div>
         <Button
           onClick={saveAgent}
@@ -207,7 +211,7 @@ export default function AgentDetailPage() {
           className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="ml-2">Enregistrer</span>
+          <span className="ml-2">{t("common.save")}</span>
         </Button>
       </div>
 
@@ -216,25 +220,25 @@ export default function AgentDetailPage() {
           <Card className="bg-zinc-900/40 border-zinc-800 py-3">
             <CardContent className="px-4 text-center">
               <div className="text-xl font-bold">{stats.runs}</div>
-              <div className="text-[11px] text-zinc-500 mt-0.5">exécutions</div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">{t("agents.stats.runs")}</div>
             </CardContent>
           </Card>
           <Card className="bg-zinc-900/40 border-zinc-800 py-3">
             <CardContent className="px-4 text-center">
               <div className="text-xl font-bold text-emerald-400">{stats.runs > 0 ? Math.round((stats.success / stats.runs) * 100) : 0}%</div>
-              <div className="text-[11px] text-zinc-500 mt-0.5">réussite</div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">{t("agents.stats.successRate")}</div>
             </CardContent>
           </Card>
           <Card className="bg-zinc-900/40 border-zinc-800 py-3">
             <CardContent className="px-4 text-center">
               <div className="text-xl font-bold">{formatCredits(stats.credits ?? 0)}</div>
-              <div className="text-[11px] text-zinc-500 mt-0.5">crédits</div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">{t("agents.stats.credits")}</div>
             </CardContent>
           </Card>
           <Card className="bg-zinc-900/40 border-zinc-800 py-3">
             <CardContent className="px-4 text-center">
               <div className="text-xl font-bold">{((stats.tokens ?? 0) / 1000).toFixed(1)}k</div>
-              <div className="text-[11px] text-zinc-500 mt-0.5">tokens</div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">{t("agents.stats.tokens")}</div>
             </CardContent>
           </Card>
         </div>
@@ -242,12 +246,12 @@ export default function AgentDetailPage() {
 
       <Tabs defaultValue="builder" className="w-full">
         <TabsList className="bg-zinc-900/60 border border-zinc-800 w-full sm:w-auto">
-          <TabsTrigger value="builder" className="data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-300 flex-1 sm:flex-none">Constructeur</TabsTrigger>
+          <TabsTrigger value="builder" className="data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-300 flex-1 sm:flex-none">{t("agents.tabs.builder")}</TabsTrigger>
           <TabsTrigger value="test" className="data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-300 flex-1 sm:flex-none">
-            <MessageSquare className="h-3.5 w-3.5 mr-1.5" />Test
+            <MessageSquare className="h-3.5 w-3.5 mr-1.5" />{t("agents.tabs.test")}
           </TabsTrigger>
           <TabsTrigger value="deploy" className="data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-300 flex-1 sm:flex-none">
-            <Rocket className="h-3.5 w-3.5 mr-1.5" />Déployer
+            <Rocket className="h-3.5 w-3.5 mr-1.5" />{t("agents.tabs.deploy")}
           </TabsTrigger>
         </TabsList>
 
@@ -257,29 +261,29 @@ export default function AgentDetailPage() {
             <CardContent className="space-y-5 pt-6">
               <div className="grid sm:grid-cols-2 gap-5">
                 <div className="space-y-2">
-                  <Label>Nom</Label>
+                  <Label>{t("common.name")}</Label>
                   <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-zinc-950 border-zinc-800" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Catégorie</Label>
-                  <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="bg-zinc-950 border-zinc-800" placeholder="ANALYSE, REDACTION…" />
+                  <Label>{t("agents.form.category")}</Label>
+                  <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="bg-zinc-950 border-zinc-800" placeholder={t("agents.detail.categoryPlaceholder")} />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Description</Label>
+                <Label>{t("common.description")}</Label>
                 <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-zinc-950 border-zinc-800" />
               </div>
               <div className="space-y-2">
-                <Label>Prompt système</Label>
+                <Label>{t("agents.detail.systemPrompt")}</Label>
                 <Textarea
                   value={form.systemPrompt}
                   onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
                   className="min-h-[140px] bg-zinc-950 border-zinc-800 font-mono text-sm"
-                  placeholder="Tu es… Tu dois… Tu ne dois jamais…"
+                  placeholder={t("agents.detail.systemPromptPlaceholder")}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Température : <span className="font-mono text-emerald-400">{form.temperature.toFixed(1)}</span></Label>
+                <Label>{t("agents.detail.temperature")} <span className="font-mono text-emerald-400">{form.temperature.toFixed(1)}</span></Label>
                 <Slider value={[form.temperature]} onValueChange={([v]) => setForm({ ...form, temperature: v })} min={0} max={1.5} step={0.1} />
               </div>
             </CardContent>
@@ -287,7 +291,7 @@ export default function AgentDetailPage() {
 
           <Card className="bg-zinc-900/40 border-zinc-800">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><Wrench className="h-4 w-4 text-emerald-400" />Outils</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base"><Wrench className="h-4 w-4 text-emerald-400" />{t("agents.detail.tools")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
@@ -297,7 +301,7 @@ export default function AgentDetailPage() {
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setTools((t) => (enabled ? t.filter((x) => x !== key) : [...t, key]))}
+                      onClick={() => setTools((current) => (enabled ? current.filter((x) => x !== key) : [...current, key]))}
                       className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
                         enabled
                           ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
@@ -318,10 +322,10 @@ export default function AgentDetailPage() {
           <Card className="bg-zinc-900/40 border-zinc-800">
             <CardHeader>
               <CardTitle className="text-base flex items-center justify-between">
-                <span className="flex items-center gap-2"><Terminal className="h-4 w-4 text-emerald-400" />Console de test</span>
+                <span className="flex items-center gap-2"><Terminal className="h-4 w-4 text-emerald-400" />{t("agents.test.console")}</span>
                 {usage && (
                   <span className="text-xs font-mono text-zinc-500 normal-weight">
-                    {usage.tokensIn}/{usage.tokensOut} tokens · {formatCredits(usage.credits)} crédits
+                    {t("agents.test.usage", { in: usage.tokensIn, out: usage.tokensOut, credits: formatCredits(usage.credits) })}
                   </span>
                 )}
               </CardTitle>
@@ -331,8 +335,8 @@ export default function AgentDetailPage() {
                 {messages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-zinc-600">
                     <MessageSquare className="h-8 w-8 mb-3" />
-                    <p className="text-sm">Envoyez un message pour tester l'agent en conditions réelles.</p>
-                    <p className="text-xs mt-1">RAG, mémoire et prompt système sont injectés automatiquement.</p>
+                    <p className="text-sm">{t("agents.test.empty")}</p>
+                    <p className="text-xs mt-1">{t("agents.test.emptyHint")}</p>
                   </div>
                 ) : (
                   messages.map((m, i) => (
@@ -346,7 +350,7 @@ export default function AgentDetailPage() {
                       >
                         {m.content === "" ? (
                           <span className="flex items-center gap-2 text-zinc-500">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> génération…
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("agents.test.generating")}
                           </span>
                         ) : (
                           m.content
@@ -368,7 +372,7 @@ export default function AgentDetailPage() {
                       void sendTest()
                     }
                   }}
-                  placeholder="Votre message… (Entrée pour envoyer)"
+                  placeholder={t("agents.test.inputPlaceholder")}
                   className="bg-zinc-950 border-zinc-800 focus-visible:ring-emerald-500/40"
                   disabled={testing}
                 />
@@ -386,19 +390,18 @@ export default function AgentDetailPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Rocket className="h-4 w-4 text-emerald-400" />
-                Déploiement en API
+                {t("agents.deploy.title")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {agent.status !== "PUBLISHED" ? (
                 <>
                   <p className="text-sm text-zinc-400">
-                    Le déploiement publie un endpoint <span className="font-mono text-zinc-200">/api/v1/chat</span> authentifié
-                    par clé, génère votre clé API et prépare les SDK JavaScript/Python.
+                    {renderRich(t("agents.deploy.desc"))}
                   </p>
                   {!agent.systemPrompt && (
                     <p className="text-xs text-amber-400 border border-amber-500/30 bg-amber-500/5 rounded-lg p-3">
-                      ⚠️ Définissez un prompt système dans le Constructeur avant de déployer.
+                      {t("agents.deploy.noPromptWarning")}
                     </p>
                   )}
                   <Button
@@ -407,25 +410,25 @@ export default function AgentDetailPage() {
                     className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold h-11 px-6"
                   >
                     {deploying ? <Loader2 className="h-5 w-5 animate-spin" /> : <Rocket className="h-5 w-5" />}
-                    <span className="ml-2">Déployer l'agent</span>
+                    <span className="ml-2">{t("agents.deploy.deploy")}</span>
                   </Button>
                 </>
               ) : (
                 <>
                   <div className="flex items-center gap-2 text-sm text-emerald-400">
-                    <Check className="h-4 w-4" /> Agent publié — endpoint actif
+                    <Check className="h-4 w-4" /> {t("agents.deploy.publishedActive")}
                   </div>
                   <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs space-y-1 overflow-x-auto">
-                    <div className="text-zinc-500"># Endpoint</div>
+                    <div className="text-zinc-500">{t("agents.deploy.endpointComment")}</div>
                     <div className="text-emerald-300">{deployResult?.endpoint ?? `${window.location.origin}/api/v1`}</div>
-                    <div className="text-zinc-500 mt-3"># Agent</div>
+                    <div className="text-zinc-500 mt-3">{t("agents.deploy.agentComment")}</div>
                     <div className="text-zinc-300">agent_slug = "{agent.slug}"</div>
                   </div>
                   {deployResult?.apiKey && (
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="text-xs text-amber-300 font-semibold flex items-center gap-1.5">
-                          <KeyRound className="h-3.5 w-3.5" /> Clé API — visible uniquement maintenant
+                          <KeyRound className="h-3.5 w-3.5" /> {t("agents.deploy.apiKeyTitle")}
                         </div>
                         <Button
                           size="sm" variant="outline"
@@ -437,27 +440,27 @@ export default function AgentDetailPage() {
                           }}
                         >
                           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                          <span className="ml-1.5 text-xs">{copied ? "Copiée" : "Copier"}</span>
+                          <span className="ml-1.5 text-xs">{copied ? t("agents.deploy.copied") : t("agents.deploy.copy")}</span>
                         </Button>
                       </div>
                       <code className="block font-mono text-xs text-amber-200 break-all">{deployResult.apiKey.secret}</code>
                       <p className="text-[11px] text-zinc-500">
-                        Conservez-la maintenant : seul son empreinte SHA-256 est stockée. Gérez vos clés dans la section « Clés API ».
+                        {t("agents.deploy.apiKeyHint")}
                       </p>
                     </div>
                   )}
                   <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 overflow-x-auto">
-                    <div className="text-xs text-zinc-500 mb-2 font-mono"># Exemple cURL</div>
+                    <div className="text-xs text-zinc-500 mb-2 font-mono">{t("agents.deploy.curlComment")}</div>
                     <code className="text-[11px] text-zinc-300 whitespace-pre-wrap break-all">{deployResult?.docs.curl}</code>
                   </div>
                   <div className="flex flex-wrap gap-3">
                     <Button onClick={deploy} disabled={deploying} variant="outline" className="border-zinc-700 text-zinc-300">
                       {deploying ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                      <span className="ml-2">Régénérer une clé</span>
+                      <span className="ml-2">{t("agents.deploy.regenerateKey")}</span>
                     </Button>
                     <Link href="/sdk">
                       <Button variant="outline" className="border-zinc-700 text-zinc-300">
-                        <ExternalLink className="h-4 w-4" /><span className="ml-2">SDK JavaScript & Python</span>
+                        <ExternalLink className="h-4 w-4" /><span className="ml-2">{t("agents.deploy.sdkButton")}</span>
                       </Button>
                     </Link>
                   </div>
@@ -469,13 +472,12 @@ export default function AgentDetailPage() {
           <Card className="bg-zinc-900/40 border-zinc-800">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Store className="h-4 w-4 text-emerald-400" />Marketplace
+                <Store className="h-4 w-4 text-emerald-400" />{t("agents.marketplace.title")}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-zinc-400 mb-4">
-                Listez cet agent sur la marketplace publique : d'autres utilisateurs pourront l'installer (fork)
-                dans leur propre espace.
+                {t("agents.marketplace.desc")}
               </p>
               <Button
                 onClick={publishMarketplace}
@@ -489,7 +491,7 @@ export default function AgentDetailPage() {
               >
                 <Store className="h-4 w-4" />
                 <span className="ml-2">
-                  {agent.visibility === "MARKETPLACE" ? "Retirer de la marketplace" : "Publier sur la marketplace"}
+                  {agent.visibility === "MARKETPLACE" ? t("agents.marketplace.unpublish") : t("agents.marketplace.publish")}
                 </span>
               </Button>
             </CardContent>

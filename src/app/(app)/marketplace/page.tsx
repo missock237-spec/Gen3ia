@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { usePolling, apiPost, useUser, formatDate } from "@/lib/client/hooks";
+import { usePolling, apiPost, useUser } from "@/lib/client/hooks";
+import { useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,8 +24,11 @@ interface MarketAgent {
 
 export default function MarketplacePage() {
   const { toast } = useToast();
+  const { t, lang } = useI18n();
   const router = useRouter();
   const { user } = useUser();
+
+  const locale = lang === "fr" ? "fr-FR" : "en-US";
   const { data, loading, reload } = usePolling<{ ok: boolean; agents: MarketAgent[] }>("/api/marketplace");
   const [installing, setInstalling] = useState<string | null>(null);
 
@@ -38,10 +42,10 @@ export default function MarketplacePage() {
     const data = await res.json()
     setInstalling(null)
     if (!data.ok) {
-      toast({ title: "Installation impossible", description: data.error, variant: "destructive" })
+      toast({ title: t("marketplace.errors.install"), description: data.error, variant: "destructive" })
       return
     }
-    toast({ title: "Agent installé", description: "Une copie a été ajoutée à vos agents." })
+    toast({ title: t("marketplace.installed.title"), description: t("marketplace.installed.desc") })
     router.push("/agents")
   }
 
@@ -51,10 +55,10 @@ export default function MarketplacePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Store className="h-6 w-6 text-emerald-400" /> Marketplace
+          <Store className="h-6 w-6 text-emerald-400" /> {t("marketplace.title")}
         </h1>
         <p className="text-sm text-zinc-400 mt-1">
-          Agents publiés par la communauté. Installez-en un : il est copié dans votre espace, prêt à personnaliser.
+          {t("marketplace.subtitle")}
         </p>
       </div>
 
@@ -66,9 +70,9 @@ export default function MarketplacePage() {
         <Card className="border-zinc-800 bg-zinc-900/40">
           <CardContent className="py-16 text-center text-zinc-500">
             <Store className="h-12 w-12 mx-auto mb-4 text-zinc-700" />
-            <h3 className="font-semibold text-zinc-200">Marketplace vide pour l'instant</h3>
+            <h3 className="font-semibold text-zinc-200">{t("marketplace.empty.title")}</h3>
             <p className="text-sm mt-1 max-w-md mx-auto">
-              Déployez un agent puis publiez-le depuis sa page (onglet « Déployer ») pour le lister ici.
+              {t("marketplace.empty.desc")}
             </p>
           </CardContent>
         </Card>
@@ -91,12 +95,12 @@ export default function MarketplacePage() {
                 <h3 className="font-semibold mt-3 text-zinc-100">{a.name}</h3>
                 <p className="text-xs text-zinc-500 font-mono mt-0.5">/{a.slug}</p>
                 <p className="text-sm text-zinc-400 mt-2 line-clamp-3 flex-1">
-                  {a.description ?? "Pas de description."}
+                  {a.description ?? t("agents.noDescription")}
                 </p>
                 <div className="mt-4 pt-3 border-t border-zinc-800/60 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs text-zinc-500">
                     {a.category && <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-[10px]">{a.category}</Badge>}
-                    {a.stats && a.stats.runs > 0 && <span>{a.stats.runs} exécutions</span>}
+                    {a.stats && a.stats.runs > 0 && <span>{t("marketplace.runsCount", { count: a.stats.runs })}</span>}
                   </div>
                   <Button
                     size="sm"
@@ -105,10 +109,10 @@ export default function MarketplacePage() {
                     className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 h-8 text-xs font-semibold"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    <span className="ml-1.5">{installing === a.id ? "…" : "Installer"}</span>
+                    <span className="ml-1.5">{installing === a.id ? "…" : t("marketplace.install")}</span>
                   </Button>
                 </div>
-                <p className="text-[10px] text-zinc-600 mt-2">Publié le {formatDate(a.createdAt)}</p>
+                <p className="text-[10px] text-zinc-600 mt-2">{t("marketplace.published", { date: new Date(a.createdAt).toLocaleString(locale) })}</p>
               </CardContent>
             </Card>
           ))}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * Boutons d'authentification OAuth (GitHub / Google).
@@ -28,6 +29,7 @@ function GoogleIcon({ className }: { className?: string }) {
 }
 
 export function OAuthButtons({ redirectTo = "/dashboard" }: { redirectTo?: string }) {
+  const { t } = useI18n();
   const qs = `?redirect=${encodeURIComponent(redirectTo)}`
 
   return (
@@ -37,7 +39,7 @@ export function OAuthButtons({ redirectTo = "/dashboard" }: { redirectTo?: strin
           <span className="w-full border-t border-zinc-800" />
         </div>
         <div className="relative flex justify-center text-xs uppercase tracking-widest">
-          <span className="bg-zinc-900/40 px-2 text-zinc-500">ou continuer avec</span>
+          <span className="bg-zinc-900/40 px-2 text-zinc-500">{t("auth.oauth.continueWith")}</span>
         </div>
       </div>
 
@@ -63,6 +65,7 @@ export function OAuthButtons({ redirectTo = "/dashboard" }: { redirectTo?: strin
 
 /** Bandeau d'erreur OAuth (paramètre ?error=oauth_…) sur la page de connexion. */
 export function OAuthErrorNotice({ error }: { error: string | null }) {
+  const { t } = useI18n();
   if (!error) return null
   const readable = error
     .replace(/^oauth_github_/, "GitHub : ")
@@ -70,7 +73,7 @@ export function OAuthErrorNotice({ error }: { error: string | null }) {
     .replace(/_/g, " ")
   return (
     <div className="mb-4 rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-      Connexion OAuth refusée — {readable}. Réessayez ou utilisez l&apos;e-mail.
+      {t("auth.oauth.errorNotice", { detail: readable })}
     </div>
   );
 }

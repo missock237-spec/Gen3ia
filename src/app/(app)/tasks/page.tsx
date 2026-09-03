@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/app/status-badge";
 import { useToast } from "@/hooks/use-toast";
-import { usePolling, apiPost, formatCredits, formatDate } from "@/lib/client/hooks";
+import { useI18n } from "@/lib/i18n";
+import { usePolling, apiPost, formatCredits } from "@/lib/client/hooks";
 import { Loader2, Plus, Zap, ChevronRight, Bot } from "lucide-react";
 
 interface TaskRow {
@@ -25,6 +26,7 @@ interface TaskRow {
 
 export default function TasksPage() {
   const { toast } = useToast();
+  const { t, lang } = useI18n();
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [agentId, setAgentId] = useState("")
@@ -37,7 +39,7 @@ export default function TasksPage() {
 
   async function createTask() {
     if (prompt.trim().length < 10) {
-      toast({ title: "Demande trop courte", description: "Décrivez votre tâche en au moins 10 caractères.", variant: "destructive" })
+      toast({ title: t("tasks.errors.tooShort"), description: t("tasks.errors.tooShortDesc"), variant: "destructive" })
       return
     }
     setCreating(true)
@@ -47,12 +49,12 @@ export default function TasksPage() {
         agentId: agentId || null,
       })
       if (!res.ok) throw new Error(res.error)
-      toast({ title: "Tâche lancée", description: "Le pipeline démarre : analyse → plans → exécution → vérification." })
+      toast({ title: t("tasks.launched.title"), description: t("tasks.launched.desc") })
       setPrompt("")
       await reload()
       router.push(`/tasks/${res.task.id}`)
     } catch (err) {
-      toast({ title: "Lancement impossible", description: err instanceof Error ? err.message : "", variant: "destructive" })
+      toast({ title: t("tasks.errors.launchFailed"), description: err instanceof Error ? err.message : "", variant: "destructive" })
     } finally {
       setCreating(false)
     }
@@ -61,9 +63,9 @@ export default function TasksPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Task Center</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("tasks.title")}</h1>
         <p className="text-sm text-zinc-400 mt-1">
-          Lancez une tâche : GEN3IA l'analyse, génère 5 plans, exécute le meilleur, vérifie et livre.
+          {t("tasks.subtitle")}
         </p>
       </div>
 
@@ -71,25 +73,25 @@ export default function TasksPage() {
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Zap className="h-4 w-4 text-emerald-400" /> Nouvelle tâche
+            <Zap className="h-4 w-4 text-emerald-400" /> {t("tasks.new")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <Textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Ex. : Analyse les 3 dernières actualités sur l'énergie solaire en Afrique de l'Ouest et rédige une synthèse structurée avec sources."
+            placeholder={t("tasks.promptPlaceholder")}
             className="min-h-[100px] bg-zinc-950 border-zinc-800 focus-visible:ring-emerald-500/40"
           />
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 space-y-1.5">
-              <label className="text-xs text-zinc-500">Agent (optionnel)</label>
+              <label className="text-xs text-zinc-500">{t("tasks.agentOptional")}</label>
               <select
                 value={agentId}
                 onChange={(e) => setAgentId(e.target.value)}
                 className="w-full h-9 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
               >
-                <option value="">Aucun — moteur GEN3IA générique</option>
+                <option value="">{t("tasks.agentNone")}</option>
                 {agents.map((a) => (
                   <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
@@ -102,7 +104,7 @@ export default function TasksPage() {
                 className="w-full sm:w-auto bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold h-9"
               >
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                <span className="ml-2">Lancer la tâche</span>
+                <span className="ml-2">{t("tasks.launch")}</span>
               </Button>
             </div>
           </div>
@@ -112,7 +114,7 @@ export default function TasksPage() {
       {/* Liste */}
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
-          <CardTitle className="text-base">Tâches ({tasks.length})</CardTitle>
+          <CardTitle className="text-base">{t("tasks.listTitle", { count: tasks.length })}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -120,27 +122,27 @@ export default function TasksPage() {
           ) : tasks.length === 0 ? (
             <div className="text-center py-12 text-zinc-500">
               <Zap className="h-10 w-10 mx-auto mb-3 text-zinc-700" />
-              <p className="text-sm">Aucune tâche. Lancez votre première tâche ci-dessus.</p>
+              <p className="text-sm">{t("tasks.empty")}</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {tasks.map((t) => (
+              {tasks.map((task) => (
                 <Link
-                  key={t.id}
-                  href={`/tasks/${t.id}`}
+                  key={task.id}
+                  href={`/tasks/${task.id}`}
                   className="flex items-center justify-between gap-4 rounded-lg border border-zinc-800/60 bg-zinc-950 px-4 py-3.5 hover:border-emerald-500/30 transition-colors group"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-zinc-200 truncate group-hover:text-white">{t.prompt}</p>
+                    <p className="text-sm text-zinc-200 truncate group-hover:text-white">{task.prompt}</p>
                     <div className="flex items-center gap-3 mt-1 text-xs text-zinc-500">
-                      <span>{formatDate(t.createdAt)}</span>
-                      {t.selectedPlanId && <span className="font-mono">Plan {t.selectedPlanId}</span>}
-                      {t.costCredits > 0 && <span className="text-emerald-400/80">{formatCredits(t.costCredits)} crédits</span>}
-                      {t.agentId && <span className="flex items-center gap-1"><Bot className="h-3 w-3" />agent</span>}
+                      <span>{new Date(task.createdAt).toLocaleString(lang === "fr" ? "fr-FR" : "en-US")}</span>
+                      {task.selectedPlanId && <span className="font-mono">{t("tasks.planBadge", { id: task.selectedPlanId })}</span>}
+                      {task.costCredits > 0 && <span className="text-emerald-400/80">{t("tasks.credits", { credits: formatCredits(task.costCredits) })}</span>}
+                      {task.agentId && <span className="flex items-center gap-1"><Bot className="h-3 w-3" />{t("tasks.agentBadge")}</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <StatusBadge status={t.status} />
+                    <StatusBadge status={task.status} />
                     <ChevronRight className="h-4 w-4 text-zinc-600 group-hover:text-emerald-400" />
                   </div>
                 </Link>

@@ -14,6 +14,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import {
   Search,
   Loader2,
@@ -69,19 +71,19 @@ interface CatalogDetail {
   triggersTotal: number;
 }
 
-const STATUS_META: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+const STATUS_META: Record<string, { labelKey: TranslationKey; cls: string; icon: React.ReactNode }> = {
   OAUTH_READY: {
-    label: "Prêt à connecter",
+    labelKey: "connectors.catalog.statusOauth",
     cls: "border-emerald-700/50 text-emerald-300",
     icon: <PlugZap className="h-3.5 w-3.5" />,
   },
   KEY_IMPORT: {
-    label: "Clé API requise",
+    labelKey: "connectors.catalog.statusKey",
     cls: "border-blue-700/50 text-blue-300",
     icon: <KeyRound className="h-3.5 w-3.5" />,
   },
   COMING_SOON: {
-    label: "Activation opérateur",
+    labelKey: "connectors.catalog.statusComing",
     cls: "border-zinc-700 text-zinc-400",
     icon: <Hourglass className="h-3.5 w-3.5" />,
   },
@@ -114,6 +116,7 @@ function AppLogo({ logo, name, size }: { logo: string | null; name: string; size
 
 export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
   const { toast } = useToast();
+  const { t } = useI18n();
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [stats, setStats] = useState<{ apps: number; tools: number; triggers: number; categories: Array<{ name: string; count: number }>; oauthApps: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,11 +132,11 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
 
   // Recherche débouncée (300 ms).
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setDebouncedSearch(search);
       setPage(1);
     }, 300);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [search]);
 
   const load = useCallback(async () => {
@@ -203,19 +206,19 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
         return;
       }
       if (json.ok && json.mode === "DIRECT") {
-        toast({ title: "Connexion enregistrée", description: `${app.name} est connecté.` });
+        toast({ title: t("connectors.toast.saved"), description: t("connectors.toast.savedDesc", { app: app.name }) });
         onConnected?.();
         await load();
         return;
       }
       toast({
-        title: "Connexion impossible",
-        description: json.error ?? "Cette application n'est pas encore activée par l'opérateur de la plateforme.",
+        title: t("connectors.toast.connectFailed"),
+        description: json.error ?? t("connectors.catalog.notActivated"),
         variant: "destructive",
       });
     } catch (err) {
       toast({
-        title: "Erreur réseau",
+        title: t("common.errorNetwork"),
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
@@ -231,10 +234,10 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
       {/* Bandeau statistiques */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Applications", value: stats?.apps ?? "…", icon: <Layers className="h-4 w-4 text-emerald-400" /> },
-          { label: "Actions / outils", value: stats?.tools?.toLocaleString("fr-FR") ?? "…", icon: <Wrench className="h-4 w-4 text-emerald-400" /> },
-          { label: "Déclencheurs", value: stats?.triggers?.toLocaleString("fr-FR") ?? "…", icon: <Zap className="h-4 w-4 text-emerald-400" /> },
-          { label: "Catégories", value: stats?.categories.length ?? "…", icon: <Layers className="h-4 w-4 text-emerald-400" /> },
+          { label: t("connectors.catalog.apps"), value: stats?.apps ?? "…", icon: <Layers className="h-4 w-4 text-emerald-400" /> },
+          { label: t("connectors.catalog.tools"), value: stats?.tools?.toLocaleString("fr-FR") ?? "…", icon: <Wrench className="h-4 w-4 text-emerald-400" /> },
+          { label: t("connectors.catalog.triggers"), value: stats?.triggers?.toLocaleString("fr-FR") ?? "…", icon: <Zap className="h-4 w-4 text-emerald-400" /> },
+          { label: t("connectors.catalog.categories"), value: stats?.categories.length ?? "…", icon: <Layers className="h-4 w-4 text-emerald-400" /> },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
             <div className="flex items-center gap-2 text-zinc-400 text-xs">{s.icon}{s.label}</div>
@@ -250,7 +253,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher parmi 1467 applications (Slack, Notion, Jira, Stripe…)"
+            placeholder={t("connectors.catalog.searchPlaceholder")}
             className="pl-10 bg-zinc-950 border-zinc-800"
           />
         </div>
@@ -262,7 +265,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
           }}
           className="h-9 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-200"
         >
-          <option value="">Toutes les catégories</option>
+          <option value="">{t("connectors.catalog.allCategories")}</option>
           {topCategories.map((c) => (
             <option key={c.name} value={c.name}>
               {c.name} ({c.count})
@@ -280,7 +283,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center text-zinc-400">
-          Aucune application ne correspond à « {debouncedSearch} ».
+          {t("connectors.catalog.empty", { query: debouncedSearch })}
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -301,7 +304,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                     <div className="flex items-center gap-2">
                       <h3 className="truncate font-semibold text-zinc-100">{app.name}</h3>
                       {app.native && (
-                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-label="Actions natives" />
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-label={t("connectors.catalog.nativeAria")} />
                       )}
                     </div>
                     <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{app.description ?? app.slug}</p>
@@ -309,9 +312,9 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                 </button>
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <Badge variant="outline" className={`gap-1 ${meta.cls}`}>
-                    {meta.icon} {meta.label}
+                    {meta.icon} {t(meta.labelKey)}
                   </Badge>
-                  <span className="text-[10px] text-zinc-600">{app.toolCount} outils</span>
+                  <span className="text-[10px] text-zinc-600">{t("connectors.catalog.toolsCount", { count: app.toolCount })}</span>
                 </div>
                 <Button
                   size="sm"
@@ -323,14 +326,14 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : ready ? (
                     <>
-                      <PlugZap className="h-4 w-4" /> Connecter
+                      <PlugZap className="h-4 w-4" /> {t("connectors.connect")}
                     </>
                   ) : app.status === "KEY_IMPORT" ? (
                     <>
-                      <KeyRound className="h-4 w-4" /> Ajouter ma clé
+                      <KeyRound className="h-4 w-4" /> {t("connectors.catalog.addKey")}
                     </>
                   ) : (
-                    "Non activée"
+                    t("connectors.catalog.notEnabled")
                   )}
                 </Button>
               </div>
@@ -343,14 +346,18 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-xs text-zinc-500">
-            Page {page} / {totalPages} — {total.toLocaleString("fr-FR")} applications
+            {t("connectors.catalog.pagination", {
+              page,
+              totalPages,
+              total: total.toLocaleString("fr-FR"),
+            })}
           </span>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              <ChevronLeft className="h-4 w-4" /> Précédent
+              <ChevronLeft className="h-4 w-4" /> {t("connectors.catalog.prev")}
             </Button>
             <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              Suivant <ChevronRight className="h-4 w-4" />
+              {t("common.next")} <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -371,7 +378,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                   <div>
                     <DialogTitle className="text-zinc-100">{detail.app.name}</DialogTitle>
                     <DialogDescription className="mt-0.5 text-xs">
-                      {detail.app.category} · {detail.app.toolCount} outils · {detail.app.triggerCount} déclencheurs
+                      {detail.app.category} · {t("connectors.catalog.toolsCount", { count: detail.app.toolCount })} · {t("connectors.catalog.triggersCount", { count: detail.app.triggerCount })}
                       {detail.connectivity.docsUrl && (
                         <a
                           href={detail.connectivity.docsUrl}
@@ -379,7 +386,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                           rel="noopener noreferrer"
                           className="ml-2 text-emerald-400 hover:text-emerald-300"
                         >
-                          Documentation
+                          {t("connectors.catalog.documentation")}
                         </a>
                       )}
                     </DialogDescription>
@@ -393,21 +400,21 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                 <div className="flex flex-wrap items-center gap-2">
                   {detail.connectivity.native && (
                     <Badge variant="outline" className="border-emerald-700/50 text-emerald-300">
-                      {detail.connectivity.actionCount} actions natives exécutables
+                      {t("connectors.catalog.nativeActions", { count: detail.connectivity.actionCount })}
                     </Badge>
                   )}
                   {detail.connectivity.connectable ? (
                     <Badge variant="outline" className="border-emerald-700/50 text-emerald-300">
-                      Connexion OAuth prête — 1 clic, sans jeton
+                      {t("connectors.catalog.oauthReady")}
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="border-zinc-700 text-zinc-400">
-                      {detail.connectivity.reason ?? "Activation par l'opérateur requise"}
+                      {detail.connectivity.reason ?? t("connectors.catalog.operatorRequired")}
                     </Badge>
                   )}
                   {detail.connectivity.credSource === "ADMIN" && (
                     <Badge variant="outline" className="border-blue-700/50 text-blue-300">
-                      Identifiants plateforme enregistrés
+                      {t("connectors.catalog.platformCreds")}
                     </Badge>
                   )}
                 </div>
@@ -419,11 +426,11 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                   {busy === detail.app.slug ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    "Connecter mon compte"
+                    t("connectors.catalog.connectAccount")
                   )}
                 </Button>
                 <p className="mt-2 text-center text-[11px] text-zinc-500">
-                  Vous serez redirigé vers {detail.app.name} pour autoriser l&apos;accès. Aucun jeton à copier.
+                  {t("connectors.catalog.redirectHint", { app: detail.app.name })}
                 </p>
               </div>
 
@@ -431,14 +438,14 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
               {detail.tools.length > 0 && (
                 <div>
                   <h4 className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
-                    Outils ({detail.toolsTotal.toLocaleString("fr-FR")})
+                    {t("connectors.catalog.toolsTitle", { count: detail.toolsTotal.toLocaleString("fr-FR") })}
                   </h4>
                   <div className="max-h-72 space-y-1.5 overflow-y-auto pr-2">
-                    {detail.tools.map((t) => (
-                      <div key={t.slug} className="rounded-lg border border-zinc-800/60 bg-zinc-900/30 px-3 py-2">
-                        <div className="text-xs font-medium text-zinc-200">{t.name}</div>
-                        {t.description && (
-                          <div className="mt-0.5 line-clamp-2 text-[11px] text-zinc-500">{t.description}</div>
+                    {detail.tools.map((tool) => (
+                      <div key={tool.slug} className="rounded-lg border border-zinc-800/60 bg-zinc-900/30 px-3 py-2">
+                        <div className="text-xs font-medium text-zinc-200">{tool.name}</div>
+                        {tool.description && (
+                          <div className="mt-0.5 line-clamp-2 text-[11px] text-zinc-500">{tool.description}</div>
                         )}
                       </div>
                     ))}
@@ -446,8 +453,11 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                   {detail.toolsTotal > detail.toolsPageSize && (
                     <div className="mt-2 flex items-center justify-between">
                       <span className="text-[11px] text-zinc-600">
-                        Outils {(detail.toolsPage - 1) * detail.toolsPageSize + 1}–
-                        {Math.min(detail.toolsPage * detail.toolsPageSize, detail.toolsTotal)} sur {detail.toolsTotal}
+                        {t("connectors.catalog.toolsRange", {
+                          from: (detail.toolsPage - 1) * detail.toolsPageSize + 1,
+                          to: Math.min(detail.toolsPage * detail.toolsPageSize, detail.toolsTotal),
+                          total: detail.toolsTotal,
+                        })}
                       </span>
                       <div className="flex gap-1">
                         <Button
@@ -473,8 +483,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
               )}
 
               <DialogFooter className="text-[11px] text-zinc-500">
-                Catalogue Composio (MIT) — intégration locale GEN3IA. Les exécutions passent par le
-                moteur de connecteurs chiffré de la plateforme.
+                {t("connectors.catalog.footer")}
               </DialogFooter>
             </>
           )}

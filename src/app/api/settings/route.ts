@@ -12,6 +12,8 @@ const settingsSchema = z.object({
   defaultModel: z.string().max(60).optional(),
   /** v3.1 — mode Explain : « manual » exige l'approbation des plans avant exécution. */
   planApproval: z.enum(["auto", "manual"]).optional(),
+  /** v3.5 — langue de l'interface : français ou anglais. */
+  language: z.enum(["fr", "en"]).optional(),
 })
 
 /** Mise à jour des préférences utilisateur (autonomie, sécurité, moteur). */
