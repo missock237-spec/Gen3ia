@@ -82,3 +82,5 @@ db/*.db
 package-lock.json
 # Artefacts locaux
 .prod-db-url.txt
+test-results/
+playwright-report/
