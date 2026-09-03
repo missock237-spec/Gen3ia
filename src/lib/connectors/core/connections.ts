@@ -17,6 +17,7 @@ import {
   encryptJson,
   generatePkcePair,
   googleServiceAccountAccessToken,
+  needsRotation,
   signState,
   verifyState,
 } from "./crypto"
@@ -447,6 +448,9 @@ export async function listConnections(userId: string): Promise<ConnectedAccountV
     where: { userId },
     orderBy: { createdAt: "desc" },
   })
+  // Rotation paresseuse : les secrets encore en v1/clé non active sont
+  // re-chiffrés avec la clé active (best-effort, jamais bloquant).
+  for (const row of rows) void lazyRotateSecret(row)
   return rows.map(toView)
 }
 
@@ -459,7 +463,32 @@ export async function getActiveConnection(
     where: { userId, appSlug, status: ConnectionStatuses.ACTIVE },
   })
   if (!row) return null
+  void lazyRotateSecret(row)
   return toView(row)
+}
+
+/**
+ * v3.6 — re-chiffrement paresseux d'un secret avec la clé active.
+ * Appelé à chaque lecture : la rotation de CONNECTORS_ENCRYPTION_KEY
+ * migre les données SANS downtime ni batch bloquant.
+ */
+async function lazyRotateSecret(row: { id: string; encryptedData: string }): Promise<void> {
+  try {
+    if (!needsRotation(row.encryptedData)) return
+    const data = decryptJson<ConnectionData>(row.encryptedData)
+    await db.connectedAccount.update({
+      where: { id: row.id },
+      data: { encryptedData: encryptJson(data) },
+    })
+    logger.info("connectors: secret re-chiffré avec la clé active (rotation paresseuse)", {
+      connectionId: row.id,
+    })
+  } catch (err) {
+    logger.warn("connectors: rotation paresseuse impossible (non bloquant)", {
+      connectionId: row.id,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
 /** Révoque et supprime une connexion (appel réseau best-effort). */

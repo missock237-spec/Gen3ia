@@ -27,6 +27,7 @@ import { DEFAULT_WEIGHTS } from "./types"
 import { getUserSettings, DEFAULT_USER_SETTINGS } from "@/lib/auth/guards"
 import { logger as rootLogger } from "@/lib/observability/logger"
 import { AppError, EngineError } from "@/lib/errors"
+import { buildPendingApproval, isApprovalExpired, approvalTtlMs, type ApprovalDecisionMeta } from "@/lib/security/hitl"
 
 /**
  * Orchestrator — moteur central de GEN3IA.
@@ -371,20 +372,20 @@ export async function advanceTask(
           (dangerousTools.length > 0 && settings.confirmDangerousOps !== false)
         ) {
           await transitionTask(task, "WAITING_FOR_HUMAN", {
-            pendingApproval: JSON.stringify({
-              reason:
-                `Le plan ${selected?.id} (« ${selected?.name} ») implique des opérations sensibles nécessitant votre confirmation.`,
-              planId: selected?.id ?? "?",
-              dangerousOperations: dangerousTools.length > 0 ? dangerousTools : ["opération déclarée sensible"],
-              askedAt: new Date().toISOString(),
-            }),
+            pendingApproval: JSON.stringify(
+              buildPendingApproval({
+                reason: `Le plan ${selected?.id} (« ${selected?.name} ») implique des opérations sensibles nécessitant votre confirmation.`,
+                planId: selected?.id ?? "?",
+                dangerousOperations: dangerousTools.length > 0 ? dangerousTools : ["opération déclarée sensible"],
+              })
+            ),
           })
           await audit(null, {
             userId: user.id,
             action: "TASK_WAITING_FOR_HUMAN",
             entityType: "task",
             entityId: task.id,
-            detail: { planId: selected?.id, dangerousTools },
+            detail: { planId: selected?.id, dangerousTools, ttlMinutes: Math.round(approvalTtlMs() / 60000) },
           })
           return await db.task.findUniqueOrThrow({ where: { id: task.id } })
         }
@@ -757,12 +758,45 @@ async function handlePipelineError(
   return await db.task.findUniqueOrThrow({ where: { id: current.id } })
 }
 
+/**
+ * v3.6 — HITL durci : expiration automatique des demandes d'approbation.
+ * Annule les tâches restées en attente au-delà du TTL (fail-safe) et
+ * journalise l'expiration. Appelé paresseusement aux lectures de tâches.
+ */
+export async function enforceApprovalExpiry(taskId: string): Promise<Task | null> {
+  const task = await db.task.findUnique({ where: { id: taskId } })
+  if (!task) return null
+  if (task.status !== "WAITING_FOR_HUMAN" && task.status !== "WAITING_PLAN_APPROVAL") return task
+  const pending = parseJsonField<Record<string, unknown>>(task.pendingApproval, {})
+  if (task.status === "WAITING_FOR_HUMAN" && !isApprovalExpired(pending)) return task
+  // WAITING_PLAN_APPROVAL sans pendingApproval (approbation de plan pure) :
+  // expiration basée sur updatedAt + TTL.
+  const ageMs = Date.now() - task.updatedAt.getTime()
+  if (task.status === "WAITING_PLAN_APPROVAL" && ageMs < approvalTtlMs()) return task
+
+  const reason =
+    task.status === "WAITING_FOR_HUMAN"
+      ? "Demande d'approbation expirée (aucune décision humaine dans le délai imparti)."
+      : "Approbation de plan expirée (aucune décision humaine dans le délai imparti)."
+  await audit(null, {
+    userId: task.userId,
+    action: "TASK_APPROVAL_EXPIRED",
+    entityType: "task",
+    entityId: task.id,
+    detail: { previousStatus: task.status, reason },
+  })
+  await transitionTask(task, "CANCELLED", { error: reason }).catch(() => undefined)
+  const updated = await db.task.findUnique({ where: { id: task.id } })
+  return updated ?? task
+}
+
 /** Approuve ou refuse une tâche en attente d'humain (HITL). */
 export async function resolveHumanApproval(
   taskId: string,
   userId: string,
   approved: boolean,
-  reason?: string
+  reason?: string,
+  decisionMeta?: ApprovalDecisionMeta
 ): Promise<Task> {
   const task = await db.task.findUniqueOrThrow({ where: { id: taskId } })
   if (task.userId !== userId) {
@@ -771,9 +805,50 @@ export async function resolveHumanApproval(
   if (task.status !== "WAITING_FOR_HUMAN") {
     throw new AppError("TASK_NOT_APPROVABLE")
   }
+
+  // v3.6 — expiration : une demande dépassée ne peut plus être approuvée.
+  const pending = parseJsonField<Record<string, unknown>>(task.pendingApproval, {})
+  if (isApprovalExpired(pending)) {
+    await audit(null, {
+      userId, action: "TASK_APPROVAL_EXPIRED",
+      entityType: "task", entityId: taskId,
+      detail: { decisionAttempted: approved ? "APPROVE" : "REJECT", reason },
+    })
+    await transitionTask(task, "CANCELLED", {
+      error: "Demande d'approbation expirée (aucune décision humaine dans le délai imparti).",
+    })
+    throw new AppError("VALIDATION_ERROR", {
+      message: "La demande d'approbation a expiré. Relancez la tâche pour régénérer le plan.",
+    })
+  }
+
+  const meta: ApprovalDecisionMeta = decisionMeta ?? {
+    decidedBy: userId,
+    decidedByEmail: null,
+    decidedAt: new Date().toISOString(),
+    ip: null,
+    userAgent: null,
+  }
+  // v3.6 — traçabilité renforcée : la décision scellée est persistée SUR la tâche.
+  await db.task.update({
+    where: { id: taskId },
+    data: {
+      pendingApproval: JSON.stringify({
+        ...pending,
+        approved,
+        reason: reason ?? null,
+        decidedBy: meta.decidedBy,
+        decidedByEmail: meta.decidedByEmail,
+        decidedAt: meta.decidedAt,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      }),
+    },
+  })
   await audit(null, {
     userId, action: approved ? "TASK_APPROVED" : "TASK_REJECTED",
-    entityType: "task", entityId: taskId, detail: { reason },
+    entityType: "task", entityId: taskId,
+    detail: { reason, decidedBy: meta.decidedBy, ip: meta.ip, userAgent: meta.userAgent, approved },
   })
   if (approved) {
     const updated = await transitionTask(task, "EXECUTING")
@@ -799,7 +874,8 @@ export interface PlanApprovalInput {
 export async function resolvePlanApproval(
   taskId: string,
   userId: string,
-  input: PlanApprovalInput
+  input: PlanApprovalInput,
+  decisionMeta?: ApprovalDecisionMeta
 ): Promise<Task> {
   const task = await db.task.findUniqueOrThrow({ where: { id: taskId } })
   if (task.userId !== userId) {
@@ -811,6 +887,21 @@ export async function resolvePlanApproval(
     })
   }
 
+  // v3.6 — expiration de l'approbation de plan (TTL depuis la mise en attente).
+  if (Date.now() - task.updatedAt.getTime() > approvalTtlMs()) {
+    await audit(null, {
+      userId,
+      action: "TASK_APPROVAL_EXPIRED",
+      entityType: "task",
+      entityId: taskId,
+      detail: { previousStatus: "WAITING_PLAN_APPROVAL", decisionAttempted: input.approved ? "APPROVE" : "REJECT" },
+    })
+    await transitionTask(task, "CANCELLED", { error: "Approbation de plan expirée (aucune décision humaine dans le délai imparti)." })
+    throw new AppError("VALIDATION_ERROR", {
+      message: "L'approbation du plan a expiré. Relancez la tâche.",
+    })
+  }
+
   const plans = parseJsonField<Plan[]>(task.plans, [])
   const scores = parseJsonField<{ selectedPlanId?: string; rationale?: string }>(task.planScores, {})
 
@@ -819,7 +910,15 @@ export async function resolvePlanApproval(
     action: input.regenerate ? "TASK_PLANS_REGENERATE" : input.approved ? "TASK_PLAN_APPROVED" : "TASK_PLAN_REJECTED",
     entityType: "task",
     entityId: taskId,
-    detail: { planId: input.planId, edited: (input.editedSteps?.length ?? 0) > 0, reason: input.reason },
+    detail: {
+      planId: input.planId,
+      edited: (input.editedSteps?.length ?? 0) > 0,
+      reason: input.reason,
+      // v3.6 — traçabilité renforcée de la décision humaine.
+      decidedBy: decisionMeta?.decidedBy ?? userId,
+      ip: decisionMeta?.ip ?? null,
+      userAgent: decisionMeta?.userAgent ?? null,
+    },
   })
 
   // Régénération : retour à la planification (force le cache à ignorer l'entrée).
@@ -884,12 +983,13 @@ export async function resolvePlanApproval(
   if (selected.requiresHumanConfirmation || (dangerousTools.length > 0 && settings.confirmDangerousOps !== false)) {
     const updated = await db.task.findUniqueOrThrow({ where: { id: taskId } })
     await transitionTask(updated, "WAITING_FOR_HUMAN", {
-      pendingApproval: JSON.stringify({
-        reason: `Le plan ${selected.id} (« ${selected.name} ») implique des opérations sensibles nécessitant votre confirmation.`,
-        planId: selected.id,
-        dangerousOperations: dangerousTools.length > 0 ? dangerousTools : ["opération déclarée sensible"],
-        askedAt: new Date().toISOString(),
-      }),
+      pendingApproval: JSON.stringify(
+        buildPendingApproval({
+          reason: `Le plan ${selected.id} (« ${selected.name} ») implique des opérations sensibles nécessitant votre confirmation.`,
+          planId: selected.id,
+          dangerousOperations: dangerousTools.length > 0 ? dangerousTools : ["opération déclarée sensible"],
+        })
+      ),
     })
     return db.task.findUniqueOrThrow({ where: { id: taskId } })
   }

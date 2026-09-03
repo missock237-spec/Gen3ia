@@ -65,6 +65,9 @@ interface Counters {
   planCacheMisses: number
   vectorSearches: number
   breakerTrips: number
+  sandboxRuns: number
+  sandboxRefusals: number
+  sandboxIsolated: number
 }
 
 const g = globalThis as unknown as { gen3iaMetrics?: Counters }
@@ -77,6 +80,9 @@ function counters(): Counters {
       planCacheMisses: 0,
       vectorSearches: 0,
       breakerTrips: 0,
+      sandboxRuns: 0,
+      sandboxRefusals: 0,
+      sandboxIsolated: 0,
     }
   }
   return g.gen3iaMetrics
@@ -104,6 +110,14 @@ export function bumpBreakerTrip() {
   counters().breakerTrips++
 }
 
+/** v3.6 — télémétrie de la sandbox isolée (code_runner). */
+export function bumpSandboxRun(params: { ok: boolean; isolated: boolean }) {
+  const c = counters()
+  c.sandboxRuns++
+  if (!params.ok) c.sandboxRefusals++
+  if (params.isolated) c.sandboxIsolated++
+}
+
 export function snapshotInstanceMetrics() {
   const c = counters()
   const engineRuns: Record<string, { engine: string; total: number; okRate: number | null; avgDurationMs: number | null }> = {}
@@ -120,6 +134,12 @@ export function snapshotInstanceMetrics() {
     planCache: { hits: c.planCacheHits, misses: c.planCacheMisses },
     vectorSearches: c.vectorSearches,
     breakerTrips: c.breakerTrips,
+    sandbox: {
+      runs: c.sandboxRuns,
+      refusals: c.sandboxRefusals,
+      isolated: c.sandboxIsolated,
+      fallback: c.sandboxRuns - c.sandboxIsolated,
+    },
   }
 }
 

@@ -1,15 +1,28 @@
 /**
- * Chiffrement des secrets de connexion — AES-256-GCM.
+ * Chiffrement des secrets de connexion — AES-256-GCM + KEYRING multi-versions.
  *
  * Les tokens d'accès, refresh tokens et clés d'API ne sont JAMAIS
  * persistés en clair : chaque payload ConnectionData est chiffré
  * avant écriture en base (colonne ConnectedAccount.encryptedData)
  * et déchiffré uniquement en mémoire au moment de l'exécution.
  *
- * Clé maître : CONNECTORS_ENCRYPTION_KEY (hex 64 caractères = 32 octets,
- * ou base64). En son absence, une clé dérivée de SESSION_SECRET est
- * utilisée (SHA-256) pour que le développement reste fluide — en
- * production il faut définir une CONNECTORS_ENCRYPTION_KEY dédiée.
+ * ROTATION SANS DOWNTIME (v3.6) :
+ *  - variable CONNECTORS_ENCRYPTION_KEYS = "idActif:hex64;idAncien:hex64"
+ *    (PREMIÈRE clé = active pour chiffrer, les suivantes restent capables
+ *    de déchiffrer pendant la transition) ;
+ *  - format de payload v2:<keyId>:<iv>:<tag>:<ct> → chaque secret sait avec
+ *    quelle clé il est chiffré ; l'ancien format v1:… reste lisible (clé
+ *    dérivée CONNECTORS_ENCRYPTION_KEY/SESSION_SECRET) ;
+ *  - re-chiffrement PARESSEUX : à chaque lecture d'un secret encore en v1 ou
+ *    en clé non active, la ligne est ré-écrite avec la clé active
+ *    (cf. connections.ts → decryptConnectionData) — aucun downtime, aucune
+ *    double écriture bloquante ;
+ *  - endpoint admin /api/admin/crypto/rotate + CLI scripts/rotate-connectors-key.mjs
+ *    pour générer une clé, re-chiffrer tout l'existant et produire la ligne
+ *    d'environnement à poser sur l'hébergeur.
+ *
+ * Clé maître (compat) : CONNECTORS_ENCRYPTION_KEY (hex 64, ou base64). En
+ * son absence, une clé dérivée de SESSION_SECRET est utilisée (dev only).
  */
 
 import crypto from "node:crypto"
@@ -18,55 +31,148 @@ import { logger } from "@/lib/observability/logger"
 const FALLBACK_HINT =
   "CONNECTORS_ENCRYPTION_KEY absente : clé dérivée de SESSION_SECRET (développement uniquement)."
 
-/** Récupère la clé maître (32 octets) — priorité à la clé dédiée. */
-function masterKey(): Buffer {
-  const dedicated = process.env.CONNECTORS_ENCRYPTION_KEY?.trim()
-  if (dedicated) {
-    // Hex (64 chars) ou base64 — sinon hachage déterministe.
-    if (/^[0-9a-fA-F]{64}$/.test(dedicated)) return Buffer.from(dedicated, "hex")
-    try {
-      const b = Buffer.from(dedicated, "base64")
-      if (b.length === 32) return b
-    } catch {
-      /* format invalide : on hache */
-    }
-    return crypto.createHash("sha256").update(dedicated).digest()
+// ─── Keyring multi-versions (rotation sans downtime) ───────────
+
+export interface KeyringEntry {
+  id: string
+  key: Buffer
+}
+
+/** Normalise un matériau de clé (hex 64 / base64 / phrase) en 32 octets. */
+function normalizeKeyMaterial(material: string): Buffer {
+  const trimmed = material.trim()
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) return Buffer.from(trimmed, "hex")
+  try {
+    const b = Buffer.from(trimmed, "base64")
+    if (b.length === 32) return b
+  } catch {
+    /* format invalide : on hache */
   }
+  return crypto.createHash("sha256").update(trimmed).digest()
+}
+
+const LEGACY_KEY_ID = "v1"
+
+function legacyMasterKey(): Buffer {
+  const dedicated = process.env.CONNECTORS_ENCRYPTION_KEY?.trim()
+  if (dedicated) return normalizeKeyMaterial(dedicated)
   const session = process.env.SESSION_SECRET ?? "gen3ia-dev-secret"
   if (process.env.NODE_ENV === "production") {
-    logger.warn(fallbackMessage())
+    logger.warn(FALLBACK_HINT)
   }
   return crypto.createHash("sha256").update(`connectors:${session}`).digest()
 }
 
-function fallbackMessage(): string {
-  return FALLBACK_HINT
+/**
+ * Parse la liste de clés "idA:hex64;idB:hex64" (première = ACTIVE).
+ * Les entrées invalides sont ignorées avec un avertissement (jamais fatal).
+ */
+export function parseKeyring(spec: string): KeyringEntry[] {
+  const entries: KeyringEntry[] = []
+  for (const part of spec.split(";")) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const idx = trimmed.indexOf(":")
+    if (idx <= 0) continue
+    const id = trimmed.slice(0, idx).trim()
+    const material = trimmed.slice(idx + 1).trim()
+    if (!id || !material) continue
+    entries.push({ id, key: normalizeKeyMaterial(material) })
+  }
+  return entries
 }
 
-/** Chiffre un objet → "v1:<iv-hex>:<tag-hex>:<ciphertext-hex>". */
-export function encryptJson(value: unknown): string {
+/**
+ * Keyring effectif :
+ *  1. CONNECTORS_ENCRYPTION_KEYS (multi-clés, rotation) ;
+ *  2. sinon CONNECTORS_ENCRYPTION_KEY (mono-clé, id "v1") ;
+ *  3. sinon SESSION_SECRET dérivée (développement).
+ */
+export function getKeyring(): KeyringEntry[] {
+  const multi = process.env.CONNECTORS_ENCRYPTION_KEYS?.trim()
+  if (multi) {
+    const entries = parseKeyring(multi)
+    if (entries.length > 0) return entries
+  }
+  return [{ id: LEGACY_KEY_ID, key: legacyMasterKey() }]
+}
+
+/** Clé ACTIVE (chiffre les nouvelles écritures) — première du keyring. */
+export function activeKey(): KeyringEntry {
+  const ring = getKeyring()
+  return ring[0]
+}
+
+export function keyringStatus() {
+  const ring = getKeyring()
+  return {
+    activeKeyId: ring[0]?.id,
+    keys: ring.map((k) => ({ id: k.id })),
+    keyCount: ring.length,
+    legacyFallback: !process.env.CONNECTORS_ENCRYPTION_KEYS && !process.env.CONNECTORS_ENCRYPTION_KEY,
+    multiKeyRotation: ring.length > 1,
+  }
+}
+
+/** Chiffre un objet → "v2:<keyId>:<iv-hex>:<tag-hex>:<ct-hex>" (clé active). */
+export function encryptJson(value: unknown, opts?: { key?: KeyringEntry }): string {
+  const entry = opts?.key ?? activeKey()
   const plaintext = Buffer.from(JSON.stringify(value), "utf8")
   const iv = crypto.randomBytes(12) // GCM standard : 96 bits
-  const cipher = crypto.createCipheriv("aes-256-gcm", masterKey(), iv)
+  const cipher = crypto.createCipheriv("aes-256-gcm", entry.key, iv)
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
   const tag = cipher.getAuthTag()
-  return `v1:${iv.toString("hex")}:${tag.toString("hex")}:${ciphertext.toString("hex")}`
+  return `v2:${entry.id}:${iv.toString("hex")}:${tag.toString("hex")}:${ciphertext.toString("hex")}`
 }
 
-/** Déchiffre un payload "v1:…" — lève une erreur explicite si invalide. */
-export function decryptJson<T>(payload: string): T {
+/**
+ * Déchiffre un payload "v2:…" ou "v1:…" (legacy).
+ * Le keyring complet est essayé pour v1 ; pour v2, la clé identifiée.
+ * @param opts.keyring override (rotation admin : anncienne+ future clés)
+ */
+export function decryptJson<T>(payload: string, opts?: { keyring?: KeyringEntry[] }): T {
   const parts = payload.split(":")
-  if (parts.length !== 4 || parts[0] !== "v1") {
-    throw new Error("Payload chiffré invalide (format attendu v1:iv:tag:data).")
+  if (parts.length === 5 && parts[0] === "v2") {
+    const [, keyId, ivHex, tagHex, dataHex] = parts
+    const ring = opts?.keyring ?? getKeyring()
+    const entry = ring.find((k) => k.id === keyId)
+    if (!entry) {
+      throw new Error(
+        `Clé de chiffrement « ${keyId} » absente du keyring (rotation incomplète ? vérifiez CONNECTORS_ENCRYPTION_KEYS).`
+      )
+    }
+    return decryptAesGcm(entry.key, ivHex, tagHex, dataHex)
   }
-  const [, ivHex, tagHex, dataHex] = parts
-  const decipher = crypto.createDecipheriv("aes-256-gcm", masterKey(), Buffer.from(ivHex, "hex"))
+  if (parts.length === 4 && parts[0] === "v1") {
+    // Legacy : la clé mono-version historique — ou toute clé du ring id "v1".
+    const [, ivHex, tagHex, dataHex] = parts
+    const ring = opts?.keyring ?? getKeyring()
+    const legacy = ring.find((k) => k.id === LEGACY_KEY_ID) ?? { id: LEGACY_KEY_ID, key: legacyMasterKey() }
+    return decryptAesGcm(legacy.key, ivHex, tagHex, dataHex)
+  }
+  throw new Error("Payload chiffré invalide (format attendu v2:keyId:iv:tag:data ou v1:iv:tag:data).")
+}
+
+function decryptAesGcm(key: Buffer, ivHex: string, tagHex: string, dataHex: string): any {
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"))
   decipher.setAuthTag(Buffer.from(tagHex, "hex"))
   const plaintext = Buffer.concat([
     decipher.update(Buffer.from(dataHex, "hex")),
     decipher.final(),
   ]).toString("utf8")
-  return JSON.parse(plaintext) as T
+  return JSON.parse(plaintext)
+}
+
+/**
+ * true si le payload n'est PAS chiffré avec la clé active
+ * (v1 legacy, ou v2 avec un keyId ≠ actif) → à re-chiffrer paresseusement.
+ */
+export function needsRotation(payload: string, opts?: { keyring?: KeyringEntry[] }): boolean {
+  const active = (opts?.keyring ?? getKeyring())[0]
+  const parts = payload.split(":")
+  if (parts.length === 5 && parts[0] === "v2") return parts[1] !== active.id
+  if (parts.length === 4 && parts[0] === "v1") return true
+  return true
 }
 
 /** Test d'intégrité (roundtrip) — utilisé par les tests unitaires. */
@@ -81,24 +187,29 @@ export function isEncryptableRoundtrip(value: unknown): boolean {
 // ─── État anti-rejeu du flux OAuth (state + PKCE) ───────────
 
 /**
- * Signe un `state` OAuth (anti-CSRF) : "reqId.hmac".
- * Le HMAC lie la requête de connexion à l'utilisateur et à l'app.
+ * Signe un `state` OAuth (anti-CSRF) : "reqId.hmac" avec la clé ACTIVE.
+ * La vérification accepte TOUTES les clés du keyring (états OAuth en vol
+ * pendant une rotation : zéro interruption des connexions en cours).
  */
 export function signState(requestId: string, userId: string, appSlug: string): string {
-  const mac = crypto.createHmac("sha256", masterKey())
+  const mac = crypto.createHmac("sha256", activeKey().key)
   mac.update(`${requestId}:${userId}:${appSlug}`)
   return `${requestId}.${mac.digest("hex")}`
 }
 
-/** Vérifie un state signé. Retourne l'ID de requête si valide. */
+/** Vérifie un state signé (toutes clés du ring). Retourne l'ID de requête si valide. */
 export function verifyState(state: string, userId: string, appSlug: string): string | null {
   const [requestId, macHex] = state.split(".")
   if (!requestId || !macHex) return null
-  const expected = signState(requestId, userId, appSlug)
-  const a = Buffer.from(state.split(".")[1] ?? "", "hex")
-  const b = Buffer.from(expected.split(".")[1] ?? "", "hex")
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null
-  return requestId
+  for (const entry of getKeyring()) {
+    const mac = crypto.createHmac("sha256", entry.key)
+    mac.update(`${requestId}:${userId}:${appSlug}`)
+    const expected = mac.digest("hex")
+    const a = Buffer.from(macHex, "hex")
+    const b = Buffer.from(expected, "hex")
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return requestId
+  }
+  return null
 }
 
 // ─── PKCE (RFC 7636) ─────────────────────────────────────────

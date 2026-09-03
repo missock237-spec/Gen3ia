@@ -2,15 +2,18 @@ import { NextRequest } from "next/server"
 import { db } from "@/lib/db"
 import { handleRoute, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
-import { advanceTask } from "@/lib/engines/orchestrator"
+import { advanceTask, enforceApprovalExpiry } from "@/lib/engines/orchestrator"
 import { transitionTask } from "@/lib/engines/state-machine"
 import { hydrateEvidence } from "@/lib/tasks/artifacts"
+import { approvalSecondsLeft } from "@/lib/security/hitl"
 
 /**
  * Détail d'une tâche — poursuit AUSSI l'avancement du pipeline si la tâche
  * est active (chaque sondage du client fait progresser l'orchestration,
  * dans la limite du budget temporel de la requête).
  * v3.1 : hydratation des preuves externalisées (TaskArtifact gzip).
+ * v3.6 : expiration paresseuse des demandes HITL en attente + compte à
+ * rebours d'approbation exposé à l'UI.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
@@ -20,7 +23,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!owned) throw new ApiError(404, "Tâche introuvable.", "NOT_FOUND")
 
     let task = owned
-    if (!["COMPLETED", "FAILED", "CANCELLED", "WAITING_FOR_HUMAN", "WAITING_PLAN_APPROVAL"].includes(task.status)) {
+    if (["WAITING_FOR_HUMAN", "WAITING_PLAN_APPROVAL"].includes(task.status)) {
+      // v3.6 — annulation automatique des approbations expirées (fail-safe).
+      task = (await enforceApprovalExpiry(task.id)) ?? task
+    } else if (!["COMPLETED", "FAILED", "CANCELLED"].includes(task.status)) {
       task = (await advanceTask(task.id)) ?? task
     }
 
@@ -70,6 +76,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         learning: parse(task.learning),
         result,
         pendingApproval: parse(task.pendingApproval),
+        // v3.6 — compte à rebours d'approbation (secondes restantes, 0 si expirée).
+        approvalSecondsLeft: approvalSecondsLeft(parse(task.pendingApproval)),
       },
       steps: steps.map((s) => ({
         id: s.id, phase: s.phase, stepIndex: s.stepIndex, title: s.title, status: s.status,

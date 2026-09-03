@@ -3,11 +3,13 @@ import { z } from "zod"
 import { handleRoute, readJson } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { resolvePlanApproval } from "@/lib/engines/orchestrator"
+import { requestMeta } from "@/lib/security/hitl"
 
 /**
  * Mode Explain (amélioration « Mode Explain — plan détaillé »).
  * POST : résout l'approbation des 5 plans — sélection, édition des étapes,
  * régénération ou refus. Voir resolvePlanApproval dans l'orchestrateur.
+ * v3.6 : expiration du délai d'approbation + traçabilité IP/user-agent.
  */
 
 const approveSchema = z.object({
@@ -35,13 +37,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const { id } = await params
       const body = await readJson(req, approveSchema)
 
-      const task = await resolvePlanApproval(id, user.id, {
-        approved: body.approved,
-        planId: body.planId,
-        editedSteps: body.editedSteps,
-        regenerate: body.regenerate,
-        reason: body.reason,
-      })
+      const task = await resolvePlanApproval(
+        id,
+        user.id,
+        {
+          approved: body.approved,
+          planId: body.planId,
+          editedSteps: body.editedSteps,
+          regenerate: body.regenerate,
+          reason: body.reason,
+        },
+        // v3.6 — traçabilité renforcée de la décision humaine.
+        {
+          decidedBy: user.id,
+          decidedByEmail: user.email,
+          decidedAt: new Date().toISOString(),
+          ...requestMeta(req),
+        }
+      )
       return Response.json({ ok: true, task })
     },
     { rateLimit: { policy: "user", identify: "userId" } }

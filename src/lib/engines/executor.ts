@@ -241,7 +241,7 @@ export async function executePlan(
         let result: ToolResult
         try {
           result = await getBreaker(`tool:${toolKey}`).run(() =>
-            runTool(toolKey, args, { userId: ctx.userId, agentId: ctx.agentId })
+            runTool(toolKey, args, { userId: ctx.userId, agentId: ctx.agentId, taskId: ctx.taskId })
           )
         } catch (breakerErr) {
           if (breakerErr instanceof AppError && breakerErr.code === "RETRY_BUDGET_EXCEEDED") {

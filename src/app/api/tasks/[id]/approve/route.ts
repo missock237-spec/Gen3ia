@@ -3,15 +3,18 @@ import { z } from "zod"
 import { db } from "@/lib/db"
 import { handleRoute, readJson, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
-import { resolveHumanApproval } from "@/lib/engines/orchestrator"
-import { advanceTask } from "@/lib/engines/orchestrator"
+import { resolveHumanApproval, advanceTask } from "@/lib/engines/orchestrator"
+import { requestMeta } from "@/lib/security/hitl"
 
 const approveSchema = z.object({
   approved: z.boolean(),
   reason: z.string().max(500).optional(),
 })
 
-/** Human-in-the-loop : approuve ou refuse une opération sensible. */
+/**
+ * Human-in-the-loop : approuve ou refuse une opération sensible.
+ * v3.6 : expiration du délai + traçabilité (approbateur, IP, user-agent).
+ */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
     const user = await requireUser(req)
@@ -21,7 +24,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const task = await db.task.findFirst({ where: { id, userId: user.id } })
     if (!task) throw new ApiError(404, "Tâche introuvable.", "NOT_FOUND")
 
-    const resolved = await resolveHumanApproval(task.id, user.id, body.approved, body.reason)
+    const resolved = await resolveHumanApproval(task.id, user.id, body.approved, body.reason, {
+      decidedBy: user.id,
+      decidedByEmail: user.email,
+      decidedAt: new Date().toISOString(),
+      ...requestMeta(req),
+    })
     // Si approuvée, on relance immédiatement l'exécution dans ce budget de requête.
     const advanced = body.approved ? ((await advanceTask(task.id)) ?? resolved) : resolved
     return Response.json({ ok: true, task: advanced })

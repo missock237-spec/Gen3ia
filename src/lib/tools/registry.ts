@@ -1,27 +1,27 @@
-import vm from "vm"
 import { zaiWebSearch, zaiPageReader, htmlToText, isZaiAvailable } from "@/lib/ai/providers/zai"
 import { searchKnowledge } from "@/lib/rag/retriever"
 import { recallMemories } from "@/lib/memory/store"
 import { hasZaiConfig } from "@/lib/config"
 import { logger } from "@/lib/observability/logger"
 import { parseConnectorToolKey, runConnectorTool } from "@/lib/connectors/core/toolset"
+import { runSandboxedCode, sandboxStats } from "@/lib/security/sandbox/runner"
 
 /**
  * Registre d'outils — chaque outil possède une implémentation RÉELLE.
  * Aucune réponse simulée : si un outil échoue, l'erreur remonte au moteur
  * d'auto-correction qui décide de la stratégie de récupération.
  *
- * v3.1 — durcissement de la sandbox code_runner (audit sécurité) :
- *  - liste de refus STATIQUE des vecteurs d'échappement connus de node:vm
- *    (constructor, __proto__, process, require, import, eval, Function…) ;
- *  - contexte gelé (Object.freeze) ;
- *  - journalisation de chaque exécution (qui, quand, taille, verdict) ;
- *  - limitation inchangée : 5 s de CPU, 50 lignes de log, 4 Ko de sortie.
- *
- * ⚠ Limites documentées (ADR-0005) : node:vm n'est PAS une frontière de
- * sécurité dure (pas d'isolation mémoire/processus). Pour des charges
- * hostiles, l'exécution doit passer par le conteneur Docker autonome
- * (Dockerfile fourni) — décision explicite, pas un angle mort.
+ * v3.6 — durcissement majeur de la sandbox code_runner (ADR-0005 révisé) :
+ *  - ALLOW-LIST stricte des identifiants (vs ancienne deny-list contournable)
+ *    avec retrait préalable des chaînes/commentaires (anti-dissimulation) ;
+ *  - exécution dans un WORKER THREAD DÉDIÉ avec limites mémoire/CPU
+ *    (maxOldGenerationSizeMb 64, stackSizeMb 2…) : un agent gourmand ou
+ *    hostile meurt SEUL, la plateforme et les autres agents survivent ;
+ *  - génération de code désactivée dans l'isolat (eval/Function/WebAssembly) ;
+ *  - enveloppe IIFE stricte (« this » neutralisé) + contexte gelé ;
+ *  - timeout CPU 5 s + mur horloge 8 s (terminate) ;
+ *  - repli in-process à protection VM identique si worker_threads absent ;
+ *  - journalisation de chaque exécution (qui, quand, taille, verdict, isolat).
  */
 
 export type ToolKey =
@@ -71,7 +71,7 @@ export const TOOL_CATALOG: ToolDefinition[] = [
   {
     key: "code_runner",
     name: "Exécuteur de code",
-    description: "Exécute du code JavaScript dans un bac à sable isolé (5 s max, réseau coupé).",
+    description: "Exécute du code JavaScript dans un isolat dédié (allow-list stricte : déclarer toute variable, seules Math/JSON/Date/console… sont disponibles ; 5 s max, 64 Mo max, réseau coupé).",
     category: "EXECUTION",
     dangerous: true,
     parameters: { code: { type: "string", description: "Code JavaScript à exécuter", required: true } },
@@ -132,6 +132,7 @@ export interface ToolResult {
 export interface ToolContext {
   userId: string
   agentId?: string | null
+  taskId?: string | null
 }
 
 // ---------- Implementations ----------
@@ -267,99 +268,32 @@ function toolCalculator(args: { expression: string }): ToolResult {
   }
 }
 
-/** Vecteurs d'échappement connus de node:vm — refusés AVANT exécution. */
-const SANDBOX_DENYLIST: Array<[RegExp, string]> = [
-  [/\bconstructor\b/, "accès à « constructor » (vecteur d'échappement d'isolat)"],
-  [/__proto__/, "accès à « __proto__ » (pollution de prototype)"],
-  [/\bprocess\b/, "accès à « process » interdit"],
-  [/\bglobalThis\b/, "accès à « globalThis » interdit"],
-  [/\brequire\s*\(/, "require() interdit"],
-  [/\bimport\s*\(/, "import() dynamique interdit"],
-  [/\beval\s*\(/, "eval() interdit"],
-  [/\bFunction\s*\(/, "constructeur Function interdit"],
-  [/\bWebAssembly\b/, "WebAssembly interdit"],
-  [/\bSharedArrayBuffer\b/, "SharedArrayBuffer interdit"],
-  [/\bWeakRef\b/, "WeakRef interdit"],
-  [/\bProxy\s*\(/, "constructeur Proxy interdit"],
-  [/\bfetch\b/, "réseau coupé : fetch indisponible"],
-  [/\bWebSocket\b/, "réseau coupé : WebSocket indisponible"],
-]
-
-function toolCodeRunner(args: { code: string }, ctx?: ToolContext): ToolResult {
+/**
+ * code_runner — exécution isolée (v3.6).
+ * Allow-list statique puis worker thread dédié avec limites de ressources.
+ * Voir src/lib/security/sandbox/ (analyze.ts, runner.ts, inline.ts).
+ */
+async function toolCodeRunner(args: { code: string }, ctx?: ToolContext): Promise<ToolResult> {
   const started = Date.now()
-  const code = args.code ?? ""
-
-  // v3.1 — contrôle statique AVANT toute exécution (échec rapide, explicite).
-  for (const [pattern, reason] of SANDBOX_DENYLIST) {
-    if (pattern.test(code)) {
-      logger.warn("sandbox: code refusé (liste de refus)", {
-        userId: ctx?.userId,
-        reason,
-        bytes: code.length,
-      })
-      return {
-        ok: false,
-        output: "",
-        error: `Code refusé par la sandbox : ${reason}. Réécris le code sans cette construction.`,
-        latencyMs: Date.now() - started,
-      }
-    }
-  }
-
-  const logs: string[] = []
-  const sandboxConsole = {
-    log: (...items: unknown[]) => {
-      if (logs.length < 50) logs.push(items.map((x) => serialize(x)).join(" "))
-    },
-    error: (...items: unknown[]) => {
-      if (logs.length < 50) logs.push(`[erreur] ${items.map((x) => serialize(x)).join(" ")}`)
-    },
-  }
-  function serialize(v: unknown): string {
-    if (typeof v === "string") return v
-    try {
-      return JSON.stringify(v)
-    } catch {
-      return String(v)
-    }
-  }
-  const sandbox = {
-    console: sandboxConsole,
-    Math, JSON, Date, Number, String, Boolean, Array, Object, isNaN, parseInt, parseFloat,
-    BigInt: undefined, process: undefined, fetch: undefined, require: undefined, global: undefined,
-  }
-  // Gel du conteneur (pas des globales partagées du processus hôte).
-  Object.freeze(sandbox)
-  Object.freeze(sandboxConsole)
-  try {
-    const result = vm.runInNewContext(code, sandbox, { timeout: 5000, displayErrors: true })
-    const parts: string[] = []
-    if (logs.length > 0) parts.push(logs.join("\n"))
-    if (result !== undefined) parts.push(`→ ${serialize(result)}`)
-    logger.info("sandbox: exécution code_runner", {
-      userId: ctx?.userId,
-      bytes: code.length,
-      ok: true,
-      durMs: Date.now() - started,
-    })
-    return {
-      ok: true,
-      output: parts.join("\n").slice(0, 4000) || "(aucune sortie)",
-      data: { logs },
-      latencyMs: Date.now() - started,
-    }
-  } catch (err) {
-    logger.warn("sandbox: échec d'exécution", {
-      userId: ctx?.userId,
-      bytes: code.length,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    return {
-      ok: false,
-      output: logs.join("\n").slice(0, 2000),
-      error: err instanceof Error ? err.message : String(err),
-      latencyMs: Date.now() - started,
-    }
+  const result = await runSandboxedCode({
+    code: String(args.code ?? ""),
+    userId: ctx?.userId,
+    taskId: ctx?.taskId ?? undefined,
+  })
+  logger.info("sandbox: exécution code_runner", {
+    userId: ctx?.userId,
+    bytes: Buffer.byteLength(String(args.code ?? ""), "utf8"),
+    ok: result.ok,
+    isolated: result.isolated,
+    durMs: result.durationMs,
+    sandbox: sandboxStats(),
+  })
+  return {
+    ok: result.ok,
+    output: result.output,
+    data: { logs: result.logs, isolated: result.isolated, sandboxDurationMs: result.durationMs },
+    error: result.error ?? undefined,
+    latencyMs: Date.now() - started,
   }
 }
 

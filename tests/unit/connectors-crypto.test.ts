@@ -20,7 +20,9 @@ describe("connectors/crypto — AES-256-GCM", () => {
       expires_at: "2026-09-03T10:00:00.000Z",
     }
     const enc = encryptJson(payload)
-    expect(enc.startsWith("v1:")).toBe(true)
+    // v3.6 : format versionné v2:<keyId>:<iv>:<tag>:<data> (keyring multi-clés).
+    expect(enc.startsWith("v2:")).toBe(true)
+    expect(enc.split(":")).toHaveLength(5)
     const dec = decryptJson<typeof payload>(enc)
     expect(dec).toEqual(payload)
   })
@@ -33,9 +35,13 @@ describe("connectors/crypto — AES-256-GCM", () => {
   test("toute altération du payload est détectée (tag GCM)", () => {
     const enc = encryptJson({ token: "valeur" })
     const parts = enc.split(":")
-    // Corromp le ciphertext.
-    parts[3] = parts[3].slice(0, -2) + (parts[3].endsWith("00") ? "01" : "00")
+    // Corromp le ciphertext (v2: clé en parts[4], iv en parts[2], tag en parts[3]).
+    parts[4] = parts[4].slice(0, -2) + (parts[4].endsWith("00") ? "01" : "00")
     expect(() => decryptJson(parts.join(":"))).toThrow()
+    // Corromp le tag d'authentification.
+    const parts2 = enc.split(":")
+    parts2[3] = "ff".repeat(16)
+    expect(() => decryptJson(parts2.join(":"))).toThrow()
   })
 
   test("roundtrip générique", () => {
