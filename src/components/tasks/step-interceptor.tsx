@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { apiPost } from "@/lib/client/hooks"
+import { PlanGraph, type PlanStepLike } from "@/components/tasks/plan-graph"
 import {
   Play,
   Pause,
@@ -43,6 +44,10 @@ export function StepInterceptor({ taskId, initialTask, initialSteps = [], onTask
   const [editTitle, setEditTitle] = useState("")
   const [editDetail, setEditDetail] = useState("")
   const [submitting, setSubmitting] = useState(false)
+
+  // v3.6 — brouillon d'édition : alimente la simulation de coûts du graphe
+  // EN TEMPS RÉEL (chaque frappe recalcule poids/budget/cumuls).
+  const [draft, setDraft] = useState<Record<number, Partial<PlanStepLike>>>({})
 
   // Établissement du flux SSE
   useEffect(() => {
@@ -144,6 +149,8 @@ export function StepInterceptor({ taskId, initialTask, initialSteps = [], onTask
         description: "Modifications appliquées et relance du pipeline.",
       })
       setEditingStepIndex(null)
+      // Le brouillon devient la nouvelle référence du graphe.
+      setDraft((d) => ({ ...d, [editingStepIndex]: { title: editTitle, detail: editDetail } }))
       if (res.task) setTask(res.task)
     } catch (err) {
       toast({
@@ -198,6 +205,14 @@ export function StepInterceptor({ taskId, initialTask, initialSteps = [], onTask
             <p className="text-xs text-teal-200/80">
               Le pipeline SSE est en pause. Vous pouvez modifier la séquence des étapes ci-dessous avant de lancer l'exécution.
             </p>
+            {/* v3.6 — graphe de dépendances + simulation de coûts (Explain) */}
+            {currentPlan && (
+              <PlanGraph
+                plan={{ name: currentPlan.name, estimatedCostCredits: currentPlan.estimatedCostCredits ?? 2, steps: currentPlan.steps ?? [] }}
+                draft={draft}
+                executionLog={task?.executionLog?.steps}
+              />
+            )}
             <div className="flex gap-2">
               <Button
                 onClick={() => handleApproveStep(true)}
@@ -217,6 +232,15 @@ export function StepInterceptor({ taskId, initialTask, initialSteps = [], onTask
               </Button>
             </div>
           </div>
+        )}
+
+        {/* v3.6 — graphe du plan en cours (statuts et latences réels). */}
+        {currentPlan && task?.status !== "WAITING_PLAN_APPROVAL" && (
+          <PlanGraph
+            plan={{ name: currentPlan.name, estimatedCostCredits: currentPlan.estimatedCostCredits ?? 2, steps: currentPlan.steps ?? [] }}
+            executionLog={task?.executionLog?.steps}
+            compact
+          />
         )}
 
         {/* Liste des Étapes avec possibilité d'édition temps réel */}
@@ -244,7 +268,11 @@ export function StepInterceptor({ taskId, initialTask, initialSteps = [], onTask
                           <Label className="text-xs text-zinc-400">Titre de l'étape</Label>
                           <Input
                             value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
+                            onChange={(e) => {
+                              setEditTitle(e.target.value)
+                              // v3.6 — simulation de coûts temps réel.
+                              setDraft((d) => ({ ...d, [editingStepIndex]: { ...(d[editingStepIndex] ?? {}), title: e.target.value } }))
+                            }}
                             className="bg-zinc-950 border-zinc-700 text-xs mt-1"
                           />
                         </div>
@@ -252,7 +280,10 @@ export function StepInterceptor({ taskId, initialTask, initialSteps = [], onTask
                           <Label className="text-xs text-zinc-400">Détails / Instructions</Label>
                           <Textarea
                             value={editDetail}
-                            onChange={(e) => setEditDetail(e.target.value)}
+                            onChange={(e) => {
+                              setEditDetail(e.target.value)
+                              setDraft((d) => ({ ...d, [editingStepIndex]: { ...(d[editingStepIndex] ?? {}), detail: e.target.value } }))
+                            }}
                             className="bg-zinc-950 border-zinc-700 text-xs mt-1 h-20"
                           />
                         </div>

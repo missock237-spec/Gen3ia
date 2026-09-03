@@ -7,6 +7,7 @@ import { advanceTask } from "@/lib/engines/orchestrator"
 import { enqueueTaskAdvance, queueMode } from "@/lib/queue/task-queue"
 import { getBalance } from "@/lib/credits/ledger"
 import { audit } from "@/lib/engines/audit"
+import { emitPipelineEvent } from "@/lib/webhooks/outbound"
 
 const createSchema = z.object({
   prompt: z.string().min(10).max(8000),
@@ -62,6 +63,14 @@ export async function POST(req: NextRequest) {
       data: { userId: user.id, prompt: body.prompt.trim(), agentId },
     })
     await audit(req, { userId: user.id, action: "TASK_CREATED", entityType: "task", entityId: task.id })
+    // v3.6 — webhook sortant : tâche créée.
+    emitPipelineEvent({
+      userId: user.id,
+      event: "task.created",
+      payload: { taskId: task.id, agentId, promptLength: body.prompt.length },
+      agentId,
+      taskId: task.id,
+    })
 
     // v3.6 — file persistante : le traitement asynchrone prend le relais,
     // la réponse revient immédiate (le polling GET continue de faire

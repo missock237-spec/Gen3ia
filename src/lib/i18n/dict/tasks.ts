@@ -2,6 +2,12 @@
 
 export const tasks = {
   fr: {
+    "tasks.explain.graph.title": "Dépendances des étapes",
+    "tasks.explain.graph.stepsCount": "étapes",
+    "tasks.explain.cost.estimated": "Budget estimé :",
+    "tasks.explain.cost.tokensOut": "tokens de sortie",
+    "tasks.explain.cost.stepCredits": "Crédits estimés de l'étape",
+    "tasks.explain.cost.distribution": "Répartition du budget par étape (recalculée à chaque modification)",
     "tasks.title": "Task Center",
     "tasks.subtitle": "Lancez une tâche : GEN3IA l'analyse, génère 5 plans, exécute le meilleur, vérifie et livre.",
     "tasks.new": "Nouvelle tâche",
@@ -58,6 +64,12 @@ export const tasks = {
     "tasks.analysis.goals": "Objectifs :",
   },
   en: {
+    "tasks.explain.graph.title": "Step dependencies",
+    "tasks.explain.graph.stepsCount": "steps",
+    "tasks.explain.cost.estimated": "Estimated budget:",
+    "tasks.explain.cost.tokensOut": "output tokens",
+    "tasks.explain.cost.stepCredits": "Step estimated credits",
+    "tasks.explain.cost.distribution": "Budget split per step (recomputed on every change)",
     "tasks.title": "Task Center",
     "tasks.subtitle": "Launch a task: GEN3IA analyzes it, generates 5 plans, executes the best one, verifies and delivers.",
     "tasks.new": "New task",

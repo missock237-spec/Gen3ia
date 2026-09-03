@@ -1,0 +1,21 @@
+{
+  "name": "@gen3ia/sdk",
+  "version": "3.6.0",
+  "description": "SDK officiel GEN3IA — types générés depuis le schéma Prisma + client API v1 typé",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "gen3ia",
+    "ai",
+    "agents",
+    "sdk"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

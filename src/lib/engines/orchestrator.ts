@@ -29,6 +29,7 @@ import { logger as rootLogger } from "@/lib/observability/logger"
 import { AppError, EngineError } from "@/lib/errors"
 import { buildPendingApproval, isApprovalExpired, approvalTtlMs, type ApprovalDecisionMeta } from "@/lib/security/hitl"
 import { crossAgentPatternsBlock, recordCrossAgentPatterns } from "@/lib/learning/meta-learning"
+import { emitPipelineEvent } from "@/lib/webhooks/outbound"
 
 /**
  * Orchestrator — moteur central de GEN3IA.
@@ -359,6 +360,19 @@ export async function advanceTask(
         // v3.1 — cache de plans (après validation éthique).
         await plannerEngine.persistCache(ctx, { prompt: task.prompt, analysis: parseJsonField<PromptAnalysis>(task.analysis, EMPTY_ANALYSIS), memories: memoryStrings, allowedTools }, plans, { scores: evaluation.value.scores, rationale: evaluation.value.rationale }, evaluation.value.selectedPlanId)
 
+        // v3.6 — webhook sortant : plans générés et évalués.
+        emitPipelineEvent({
+          userId: user.id,
+          event: "plan.generated",
+          payload: {
+            taskId: task.id,
+            plans: plans.map((p) => ({ id: p.id, name: p.name, steps: p.steps.length, estimatedCostCredits: p.estimatedCostCredits })),
+            selectedPlanId: evaluation.value.selectedPlanId,
+          },
+          agentId: agent?.id ?? null,
+          taskId: task.id,
+        })
+
         // v3.1 — mode Explain : approbation manuelle des plans demandée.
         if (ctx.settings.planApproval === "manual") {
           await transitionTask(task, "WAITING_PLAN_APPROVAL")
@@ -397,6 +411,13 @@ export async function advanceTask(
             entityType: "task",
             entityId: task.id,
             detail: { planId: selected?.id, dangerousTools, ttlMinutes: Math.round(approvalTtlMs() / 60000) },
+          })
+          emitPipelineEvent({
+            userId: user.id,
+            event: "task.awaiting_human",
+            payload: { taskId: task.id, planId: selected?.id ?? null, dangerousTools, ttlMinutes: Math.round(approvalTtlMs() / 60000) },
+            agentId: agent?.id ?? null,
+            taskId: task.id,
           })
           return await db.task.findUniqueOrThrow({ where: { id: task.id } })
         }
@@ -631,6 +652,20 @@ export async function advanceTask(
         credits: task.costCredits,
       })
       task = await transitionTask(task, "COMPLETED")
+      // v3.6 — webhook sortant : tâche terminée.
+      emitPipelineEvent({
+        userId: user.id,
+        event: "task.completed",
+        payload: {
+          taskId: task.id,
+          costCredits: task.costCredits,
+          tokensIn: task.tokensIn,
+          tokensOut: task.tokensOut,
+          attempts: task.attempts,
+        },
+        agentId: agent?.id ?? null,
+        taskId: task.id,
+      })
       await audit(null, {
         userId: user.id, action: "TASK_COMPLETED", entityType: "task", entityId: task.id,
         detail: { credits: task.costCredits, attempts: task.attempts, totalRetries: task.totalRetries },
@@ -778,6 +813,14 @@ async function handlePipelineError(
   await audit(null, {
     userId: user.id, action: "TASK_FAILED", entityType: "task", entityId: current.id, detail: { message, errorCode },
   })
+  // v3.6 — webhook sortant : tâche échouée.
+  emitPipelineEvent({
+    userId: user.id,
+    event: "task.failed",
+    payload: { taskId: current.id, errorCode, message: message.slice(0, 300), attempts: current.attempts },
+    agentId: agent?.id ?? null,
+    taskId: current.id,
+  })
   await recordOrchestratorRun({
     taskId: current.id, userId: user.id, ok: false, durationMs: Date.now() - startedAt,
     errorCode, detail: { classification: analysis.classification },
@@ -821,6 +864,12 @@ export async function enforceApprovalExpiry(taskId: string): Promise<Task | null
     entityType: "task",
     entityId: task.id,
     detail: { previousStatus: task.status, reason },
+  })
+  emitPipelineEvent({
+    userId: task.userId,
+    event: "task.approval_expired",
+    payload: { taskId: task.id, previousStatus: task.status, reason },
+    taskId: task.id,
   })
   await transitionTask(task, "CANCELLED", { error: reason }).catch(() => undefined)
   const updated = await db.task.findUnique({ where: { id: task.id } })
@@ -888,9 +937,21 @@ export async function resolveHumanApproval(
     detail: { reason, decidedBy: meta.decidedBy, ip: meta.ip, userAgent: meta.userAgent, approved },
   })
   if (approved) {
+    emitPipelineEvent({
+      userId: task.userId,
+      event: "task.approved",
+      payload: { taskId, planId: (pending as { planId?: string }).planId ?? null, decidedBy: meta.decidedBy },
+      taskId,
+    })
     const updated = await transitionTask(task, "EXECUTING")
     return (await advanceTask(updated.id)) ?? updated
   }
+  emitPipelineEvent({
+    userId: task.userId,
+    event: "task.cancelled",
+    payload: { taskId, reason: reason ?? "Refusé par l'utilisateur." },
+    taskId,
+  })
   return transitionTask(task, "CANCELLED", { error: reason ?? "Refusé par l'utilisateur." })
 }
 
@@ -942,6 +1003,12 @@ export async function resolvePlanApproval(
   const plans = parseJsonField<Plan[]>(task.plans, [])
   const scores = parseJsonField<{ selectedPlanId?: string; rationale?: string }>(task.planScores, {})
 
+  emitPipelineEvent({
+    userId,
+    event: input.regenerate ? "plan.rejected" : input.approved ? "plan.approved" : "plan.rejected",
+    payload: { taskId, planId: input.planId ?? null, edited: (input.editedSteps?.length ?? 0) > 0, regenerate: input.regenerate ?? false },
+    taskId,
+  })
   await audit(null, {
     userId,
     action: input.regenerate ? "TASK_PLANS_REGENERATE" : input.approved ? "TASK_PLAN_APPROVED" : "TASK_PLAN_REJECTED",

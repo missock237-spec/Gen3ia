@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePolling } from "@/lib/client/hooks";
 import { useI18n } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n/dictionaries";
-import { Code2, Copy, Check, Download, Terminal, BookOpen } from "lucide-react";
+import { Code2, Copy, Check, Download, Terminal, BookOpen, Braces, ExternalLink } from "lucide-react";
 
 function jsSdkSource(t: (key: TranslationKey) => string): string {
   return `/**
@@ -255,6 +256,27 @@ export default function SdkPage() {
           <div className="space-y-1.5">
             <div className="font-mono text-emerald-400 text-xs">GET /api/v1/task/{"{id}"}</div>
             <p className="text-xs text-zinc-400">{t("sdk.endpoint.get.desc")}</p>
+          </div>
+          <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
+            <div className="font-mono text-emerald-400 text-xs">GET /api/v1/agents · /keys · /transactions</div>
+            <p className="text-xs text-zinc-400">{t("sdk.endpoint.catalog.desc")}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-zinc-900/40 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Braces className="h-4 w-4 text-emerald-400" />{t("sdk.openapi.title")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-xs text-zinc-400">{t("sdk.openapi.desc")}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" className="border-zinc-800 bg-zinc-900/40 text-xs">
+              <Link href="/docs/api" target="_blank"><ExternalLink className="h-3.5 w-3.5 mr-1.5" />{t("sdk.openapi.interactive")}</Link>
+            </Button>
+            <Button asChild variant="outline" className="border-zinc-800 bg-zinc-900/40 text-xs">
+              <a href="/api/openapi.json" download="gen3ia-openapi.json"><Download className="h-3.5 w-3.5 mr-1.5" />{t("sdk.openapi.download")}</a>
+            </Button>
           </div>
         </CardContent>
       </Card>

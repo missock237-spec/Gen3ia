@@ -36,7 +36,18 @@ interface WebhookView {
   deliveries: Delivery[];
 }
 
-const EVENTS = ["task.completed", "task.failed", "credits.low", "payment.received", "agent.created", "swarm.completed"];
+const EVENTS = [
+  "task.created",
+  "task.approved",
+  "plan.generated",
+  "plan.approved",
+  "plan.rejected",
+  "task.awaiting_human",
+  "task.approval_expired",
+  "task.completed",
+  "task.failed",
+  "task.cancelled",
+];
 
 export default function WebhooksPage() {
   const { toast } = useToast();

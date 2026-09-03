@@ -3,12 +3,12 @@ import { z } from "zod"
 import { db } from "@/lib/db"
 import { handleRoute, readJson } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
-import { createWebhook } from "@/lib/webhooks/outbound"
+import { createWebhook, PIPELINE_EVENTS } from "@/lib/webhooks/outbound"
 import { generateKey } from "@/lib/security/encryption"
 
 const webhookSchema = z.object({
   url: z.string().url(),
-  events: z.array(z.string()).min(1),
+  events: z.array(z.enum(PIPELINE_EVENTS)).min(1),
   agentId: z.string().optional(),
   taskId: z.string().optional(),
 })

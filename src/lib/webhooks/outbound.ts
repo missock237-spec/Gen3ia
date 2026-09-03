@@ -3,10 +3,67 @@ import { createHmac } from "crypto"
 import { logger } from "@/lib/observability/logger"
 
 /**
- * OutboundWebhookManager — Webhooks sortants.
- * Notifie des systèmes externes en fin d'exécution (success/fail).
- * Retry avec backoff exponentiel, signature HMAC, timeout configurable.
+ * OutboundWebhookManager — Webhooks sortants (v3.6 : pipeline complet).
+ *
+ * Notifie des systèmes externes aux ÉVÉNEMENTS CLÉS du pipeline :
+ *  task.created, plan.generated, plan.approved, plan.rejected,
+ *  task.awaiting_human, task.approval_expired, task.completed,
+ *  task.failed, task.cancelled.
+ *
+ * Qualité de service :
+ *  - émission NON BLOQUANTE (emitPipelineEvent = fire-and-forget : le
+ *    pipeline n'attend JAMAIS la livraison) ;
+ *  - retry avec backoff exponentiel (1s/2s), signature HMAC SHA-256,
+ *    timeout 10 s, pas de retry sur 4xx ;
+ *  - historique de livraison persisté (WebhookDelivery) ;
+ *  - filtrage par agent/tâche à la souscription.
  */
+
+/** Catalogue des événements émettables (validation + UI). */
+export const PIPELINE_EVENTS = [
+  "task.created",
+  "task.approved",
+  "plan.generated",
+  "plan.approved",
+  "plan.rejected",
+  "task.awaiting_human",
+  "task.approval_expired",
+  "task.completed",
+  "task.failed",
+  "task.cancelled",
+] as const
+
+export type PipelineEvent = (typeof PIPELINE_EVENTS)[number]
+
+/**
+ * Émet un événement du pipeline vers les webhooks de l'utilisateur.
+ * NON BLOQUANT : aucune erreur, aucun délai de livraison ne peut ralentir
+ * le pipeline — l'émission est asynchrone et supervisée (log seul).
+ */
+export function emitPipelineEvent(params: {
+  userId: string
+  event: PipelineEvent
+  payload: Record<string, unknown>
+  agentId?: string | null
+  taskId?: string | null
+}): void {
+  void (async () => {
+    try {
+      await triggerWebhooks({
+        userId: params.userId,
+        event: params.event,
+        payload: params.payload,
+        agentId: params.agentId ?? undefined,
+        taskId: params.taskId ?? undefined,
+      })
+    } catch (err) {
+      logger.warn("webhooks: émission non bloquante interrompue", {
+        event: params.event,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  })()
+}
 
 const MAX_RETRIES = 3
 const TIMEOUT_MS = 10_000

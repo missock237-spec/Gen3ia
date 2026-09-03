@@ -1,0 +1,10 @@
+[project]
+name = "gen3ia"
+version = "3.6.0"
+description = "SDK officiel GEN3IA — types générés depuis le schéma Prisma + client API v1 typé"
+requires-python = ">=3.9"
+license = "MIT"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build-meta"

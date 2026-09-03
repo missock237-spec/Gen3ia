@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-09-03T17:31:55.171Z",
+  "source": "prisma/schema.prisma",
+  "models": 53,
+  "publicModels": 10,
+  "excludedSecretFields": [
+    "passwordHash",
+    "encryptedData",
+    "secret",
+    "hash",
+    "token"
+  ],
+  "outputs": [
+    "sdks/typescript/src/types.gen.ts",
+    "sdks/typescript/src/client.ts",
+    "sdks/python/gen3ia/types_gen.py",
+    "sdks/python/gen3ia/client.py"
+  ]
+}
