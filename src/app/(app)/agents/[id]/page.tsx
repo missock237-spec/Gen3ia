@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/app/status-badge";
 import { useToast } from "@/hooks/use-toast";
@@ -18,7 +19,7 @@ import { renderRich } from "@/lib/i18n/rich";
 import { apiPost, apiPatch, formatCredits, usePolling } from "@/lib/client/hooks";
 import {
   Loader2, Send, Save, Rocket, Copy, Check, MessageSquare, Wrench, Wrench as WrenchIcon,
-  KeyRound, Terminal, ExternalLink, Store,
+  KeyRound, Terminal, ExternalLink, Store, Sparkles,
 } from "lucide-react";
 
 interface AgentDetail {
@@ -53,6 +54,7 @@ export default function AgentDetailPage() {
   // --- Formulaire constructeur ---
   const [form, setForm] = useState({ name: "", description: "", systemPrompt: "", category: "", temperature: 0.7 });
   const [tools, setTools] = useState<string[]>([]);
+  const [rag, setRag] = useState<{ semanticWeight: number; rerank: boolean }>({ semanticWeight: 0.6, rerank: true });
   const [saving, setSaving] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -65,7 +67,13 @@ export default function AgentDetailPage() {
         category: agent.category ?? "",
         temperature: agent.temperature,
       })
-      setTools(agent.config ? JSON.parse(agent.config).tools ?? [] : [])
+      const config = agent.config ? JSON.parse(agent.config) : {}
+      setTools(config.tools ?? [])
+      // v3.6 — réglages RAG de l'agent (poids sémantique + re-rank).
+      setRag({
+        semanticWeight: typeof config.rag?.semanticWeight === "number" ? config.rag.semanticWeight : 0.6,
+        rerank: typeof config.rag?.rerank === "boolean" ? config.rag.rerank : true,
+      })
       setInitialized(true)
     }
   }, [agent, initialized])
@@ -81,6 +89,7 @@ export default function AgentDetailPage() {
         category: form.category || null,
         temperature: form.temperature,
         tools,
+        rag: { semanticWeight: rag.semanticWeight, rerank: rag.rerank },
       })
       if (!res.ok) throw new Error(res.error)
       toast({ title: t("agents.saved.title"), description: t("agents.saved.desc") })
@@ -285,6 +294,36 @@ export default function AgentDetailPage() {
               <div className="space-y-2">
                 <Label>{t("agents.detail.temperature")} <span className="font-mono text-emerald-400">{form.temperature.toFixed(1)}</span></Label>
                 <Slider value={[form.temperature]} onValueChange={([v]) => setForm({ ...form, temperature: v })} min={0} max={1.5} step={0.1} />
+              </div>
+
+              {/* v3.6 — RAG ajustable par agent : poids sémantique/lexical + re-rank */}
+              <div className="space-y-3 pt-2 border-t border-zinc-800/60">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-emerald-400" />
+                    {t("agents.rag.semanticWeight")}
+                    <span className="font-mono text-emerald-400">{rag.semanticWeight.toFixed(2)}</span>
+                  </Label>
+                  <Slider
+                    value={[rag.semanticWeight]}
+                    onValueChange={([v]) => setRag((r) => ({ ...r, semanticWeight: v }))}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                  />
+                  <p className="text-[11px] text-zinc-500">{t("agents.rag.semanticWeightHint")}</p>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2.5">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-medium">{t("agents.rag.rerank")}</div>
+                    <div className="text-[11px] text-zinc-500">{t("agents.rag.rerankHint")}</div>
+                  </div>
+                  <Switch
+                    checked={rag.rerank}
+                    onCheckedChange={(checked) => setRag((r) => ({ ...r, rerank: checked }))}
+                    aria-label={t("agents.rag.rerank")}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>

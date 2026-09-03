@@ -230,9 +230,31 @@ export interface DebateProposal {
   confidence: number
 }
 
+/** v3.6 — contre-arguments croisés entre participants. */
+export interface DebateRebuttal {
+  agentId: string
+  agentName: string
+  /** Proposition visée par la critique. */
+  targetAgentId: string
+  counterArguments: string[]
+}
+
+/** v3.6 — vote pondéré (chaque participant note les autres, sans se noter). */
+export interface DebateVote {
+  voterAgentId: string
+  targetAgentId: string
+  score: number // 0-10
+  /** Poids du vote = confiance du votant. */
+  weight: number
+}
+
 export interface DebateResult {
   topic: string
   proposals: DebateProposal[]
+  rebuttals: DebateRebuttal[]
+  votes: DebateVote[]
+  /** Somme pondérée des votes par proposition (clé = agentId). */
+  voteTally: Record<string, number>
   refereeVerdict: string
   synthesis: string
   winningProposalAgentId?: string

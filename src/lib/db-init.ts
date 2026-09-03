@@ -751,6 +751,19 @@ CREATE TABLE IF NOT EXISTS "AdCreative" (
     CONSTRAINT "AdCreative_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "AdCampaign" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "CrossAgentPattern" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "patternHash" TEXT NOT NULL,
+    "pattern" TEXT NOT NULL,
+    "category" TEXT NOT NULL DEFAULT 'FAILURE',
+    "tags" TEXT,
+    "occurrences" INTEGER NOT NULL DEFAULT 1,
+    "distinctUsers" INTEGER NOT NULL DEFAULT 1,
+    "seenBy" TEXT,
+    "lastSeenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -908,6 +921,10 @@ CREATE INDEX IF NOT EXISTS "AdCampaign_userId_createdAt_idx" ON "AdCampaign"("us
 CREATE INDEX IF NOT EXISTS "AdCampaign_status_idx" ON "AdCampaign"("status");
 
 CREATE INDEX IF NOT EXISTS "AdCreative_campaignId_idx" ON "AdCreative"("campaignId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "CrossAgentPattern_patternHash_key" ON "CrossAgentPattern"("patternHash");
+
+CREATE INDEX IF NOT EXISTS "CrossAgentPattern_category_lastSeenAt_idx" ON "CrossAgentPattern"("category", "lastSeenAt");
 `
 // @generated-db-ddl:sqlite:end
 
@@ -1709,6 +1726,21 @@ CREATE TABLE IF NOT EXISTS "AdCreative" (
     CONSTRAINT "AdCreative_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE IF NOT EXISTS "CrossAgentPattern" (
+    "id" TEXT NOT NULL,
+    "patternHash" TEXT NOT NULL,
+    "pattern" TEXT NOT NULL,
+    "category" TEXT NOT NULL DEFAULT 'FAILURE',
+    "tags" TEXT,
+    "occurrences" INTEGER NOT NULL DEFAULT 1,
+    "distinctUsers" INTEGER NOT NULL DEFAULT 1,
+    "seenBy" TEXT,
+    "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CrossAgentPattern_pkey" PRIMARY KEY ("id")
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -1866,6 +1898,10 @@ CREATE INDEX IF NOT EXISTS "AdCampaign_userId_createdAt_idx" ON "AdCampaign"("us
 CREATE INDEX IF NOT EXISTS "AdCampaign_status_idx" ON "AdCampaign"("status");
 
 CREATE INDEX IF NOT EXISTS "AdCreative_campaignId_idx" ON "AdCreative"("campaignId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "CrossAgentPattern_patternHash_key" ON "CrossAgentPattern"("patternHash");
+
+CREATE INDEX IF NOT EXISTS "CrossAgentPattern_category_lastSeenAt_idx" ON "CrossAgentPattern"("category", "lastSeenAt");
 
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

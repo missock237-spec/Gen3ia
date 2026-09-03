@@ -984,3 +984,22 @@ model AdCreative {
 
   @@index([campaignId])
 }
+
+// ─── Méta-learning cross-agent (v3.6) ─────────────────────────
+// Patrons d'échec/succès GÉNÉRALISÉS et ANONYMISÉS partagés entre
+// agents et utilisateurs — accélère l'apprentissage global de la
+// plateforme sans jamais exposer de contenu utilisateur.
+model CrossAgentPattern {
+  id            String   @id @default(cuid())
+  patternHash   String   @unique // SHA-256 du patron généralisé (déduplication)
+  pattern       String // leçon généralisée, extraite sans données utilisateur
+  category      String   @default("FAILURE") // FAILURE | SUCCESS
+  tags          String? // JSON : ["tool:code_runner", "phase:EXECUTING", "code:RETRY_BUDGET_EXCEEDED"]
+  occurrences   Int      @default(1)
+  distinctUsers Int      @default(1) // utilisateurs distincts ayant rencontré ce patron
+  seenBy        String? // JSON : empreintes hachées d'utilisateurs (anonymisation)
+  lastSeenAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([category, lastSeenAt])
+}

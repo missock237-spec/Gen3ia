@@ -2,19 +2,52 @@ import { db } from "@/lib/db"
 import { logger } from "@/lib/observability/logger"
 import { searchVector } from "./vector-store"
 import { chunkText, tokenize, type Chunk } from "./text-utils"
+import { rerankChunks } from "./reranker"
+import { hasZaiConfig } from "@/lib/config"
 
 /**
  * RAG — recherche hybride (amélioration « Remplacer TF-IDF par un Vecteur DB »).
  *
  * Stratégie par ordre de priorité :
  *  1. Vecteurs persistés (Embedding) + TF-IDF ciblé sur les morceaux
- *     candidats → score hybride 0.6·cosinus + 0.4·lexical ;
- *  2. Repli TF-IDF pur si aucun vecteur n'est indexé pour l'utilisateur
+ *     candidats → score hybride pondéré (défaut 0.6·cosinus + 0.4·lexical,
+ *     AJUSTABLE PAR AGENT via config.rag.semanticWeight) ;
+ *  2. Re-ranker cross-encoder (v3.6) : les meilleurs candidats sont
+ *     ré-évalués en présence de la requête complète par le LLM — pertinent
+ *     quand la requête est précise et que le lexical divague (homonymes,
+ *     formulations indirectes). Activable par agent (config.rag.rerank),
+ *     fail-open : indisponible → ordre hybride conservé ;
+ *  3. Repli TF-IDF pur si aucun vecteur n'est indexé pour l'utilisateur
  *     (documents antérieurs à la v3.1, ou fournisseur local indisponible).
  *
  * L'embedding n'est JAMAIS recalculé pour les documents à la requête :
  * il est calculé une fois à l'ingestion (voir vector-store.indexDocument).
  */
+
+export interface RetrievalOptions {
+  /**
+   * Poids de la sémantique dans le score hybride (0 = lexical pur,
+   * 1 = vectoriel pur). Défaut 0.6. Ajustable par agent — un agent
+   * technique sur un jargon précis gagnera à monter le lexical (≈ 0.4),
+   * un agent de veille préférera la sémantique (≈ 0.8).
+   */
+  semanticWeight?: number
+  /** Activer le re-ranker cross-encoder (défaut : si un LLM est disponible). */
+  rerank?: boolean
+  /** Contexte d'observabilité. */
+  userId?: string
+}
+
+export function clampSemanticWeight(w: number | undefined): number {
+  if (w === undefined || !Number.isFinite(w)) return 0.6
+  return Math.min(1, Math.max(0, w))
+}
+
+export function rerankEnabled(opts: RetrievalOptions): boolean {
+  if (opts.rerank !== undefined) return opts.rerank
+  // Par défaut : re-rank si un fournisseur LLM est configuré.
+  return hasZaiConfig() || Boolean(process.env.OPENROUTER_API_KEY || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY)
+}
 
 export { chunkText, tokenize } from "./text-utils"
 export type { Chunk } from "./text-utils"
@@ -25,7 +58,7 @@ export interface ScoredChunk {
   text: string
   score: number
   /** Origine du score (observabilité). */
-  method?: "hybrid" | "lexical"
+  method?: "hybrid" | "hybrid+rerank" | "lexical"
 }
 
 /** TF-IDF ciblé : requête vs liste fermée de morceaux (sous-corpus candidats). */
@@ -60,8 +93,12 @@ function lexicalScores(query: string, texts: string[]): number[] {
 export async function searchKnowledge(
   userId: string,
   query: string,
-  topK = 4
+  topK = 4,
+  options: RetrievalOptions = {}
 ): Promise<ScoredChunk[]> {
+  const semanticWeight = clampSemanticWeight(options.semanticWeight)
+  const lexicalWeight = 1 - semanticWeight
+
   // 1. Candidats vectoriels (embedding requête + cosinus sur vecteurs persistés).
   let vectorHits: Awaited<ReturnType<typeof searchVector>> = []
   try {
@@ -80,20 +117,25 @@ export async function searchKnowledge(
   const titleById = new Map(docs.map((d) => [d.id, d.title]))
 
   if (vectorHits.length > 0) {
-    // 2. Score hybride sur les candidats vectoriels.
+    // 2. Score hybride pondéré sur les candidats vectoriels.
     const texts = vectorHits.map((h) => h.text)
     const lex = lexicalScores(query, texts)
     const merged: ScoredChunk[] = vectorHits.map((h, i) => ({
       documentId: h.documentId,
       title: titleById.get(h.documentId) ?? "(document supprimé)",
       text: h.text,
-      score: Math.round((0.6 * h.score + 0.4 * lex[i]) * 1000) / 1000,
+      score: Math.round((semanticWeight * h.score + lexicalWeight * lex[i]) * 1000) / 1000,
       method: "hybrid" as const,
     }))
-    return merged
+    const ranked = merged
       .filter((m) => m.score > 0.02)
       .sort((a, b) => b.score - a.score)
-      .slice(0, topK)
+
+    // 3. Re-ranker cross-encoder (v3.6) — ajustable par agent, fail-open.
+    if (rerankEnabled(options) && ranked.length > 1) {
+      return rerankChunks(query, ranked, { topK, userId: options.userId ?? userId })
+    }
+    return ranked.slice(0, topK)
   }
 
   // 3. Repli lexical complet (aucun vecteur indexé pour cet utilisateur).

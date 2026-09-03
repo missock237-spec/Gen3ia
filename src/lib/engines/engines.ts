@@ -91,6 +91,8 @@ export interface PlannerInput {
   previousFailure?: string
   memories: string[]
   feedbackBlock?: string
+  /** v3.6 — patrons cross-agents anonymes (leçons collectives). */
+  crossAgentBlock?: string
   allowedTools: string[]
 }
 
@@ -123,6 +125,7 @@ export class PlannerEngine extends BaseEngine<PlannerInput, Plan[]> {
           previousFailure: input.previousFailure ?? retryCtx.previousError,
           memories: input.memories,
           feedbackBlock: input.feedbackBlock,
+          crossAgentBlock: input.crossAgentBlock,
           allowedTools: input.allowedTools,
         })
         meter.tokensIn += r.tokensIn

@@ -76,6 +76,8 @@ export async function generatePlans(
     memories?: string[]
     /** Bloc de retour d'expérience (outils à éviter, archeypes réussis). */
     feedbackBlock?: string
+    /** v3.6 — patrons cross-agents anonymes (leçons collectives de la plateforme). */
+    crossAgentBlock?: string
     /** Outils réellement autorisés pour cet agent (défaut : registre complet). */
     allowedTools?: string[]
   }
@@ -91,6 +93,7 @@ export async function generatePlans(
     ? `\nLeçons tirées des tâches passées :\n- ${context.memories.slice(0, 5).join("\n- ")}\n`
     : ""
   const feedbackBlock = context?.feedbackBlock ? `\n${context.feedbackBlock}\n` : ""
+  const crossAgentBlock = context?.crossAgentBlock ? `\n${context.crossAgentBlock}\n` : ""
 
   const result = await chatJSON(
     {
@@ -104,6 +107,7 @@ export async function generatePlans(
             failureBlock +
             memoryBlock +
             feedbackBlock +
+            crossAgentBlock +
             `\nSquelette (respecte exactement ces clés, plans A à E) :\n${PLANS_SKELETON}\n\nProduis les 5 plans (A-E) en JSON.`,
         },
       ],

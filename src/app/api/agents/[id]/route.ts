@@ -18,6 +18,15 @@ const patchSchema = z.object({
   status: z.enum(["DRAFT", "PUBLISHED", "PAUSED", "ARCHIVED"]).optional(),
   visibility: z.enum(["PRIVATE", "MARKETPLACE"]).optional(),
   tools: z.array(z.string()).optional(),
+  /** v3.6 — RAG ajustable par agent (poids sémantique + re-rank). */
+  rag: z
+    .object({
+      /** 0 = lexical pur, 1 = vectoriel pur (défaut 0.6). */
+      semanticWeight: z.number().min(0).max(1).optional(),
+      /** Re-ranker cross-encoder sur les résultats hybrides. */
+      rerank: z.boolean().optional(),
+    })
+    .optional(),
 })
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -56,6 +65,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const validTools = body.tools.filter((t) => TOOL_CATALOG.some((c) => c.key === t))
       const config = agent.config ? JSON.parse(agent.config) : {}
       data.config = JSON.stringify({ ...config, tools: validTools })
+    }
+    if (body.rag !== undefined) {
+      // v3.6 — réglages RAG persistés dans config.rag (fusion, pas écrasement).
+      const config = agent.config ? JSON.parse(agent.config) : {}
+      const currentRag = config.rag ?? {}
+      data.config = JSON.stringify({
+        ...config,
+        rag: {
+          ...currentRag,
+          ...(body.rag.semanticWeight !== undefined ? { semanticWeight: Math.round(body.rag.semanticWeight * 100) / 100 } : {}),
+          ...(body.rag.rerank !== undefined ? { rerank: body.rag.rerank } : {}),
+        },
+      })
     }
 
     const updated = await db.agent.update({ where: { id: agent.id }, data })

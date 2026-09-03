@@ -28,6 +28,7 @@ import { getUserSettings, DEFAULT_USER_SETTINGS } from "@/lib/auth/guards"
 import { logger as rootLogger } from "@/lib/observability/logger"
 import { AppError, EngineError } from "@/lib/errors"
 import { buildPendingApproval, isApprovalExpired, approvalTtlMs, type ApprovalDecisionMeta } from "@/lib/security/hitl"
+import { crossAgentPatternsBlock, recordCrossAgentPatterns } from "@/lib/learning/meta-learning"
 
 /**
  * Orchestrator — moteur central de GEN3IA.
@@ -212,7 +213,15 @@ export async function advanceTask(
   // Contexte RAG : documents de l'utilisateur (et de l'agent si défini).
   let knowledgeContext = ""
   try {
-    const hits = await searchKnowledge(user.id, task.prompt, 3)
+    // v3.6 — RAG ajustable par agent : poids sémantique/lexical + re-rank.
+    const agentRagConfig = agent
+      ? parseJsonField<{ rag?: { semanticWeight?: number; rerank?: boolean } }>(agent.config, {})
+      : {}
+    const hits = await searchKnowledge(user.id, task.prompt, 3, {
+      semanticWeight: agentRagConfig.rag?.semanticWeight,
+      rerank: agentRagConfig.rag?.rerank,
+      userId: user.id,
+    })
     if (hits.length > 0) {
       knowledgeContext = hits.map((h) => `[${h.title}] ${h.text.slice(0, 900)}`).join("\n\n")
     }
@@ -277,6 +286,7 @@ export async function advanceTask(
           previousFailure,
           memories: memoryStrings,
           feedbackBlock: plannerFeedbackBlock(feedback),
+          crossAgentBlock: await crossAgentPatternsBlock(5).catch(() => ""),
           allowedTools,
         }, ctx)
         if (execution.value.length === 0) {
@@ -570,6 +580,19 @@ export async function advanceTask(
             }, ctx)
             await mergeTaskJson(task.id, "learning", learningRun.value)
             await chargePhase(task, user, learningRun, "LEARNING", "zai")
+            // v3.6 — méta-learning cross-agent : patrons généralisés anonymes
+            // (partagés avec tous les agents — jamais de contenu utilisateur).
+            await recordCrossAgentPatterns({
+              userId: user.id,
+              input: {
+                prompt: task.prompt,
+                analysis: parseJsonField<PromptAnalysis>(task.analysis, EMPTY_ANALYSIS),
+                plan: selected,
+                outcome: "SUCCESS",
+                verification: report,
+              },
+              plan: selected,
+            }).catch(() => undefined)
           }
         } catch {
           /* best-effort */
@@ -733,6 +756,19 @@ async function handlePipelineError(
         knowledgeContext: "",
         logger: log,
       })
+      // v3.6 — méta-learning cross-agent sur échec : patrons d'échec
+      // généralisés, partagés anonymement avec tous les agents.
+      await recordCrossAgentPatterns({
+        userId: user.id,
+        input: {
+          prompt: current.prompt,
+          analysis: parseJsonField<PromptAnalysis>(current.analysis, EMPTY_ANALYSIS),
+          plan: selected,
+          outcome: "FAILURE",
+          error: message.slice(0, 400),
+        },
+        plan: selected,
+      }).catch(() => undefined)
     }
   } catch {
     // L'apprentissage d'échec ne doit jamais masquer l'erreur d'origine.

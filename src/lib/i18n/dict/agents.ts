@@ -93,6 +93,10 @@ export const agents = {
     "agents.detail.systemPrompt": "Prompt système",
     "agents.detail.systemPromptPlaceholder": "Tu es… Tu dois… Tu ne dois jamais…",
     "agents.detail.temperature": "Température :",
+    "agents.rag.semanticWeight": "Poids sémantique du RAG",
+    "agents.rag.semanticWeightHint": "0 = recherche par mots-clés, 1 = recherche par sens. Montez vers le lexical (≈ 0.4) pour un jargon technique précis, vers la sémantique (≈ 0.8) pour des formulations variées.",
+    "agents.rag.rerank": "Re-ranker cross-encoder",
+    "agents.rag.rerankHint": "Ré-évalue les meilleurs extraits en présence de la requête complète (plus pertinent, coût LLM léger).",
     "agents.detail.categoryPlaceholder": "ANALYSE, REDACTION…",
     "agents.detail.tools": "Outils",
 
@@ -218,6 +222,10 @@ export const agents = {
     "agents.detail.systemPrompt": "System prompt",
     "agents.detail.systemPromptPlaceholder": "You are… You must… You must never…",
     "agents.detail.temperature": "Temperature:",
+    "agents.rag.semanticWeight": "RAG semantic weight",
+    "agents.rag.semanticWeightHint": "0 = keyword search, 1 = meaning-based search. Lower it (≈ 0.4) for precise technical jargon, raise it (≈ 0.8) for varied phrasings.",
+    "agents.rag.rerank": "Cross-encoder re-ranker",
+    "agents.rag.rerankHint": "Re-scores the best excerpts against the full query (more relevant, small LLM cost).",
     "agents.detail.categoryPlaceholder": "ANALYSIS, WRITING…",
     "agents.detail.tools": "Tools",
 
