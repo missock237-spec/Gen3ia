@@ -104,14 +104,6 @@ export default function ConnectorsPage() {
   const [apps, setApps] = useState<AppView[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-
-  // Dialogue d'import de token.
-  const [tokenApp, setTokenApp] = useState<AppView | null>(null);
-  const [tokenValue, setTokenValue] = useState("");
-  // Formulaire Jira (Basic + domaine).
-  const [jiraDomain, setJiraDomain] = useState("");
-  const [jiraEmail, setJiraEmail] = useState("");
-  const [jiraToken, setJiraToken] = useState("");
   // Console d'action.
   const [consoleApp, setConsoleApp] = useState<AppView | null>(null);
   const [consoleAction, setConsoleAction] = useState<AppView["actions"][number] | null>(null);
@@ -189,58 +181,6 @@ export default function ConnectorsPage() {
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function connectWithToken() {
-    if (!tokenApp) return;
-    setBusy(tokenApp.slug);
-    try {
-      const res = await fetch("/api/connectors/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appSlug: tokenApp.slug, token: tokenValue }),
-      });
-      const json = (await res.json()) as { ok: boolean; error?: string };
-      if (json.ok) {
-        toast({ title: t("connectors.toast.tokenSaved"), description: t("connectors.toast.tokenSavedDesc", { app: tokenApp.name }) });
-        setTokenApp(null);
-        setTokenValue("");
-        await refresh();
-      } else {
-        toast({ title: t("connectors.toast.importRefused"), description: json.error, variant: "destructive" });
-      }
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function connectJira() {
-    setBusy("jira");
-    try {
-      const res = await fetch("/api/connectors/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          appSlug: "jira",
-          username: jiraEmail,
-          password: jiraToken,
-          fields: { "your-domain": jiraDomain },
-        }),
-      });
-      const json = (await res.json()) as { ok: boolean; error?: string };
-      if (json.ok) {
-        toast({ title: t("connectors.toast.jiraSaved"), description: t("connectors.toast.jiraSavedDesc") });
-        setTokenApp(null);
-        setJiraDomain("");
-        setJiraEmail("");
-        setJiraToken("");
-        await refresh();
-      } else {
-        toast({ title: t("connectors.toast.refused"), description: json.error, variant: "destructive" });
-      }
     } finally {
       setBusy(null);
     }
@@ -442,24 +382,28 @@ export default function ConnectorsPage() {
                             <Button
                               size="sm"
                               className="h-8 text-xs"
-                              disabled={!app.connectable || busy === app.slug}
-                              onClick={() => {
-                                if (app.slug === "jira") {
-                                  setTokenApp(app);
-                                } else if (app.mode === "TOKEN_IMPORT") {
-                                  setTokenApp(app);
-                                  setTokenValue("");
-                                } else {
-                                  void connect(app);
-                                }
-                              }}
+                              disabled={
+                                !app.connectable ||
+                                busy === app.slug ||
+                                app.mode === "TOKEN_IMPORT" ||
+                                app.mode === "CREDENTIALS" ||
+                                app.mode === "UNAVAILABLE"
+                              }
+                              title={
+                                app.mode === "OAUTH"
+                                  ? t("connectors.oauth.redirectHint")
+                                  : t("connectors.oauthOnly")
+                              }
+                              onClick={() => void connect(app)}
                             >
                               {busy === app.slug ? (
                                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                               ) : (
                                 <PlugZap className="h-3.5 w-3.5 mr-1.5" />
                               )}
-                              {app.mode === "OAUTH" ? t("connectors.connectOauth") : t("connectors.addToken")}
+                              {app.mode === "OAUTH"
+                                ? t("connectors.connectOauth")
+                                : t("connectors.oauth.pending")}
                             </Button>
                           )}
                         </div>
@@ -471,72 +415,6 @@ export default function ConnectorsPage() {
           </div>
         ))
       )}
-
-      {/* Dialogue : import de token / identifiants Jira */}
-      <Dialog open={!!tokenApp} onOpenChange={(o) => !o && setTokenApp(null)}>
-        <DialogContent className="bg-zinc-900 border-zinc-800">
-          {tokenApp?.slug === "jira" ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>{t("connectors.jira.title")}</DialogTitle>
-                <DialogDescription>
-                  {t("connectors.jira.desc")}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">{t("connectors.jira.domain")}</Label>
-                  <Input value={jiraDomain} onChange={(e) => setJiraDomain(e.target.value)} placeholder={t("connectors.jira.domainPlaceholder")} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">{t("connectors.jira.email")}</Label>
-                  <Input value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} placeholder={t("connectors.jira.emailPlaceholder")} type="email" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">{t("connectors.jira.token")}</Label>
-                  <Input value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} placeholder={t("connectors.jira.tokenPlaceholder")} type="password" />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setTokenApp(null)}>{t("common.cancel")}</Button>
-                <Button disabled={busy === "jira" || !jiraDomain || !jiraEmail || !jiraToken} onClick={() => void connectJira()}>
-                  {busy === "jira" ? <Loader2 className="h-4 w-4 animate-spin" /> : t("connectors.connect")}
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>{t("connectors.token.title", { app: tokenApp?.name ?? "" })}</DialogTitle>
-                <DialogDescription>
-                  {tokenApp?.tokenImportLabel ?? t("connectors.token.desc")}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">{t("connectors.token.label")}</Label>
-                  <Input
-                    value={tokenValue}
-                    onChange={(e) => setTokenValue(e.target.value)}
-                    placeholder={t("connectors.token.placeholder")}
-                    type="password"
-                  />
-                </div>
-                <p className="text-[11px] text-zinc-500 flex items-start gap-1.5">
-                  <KeyRound className="h-3 w-3 mt-0.5 shrink-0" />
-                  {t("connectors.token.hint")}
-                </p>
-              </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setTokenApp(null)}>{t("common.cancel")}</Button>
-                <Button disabled={busy === tokenApp?.slug || tokenValue.length < 8} onClick={() => void connectWithToken()}>
-                  {busy === tokenApp?.slug ? <Loader2 className="h-4 w-4 animate-spin" /> : t("common.save")}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Console d'exécution d'action */}
       <Dialog open={!!consoleApp} onOpenChange={(o) => !o && setConsoleApp(null)}>

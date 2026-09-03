@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     if (availability.mode === "TOKEN_IMPORT" && !app.oauth2 && !app.oauth1) {
       throw new ApiError(
         400,
-        `« ${app.name} » attend un import direct : fournissez un token dans la requête.`
+        `« ${app.name} » n'est pas encore activée pour la connexion OAuth sur cette plateforme — l'administrateur doit configurer ses identifiants. Aucun token utilisateur n'est nécessaire ni accepté.`
       )
     }
 

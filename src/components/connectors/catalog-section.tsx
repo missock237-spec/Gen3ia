@@ -26,7 +26,6 @@ import {
   Layers,
   Wrench,
   Zap,
-  KeyRound,
   Hourglass,
 } from "lucide-react";
 
@@ -80,7 +79,7 @@ const STATUS_META: Record<string, { labelKey: TranslationKey; cls: string; icon:
   KEY_IMPORT: {
     labelKey: "connectors.catalog.statusKey",
     cls: "border-blue-700/50 text-blue-300",
-    icon: <KeyRound className="h-3.5 w-3.5" />,
+    icon: <Hourglass className="h-3.5 w-3.5" />,
   },
   COMING_SOON: {
     labelKey: "connectors.catalog.statusComing",
@@ -318,9 +317,10 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                 </div>
                 <Button
                   size="sm"
-                  disabled={busy === app.slug || app.status === "COMING_SOON"}
+                  disabled={busy === app.slug || app.status !== "OAUTH_READY"}
+                  title={app.status !== "OAUTH_READY" ? t("connectors.oauthOnly") : undefined}
                   onClick={() => void connect(app)}
-                  className={`mt-3 w-full ${ready ? "bg-emerald-500 text-zinc-950 hover:bg-emerald-400" : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"}`}
+                  className={`mt-3 w-full ${ready ? "bg-emerald-500 text-zinc-950 hover:bg-emerald-400" : "bg-zinc-800 text-zinc-400"}`}
                 >
                   {busy === app.slug ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -328,12 +328,10 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                     <>
                       <PlugZap className="h-4 w-4" /> {t("connectors.connect")}
                     </>
-                  ) : app.status === "KEY_IMPORT" ? (
-                    <>
-                      <KeyRound className="h-4 w-4" /> {t("connectors.catalog.addKey")}
-                    </>
                   ) : (
-                    t("connectors.catalog.notEnabled")
+                    <>
+                      <Hourglass className="h-4 w-4" /> {t("connectors.oauth.pending")}
+                    </>
                   )}
                 </Button>
               </div>

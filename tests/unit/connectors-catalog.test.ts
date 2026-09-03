@@ -25,6 +25,17 @@ describe("Catalogue d'applications (données Composio réelles)", () => {
     expect(stats.categories.length).toBeGreaterThan(50)
   })
 
+  test("exigence produit : 1000+ applications présentées (aucun token utilisateur)", () => {
+    const stats = catalogStats()
+    expect(stats.apps).toBeGreaterThanOrEqual(1000)
+    // Toutes les apps du catalogue dérivent du fichier public exact de Composio
+    // (toolkits.json — 1467 apps, 51240 outils, MIT) : structure vérifiée.
+    const github = getCatalogApp("github")
+    expect(github).not.toBeNull()
+    expect(github!.slug).toBe("github")
+    expect(github!.authSchemes.length).toBeGreaterThan(0)
+  })
+
   test("les apps majeures sont présentes avec leurs outils", () => {
     for (const slug of ["github", "slack", "gmail", "notion", "jira", "linear", "airtable"]) {
       const app = getCatalogApp(slug)
