@@ -561,6 +561,7 @@ CREATE TABLE IF NOT EXISTS "Purchase" (
     "commission" REAL NOT NULL,
     "payout" REAL NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "forkedAgentId" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -764,6 +765,26 @@ CREATE TABLE IF NOT EXISTS "CrossAgentPattern" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS "Subscription" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "planKey" TEXT NOT NULL,
+    "interval" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "price" REAL NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "creditsPerPeriod" INTEGER NOT NULL,
+    "currentPeriodStart" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "currentPeriodEnd" DATETIME NOT NULL,
+    "cancelAtPeriodEnd" BOOLEAN NOT NULL DEFAULT false,
+    "lastGrantAt" DATETIME,
+    "provider" TEXT NOT NULL DEFAULT 'chariow',
+    "providerRef" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Subscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -925,6 +946,10 @@ CREATE INDEX IF NOT EXISTS "AdCreative_campaignId_idx" ON "AdCreative"("campaign
 CREATE UNIQUE INDEX IF NOT EXISTS "CrossAgentPattern_patternHash_key" ON "CrossAgentPattern"("patternHash");
 
 CREATE INDEX IF NOT EXISTS "CrossAgentPattern_category_lastSeenAt_idx" ON "CrossAgentPattern"("category", "lastSeenAt");
+
+CREATE INDEX IF NOT EXISTS "Subscription_userId_idx" ON "Subscription"("userId");
+
+CREATE INDEX IF NOT EXISTS "Subscription_status_currentPeriodEnd_idx" ON "Subscription"("status", "currentPeriodEnd");
 `
 // @generated-db-ddl:sqlite:end
 
@@ -1521,6 +1546,7 @@ CREATE TABLE IF NOT EXISTS "Purchase" (
     "commission" DOUBLE PRECISION NOT NULL,
     "payout" DOUBLE PRECISION NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "forkedAgentId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Purchase_pkey" PRIMARY KEY ("id")
@@ -1741,6 +1767,27 @@ CREATE TABLE IF NOT EXISTS "CrossAgentPattern" (
     CONSTRAINT "CrossAgentPattern_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE IF NOT EXISTS "Subscription" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "planKey" TEXT NOT NULL,
+    "interval" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "price" DOUBLE PRECISION NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'XOF',
+    "creditsPerPeriod" INTEGER NOT NULL,
+    "currentPeriodStart" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "currentPeriodEnd" TIMESTAMP(3) NOT NULL,
+    "cancelAtPeriodEnd" BOOLEAN NOT NULL DEFAULT false,
+    "lastGrantAt" TIMESTAMP(3),
+    "provider" TEXT NOT NULL DEFAULT 'chariow',
+    "providerRef" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Subscription_pkey" PRIMARY KEY ("id")
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -1903,6 +1950,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS "CrossAgentPattern_patternHash_key" ON "CrossA
 
 CREATE INDEX IF NOT EXISTS "CrossAgentPattern_category_lastSeenAt_idx" ON "CrossAgentPattern"("category", "lastSeenAt");
 
+CREATE INDEX IF NOT EXISTS "Subscription_userId_idx" ON "Subscription"("userId");
+
+CREATE INDEX IF NOT EXISTS "Subscription_status_currentPeriodEnd_idx" ON "Subscription"("status", "currentPeriodEnd");
+
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "Agent" ADD CONSTRAINT "Agent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1988,6 +2039,8 @@ ALTER TABLE "AdTransaction" ADD CONSTRAINT "AdTransaction_walletId_fkey" FOREIGN
 ALTER TABLE "AdCampaign" ADD CONSTRAINT "AdCampaign_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "AdCreative" ADD CONSTRAINT "AdCreative_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "AdCampaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 `
 // @generated-db-ddl:postgres:end
 

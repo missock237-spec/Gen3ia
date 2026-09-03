@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { verifyChariowSignature } from "@/lib/payments/chariow"
-import { grantCredits } from "@/lib/credits/ledger"
-import { creditAdWallet } from "@/lib/ads/ledger"
+import { fulfillPayment } from "@/lib/payments/fulfillment"
 import { audit } from "@/lib/engines/audit"
 import { getClientIp } from "@/lib/api"
 import { checkRateLimit } from "@/lib/security/rate-limit"
@@ -71,47 +70,14 @@ export async function POST(req: NextRequest) {
       status.includes("succe") || status === "paid" || status === "completed" || status === "payment.succeeded"
 
     if (isSuccess) {
-      // v3.5 : un achat de crédits à la carte (plan « credits ») ne modifie
-      // PAS le plan de l'utilisateur — seuls les packs upgradent le plan.
-      const isPlanPurchase = payment.plan === "starter" || payment.plan === "pro" || payment.plan === "business"
-      await db.$transaction([
-        db.payment.update({
-          where: { id: payment.id },
-          data: { status: "SUCCEEDED", raw: rawBody.slice(0, 5000) },
-        }),
-        ...(isPlanPurchase
-          ? [
-              db.user.update({
-                where: { id: payment.userId },
-                data: { plan: payment.plan === "business" ? "ENTERPRISE" : "PRO" },
-              }),
-            ]
-          : []),
-      ])
-
-      // v3.5 : recharge du portefeuille PUBLICITAIRE (page /ads) — le montant
-      // FCFA crédite AdWallet, pas les crédits d'exécution GEN3IA.
-      if (payment.plan === "ads_recharge") {
-        await creditAdWallet(payment.userId, payment.amount, {
-          type: "RECHARGE",
-          description: `Recharge publicitaire Chariow — ${payment.amount.toLocaleString("fr-FR")} FCFA`,
-          paymentId: payment.id,
-        })
-      } else {
-        await grantCredits(payment.userId, payment.credits, {
-          type: "TOPUP",
-          description: `Recharge Chariow — pack ${payment.plan ?? "custom"} (${payment.credits} crédits)`,
-          refType: "payment",
-          refId: payment.id,
-        })
-      }
-      await audit(null, {
-        userId: payment.userId,
-        action: "PAYMENT_SUCCEEDED",
-        entityType: "payment",
-        entityId: payment.id,
-        detail: { credits: payment.credits, checkoutId },
-      })
+      // v3.6 : fulfillment partagé avec Stripe (abonnements, packs, crédits,
+      // portefeuille publicitaire) — un seul chemin de créditation auditée.
+      await fulfillPayment(
+        { id: payment.id, userId: payment.userId, plan: payment.plan ?? "credits", credits: payment.credits, amount: payment.amount },
+        checkoutId,
+        rawBody,
+        "chariow"
+      )
     } else if (status.includes("fail") || status.includes("cancel") || status.includes("expire")) {
       await db.payment.update({
         where: { id: payment.id },

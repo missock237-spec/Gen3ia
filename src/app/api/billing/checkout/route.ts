@@ -12,6 +12,7 @@ import {
 } from "@/lib/payments/chariow"
 import { getAppUrl } from "@/lib/config"
 import { audit } from "@/lib/engines/audit"
+import { createStripeCheckout, stripeConfigured } from "@/lib/payments/stripe"
 
 /**
  * Deux modes d'achat (v3.5) :
@@ -23,6 +24,8 @@ const checkoutSchema = z
   .object({
     planKey: z.enum(["starter", "pro", "business"]).optional(),
     credits: z.number().int().optional(),
+    /** v3.6 : processeur de paiement (défaut : Chariow ; Stripe au choix). */
+    method: z.enum(["chariow", "stripe"]).optional(),
   })
   .refine((b) => Boolean(b.planKey) !== Boolean(b.credits && b.credits > 0), {
     message: "Fournissez soit planKey, soit credits (pas les deux).",
@@ -65,6 +68,50 @@ export async function POST(req: NextRequest) {
       description = `GEN3IA — Achat de ${requested} crédits`
     }
 
+    // v3.6 : méthode explicite, sinon le premier processeur configuré.
+    const method = body.method ?? (chariowConfigured() ? "chariow" : stripeConfigured() ? "stripe" : null)
+    if (!method) {
+      throw new ApiError(
+        503,
+        "Paiements non activés : ni CHARIOW_API_KEY ni STRIPE_SECRET_KEY configurées sur ce serveur.",
+        "NO_PROCESSOR"
+      )
+    }
+
+    const appUrl = getAppUrl()
+
+    if (method === "stripe") {
+      if (!stripeConfigured()) {
+        throw new ApiError(503, "Stripe non configuré (STRIPE_SECRET_KEY absente).", "STRIPE_NOT_CONFIGURED")
+      }
+      const session = await createStripeCheckout({
+        amount,
+        currency,
+        customerEmail: user.email,
+        description,
+        successUrl: `${appUrl}/billing?payment=pending`,
+        cancelUrl: `${appUrl}/billing?payment=cancelled`,
+        metadata: { userId: user.id, planKey, credits },
+      })
+      const payment = await db.payment.create({
+        data: {
+          userId: user.id,
+          provider: "stripe",
+          checkoutId: session.sessionId,
+          plan: planKey,
+          amount,
+          currency,
+          credits,
+          status: "PENDING",
+        },
+      })
+      await audit(req, {
+        userId: user.id, action: "CHECKOUT_CREATED", entityType: "payment", entityId: payment.id,
+        detail: { plan: planKey, amount, credits, method: "stripe" },
+      })
+      return Response.json({ ok: true, paymentUrl: session.checkoutUrl, paymentId: payment.id, method: "stripe" })
+    }
+
     if (!chariowConfigured()) {
       throw new ApiError(
         503,
@@ -73,7 +120,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const appUrl = getAppUrl()
     const checkout = await createChariowCheckout({
       amount,
       currency,
@@ -97,9 +143,9 @@ export async function POST(req: NextRequest) {
     })
     await audit(req, {
       userId: user.id, action: "CHECKOUT_CREATED", entityType: "payment", entityId: payment.id,
-      detail: { plan: planKey, amount, credits },
+      detail: { plan: planKey, amount, credits, method: "chariow" },
     })
 
-    return Response.json({ ok: true, paymentUrl: checkout.paymentUrl, paymentId: payment.id })
+    return Response.json({ ok: true, paymentUrl: checkout.paymentUrl, paymentId: payment.id, method: "chariow" })
   })
 }

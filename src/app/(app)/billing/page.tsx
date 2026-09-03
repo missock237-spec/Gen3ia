@@ -11,6 +11,7 @@ import { renderRich } from "@/lib/i18n/rich";
 import { usePolling, apiPost, formatCredits, useUser } from "@/lib/client/hooks";
 import { StatusBadge } from "@/components/app/status-badge";
 import { CreditCard, Coins, ArrowDownLeft, ArrowUpRight, Check, ExternalLink, AlertTriangle } from "lucide-react";
+import { SubscriptionSection } from "@/components/billing/subscription-section";
 
 interface BillingData {
   ok: boolean
@@ -144,6 +145,9 @@ export default function BillingPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* v3.6 — Abonnements SaaS (mensuel/annuel, crédits inclus, quotas) */}
+      <SubscriptionSection />
 
       {/* Vente de crédits à la carte (minimum 50) */}
       <Card className="bg-gradient-to-br from-emerald-500/10 via-zinc-900/40 to-zinc-900/40 border-emerald-900/40">

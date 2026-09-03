@@ -7,6 +7,7 @@ import { uniqueSlug } from "@/lib/agents/chat"
 import { TOOL_CATALOG } from "@/lib/tools/registry"
 import { listParams, paginate } from "@/lib/api-pagination"
 import { audit } from "@/lib/engines/audit"
+import { enforceAgentQuota } from "@/lib/payments/subscriptions"
 
 const createSchema = z.object({
   name: z.string().min(2).max(80),
@@ -57,6 +58,9 @@ export async function POST(req: NextRequest) {
 
     const validTools = body.tools.filter((t) => TOOL_CATALOG.some((c) => c.key === t))
     const slug = await uniqueSlug(body.name)
+
+    // v3.6 — quotas différenciés par abonnement (FREE: 3, Starter: 10, Pro: 50, Business: 200).
+    await enforceAgentQuota(user.id)
 
     const agent = await db.agent.create({
       data: {

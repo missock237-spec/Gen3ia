@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Store, Download, Star, Rocket } from "lucide-react";
+import { Store, Download, Star, Rocket , Coins } from "lucide-react";
 
 interface MarketAgent {
   id: string
@@ -20,6 +20,8 @@ interface MarketAgent {
   stats: { runs: number; success: number } | null
   createdAt: string
   rating: { avg: number | null; count: number } | null
+  /** v3.6 — mise en vente : prix en crédits + identifiant de listing. */
+  listing: { id: string; price: number; purchases: number } | null
 }
 
 export default function MarketplacePage() {
@@ -31,6 +33,7 @@ export default function MarketplacePage() {
   const locale = lang === "fr" ? "fr-FR" : "en-US";
   const { data, loading, reload } = usePolling<{ ok: boolean; agents: MarketAgent[] }>("/api/marketplace");
   const [installing, setInstalling] = useState<string | null>(null);
+  const [buying, setBuying] = useState<string | null>(null);
 
   async function install(agentId: string) {
     setInstalling(agentId)
@@ -47,6 +50,28 @@ export default function MarketplacePage() {
     }
     toast({ title: t("marketplace.installed.title"), description: t("marketplace.installed.desc") })
     router.push("/agents")
+  }
+
+  /** v3.6 — achat RÉEL : débit de crédits, payout vendeur (80 %), commission 20 %. */
+  async function buy(agent: MarketAgent) {
+    if (!agent.listing) return
+    setBuying(agent.id)
+    try {
+      const res = await fetch(`/api/marketplace/${agent.listing.id}/purchase`, { method: "POST" })
+      const data = await res.json()
+      if (!data.ok) {
+        toast({ title: t("marketplace.buyFailed"), description: data.error, variant: "destructive" })
+        return
+      }
+      toast({
+        title: t("marketplace.purchased.title"),
+        description: t("marketplace.purchased.desc", { credits: agent.listing.price }),
+      })
+      await reload()
+      router.push("/agents")
+    } finally {
+      setBuying(null)
+    }
   }
 
   const agents = data?.agents ?? []
@@ -102,16 +127,35 @@ export default function MarketplacePage() {
                     {a.category && <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-[10px]">{a.category}</Badge>}
                     {a.stats && a.stats.runs > 0 && <span>{t("marketplace.runsCount", { count: a.stats.runs })}</span>}
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => install(a.id)}
-                    disabled={installing === a.id}
-                    className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 h-8 text-xs font-semibold"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    <span className="ml-1.5">{installing === a.id ? "…" : t("marketplace.install")}</span>
-                  </Button>
+                  {a.listing && a.listing.price > 0 ? (
+                    <Button
+                      size="sm"
+                      onClick={() => void buy(a)}
+                      disabled={buying === a.id}
+                      className="bg-amber-500 text-zinc-950 hover:bg-amber-400 h-8 text-xs font-semibold"
+                    >
+                      <Coins className="h-3.5 w-3.5" />
+                      <span className="ml-1.5">
+                        {buying === a.id ? "…" : t("marketplace.buy", { credits: a.listing.price })}
+                      </span>
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => install(a.id)}
+                      disabled={installing === a.id}
+                      className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400 h-8 text-xs font-semibold"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span className="ml-1.5">{installing === a.id ? "…" : t("marketplace.install")}</span>
+                    </Button>
+                  )}
                 </div>
+                {a.listing && a.listing.price > 0 && (
+                  <p className="text-[10px] text-zinc-600 mt-1.5">
+                    {t("marketplace.commissionNote", { count: a.listing.purchases })}
+                  </p>
+                )}
                 <p className="text-[10px] text-zinc-600 mt-2">{t("marketplace.published", { date: new Date(a.createdAt).toLocaleString(locale) })}</p>
               </CardContent>
             </Card>

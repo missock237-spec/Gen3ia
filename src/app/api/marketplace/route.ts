@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
       take: 60,
       select: {
         id: true, name: true, slug: true, description: true, category: true,
-        stats: true, createdAt: true,
+        stats: true, createdAt: true, userId: true,
+        listing: { select: { id: true, price: true, purchases: true, description: true } },
       },
     })
      
@@ -28,9 +29,12 @@ export async function GET(req: NextRequest) {
       ok: true,
       agents: agents.map((a) => ({
         ...a,
-         
         stats: a.stats ? JSON.parse(a.stats) : null,
         rating: ratingMap.get(a.id) ?? null,
+        // v3.6 — mise en vente : prix en crédits + identifiant de listing.
+        listing: a.listing
+          ? { id: a.listing.id, price: a.listing.price, purchases: a.listing.purchases }
+          : null,
       })),
     })
   })
@@ -39,6 +43,9 @@ export async function GET(req: NextRequest) {
 const publishSchema = z.object({
   agentId: z.string().max(64),
   action: z.enum(["publish", "unpublish"]).default("publish"),
+  /** v3.6 — prix de vente en crédits (0/absent = gratuit). Commission 20 %. */
+  price: z.number().min(0).max(100_000).optional(),
+  description: z.string().max(500).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -57,7 +64,29 @@ export async function POST(req: NextRequest) {
         )
       }
       await db.agent.update({ where: { id: agent.id }, data: { visibility: "MARKETPLACE" } })
-      await audit(req, { userId: user.id, action: "MARKETPLACE_PUBLISHED", entityType: "agent", entityId: agent.id })
+
+      // v3.6 — mise en vente : listing avec prix (commission plateforme 20 %).
+      const price = body.price ?? 0
+      const existing = await db.agentListing.findUnique({ where: { agentId: agent.id } })
+      if (existing) {
+        await db.agentListing.update({
+          where: { id: existing.id },
+          data: { price, ...(body.description !== undefined ? { description: body.description } : {}) },
+        })
+      } else if (price > 0 || body.description) {
+        await db.agentListing.create({
+          data: {
+            agentId: agent.id,
+            price,
+            description: body.description ?? null,
+            commission: 0.2,
+          },
+        })
+      }
+      await audit(req, {
+        userId: user.id, action: "MARKETPLACE_PUBLISHED", entityType: "agent", entityId: agent.id,
+        detail: { price: body.price ?? 0 },
+      })
     } else {
       await db.agent.update({ where: { id: agent.id }, data: { visibility: "PRIVATE" } })
       await audit(req, { userId: user.id, action: "MARKETPLACE_UNPUBLISHED", entityType: "agent", entityId: agent.id })

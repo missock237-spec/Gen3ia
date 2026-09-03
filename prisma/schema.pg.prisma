@@ -53,6 +53,7 @@ model User {
   liveHostSessions    LiveSession[]   @relation("LiveHost")
   liveParticipations  LiveParticipant[] @relation("LiveParticipants")
   adWallet            AdWallet?
+  subscriptions       Subscription[]
   adCampaigns         AdCampaign[]
   oauthProvider       String?  // dernier fournisseur OAuth utilisé : github | google
 }
@@ -715,11 +716,12 @@ model Purchase {
   sellerId    String
   agentId     String
   listingId   String
-  amount      Float
-  commission  Float
-  payout      Float
-  status      String   @default("PENDING") // PENDING | COMPLETED | REFUNDED
-  createdAt   DateTime @default(now())
+  amount       Float
+  commission   Float
+  payout       Float
+  status       String   @default("PENDING") // PENDING | COMPLETED | REFUNDED
+  forkedAgentId String? // agent cloné dans le compte de l'acheteur
+  createdAt    DateTime @default(now())
 
   @@index([buyerId])
   @@index([sellerId])
@@ -1002,4 +1004,28 @@ model CrossAgentPattern {
   createdAt     DateTime @default(now())
 
   @@index([category, lastSeenAt])
+}
+
+// ─── Abonnements SaaS (v3.6 — business) ────────────────────────
+model Subscription {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planKey          String // starter | pro | business
+  interval         String // monthly | yearly
+  status           String    @default("ACTIVE") // ACTIVE | EXPIRED | CANCELLED
+  price            Float // montant payé pour la période (FCFA)
+  currency         String    @default("XOF")
+  creditsPerPeriod Int // crédits offerts à chaque période
+  currentPeriodStart DateTime @default(now())
+  currentPeriodEnd  DateTime
+  cancelAtPeriodEnd Boolean  @default(false)
+  lastGrantAt      DateTime?
+  provider         String    @default("chariow") // chariow | stripe
+  providerRef      String? // référence checkout/session du paiement
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status, currentPeriodEnd])
 }
