@@ -294,7 +294,9 @@ export async function upsertOAuthUser(
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean)
   const userCount = await db.user.count()
-  const role = adminEmails.includes(email) || userCount === 0 ? "ADMIN" : "USER"
+  // Bootstrap-admin uniquement hors production ou avec ADMIN_EMAILS explicite.
+  const allowBootstrap = process.env.NODE_ENV !== "production" || adminEmails.length > 0
+  const role = adminEmails.includes(email) || (userCount === 0 && allowBootstrap) ? "ADMIN" : "USER"
 
   const user = await db.user.create({
     data: {

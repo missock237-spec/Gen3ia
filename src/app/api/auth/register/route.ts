@@ -27,14 +27,17 @@ export async function POST(req: NextRequest) {
       throw new ApiError(409, "Un compte existe déjà avec cet e-mail. Connectez-vous.", "EMAIL_TAKEN")
     }
 
-    // Le premier compte créé devient ADMIN (déploiement vierge),
-    // sauf liste d'e-mails administrateurs explicite.
+    // Le premier compte créé devient ADMIN (déploiement vierge) UNIQUEMENT
+    // hors production ou quand ADMIN_EMAILS est défini — en production
+    // serverless (instances jetables), le bootstrap-auto exposerait le
+    // premier inscrit inconnu : liste explicite obligatoire.
     const adminEmails = (process.env.ADMIN_EMAILS ?? "")
       .split(",")
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean)
     const userCount = await db.user.count()
-    const role = adminEmails.includes(email) || userCount === 0 ? "ADMIN" : "USER"
+    const allowBootstrap = process.env.NODE_ENV !== "production" || adminEmails.length > 0
+    const role = adminEmails.includes(email) || (userCount === 0 && allowBootstrap) ? "ADMIN" : "USER"
 
     const user = await db.user.create({
       data: {
