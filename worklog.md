@@ -253,3 +253,36 @@ Stage Summary:
 - Production v3.6.0 pleinement déployée et vérifiée (48 contrôles E2E, 0 échec)
 - Chariow est le SEUL processeur de paiement (code, routes, UI, config, ADR) — Stripe/PayPal introuvables
 - Restes utilisateur : GLM_API_KEY sur Vercel (tâches LLM), AUTH_GITHUB/GOOGLE_* (login OAuth), rotation tokens GitHub/Vercel exposés
+
+---
+Task ID: v4.0-hf-intelligence-layer
+Agent: main
+Task: MISSION 34 phases — Gen3ia → Infrastructure d'agents IA avec Hugging Face comme couche principale (Model & Compute Intelligence Layer), sans recréer/casser l'existant
+
+Work Log:
+- PHASE 1 audit : arborescence, package.json, Prisma (58 modèles), 90+ routes API, moteurs (orchestrateur/planner 5 plans/évaluateur/vérification/apprentissage/méta-learning/debate), RAG hybride (embeddings json), sandbox, Composio (1467 apps), BullMQ (file tâches + repli serverless), crédits (ledger atomique), hooks identifiés : chat()/chatJSON() = point d'entrée unique de l'inférence
+- PHASE 3 Provider Abstraction : src/lib/ai/providers/base.ts (contrat ModelProvider : generate/stream/embed/vision/healthCheck/estimateCost/listModels/getModelMetadata) ; adapters.ts (ZAI/GLM/OpenRouter/Groq/OpenAI enrobent les implémentations EXISTANTES, Gemini natif generateContent, CustomProvider par env CUSTOM_PROVIDER_*_URL/KEY) ; aucun appel fournisseur dans planner/orchestrateur
+- PHASE 4 HF : client HTTP typé (huggingface.co/api, router.huggingface.co/v1, api.endpoints.huggingface.cloud/v2, /api/jobs, Hub datasets repos = Buckets — endpoints officiels uniquement, aucun inventé) ; HuggingFaceProvider (chat routeur, streaming SSE, embeddings, vision, découverte Hub, gated/privé selon droits jeton) ; endpoints.ts (création/scale-to-zero/réveil/suppression/sync)
+- PHASE 5 Model Registry : tables AIModel + ModelCapability ; seed idempotent (16 modèles : HF Llama 70B/8B, Qwen 72B/Coder, Mistral, Qwen-VL, Gemini 2.0/2.5, GLM, OpenRouter, Groq, OpenAI, ZAI) ; re-seed n'écrase JAMAIS les champs appris ; sync HF Hub (nouveaux en EXPERIMENTAL) ; auto-amorçage paresseux au premier usage
+- PHASE 6-8 Model Router v2 + Performance Registry : score pondéré (adéquation 0.30, réussite mesurée 0.22, qualité 0.16, capacité 0.12, disponibilité 0.08, latence 0.07, coût 0.05) ; contraintes dures (providers, contexte, commercial) ; sélection justifiée (raison, alternatives, coût, confiance) tracée (ModelSelection) ; boucle d'apprentissage : CHAQUE appel chat() mesure ModelPerformance (succès ET échec) → agrégat glissant demi-vie 14 j → AIModel.successRate/qualityScore/avgLatencyMs → routage futur ; routeCall() historique = repli garanti
+- PHASE 9-10 multi-modèles : Plan.model + selectModelDiversity() (≤2 modèles/provider) → 5 plans A-E avec modèles DIFFÉRENTS ; exécuteur honore modelOverride + provider du plan ; chargePhase facture le fournisseur RÉEL (fin du « zai » codé en dur)
+- PHASE 11 HF Jobs : jobs.ts + job-queue.ts (file BullMQ dédiée gen3ia-hf-jobs, priorités plan, drainage serverless 50 s) ; kinds natifs HF (fine-tuning/dataset-generation/conversion via API officielle) + kinds GEN3IA (embeddings-batch, batch-inference, preprocessing, evaluation, media-processing via worker) ; idempotence par clé, retry/backoff, timeout, checkpoints Bucket, statuts PENDING/RUNNING/COMPLETED/FAILED/CANCELLED
+- PHASE 12 Compute Scheduler : abstraction ComputeBackend (hf-router/hf-endpoint/hf-job/external) scorée (VRAM, durée, priorité, coût) ; hardwareRecommendation (paramètres × quantization + KV-cache)
+- PHASE 13 HF Storage : storage.ts — 11 buckets logiques = repos datasets PRIVÉS HF ; upload/download/list/move/copy/mount/delete/metadata ; octets chez HF, métadonnées PostgreSQL (StorageObject) ; token HF jamais exposé (passe-relais authentifié /api/v1/files/download)
+- PHASE 14-15 VectorStore : abstraction backends (json portable / pgvector Supabase natif / qdrant HTTP) ; sélection auto (QDRANT_URL → qdrant, postgres → pgvector, sinon json) ; fail-open json garanti ; cloisonnement par utilisateur ; indexDocument archive le source dans le Bucket HF
+- PHASE 20 API unifiée : /api/v1/models (registre), /models/select (décision justifiée), /embeddings (facturés), /files + /files/download, /knowledge (GET/POST/PUT recherche hybride), /jobs (GET/POST/PATCH cancel/poll/drain) ; OpenAPI 3.1 étendue (6 nouveaux endpoints documentés, version 4.0.0)
+- PHASE 26-27 dashboards : panneau admin « Registre & Compute » (4 vues : registre avec activation/promotion, compute+storage, performance+classement+sélections justifiées, coûts par modèle ; actions seed/sync-hf/sync-endpoints) ; 25 clés i18n fr/en
+- PHASE 28 env : .env.example v4 (HF_TOKEN, HF_ORG_ID, HF_DEFAULT_PROVIDER/MODEL, HF_BUCKET_PREFIX, GEMINI_API_KEY, CUSTOM_PROVIDER_*, MODEL_PERF_WINDOW_DAYS, VECTOR_BACKEND, QDRANT_URL/API_KEY)
+- PHASE 29-33 tests/docs : 50 tests nouveaux (model-registry 11, router-v2 20, vector-store-v4 19) — 371/371 au total, tsc 0 erreur, eslint 0 (corrigés au passage 4 erreurs require() préexistantes), build 90/90 pages ; docs/architecture-v4.md (Mermaid), docs/huggingface-setup.md, ADR-0015, README v4.0 ; Prisma 8 modèles additifs (62 total) + variantes sync + DDL régénéré + auto-seed
+- PHASE 34 scénario final : scripts/test-scenario-v4.ts (PDF→KB→rapport→email, 16 étapes) — 15/16 sans clé LLM (fail-closed documenté, exit 0) ; e2e-v4.mjs production
+- Git : 2 commits (f38c5ef feat v4.0, 44a4dbb test e2e) poussés
+- Vercel : https://gen3ia.online v4.0.0 déployée automatiquement
+- E2E production v4.0 : 38/38 ✅ (health 4.0 + features, registre 16 modèles auto-seedés, routage justifié huggingface/Llama-70B avec contraintes, RAG v1 ingestion+recherche, embeddings facturés, job 202+statut, files 503 fail-closed HF_TOKEN, OpenAPI 6/6, pages 200)
+- Non-régression : v3.6 E2E 47/48 (seul écart = version 3.6.0 attendue → 4.0.0, voulu) ; Chariow unique, CREDITS_MIN_50, i18n, catalogue 1467 apps, v3.5/v3.4 conservés
+
+Stage Summary:
+- Production v4.0.0 déployée et vérifiée (38 contrôles E2E v4 + 47/48 v3.6, 0 échec réel)
+- Hugging Face est la couche principale (Inference Providers/Endpoints/Jobs/Buckets) derrière une Provider Abstraction stricte ; Gemini/GLM/OpenRouter/Groq/OpenAI/customs restent des replis compatibles
+- Le Model Router apprend de la performance RÉELLE (ModelPerformance → agrégats → scores) ; les 5 plans utilisent des modèles divers ; la facturation suit le fournisseur réellement utilisé
+- Limites documentées (docs/huggingface-setup.md §7) : HF Jobs natifs limités aux kinds datasets/training (kinds GEN3IA via worker interne, même contrat) ; Qdrant/pgvector dimensionnels par modèle ; fail-open json systématique
+- Restes utilisateur (inchangés + nouveaux) : GLM_API_KEY/HF_TOKEN sur Vercel (inférence réelle + couches HF), QDRANT_URL (optionnel), rotation des tokens GitHub exposés
