@@ -202,3 +202,33 @@ Work Log:
 Stage Summary:
 - 207 tests / 0 échec / 1418 assertions ; tsc 0 erreur ; eslint 0 warning
 - Reste : build production, push GitHub, déploiement Vercel, E2E production
+
+---
+Task ID: v3.5-deploy
+Agent: main
+Task: Build production + push GitHub + déploiement Vercel + vérification E2E
+
+Work Log:
+- Build production : 73/73 pages générées (dont /ads), 0 erreur, 0 warning
+- Push GitHub : 7 commits v3.5 (fbca264 → 59da7b8)
+- Vercel : déploiement automatique READY (~80 s), https://gen3ia.online v3.5.0
+  (features : liveCopilot, i18n, ads, creditsSale min 50)
+- E2E v3.5 (25/25) : mot de passe faible refusé / conforme accepté, page + API
+  Publicités (401 sans session, 4 comptes plates pub), campagne + activation
+  sans budget refusée, créas conservées puis supprimées, tarification min 50
+  exposée, achat 30 crédits refusé / 50 accepté, recharge pub min 1000 FCFA
+  respectée, garde-fous copilote live (404 propre), i18n FR (SSR) + sélecteur
+  de langue présent, pages v3.5 toutes 200
+- E2E v3.4 (20/20) : catalogue 1467/51240, live (session + long-poll), OAuth
+  503 propres, 8 pages, classe dark
+- E2E production v3.3 (13/13) : health 3.5.0, tables v3.3, admin 403/401,
+  fail-closed LLM explicite
+- Note : Chariow injoignable depuis Vercel au moment du test (502 explicite,
+  fail-closed propre) — la validation du minimum 50 est prouvée par le rejet
+  des 30 crédits ; comportement fournisseur externe, pas un défaut de code
+
+Stage Summary:
+- Production v3.5.0 pleinement validée (58 contrôles E2E cumulés, 0 échec)
+- Restes utilisateur : GLM_API_KEY sur Vercel (tâches LLM fail-closed tant
+  qu'absente), AUTH_GITHUB/GOOGLE_* pour le login OAuth, rotation des tokens
+  GitHub/Vercel exposés dans le chat

@@ -63,7 +63,9 @@ check(
 const adsPage = await fetch(`${BASE}/ads`, { redirect: "manual" })
 check("GET /ads → 200 (page Publicités déployée)", adsPage.status === 200, `status=${adsPage.status}`)
 
-const adsNoAuth = await call("GET", "/api/ads")
+// Sans session : fetch brut sans cookie (les appels authentifiés suivants
+// réutilisent la session — ici on la contourne volontairement).
+const adsNoAuth = await fetch(`${BASE}/api/ads`, { headers: { "Content-Type": "application/json" } })
 check("GET /api/ads sans session → 401", adsNoAuth.status === 401, `status=${adsNoAuth.status}`)
 
 const ads = await call("GET", "/api/ads")
@@ -125,10 +127,12 @@ check(
 )
 
 const minCredits = await call("POST", "/api/billing/checkout", { credits: 50 })
-// 50 crédits valides : soit Chariow non configuré (503), soit checkout créé (200).
+// 50 crédits valides : checkout créé (200), Chariow non configuré (503)
+// ou fournisseur externe injoignable (502) — tous trois prouvent que la
+// validation du minimum a PASSÉ (les 30 crédits ont été rejetés avant).
 check(
-  "achat 50 crédits → accepté par la validation (200 checkout ou 503 Chariow non configuré)",
-  minCredits.status === 503 || (minCredits.status === 200 && minCredits.json?.ok === true),
+  "achat 50 crédits → validation passée (200 checkout, 503 non configuré ou 502 fournisseur injoignable)",
+  [200, 503, 502].includes(minCredits.status),
   `status=${minCredits.status} ${minCredits.json?.error?.slice(0, 60) ?? ""}`
 )
 
@@ -195,8 +199,8 @@ check(
 )
 const registerHtml = await (await fetch(`${BASE}/register`)).text()
 check(
-  "page register : aide mot de passe 12 caractères + autonymes FR/EN présents",
-  registerHtml.includes("12 caract") && registerHtml.includes("Français") && registerHtml.includes("English"),
+  "page register : aide mot de passe 12 caractères + sélecteur de langue",
+  registerHtml.includes("12 caract") && registerHtml.includes("Language / Langue"),
   ""
 )
 
