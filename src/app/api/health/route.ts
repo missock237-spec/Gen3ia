@@ -31,6 +31,11 @@ export async function GET(req: NextRequest) {
         oauthLogin: !!(process.env.AUTH_GITHUB_CLIENT_ID || process.env.AUTH_GOOGLE_CLIENT_ID),
         live: true,
         catalog: true,
+        /** v3.5 */
+        liveCopilot: true,
+        i18n: true,
+        ads: true,
+        creditsSale: { min: 50 },
       },
       time: new Date().toISOString(),
     })
