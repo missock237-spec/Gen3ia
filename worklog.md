@@ -90,3 +90,20 @@ Work Log:
 Stage Summary:
 - v3.4 complète : catalogue 1467 apps avec connexion 1-clic (identifiants plateforme), OAuth login GitHub/Google, mode live WebRTC, 6 pages UI pour les fonctionnalités jusqu'ici invisibles, texte blanc partout
 - Prêt à pousser/déployer ; variables d'env optionnelles documentées (AUTH_GITHUB/GOOGLE_*, OAuthAppConfig via /admin/oauth)
+
+---
+Task ID: 6
+Agent: main
+Task: Validation v3.4 en production + correctifs post-déploiement
+
+Work Log:
+- Déploiement v3.4.0 vérifié : health catalogue 1467 apps / 51240 outils, features live+catalog actives
+- Correctif : route /api/connectors/catalog absente du 1er build (fichier non réécrit après mkdir) → recréée + rebuild + push
+- Sécurité : bootstrap-admin restreint en production (ADMIN_EMAILS explicite requis, anti-escalade sur instances serverless jetables) — anomalies 403 confirmé en prod
+- Health check enrichi (catalogue, features, oauthLogin) + version 3.4.0
+- E2E production v3.3 (14/14) : structure saine, fail-closed LLM, non-admin 403
+- E2E v3.4 (scripts/e2e-v34.mjs, 20/20) : catalogue (stats/recherche/pagination/détail GitHub 893 outils), live (création E7B0-7CC0, infos, long-poll 20s, fin), OAuth 503 propre, 8 pages déployées, classe dark sur <html>
+
+Stage Summary:
+- Production v3.4.0 pleinement validée (34 contrôles cumulés, 0 échec)
+- Reste utilisateur : AUTH_GITHUB/GOOGLE_* et GLM_API_KEY sur Vercel, ADMIN_EMAILS, Postgres persistant conseillé, ROTATION des tokens GitHub/Vercel exposés
