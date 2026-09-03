@@ -232,3 +232,24 @@ Stage Summary:
 - Restes utilisateur : GLM_API_KEY sur Vercel (tâches LLM fail-closed tant
   qu'absente), AUTH_GITHUB/GOOGLE_* pour le login OAuth, rotation des tokens
   GitHub/Vercel exposés dans le chat
+
+---
+Task ID: v3.6-chariow-only
+Agent: main
+Task: Continuation session 2026-09-04 — Chariow UNIQUE processeur (suppression Stripe), complétion pilier business interrompu, déploiement v3.6.0 + vérification E2E intégrale
+
+Work Log:
+- Reprise : 8 commits v3.6 non poussés, dernier commit (pilier business) avec message UUID — point d'arrêt exact
+- Stripe SUPPRIMÉ intégralement (instruction produit, ADR-0007 réaffirmée) : src/lib/payments/stripe.ts + /api/webhooks/stripe supprimés ; checkout/subscription : champ method et branche Stripe retirés, processor.chariow seul ; fulfillment : provider restreint « chariow » ; UI abonnements : sélecteur processeur retiré + mention « Chariow unique » ; prisma x3 : provider TOUJOURS chariow
+- (catalogue Composio inchangé : Stripe y est une app connectable parmi 1467, pas un moyen de paiement)
+- Pilier business COMPLÉTÉ : 25 clés i18n billing.sub.* (fr/en) ajoutées — la section abonnements référençait des clés inexistantes ; health 3.6.0 + features v3.6 (subscriptions, marketplace 0.2, paymentProcessor, workerIsolation, keyringRotation, ragTuning, debateEngine, metaLearning, openapi, sdkTypes, otel, queue)
+- Fix infra : ensureSchema mémoïsé PAR DATABASE_URL (bascule de base sûre — corrige le pipeline-integration en suite complète)
+- Tests : business-v36.test.ts (17 tests : fichiers/routes/env Chariow-only, plans/prix/quotas, parseSubscriptionPlan, commission 20 %, parité i18n) — 321/321 tests, tsc 0, eslint 0, build 82/82 pages
+- Git : commit UUID reformulé (65c342b), commit Chariow-only (67bacde), E2E (97357d2) — 11 commits poussés
+- Vercel : v3.6.0 READY (~2 min), https://gen3ia.online
+- E2E v3.6 production : 48/48 ✅ — version 3.6.0, paymentProcessor=chariow, webhook stripe 404/405, method:stripe ignoré (502 CHARIOW_UNREACHABLE), zéro STRIPE_*, abonnements 3 plans + 401 sans session, VENTE RÉELLE marketplace (acheteur 25→5, vendeur 25→41, commission 20 %, fork), quota FREE 402 AGENT_QUOTA_EXCEEDED, OpenAPI 3.1 (6 endpoints), /docs/api, /sdk, non-régression v3.5/v3.4 (ads, mot de passe 400, CREDITS_MIN_50, i18n FR, 1467 apps)
+
+Stage Summary:
+- Production v3.6.0 pleinement déployée et vérifiée (48 contrôles E2E, 0 échec)
+- Chariow est le SEUL processeur de paiement (code, routes, UI, config, ADR) — Stripe/PayPal introuvables
+- Restes utilisateur : GLM_API_KEY sur Vercel (tâches LLM), AUTH_GITHUB/GOOGLE_* (login OAuth), rotation tokens GitHub/Vercel exposés
