@@ -70,15 +70,22 @@ export async function POST(req: NextRequest) {
       status.includes("succe") || status === "paid" || status === "completed" || status === "payment.succeeded"
 
     if (isSuccess) {
+      // v3.5 : un achat de crédits à la carte (plan « credits ») ne modifie
+      // PAS le plan de l'utilisateur — seuls les packs upgradent le plan.
+      const isPlanPurchase = payment.plan === "starter" || payment.plan === "pro" || payment.plan === "business"
       await db.$transaction([
         db.payment.update({
           where: { id: payment.id },
           data: { status: "SUCCEEDED", raw: rawBody.slice(0, 5000) },
         }),
-        db.user.update({
-          where: { id: payment.userId },
-          data: { plan: payment.plan === "business" ? "ENTERPRISE" : "PRO" },
-        }),
+        ...(isPlanPurchase
+          ? [
+              db.user.update({
+                where: { id: payment.userId },
+                data: { plan: payment.plan === "business" ? "ENTERPRISE" : "PRO" },
+              }),
+            ]
+          : []),
       ])
       await grantCredits(payment.userId, payment.credits, {
         type: "TOPUP",

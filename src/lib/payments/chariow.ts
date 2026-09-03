@@ -170,3 +170,57 @@ export const PLAN_OFFERS: PlanOffer[] = [
 export function findOffer(key: string): PlanOffer | undefined {
   return PLAN_OFFERS.find((p) => p.key === key)
 }
+
+// ---------- Vente de crédits à la carte (v3.5) ----------
+
+/** Exigence produit : 50 crédits minimum par achat. */
+export const MIN_CREDITS_PURCHASE = 50
+/** Plafond raisonnable par transaction (anti-erreur de saisie). */
+export const MAX_CREDITS_PURCHASE = 100_000
+
+export interface CreditTier {
+  min: number
+  max: number
+  /** Prix unitaire en XOF (FCFA). */
+  unitPrice: number
+}
+
+/**
+ * Paliers dégressifs de prix — cohérents avec les packs existants
+ * (Starter ≈ 10 XOF/crédit, Pro ≈ 6,7, Business = 5).
+ */
+export const CREDIT_TIERS: CreditTier[] = [
+  { min: 50, max: 499, unitPrice: 10 },
+  { min: 500, max: 1499, unitPrice: 8 },
+  { min: 1500, max: MAX_CREDITS_PURCHASE, unitPrice: 6 },
+]
+
+/** Prix total (XOF) pour un achat de crédits — null si montant invalide. */
+export function priceForCredits(credits: number): number | null {
+  if (
+    !Number.isFinite(credits) ||
+    !Number.isInteger(credits) ||
+    credits < MIN_CREDITS_PURCHASE ||
+    credits > MAX_CREDITS_PURCHASE
+  ) {
+    return null
+  }
+  const tier = CREDIT_TIERS.find((tr) => credits >= tr.min && credits <= tr.max)
+  if (!tier) return null
+  return credits * tier.unitPrice
+}
+
+/** Métadonnées de tarification exposées à l'UI (page facturation). */
+export function creditPricingInfo(): {
+  min: number
+  max: number
+  currency: string
+  tiers: CreditTier[]
+} {
+  return {
+    min: MIN_CREDITS_PURCHASE,
+    max: MAX_CREDITS_PURCHASE,
+    currency: "XOF",
+    tiers: CREDIT_TIERS,
+  }
+}

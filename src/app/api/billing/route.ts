@@ -3,7 +3,7 @@ import { handleRoute } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { getTransactions } from "@/lib/credits/ledger"
 import { db } from "@/lib/db"
-import { PLAN_OFFERS, chariowConfigured } from "@/lib/payments/chariow"
+import { PLAN_OFFERS, chariowConfigured, creditPricingInfo } from "@/lib/payments/chariow"
 
 export async function GET(req: NextRequest) {
   return handleRoute(async () => {
@@ -20,6 +20,8 @@ export async function GET(req: NextRequest) {
       plan: user.plan,
       offers: PLAN_OFFERS,
       chariow: { configured: chariowConfigured() },
+      /** v3.5 — vente de crédits à la carte (minimum 50) : tarification UI. */
+      creditPricing: creditPricingInfo(),
       transactions,
       payments,
     })

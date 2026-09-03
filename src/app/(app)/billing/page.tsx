@@ -18,9 +18,12 @@ interface BillingData {
   plan: string
   offers: { key: string; name: string; price: number; currency: string; credits: number; features: string[] }[]
   chariow: { configured: boolean }
+  creditPricing?: { min: number; max: number; currency: string; tiers: { min: number; max: number; unitPrice: number }[] }
   transactions: { id: string; type: string; amount: number; balanceAfter: number; description: string; createdAt: string }[]
   payments: { id: string; plan: string | null; amount: number; currency: string; credits: number; status: string; createdAt: string }[]
 }
+
+const CREDIT_PRESETS = [50, 100, 500, 1000, 5000];
 
 export default function BillingPage() {
   const { toast } = useToast();
@@ -28,6 +31,8 @@ export default function BillingPage() {
   const { data, loading, reload } = usePolling<BillingData>("/api/billing");
   const { refresh } = useUser();
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [creditAmount, setCreditAmount] = useState<string>("50");
+  const [creditsBuying, setCreditsBuying] = useState(false);
 
   const locale = lang === "fr" ? "fr-FR" : "en-US";
 
@@ -41,6 +46,46 @@ export default function BillingPage() {
       toast({ title: t("billing.errors.checkout"), description: err instanceof Error ? err.message : "", variant: "destructive" })
     } finally {
       setCheckoutLoading(null)
+    }
+  }
+
+  /** Prix estimé côté client (le serveur recalcule et fait autorité). */
+  const creditPricing = data?.creditPricing;
+  const parsedCredits = Number(creditAmount);
+  const estimatedPrice =
+    creditPricing && Number.isInteger(parsedCredits) && parsedCredits >= creditPricing.min
+      ? (creditPricing.tiers.find(
+          (tr) => parsedCredits >= tr.min && parsedCredits <= tr.max
+        )?.unitPrice ?? 0) * parsedCredits
+      : null;
+
+  async function checkoutCredits() {
+    if (!creditPricing) return
+    if (!Number.isInteger(parsedCredits) || parsedCredits < creditPricing.min) {
+      toast({
+        title: t("billing.credits.invalid"),
+        description: t("billing.credits.tooLow", { min: creditPricing.min }),
+        variant: "destructive",
+      })
+      return
+    }
+    setCreditsBuying(true)
+    try {
+      const res = await apiPost<{ paymentUrl: string }>("/api/billing/checkout", { credits: parsedCredits })
+      if (!res.ok) throw new Error(res.error)
+      toast({
+        title: t("billing.credits.purchased", { credits: parsedCredits }),
+        description: t("billing.redirecting"),
+      })
+      window.location.href = res.paymentUrl
+    } catch (err) {
+      toast({
+        title: t("billing.errors.checkout"),
+        description: err instanceof Error ? err.message : "",
+        variant: "destructive",
+      })
+    } finally {
+      setCreditsBuying(false)
     }
   }
 
@@ -99,6 +144,85 @@ export default function BillingPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Vente de crédits à la carte (minimum 50) */}
+      <Card className="bg-gradient-to-br from-emerald-500/10 via-zinc-900/40 to-zinc-900/40 border-emerald-900/40">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Coins className="h-4 w-4 text-emerald-400" /> {t("billing.credits.title")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-zinc-400">{t("billing.credits.desc")}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-zinc-500">{t("billing.credits.presets")}</span>
+            {CREDIT_PRESETS.map((preset) => (
+              <Button
+                key={preset}
+                size="sm"
+                variant={parsedCredits === preset ? "default" : "outline"}
+                className={`h-7 text-xs ${parsedCredits === preset ? "bg-emerald-500 text-zinc-950 hover:bg-emerald-400" : "border-zinc-700"}`}
+                onClick={() => setCreditAmount(String(preset))}
+              >
+                {preset.toLocaleString(locale)}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="flex-1 space-y-1.5">
+              <label className="text-xs text-zinc-400" htmlFor="credit-amount">
+                {t("billing.credits.amount")} <span className="text-emerald-400">({t("billing.credits.min", { min: creditPricing?.min ?? 50 })})</span>
+              </label>
+              <input
+                id="credit-amount"
+                type="number"
+                min={creditPricing?.min ?? 50}
+                max={creditPricing?.max ?? 100000}
+                step={1}
+                value={creditAmount}
+                onChange={(e) => setCreditAmount(e.target.value)}
+                className="h-10 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 [color-scheme:dark]"
+              />
+            </div>
+            <div className="sm:w-56 shrink-0 space-y-1 text-xs">
+              {estimatedPrice !== null ? (
+                <>
+                  <p className="text-zinc-500">{t("billing.credits.unitPrice", { price: (estimatedPrice / Math.max(parsedCredits, 1)).toLocaleString(locale) })}</p>
+                  <p className="text-emerald-400 font-semibold">{t("billing.credits.total", { amount: estimatedPrice.toLocaleString(locale), credits: parsedCredits.toLocaleString(locale) })}</p>
+                </>
+              ) : (
+                <p className="text-amber-400">{creditAmount !== "" ? t("billing.credits.invalid") : ""}</p>
+              )}
+            </div>
+            <Button
+              onClick={() => void checkoutCredits()}
+              disabled={
+                creditsBuying ||
+                estimatedPrice === null ||
+                (data ? data.chariow.configured !== true : false)
+              }
+              className="h-10 px-6 bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold"
+            >
+              {creditsBuying ? t("billing.redirecting") : (
+                <><Coins className="h-4 w-4 mr-1.5" /> {t("billing.credits.buy")}</>
+              )}
+            </Button>
+          </div>
+          {creditPricing && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-zinc-800/60 pt-3">
+              {creditPricing.tiers.map((tr) => (
+                <span key={tr.min} className="text-[11px] text-zinc-500">
+                  {t("billing.credits.tier", {
+                    from: tr.min.toLocaleString(locale),
+                    to: tr.max >= 100000 ? "∞" : tr.max.toLocaleString(locale),
+                    price: tr.unitPrice.toLocaleString(locale),
+                  })}
+                </span>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Offres */}
       <div>
