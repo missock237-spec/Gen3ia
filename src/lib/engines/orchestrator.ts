@@ -227,6 +227,7 @@ export async function advanceTask(
     taskId: task.id,
     userId: user.id,
     agentId: agent?.id ?? null,
+    plan: user.plan,
     settings: {
       maxAttempts,
       confirmDangerousOps: settings.confirmDangerousOps,

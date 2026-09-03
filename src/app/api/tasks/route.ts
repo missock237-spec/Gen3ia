@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { handleRoute, readJson, ApiError } from "@/lib/api"
 import { requireUser } from "@/lib/auth/guards"
 import { advanceTask } from "@/lib/engines/orchestrator"
+import { enqueueTaskAdvance, queueMode } from "@/lib/queue/task-queue"
 import { getBalance } from "@/lib/credits/ledger"
 import { audit } from "@/lib/engines/audit"
 
@@ -29,10 +30,12 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * Création + lancement d'une tâche : l'orchestrateur avance le pipeline
- * autant que le budget temporel le permet ; le client sonde ensuite
- * GET /api/tasks/[id] qui poursuit l'avancement (exécution reprise-ez
- * compatible serverless, sans file d'attente externe).
+ * Création + lancement d'une tâche :
+ *  - REDIS_URL configuré → job durable en file (priorité plan) traité par
+ *    le worker/self-host ou le drain cron serverless — réponse immédiate ;
+ *  - sinon (défaut) → l'orchestrateur avance le pipeline dans le budget
+ *    temporel de la requête ; le client sonde GET /api/tasks/[id] qui
+ *    poursuit l'avancement (exécution reprise-ez compatible serverless).
  */
 export async function POST(req: NextRequest) {
   return handleRoute(async () => {
@@ -59,6 +62,14 @@ export async function POST(req: NextRequest) {
       data: { userId: user.id, prompt: body.prompt.trim(), agentId },
     })
     await audit(req, { userId: user.id, action: "TASK_CREATED", entityType: "task", entityId: task.id })
+
+    // v3.6 — file persistante : le traitement asynchrone prend le relais,
+    // la réponse revient immédiate (le polling GET continue de faire
+    // progresser la tâche en parallèle — double sécurité).
+    const enqueue = await enqueueTaskAdvance(task.id, { plan: user.plan })
+    if (enqueue.disposition === "queued") {
+      return Response.json({ ok: true, task, queue: { mode: queueMode(), jobId: enqueue.jobId } })
+    }
 
     const advanced = await advanceTask(task.id)
     return Response.json({ ok: true, task: advanced ?? task })

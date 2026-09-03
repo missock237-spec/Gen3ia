@@ -1,9 +1,10 @@
 import type { ErrorCode } from "@/lib/errors"
 import { EngineError } from "@/lib/errors"
 import type { PipelinePhase } from "./state-machine"
-import { bumpEngineRun, recordEngineRun, aggregateEngineStats, type EngineStats } from "@/lib/observability/metrics"
+import { bumpEngineRun, recordEngineRun, aggregateEngineStats, snapshotInstanceMetrics, type EngineStats } from "@/lib/observability/metrics"
 import type { Logger } from "@/lib/observability/logger"
 import { logger as rootLogger } from "@/lib/observability/logger"
+import { getEngineWorkerPool, laneForPlan, type PoolLane } from "./worker-pool"
 
 /**
  * SDK de moteurs (amélioration « Définir un SDK de Moteurs Clair »).
@@ -50,6 +51,10 @@ export interface EngineContext {
   taskId: string
   userId: string
   agentId: string | null
+  /** v3.6 — plan du propriétaire (routage du couloir de priorité du pool). */
+  plan?: string | null
+  /** v3.6 — couloir explicite (prime sur le plan ; cf. worker-pool.ts). */
+  lane?: PoolLane
   /** Réglages utilisateur fusionnés avec les défauts. */
   settings: {
     maxAttempts: number
@@ -120,6 +125,10 @@ export abstract class BaseEngine<I = unknown, O = unknown> implements EngineInte
 
 /**
  * Exécute un moteur avec télémétrie, journalisation et mapping d'erreurs.
+ * v3.6 : l'exécution passe par le POOL DE WORKERS multi-couloirs (critique /
+ * normal / background — isolation des concurrences, backpressure inline) ;
+ * le couloir est dérivé du plan du propriétaire (ENTERPRISE → critical)
+ * sauf ctx.lane explicite (batch → background).
  * Toute exception non-AppError est convertie en EngineError(code du moteur).
  */
 export async function runEngine<I, O>(
@@ -129,8 +138,9 @@ export async function runEngine<I, O>(
 ): Promise<EngineExecution<O>> {
   const started = Date.now()
   const log = ctx.logger.child({ engine: engine.name, taskId: ctx.taskId, phase: engine.phase })
+  const lane: PoolLane = ctx.lane ?? laneForPlan(ctx.plan)
   try {
-    const execution = await engine.execute(input, ctx)
+    const execution = await getEngineWorkerPool().submit(engine as BaseEngine<I, O>, input, ctx, lane)
     const durationMs = Date.now() - started
     bumpEngineRun(engine.name, true, durationMs)
     await recordEngineRun({

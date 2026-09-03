@@ -7,9 +7,10 @@ import { engines } from "@/lib/engines/engines"
 import { getSystemSettings, updateSystemSettings } from "@/lib/system/config"
 import { aggregateEngineStats, snapshotInstanceMetrics } from "@/lib/observability/metrics"
 import { snapshotBreakers, resetBreakers } from "@/lib/reliability/breaker"
-import { planCacheStats, purgePlanCache } from "@/lib/engines/plan-cache"
+import { planCacheStats, purgePlanCache, warmupPlanCache, evictStaleEntries } from "@/lib/engines/plan-cache"
 import { vectorStoreStats } from "@/lib/rag/vector-store"
 import { audit } from "@/lib/engines/audit"
+import { queueDepth, queueMode } from "@/lib/queue/task-queue"
 
 /**
  * Interface d'administration des moteurs (amélioration « Interface d'Admin
@@ -17,9 +18,10 @@ import { audit } from "@/lib/engines/audit"
  *
  * GET   : santé + performances de chaque moteur (EngineRun 7 j), état des
  *         circuit breakers, cache de plans, stockage vectoriel, métriques
- *         d'instance, configuration système courante.
+ *         d'instance, configuration système courante, file de tâches.
  * PATCH : pondérations d'évaluation globales + réglages système.
- * POST  : actions — purge du cache de plans, réinitialisation des breakers.
+ * POST  : actions — purge du cache de plans, préchauffage des templates,
+ *         éviction LRI, réinitialisation des breakers.
  */
 
 export async function GET(req: NextRequest) {
@@ -27,12 +29,13 @@ export async function GET(req: NextRequest) {
     await requireAdmin(req)
     // Force l'instanciation du registre (télémétrie complète).
     engines()
-    const [health, durableStats, cache, vectors, system] = await Promise.all([
+    const [health, durableStats, cache, vectors, system, taskQueue] = await Promise.all([
       listEngineHealth(),
       aggregateEngineStats(7),
       planCacheStats(),
       vectorStoreStats(),
       getSystemSettings(),
+      queueDepth(),
     ])
     return Response.json({
       ok: true,
@@ -42,6 +45,7 @@ export async function GET(req: NextRequest) {
       planCache: cache,
       vectorStore: vectors,
       instance: snapshotInstanceMetrics(),
+      taskQueue: { mode: queueMode(), depth: taskQueue },
       system,
     })
   })
@@ -83,8 +87,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 const actionSchema = z.object({
-  action: z.enum(["purge-plan-cache", "reset-breakers"]),
-  userId: z.string().optional(), // purge du cache limitée à un utilisateur
+  action: z.enum(["purge-plan-cache", "warmup-plan-cache", "evict-plan-cache", "reset-breakers"]),
+  userId: z.string().optional(), // purge/éviction limitée à un utilisateur
 })
 
 export async function POST(req: NextRequest) {
@@ -100,6 +104,25 @@ export async function POST(req: NextRequest) {
           userId: admin.id, action: "PLAN_CACHE_PURGED", entityType: "system", detail: { purged },
         })
         return Response.json({ ok: true, purged, planCache: await planCacheStats() })
+      }
+
+      if (body.action === "warmup-plan-cache") {
+        // v3.6 — préchauffage de la couche partagée (templates officiels).
+        const warmup = await warmupPlanCache()
+        await audit(req, {
+          userId: admin.id, action: "PLAN_CACHE_WARMED_UP", entityType: "system",
+          detail: { templates: warmup.templates, created: warmup.created },
+        })
+        return Response.json({ ok: true, warmup, planCache: await planCacheStats() })
+      }
+
+      if (body.action === "evict-plan-cache") {
+        // v3.6 — éviction LRI fine (entrées froides puis plafonds LRU).
+        const evicted = await evictStaleEntries(body.userId)
+        await audit(req, {
+          userId: admin.id, action: "PLAN_CACHE_EVICTED", entityType: "system", detail: evicted,
+        })
+        return Response.json({ ok: true, evicted, planCache: await planCacheStats() })
       }
 
       resetBreakers()
