@@ -7,11 +7,29 @@ import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/
 import { grantCredits } from "@/lib/credits/ledger"
 import { audit } from "@/lib/engines/audit"
 import { SIGNUP_BONUS_CREDITS } from "@/lib/config"
+import {
+  validatePasswordStrength,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password-client"
+
+/**
+ * Politique de mot de passe exigeante (v3.5) :
+ * 12 caractères minimum, au moins une majuscule, une minuscule
+ * et un caractère spécial. La même règle s'applique côté client
+ * (lib/auth/password-client.ts) et côté serveur (ici).
+ */
+const strongPassword = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH)
+  .max(128)
+  .refine((pw) => validatePasswordStrength(pw).valid, {
+    message: `Le mot de passe doit contenir au moins ${PASSWORD_MIN_LENGTH} caractères, une majuscule, une minuscule et un caractère spécial.`,
+  })
 
 const registerSchema = z.object({
   name: z.string().min(2).max(80),
   email: z.string().email().max(200),
-  password: z.string().min(8).max(128),
+  password: strongPassword,
 })
 
 export async function POST(req: NextRequest) {
