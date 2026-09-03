@@ -52,6 +52,8 @@ model User {
   oauthIdentities     OAuthIdentity[] @relation("OAuthIdentities")
   liveHostSessions    LiveSession[]   @relation("LiveHost")
   liveParticipations  LiveParticipant[] @relation("LiveParticipants")
+  adWallet            AdWallet?
+  adCampaigns         AdCampaign[]
   oauthProvider       String?  // dernier fournisseur OAuth utilisé : github | google
 }
 
@@ -909,4 +911,76 @@ model LiveSignal {
 
   @@index([sessionId, createdAt])
   @@index([toId, consumedAt])
+}
+
+// ============================================================
+// Publicités (v3.5) — page /ads : annonces des utilisateurs,
+// facturation dédiée (portefeuille publicitaire + recharges
+// Chariow), campagnes et créas, comptes de plates publicitaires
+// liés via les connecteurs OAuth (googleads, metaads, tiktok…).
+// ============================================================
+
+model AdWallet {
+  id      String   @id @default(cuid())
+  userId  String   @unique
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance Float    @default(0) // solde publicitaire en FCFA (XOF)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions AdTransaction[]
+
+  @@index([userId])
+}
+
+model AdTransaction {
+  id           String   @id @default(cuid())
+  walletId     String
+  wallet       AdWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type         String   // RECHARGE | SPEND | REFUND
+  amount       Float    // + recharge / remboursement, - dépense
+  balanceAfter Float
+  description  String
+  paymentId    String?  // recharge → Payment Chariow correspondante
+  campaignId   String?  // dépense → campagne concernée
+  createdAt    DateTime @default(now())
+
+  @@index([walletId, createdAt])
+}
+
+model AdCampaign {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  platform     String   // googleads | metaads | tiktok | linkedin_ads | other
+  objective    String   @default("TRAFFIC") // AWARENESS | TRAFFIC | CONVERSION | LEADS
+  status       String   @default("DRAFT") // DRAFT | ACTIVE | PAUSED | COMPLETED
+  budgetPerDay Float    @default(0) // budget journalier en FCFA (débité du portefeuille)
+  totalSpent   Float    @default(0)
+  targetUrl    String?
+  startDate    DateTime?
+  endDate      DateTime?
+  lastChargeAt DateTime? // dernier règlement de budget (settlement paresseux)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  creatives AdCreative[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model AdCreative {
+  id         String    @id @default(cuid())
+  campaignId String
+  campaign   AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  headline   String
+  body       String
+  mediaUrl   String?
+  cta        String?
+  status     String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  createdAt  DateTime  @default(now())
+
+  @@index([campaignId])
 }

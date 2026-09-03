@@ -699,6 +699,58 @@ CREATE TABLE IF NOT EXISTS "LiveSignal" (
     CONSTRAINT "LiveSignal_fromId_fkey" FOREIGN KEY ("fromId") REFERENCES "LiveParticipant" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "AdWallet" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "balance" REAL NOT NULL DEFAULT 0,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "AdWallet_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "AdTransaction" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "walletId" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "amount" REAL NOT NULL,
+    "balanceAfter" REAL NOT NULL,
+    "description" TEXT NOT NULL,
+    "paymentId" TEXT,
+    "campaignId" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AdTransaction_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "AdWallet" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "AdCampaign" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "platform" TEXT NOT NULL,
+    "objective" TEXT NOT NULL DEFAULT 'TRAFFIC',
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "budgetPerDay" REAL NOT NULL DEFAULT 0,
+    "totalSpent" REAL NOT NULL DEFAULT 0,
+    "targetUrl" TEXT,
+    "startDate" DATETIME,
+    "endDate" DATETIME,
+    "lastChargeAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "AdCampaign_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "AdCreative" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "campaignId" TEXT NOT NULL,
+    "headline" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "mediaUrl" TEXT,
+    "cta" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AdCreative_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "AdCampaign" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -844,6 +896,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS "LiveParticipant_sessionId_userId_key" ON "Liv
 CREATE INDEX IF NOT EXISTS "LiveSignal_sessionId_createdAt_idx" ON "LiveSignal"("sessionId", "createdAt");
 
 CREATE INDEX IF NOT EXISTS "LiveSignal_toId_consumedAt_idx" ON "LiveSignal"("toId", "consumedAt");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "AdWallet_userId_key" ON "AdWallet"("userId");
+
+CREATE INDEX IF NOT EXISTS "AdWallet_userId_idx" ON "AdWallet"("userId");
+
+CREATE INDEX IF NOT EXISTS "AdTransaction_walletId_createdAt_idx" ON "AdTransaction"("walletId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "AdCampaign_userId_createdAt_idx" ON "AdCampaign"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "AdCampaign_status_idx" ON "AdCampaign"("status");
+
+CREATE INDEX IF NOT EXISTS "AdCreative_campaignId_idx" ON "AdCreative"("campaignId");
 `
 // @generated-db-ddl:sqlite:end
 
@@ -1589,6 +1653,62 @@ CREATE TABLE IF NOT EXISTS "LiveSignal" (
     CONSTRAINT "LiveSignal_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE IF NOT EXISTS "AdWallet" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "balance" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AdWallet_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "AdTransaction" (
+    "id" TEXT NOT NULL,
+    "walletId" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "amount" DOUBLE PRECISION NOT NULL,
+    "balanceAfter" DOUBLE PRECISION NOT NULL,
+    "description" TEXT NOT NULL,
+    "paymentId" TEXT,
+    "campaignId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AdTransaction_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "AdCampaign" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "platform" TEXT NOT NULL,
+    "objective" TEXT NOT NULL DEFAULT 'TRAFFIC',
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "budgetPerDay" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalSpent" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "targetUrl" TEXT,
+    "startDate" TIMESTAMP(3),
+    "endDate" TIMESTAMP(3),
+    "lastChargeAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AdCampaign_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "AdCreative" (
+    "id" TEXT NOT NULL,
+    "campaignId" TEXT NOT NULL,
+    "headline" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+    "mediaUrl" TEXT,
+    "cta" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AdCreative_pkey" PRIMARY KEY ("id")
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -1735,6 +1855,18 @@ CREATE INDEX IF NOT EXISTS "LiveSignal_sessionId_createdAt_idx" ON "LiveSignal"(
 
 CREATE INDEX IF NOT EXISTS "LiveSignal_toId_consumedAt_idx" ON "LiveSignal"("toId", "consumedAt");
 
+CREATE UNIQUE INDEX IF NOT EXISTS "AdWallet_userId_key" ON "AdWallet"("userId");
+
+CREATE INDEX IF NOT EXISTS "AdWallet_userId_idx" ON "AdWallet"("userId");
+
+CREATE INDEX IF NOT EXISTS "AdTransaction_walletId_createdAt_idx" ON "AdTransaction"("walletId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "AdCampaign_userId_createdAt_idx" ON "AdCampaign"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "AdCampaign_status_idx" ON "AdCampaign"("status");
+
+CREATE INDEX IF NOT EXISTS "AdCreative_campaignId_idx" ON "AdCreative"("campaignId");
+
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "Agent" ADD CONSTRAINT "Agent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1812,6 +1944,14 @@ ALTER TABLE "LiveParticipant" ADD CONSTRAINT "LiveParticipant_userId_fkey" FOREI
 ALTER TABLE "LiveSignal" ADD CONSTRAINT "LiveSignal_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "LiveSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "LiveSignal" ADD CONSTRAINT "LiveSignal_fromId_fkey" FOREIGN KEY ("fromId") REFERENCES "LiveParticipant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "AdWallet" ADD CONSTRAINT "AdWallet_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "AdTransaction" ADD CONSTRAINT "AdTransaction_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "AdWallet"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "AdCampaign" ADD CONSTRAINT "AdCampaign_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "AdCreative" ADD CONSTRAINT "AdCreative_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "AdCampaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 `
 // @generated-db-ddl:postgres:end
 

@@ -505,6 +505,48 @@ export const OAUTH_ENDPOINTS: Record<string, OAuthEndpointEntry> = {
     baseUrl: "https://docsapi.helpscout.net/v1",
     docsUrl: "https://developer.helpscout.com/docs-api/authentication/",
   },
+  // ─── Plateformes publicitaires (page Publicités) ───
+  googleads: {
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    userInfoUrl: "https://www.googleapis.com/oauth2/v3/userinfo",
+    scope: "https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/userinfo.profile",
+    usePkce: false,
+    authStyle: "bearer",
+    baseUrl: "https://googleads.googleapis.com/v16",
+    docsUrl: "https://developers.google.com/google-ads/api/docs/oauth/overview",
+  },
+  metaads: {
+    authorizeUrl: "https://www.facebook.com/v19.0/dialog/oauth",
+    tokenUrl: "https://graph.facebook.com/v19.0/oauth/access_token",
+    refreshUrl: "https://graph.facebook.com/v19.0/oauth/access_token",
+    userInfoUrl: "https://graph.facebook.com/v19.0/me",
+    scope: "ads_management business_management",
+    usePkce: false,
+    authStyle: "bearer",
+    baseUrl: "https://graph.facebook.com/v19.0",
+    docsUrl: "https://developers.facebook.com/docs/marketing-apis/oauth",
+  },
+  tiktok: {
+    authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
+    tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/",
+    userInfoUrl: "https://open.tiktokapis.com/v2/user/info/",
+    scope: "user.info.basic",
+    usePkce: false,
+    authStyle: "bearer",
+    baseUrl: "https://open.tiktokapis.com/v2",
+    docsUrl: "https://developers.tiktok.com/doc/oauth-user-access-token-management",
+  },
+  linkedin_ads: {
+    authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
+    tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
+    userInfoUrl: "https://api.linkedin.com/v2/userinfo",
+    scope: "openid profile email r_ads r_ads_leadgen_automation",
+    usePkce: false,
+    authStyle: "bearer",
+    baseUrl: "https://api.linkedin.com/v2",
+    docsUrl: "https://learn.microsoft.com/linkedin/shared/authentication/authorization-code-flow",
+  },
 }
 
 /** Renvoie les endpoints réels connus d'une app (ou null). */

@@ -27,8 +27,14 @@ describe("i18n — dictionnaires bilingues", () => {
 
   test("aucune valeur vide ni clé non traduite dans les deux langues", () => {
     // Autonymes et libellés volontairement identiques (noms de langues,
-    // templates dont le texte restant est un mot commun aux deux langues).
-    const identicalAllowed = new Set(["common.french", "common.english", "memory.item.meta"])
+    // templates dont le texte restant est un mot commun aux deux langues,
+    // noms de marques).
+    const identicalAllowed = new Set([
+      "common.french",
+      "common.english",
+      "memory.item.meta",
+      "ads.accounts.metaads",
+    ])
     for (const k of frKeys) {
       const frVal = DICTIONARIES.fr[k as TranslationKey]
       const enVal = DICTIONARIES.en[k as TranslationKey]

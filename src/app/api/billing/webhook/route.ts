@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { verifyChariowSignature } from "@/lib/payments/chariow"
 import { grantCredits } from "@/lib/credits/ledger"
+import { creditAdWallet } from "@/lib/ads/ledger"
 import { audit } from "@/lib/engines/audit"
 import { getClientIp } from "@/lib/api"
 import { checkRateLimit } from "@/lib/security/rate-limit"
@@ -87,12 +88,23 @@ export async function POST(req: NextRequest) {
             ]
           : []),
       ])
-      await grantCredits(payment.userId, payment.credits, {
-        type: "TOPUP",
-        description: `Recharge Chariow — pack ${payment.plan ?? "custom"} (${payment.credits} crédits)`,
-        refType: "payment",
-        refId: payment.id,
-      })
+
+      // v3.5 : recharge du portefeuille PUBLICITAIRE (page /ads) — le montant
+      // FCFA crédite AdWallet, pas les crédits d'exécution GEN3IA.
+      if (payment.plan === "ads_recharge") {
+        await creditAdWallet(payment.userId, payment.amount, {
+          type: "RECHARGE",
+          description: `Recharge publicitaire Chariow — ${payment.amount.toLocaleString("fr-FR")} FCFA`,
+          paymentId: payment.id,
+        })
+      } else {
+        await grantCredits(payment.userId, payment.credits, {
+          type: "TOPUP",
+          description: `Recharge Chariow — pack ${payment.plan ?? "custom"} (${payment.credits} crédits)`,
+          refType: "payment",
+          refId: payment.id,
+        })
+      }
       await audit(null, {
         userId: payment.userId,
         action: "PAYMENT_SUCCEEDED",

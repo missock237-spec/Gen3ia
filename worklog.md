@@ -185,3 +185,20 @@ Stage Summary:
 - 12 pages internationalisées FR/EN au pattern i18n maison : 245 clés ajoutées (skills 17, tools 9, apikeys 23, sdk 21, swarm 20 + batch 24 dans dict/swarm.ts, webhooks 20, watchdog 28, traces 12, finetune 24, admin 47 dont admin.oauth.*), interpolation {count}/{date}/{app}/{id}/{completed}/{total}/{volume}/{waiting}, renderRich pour la signature webhook, dates localisées fr-FR/en-US, formatCredits conservé
 - SDK : code des snippets inchangé (logique/identifiants/exemples), commentaires affichés traduits via sdk.code.* ; renommages anti-conflit t : tools (tool), traces (trace), watchdog (tp) ; statuts inconnus → valeur brute serveur conservée
 - tsc 0 erreur, 179 tests OK, lint OK, zéro chaîne FR visible restante dans les 12 pages ; laissés volontairement en FR : messages serveur (json.error/res.error/job.error), payload reason de l'attribution de crédits, valeurs API brutes (noms d'outils/compétences, statuts de sous-tâches, w.type, plan/role), exemples de code (prompts d'exemple SDK, « Bonjour » du cURL), noms propres (Unsloth, Axolotl, Slack), libellés identiques FR/EN (Type, Client ID/Secret, Active, JavaScript/Python)
+
+---
+Task ID: v3.5
+Agent: main
+Task: Session du 2026-09-03 — copilote IA live, i18n FR/EN, connecteurs OAuth stricts, mot de passe exigeant, vente de crédits (min 50), page Publicités
+
+Work Log:
+- Tâche 1 (live) : src/lib/ai/vision.ts (multimodal ZAI→GLM-4V→OpenRouter→OpenAI), API /api/live/[code]/agent (observe/chat//task), salon live enrichi (panneau copilote, progression de tâche, chat flottant Document PiP), types signaux AGENT/TASK, correction affichage propres messages
+- Tâche 2 (i18n) : LanguageProvider + useI18n + 17 dictionnaires (908+ clés), sélecteur de langue (shell/login/register/landing/settings), cookie gen3ia_lang + settings.language, conversion intégrale de toutes les pages (dont 3 lots délégués), tests parité/interpolation
+- Tâche 3 (connecteurs) : re-clone Composio vérifié (0 divergence / 1467 apps), suppression totale de l'UI d'import de token + formulaire Jira, statuts catalogue reformulés OAuth-only, messages serveur reformulés, test 1000+ apps
+- Tâche 4 (mot de passe) : password-client.ts partagé, zod register avec refine (12/maj/min/spécial), UI hint, 9 tests
+- Tâche 5 (facturation) : vente de crédits à la carte min 50 (paliers 10/8/6 FCFA), checkout { credits }, webhook : achat crédits sans upgrade de plan, carte UI dédiée, 6 tests
+- Tâche 6 (publicités) : 4 modèles Prisma (AdWallet/AdTransaction/AdCampaign/AdCreative) + 52 tables DDL régénérées, ledger publicitaire (recharges/dépenses/settlement paresseux journalier/pause auto solde épuisé), routes /api/ads + campaigns + creatives + recharge (Chariow, webhook plan ads_recharge → AdWallet), endpoints OAuth googleads/metaads/tiktok/linkedin_ads, page /ads complète (portefeuille, comptes 1-clic, campagnes, créas, historique) + nav, i18n 90+ clés, 6 tests
+
+Stage Summary:
+- 207 tests / 0 échec / 1418 assertions ; tsc 0 erreur ; eslint 0 warning
+- Reste : build production, push GitHub, déploiement Vercel, E2E production
