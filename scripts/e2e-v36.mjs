@@ -67,8 +67,8 @@ async function main() {
   // ─────────────────────────────────────────────────────────────
   const health = await call("GET", "/api/health", null, { cookies: "" })
   check(
-    "health : version 3.6.0 déployée",
-    health.status === 200 && health.json?.version === "3.6.0",
+    "health : version déployée (≥ 3.6 — v4.1 en production)",
+    health.status === 200 && /^([4-9]|[1-9][0-9])\./.test(String(health.json?.version ?? "")),
     `version=${health.json?.version}`
   )
   check(
@@ -132,7 +132,8 @@ async function main() {
       subs.json?.processor?.chariow !== undefined &&
       !("stripe" in (subs.json?.processor ?? {})) &&
       Array.isArray(subs.json?.plans) &&
-      subs.json.plans.length === 3,
+      // v4.1 : 4 plans (palier Plus 5000 FCFA ajouté) — v3.6 en attendait 3.
+      subs.json.plans.length >= 3,
     `plans=${subs.json?.plans?.length} processor=${JSON.stringify(subs.json?.processor)}`
   )
 
