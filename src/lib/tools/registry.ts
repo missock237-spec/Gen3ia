@@ -5,6 +5,8 @@ import { hasZaiConfig } from "@/lib/config"
 import { logger } from "@/lib/observability/logger"
 import { parseConnectorToolKey, runConnectorTool } from "@/lib/connectors/core/toolset"
 import { runSandboxedCode, sandboxStats } from "@/lib/security/sandbox/runner"
+import { executeTerminalCommand as toolTerminalExec, type TerminalExecResult } from "@/lib/tools/terminal"
+import { saveAgentFile as toolSaveAgentFile, type AgentFileSave } from "@/lib/engines/agent-files"
 import { startSpan as otelStart, endSpan as otelEnd, traceparentHeader } from "@/lib/observability/otel"
 
 /**
@@ -30,6 +32,8 @@ export type ToolKey =
   | "page_reader"
   | "calculator"
   | "code_runner"
+  | "terminal"
+  | "write_file"
   | "knowledge_search"
   | "memory_recall"
   | "http_fetch"
@@ -76,6 +80,31 @@ export const TOOL_CATALOG: ToolDefinition[] = [
     category: "EXECUTION",
     dangerous: true,
     parameters: { code: { type: "string", description: "Code JavaScript à exécuter", required: true } },
+  },
+  {
+    key: "terminal",
+    name: "Terminal intégré (agents)",
+    description: "Exécute une commande shell dans le terminal isolé de la session de l'agent (bash, répertoire de travail persistant par tâche, 30 s max, sortie 64 Ko, réseau selon plateforme, commandes destructrices bloquées). Réservé aux agents IA — les humains consultent l'historique en lecture seule.",
+    category: "EXECUTION",
+    dangerous: true,
+    parameters: {
+      command: { type: "string", description: "Commande shell à exécuter (ex: 'ls -la', 'cat rapport.txt')", required: true },
+      timeoutMs: { type: "number", description: "Délai en ms (défaut 30000, max 120000)", required: false },
+      workdir: { type: "string", description: "Sous-répertoire de travail relatif à la sandbox de session", required: false },
+    },
+  },
+  {
+    key: "write_file",
+    name: "Écriture de fichier agent",
+    description: "Enregistre un fichier de code/document généré par l'agent dans l'espace de fichiers du projet (visualisable et modifiable par l'utilisateur dans le visualiseur de code).",
+    category: "EXECUTION",
+    dangerous: false,
+    parameters: {
+      path: { type: "string", description: "Chemin du fichier (ex: 'src/utils/parser.ts')", required: true },
+      content: { type: "string", description: "Contenu complet du fichier", required: true },
+      language: { type: "string", description: "Langage/dialecte (typescript, python, json, markdown, html, css, sql, bash, text)", required: false },
+      description: { type: "string", description: "Intention/raison de cette écriture", required: false },
+    },
   },
   {
     key: "knowledge_search",
@@ -298,6 +327,30 @@ async function toolCodeRunner(args: { code: string }, ctx?: ToolContext): Promis
   }
 }
 
+/**
+ * terminal — exécution shell réservée aux agents (v4.1).
+ * Retourne la structure TerminalExecResult complète (session, sortie,
+ * code de retour, troncature). Le dispatch runTool formate la sortie LLM.
+ */
+function toolTerminal(
+  args: { command: string; timeoutMs?: number; workdir?: string },
+  ctx: ToolContext
+): Promise<TerminalExecResult> {
+  return toolTerminalExec(args, ctx)
+}
+
+/**
+ * write_file — persistance des fichiers générés par les agents (v4.1).
+ * Le fichier est versionné : les éditions humaines créent une nouvelle
+ * version, l'historique complet est conservé (visualiseur de code).
+ */
+function toolWriteFile(
+  args: { path: string; content: string; language?: string; description?: string },
+  ctx: ToolContext
+): Promise<AgentFileSave> {
+  return toolSaveAgentFile({ ...args, taskId: ctx.taskId ?? null, agentId: ctx.agentId ?? null }, ctx.userId)
+}
+
 async function toolKnowledgeSearch(
   args: { query: string },
   ctx: ToolContext
@@ -447,6 +500,55 @@ export async function runTool(
       return toolCalculator({ expression: String(args.expression ?? "") })
     case "code_runner":
       return toolCodeRunner({ code: String(args.code ?? "") }, ctx)
+    case "terminal": {
+      const term = await toolTerminal(
+        {
+          command: String(args.command ?? ""),
+          timeoutMs: args.timeoutMs ? Number(args.timeoutMs) : undefined,
+          workdir: args.workdir ? String(args.workdir) : undefined,
+        },
+        ctx
+      )
+      return {
+        ok: term.ok,
+        output: term.ok
+          ? `${term.stdout}${term.stderr ? `\n[stderr] ${term.stderr}` : ""}`
+          : `${term.stderr || "échec"}${term.stdout ? `\n${term.stdout}` : ""}`,
+        data: {
+          exitCode: term.exitCode,
+          stdout: term.stdout,
+          stderr: term.stderr,
+          truncated: term.truncated,
+          timedOut: term.timedOut,
+          durationMs: term.durationMs,
+          sessionId: term.sessionId,
+        },
+        error: term.ok ? undefined : `exit=${term.exitCode ?? "?"}${term.timedOut ? " timeout" : ""}`,
+        latencyMs: term.durationMs,
+      }
+    }
+    case "write_file": {
+      const written = await toolWriteFile(
+        {
+          path: String(args.path ?? ""),
+          content: String(args.content ?? ""),
+          language: args.language ? String(args.language) : undefined,
+          description: args.description ? String(args.description) : undefined,
+        },
+        ctx
+      )
+      return {
+        ok: written.ok,
+        output: written.ok
+          ? `Fichier enregistré : ${written.path} (${written.bytes} octets, version ${written.version})`
+          : written.error ?? "écriture impossible",
+        data: written.ok
+          ? { fileId: written.fileId, path: written.path, version: written.version, bytes: written.bytes }
+          : undefined,
+        error: written.ok ? undefined : written.error,
+        latencyMs: 0,
+      }
+    }
     case "knowledge_search":
       return toolKnowledgeSearch({ query: String(args.query ?? "") }, ctx)
     case "memory_recall":

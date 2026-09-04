@@ -16,12 +16,14 @@ import { usePolling, apiPost, formatCredits, formatDate } from "@/lib/client/hoo
 import { PipelineDag } from "@/components/tasks/pipeline-dag";
 import { StepInterceptor } from "@/components/tasks/step-interceptor";
 import { DebugReplay } from "@/components/tasks/debug-replay";
+import { AgentTerminal } from "@/components/tasks/agent-terminal";
+import { CodeViewer } from "@/components/tasks/code-viewer";
 import { Radio } from "lucide-react";
 import {
   Loader2, CheckCircle2, XCircle, Clock, ChevronRight, ShieldAlert, FileCheck,
   Brain, GitBranch, Scale, Play, RefreshCcw, GraduationCap, Package, Coins,
   ListChecks, Pencil, Plus, Trash2, Sparkles, Image as ImageIcon, BarChart3,
-  Network, Send, Download, Bug, SlidersHorizontal, MessageSquare,
+  Network, Send, Download, Bug, SlidersHorizontal, MessageSquare, TerminalSquare, FileCode2,
 } from "lucide-react";
 
 /** Contenu multimodal généré (image/diagramme/graphique) par la tâche. */
@@ -285,12 +287,18 @@ export default function TaskDetailPage() {
 
       {/* Onglets des Fonctionnalités Améliorées & Vues de Détail */}
       <Tabs defaultValue="pas-a-pas" className="space-y-4">
-        <TabsList className="bg-zinc-900/80 border border-zinc-800 p-1 grid grid-cols-2 sm:grid-cols-4 gap-1">
+        <TabsList className="bg-zinc-900/80 border border-zinc-800 p-1 grid grid-cols-2 sm:grid-cols-6 gap-1">
           <TabsTrigger value="pas-a-pas" className="text-xs font-medium gap-1.5">
             <SlidersHorizontal className="h-3.5 w-3.5 text-teal-400" /> {t("tasks.tabs.stepByStep")}
           </TabsTrigger>
           <TabsTrigger value="multimodal" className="text-xs font-medium gap-1.5">
             <Sparkles className="h-3.5 w-3.5 text-purple-400" /> {t("tasks.tabs.multimodal")}
+          </TabsTrigger>
+          <TabsTrigger value="terminal" className="text-xs font-medium gap-1.5">
+            <TerminalSquare className="h-3.5 w-3.5 text-emerald-400" /> {t("tasks.tabs.terminal")}
+          </TabsTrigger>
+          <TabsTrigger value="code" className="text-xs font-medium gap-1.5">
+            <FileCode2 className="h-3.5 w-3.5 text-sky-400" /> {t("tasks.tabs.code")}
           </TabsTrigger>
           <TabsTrigger value="debug" className="text-xs font-medium gap-1.5">
             <Bug className="h-3.5 w-3.5 text-amber-400" /> {t("tasks.tabs.debug")}
@@ -303,6 +311,16 @@ export default function TaskDetailPage() {
         {/* 2. Mode "pas-à-pas" interactif SSE */}
         <TabsContent value="pas-a-pas">
           <StepInterceptor taskId={task.id} initialTask={task} initialSteps={steps} />
+        </TabsContent>
+
+        {/* Terminal intégré des agents — lecture seule humaine */}
+        <TabsContent value="terminal">
+          <AgentTerminal taskId={task.id} />
+        </TabsContent>
+
+        {/* Visualiseur de code — fichiers générés par les agents */}
+        <TabsContent value="code">
+          <CodeViewer taskId={task.id} />
         </TabsContent>
 
         {/* 3. Chat Multimodal */}

@@ -45,6 +45,8 @@ export const tasks = {
 
     "tasks.tabs.stepByStep": "Mode Pas-à-Pas",
     "tasks.tabs.multimodal": "Chat Multimodal",
+    "tasks.tabs.terminal": "Terminal Agents",
+    "tasks.tabs.code": "Code des Agents",
     "tasks.tabs.debug": "Mode Débug (Replay)",
     "tasks.tabs.details": "Détails Pipeline",
 
@@ -107,6 +109,8 @@ export const tasks = {
 
     "tasks.tabs.stepByStep": "Step-by-Step Mode",
     "tasks.tabs.multimodal": "Multimodal Chat",
+    "tasks.tabs.terminal": "Agents Terminal",
+    "tasks.tabs.code": "Agent Code",
     "tasks.tabs.debug": "Debug Mode (Replay)",
     "tasks.tabs.details": "Pipeline Details",
 

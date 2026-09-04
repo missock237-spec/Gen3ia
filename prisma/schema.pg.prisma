@@ -59,6 +59,11 @@ model User {
   modelSelections     ModelSelection[]
   hfJobs              HFJob[]
   storageObjects      StorageObject[]
+  terminalSessions    TerminalSession[]
+  agentFiles          AgentFile[]
+  voiceSettings       VoiceSettings?
+  dictations          DictationEntry[]
+  chatAttachments     ChatAttachment[]
 }
 
 // ─── Model & Compute Intelligence Layer (v4.0 — HF) ────────────
@@ -1236,4 +1241,140 @@ model Subscription {
 
   @@index([userId])
   @@index([status, currentPeriodEnd])
+}
+
+// ─── Terminal intégré agents (v4.1) ────────────────────────────
+// Terminal RÉSERVÉ aux agents IA : sessions isolées par tâche,
+// commandes persistées pour audit et vue lecture seule humaine.
+model TerminalSession {
+  id        String            @id @default(cuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String? // tâche GEN3IA associée (session par tâche)
+  agentId   String? // agent propriétaire
+  workdir   String // sandbox disque de la session (tmpdir isolé)
+  status    String            @default("ACTIVE") // ACTIVE | CLOSED
+  createdAt DateTime          @default(now())
+  closedAt  DateTime?
+  commands  TerminalCommand[]
+
+  @@index([userId, createdAt])
+  @@index([taskId])
+  @@index([status])
+}
+
+model TerminalCommand {
+  id         String          @id @default(cuid())
+  sessionId  String
+  session    TerminalSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  command    String
+  exitCode   Int? // null = timeout / refusée
+  stdout     String          @default("")
+  stderr     String          @default("")
+  truncated  Boolean         @default(false)
+  durationMs Int             @default(0)
+  timedOut   Boolean         @default(false)
+  approved   Boolean         @default(true) // HITL effectif
+  createdAt  DateTime        @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+// ─── Fichiers des agents (visualiseur de code, v4.1) ───────────
+// write_file (agents) → AgentFile + AgentFileVersion(s).
+// Les humains voient, décident (APPROVED/REJECTED), modifient
+// (nouvelle version source=HUMAN) et peuvent revenir en arrière.
+model AgentFile {
+  id          String             @id @default(cuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId      String? // tâche à l'origine du fichier
+  agentId     String? // agent auteur
+  path        String // chemin relatif projet (ex: src/utils/parser.ts)
+  content     String // contenu courant
+  language    String             @default("text")
+  status      String             @default("PROPOSED") // PROPOSED | APPROVED | REJECTED | EDITED
+  version     Int                @default(1)
+  bytes       Int                @default(0)
+  description String?
+  versions    AgentFileVersion[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([userId, path])
+  @@index([userId, updatedAt])
+  @@index([taskId])
+}
+
+model AgentFileVersion {
+  id          String    @id @default(cuid())
+  fileId      String
+  file        AgentFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  version     Int
+  content     String
+  source      String    @default("AGENT") // AGENT | HUMAN
+  authorId    String?
+  description String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([fileId, version])
+  @@index([fileId, version])
+}
+
+// ─── Mode vocal (v4.1) ─────────────────────────────────────────
+// Préférences vocales par utilisateur + historique de dictée.
+model VoiceSettings {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  persona                String   @default("maple") // maple | ember | sage | coral | onyx
+  language               String   @default("auto") // auto | fr | en
+  backgroundConversations Boolean @default(false)
+  dictationsEnabled      Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model DictationEntry {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text       String
+  durationMs Int      @default(0)
+  lang       String   @default("auto")
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ─── Pièces jointes de chat (v4.1) ─────────────────────────────
+// Imports multimédiaux depuis la barre de saisie enrichie :
+// fichiers (tous types), images, vidéos, audio.
+// Documents : texte extrait + indexé RAG (Document lié).
+// Audio : transcrit via ASR (DictationEntry lié).
+// Médias : HF Bucket si configuré, sinon base64 en base (≤ 2 Mo).
+model ChatAttachment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId      String? // tâche à laquelle la pièce est jointe
+  kind        String // IMAGE | VIDEO | AUDIO | DOCUMENT | FILE
+  filename    String
+  contentType String
+  size        Int // octets
+  storage     String   @default("DB") // DB | HF
+  // Storage HF (bucket users) — octets hors base.
+  repoId      String?
+  objectPath  String?
+  sha         String?
+  // Stockage DB (petits fichiers ≤ 2 Mo) : data URL.
+  dataUrl     String?
+  // Texte extrait (documents parsés, audio transcrit).
+  textExtract String?
+  documentId  String? // Document (knowledge) créé pour les fichiers texte
+  dictationId String? // DictationEntry créée pour l'audio transcrit
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([taskId])
 }

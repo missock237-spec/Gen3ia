@@ -945,6 +945,104 @@ CREATE TABLE IF NOT EXISTS "Subscription" (
     CONSTRAINT "Subscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "TerminalSession" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "taskId" TEXT,
+    "agentId" TEXT,
+    "workdir" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "closedAt" DATETIME,
+    CONSTRAINT "TerminalSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "TerminalCommand" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "sessionId" TEXT NOT NULL,
+    "command" TEXT NOT NULL,
+    "exitCode" INTEGER,
+    "stdout" TEXT NOT NULL DEFAULT '',
+    "stderr" TEXT NOT NULL DEFAULT '',
+    "truncated" BOOLEAN NOT NULL DEFAULT false,
+    "durationMs" INTEGER NOT NULL DEFAULT 0,
+    "timedOut" BOOLEAN NOT NULL DEFAULT false,
+    "approved" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "TerminalCommand_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "TerminalSession" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "AgentFile" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "taskId" TEXT,
+    "agentId" TEXT,
+    "path" TEXT NOT NULL,
+    "content" TEXT NOT NULL,
+    "language" TEXT NOT NULL DEFAULT 'text',
+    "status" TEXT NOT NULL DEFAULT 'PROPOSED',
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "bytes" INTEGER NOT NULL DEFAULT 0,
+    "description" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "AgentFile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "AgentFileVersion" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "fileId" TEXT NOT NULL,
+    "version" INTEGER NOT NULL,
+    "content" TEXT NOT NULL,
+    "source" TEXT NOT NULL DEFAULT 'AGENT',
+    "authorId" TEXT,
+    "description" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AgentFileVersion_fileId_fkey" FOREIGN KEY ("fileId") REFERENCES "AgentFile" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "VoiceSettings" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "persona" TEXT NOT NULL DEFAULT 'maple',
+    "language" TEXT NOT NULL DEFAULT 'auto',
+    "backgroundConversations" BOOLEAN NOT NULL DEFAULT false,
+    "dictationsEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "VoiceSettings_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "DictationEntry" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "text" TEXT NOT NULL,
+    "durationMs" INTEGER NOT NULL DEFAULT 0,
+    "lang" TEXT NOT NULL DEFAULT 'auto',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "DictationEntry_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "ChatAttachment" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "taskId" TEXT,
+    "kind" TEXT NOT NULL,
+    "filename" TEXT NOT NULL,
+    "contentType" TEXT NOT NULL,
+    "size" INTEGER NOT NULL,
+    "storage" TEXT NOT NULL DEFAULT 'DB',
+    "repoId" TEXT,
+    "objectPath" TEXT,
+    "sha" TEXT,
+    "dataUrl" TEXT,
+    "textExtract" TEXT,
+    "documentId" TEXT,
+    "dictationId" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ChatAttachment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -1152,6 +1250,32 @@ CREATE INDEX IF NOT EXISTS "CrossAgentPattern_category_lastSeenAt_idx" ON "Cross
 CREATE INDEX IF NOT EXISTS "Subscription_userId_idx" ON "Subscription"("userId");
 
 CREATE INDEX IF NOT EXISTS "Subscription_status_currentPeriodEnd_idx" ON "Subscription"("status", "currentPeriodEnd");
+
+CREATE INDEX IF NOT EXISTS "TerminalSession_userId_createdAt_idx" ON "TerminalSession"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "TerminalSession_taskId_idx" ON "TerminalSession"("taskId");
+
+CREATE INDEX IF NOT EXISTS "TerminalSession_status_idx" ON "TerminalSession"("status");
+
+CREATE INDEX IF NOT EXISTS "TerminalCommand_sessionId_createdAt_idx" ON "TerminalCommand"("sessionId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "AgentFile_userId_updatedAt_idx" ON "AgentFile"("userId", "updatedAt");
+
+CREATE INDEX IF NOT EXISTS "AgentFile_taskId_idx" ON "AgentFile"("taskId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "AgentFile_userId_path_key" ON "AgentFile"("userId", "path");
+
+CREATE INDEX IF NOT EXISTS "AgentFileVersion_fileId_version_idx" ON "AgentFileVersion"("fileId", "version");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "AgentFileVersion_fileId_version_key" ON "AgentFileVersion"("fileId", "version");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "VoiceSettings_userId_key" ON "VoiceSettings"("userId");
+
+CREATE INDEX IF NOT EXISTS "DictationEntry_userId_createdAt_idx" ON "DictationEntry"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ChatAttachment_userId_createdAt_idx" ON "ChatAttachment"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ChatAttachment_taskId_idx" ON "ChatAttachment"("taskId");
 `
 // @generated-db-ddl:sqlite:end
 
@@ -2160,6 +2284,111 @@ CREATE TABLE IF NOT EXISTS "Subscription" (
     CONSTRAINT "Subscription_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE IF NOT EXISTS "TerminalSession" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "taskId" TEXT,
+    "agentId" TEXT,
+    "workdir" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "closedAt" TIMESTAMP(3),
+
+    CONSTRAINT "TerminalSession_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "TerminalCommand" (
+    "id" TEXT NOT NULL,
+    "sessionId" TEXT NOT NULL,
+    "command" TEXT NOT NULL,
+    "exitCode" INTEGER,
+    "stdout" TEXT NOT NULL DEFAULT '',
+    "stderr" TEXT NOT NULL DEFAULT '',
+    "truncated" BOOLEAN NOT NULL DEFAULT false,
+    "durationMs" INTEGER NOT NULL DEFAULT 0,
+    "timedOut" BOOLEAN NOT NULL DEFAULT false,
+    "approved" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TerminalCommand_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "AgentFile" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "taskId" TEXT,
+    "agentId" TEXT,
+    "path" TEXT NOT NULL,
+    "content" TEXT NOT NULL,
+    "language" TEXT NOT NULL DEFAULT 'text',
+    "status" TEXT NOT NULL DEFAULT 'PROPOSED',
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "bytes" INTEGER NOT NULL DEFAULT 0,
+    "description" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AgentFile_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "AgentFileVersion" (
+    "id" TEXT NOT NULL,
+    "fileId" TEXT NOT NULL,
+    "version" INTEGER NOT NULL,
+    "content" TEXT NOT NULL,
+    "source" TEXT NOT NULL DEFAULT 'AGENT',
+    "authorId" TEXT,
+    "description" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AgentFileVersion_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "VoiceSettings" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "persona" TEXT NOT NULL DEFAULT 'maple',
+    "language" TEXT NOT NULL DEFAULT 'auto',
+    "backgroundConversations" BOOLEAN NOT NULL DEFAULT false,
+    "dictationsEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "VoiceSettings_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "DictationEntry" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "text" TEXT NOT NULL,
+    "durationMs" INTEGER NOT NULL DEFAULT 0,
+    "lang" TEXT NOT NULL DEFAULT 'auto',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DictationEntry_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "ChatAttachment" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "taskId" TEXT,
+    "kind" TEXT NOT NULL,
+    "filename" TEXT NOT NULL,
+    "contentType" TEXT NOT NULL,
+    "size" INTEGER NOT NULL,
+    "storage" TEXT NOT NULL DEFAULT 'DB',
+    "repoId" TEXT,
+    "objectPath" TEXT,
+    "sha" TEXT,
+    "dataUrl" TEXT,
+    "textExtract" TEXT,
+    "documentId" TEXT,
+    "dictationId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ChatAttachment_pkey" PRIMARY KEY ("id")
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -2368,6 +2597,32 @@ CREATE INDEX IF NOT EXISTS "Subscription_userId_idx" ON "Subscription"("userId")
 
 CREATE INDEX IF NOT EXISTS "Subscription_status_currentPeriodEnd_idx" ON "Subscription"("status", "currentPeriodEnd");
 
+CREATE INDEX IF NOT EXISTS "TerminalSession_userId_createdAt_idx" ON "TerminalSession"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "TerminalSession_taskId_idx" ON "TerminalSession"("taskId");
+
+CREATE INDEX IF NOT EXISTS "TerminalSession_status_idx" ON "TerminalSession"("status");
+
+CREATE INDEX IF NOT EXISTS "TerminalCommand_sessionId_createdAt_idx" ON "TerminalCommand"("sessionId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "AgentFile_userId_updatedAt_idx" ON "AgentFile"("userId", "updatedAt");
+
+CREATE INDEX IF NOT EXISTS "AgentFile_taskId_idx" ON "AgentFile"("taskId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "AgentFile_userId_path_key" ON "AgentFile"("userId", "path");
+
+CREATE INDEX IF NOT EXISTS "AgentFileVersion_fileId_version_idx" ON "AgentFileVersion"("fileId", "version");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "AgentFileVersion_fileId_version_key" ON "AgentFileVersion"("fileId", "version");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "VoiceSettings_userId_key" ON "VoiceSettings"("userId");
+
+CREATE INDEX IF NOT EXISTS "DictationEntry_userId_createdAt_idx" ON "DictationEntry"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ChatAttachment_userId_createdAt_idx" ON "ChatAttachment"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ChatAttachment_taskId_idx" ON "ChatAttachment"("taskId");
+
 ALTER TABLE "ModelCapability" ADD CONSTRAINT "ModelCapability_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "ModelPerformance" ADD CONSTRAINT "ModelPerformance_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -2467,6 +2722,20 @@ ALTER TABLE "AdCampaign" ADD CONSTRAINT "AdCampaign_userId_fkey" FOREIGN KEY ("u
 ALTER TABLE "AdCreative" ADD CONSTRAINT "AdCreative_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "AdCampaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "TerminalSession" ADD CONSTRAINT "TerminalSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "TerminalCommand" ADD CONSTRAINT "TerminalCommand_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "TerminalSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "AgentFile" ADD CONSTRAINT "AgentFile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "AgentFileVersion" ADD CONSTRAINT "AgentFileVersion_fileId_fkey" FOREIGN KEY ("fileId") REFERENCES "AgentFile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "VoiceSettings" ADD CONSTRAINT "VoiceSettings_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "DictationEntry" ADD CONSTRAINT "DictationEntry_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "ChatAttachment" ADD CONSTRAINT "ChatAttachment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 `
 // @generated-db-ddl:postgres:end
 

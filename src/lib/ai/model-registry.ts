@@ -55,10 +55,19 @@ const log = logger.child({ component: "model-registry" })
 let cache: { models: RegistryModel[]; at: number } | null = null
 const CACHE_TTL_MS = 30_000
 
-/** Auto-amorçage paresseux : registre vide → seed depuis les catalogues. */
+/**
+ * Auto-amorçage paresseux : registre vide → seed depuis les catalogues.
+ * v4.1 — la mémoïsation est clée sur DATABASE_URL (les suites de tests
+ * bun partagent le processus et basculent de base) ; en production
+ * l'URL ne change jamais, comportement inchangé.
+ */
 let seeding: Promise<void> | null = null
+let seedingUrl: string | undefined
 async function ensureSeeded(): Promise<void> {
-  if (seeding) return seeding
+  const url = process.env.DATABASE_URL ?? ""
+  if (seeding && seedingUrl === url) return seeding
+  if (seedingUrl !== url) cache = null
+  seedingUrl = url
   seeding = (async () => {
     try {
       const count = await db.aIModel.count()
