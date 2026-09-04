@@ -74,7 +74,7 @@ projet, jamais exposé aux utilisateurs finaux.
 | Capture | Fonctionnalité livrée |
 |---------|----------------------|
 | 1 (Paramètres) | Sections paramètres avec ancres navigation (compte, vocal, outils, moteur, sécurité) |
-| 2-4 (workflows runable) | **Bibliothèque `/workflows`** : 17 modèles catégorisés (Carrière, Marketing, Ingénierie, Recherche, Rédaction, Données), épinglage persisté (`WorkflowPin`), recherche, « Utiliser » → pré-remplissage de la barre de saisie (`/tasks?template=`) — les workflows des captures (resume editor, cover letter, interview prep, scholarship finder, alumni finder, brand story, eng weekly review, PR digest, research→deck) sont tous présents |
+| 2-4 (workflows runable) | **Bibliothèque `/workflows`** : 16 modèles catégorisés (Carrière, Marketing, Ingénierie, Recherche, Rédaction, Données), épinglage persisté (`WorkflowPin`), recherche, « Utiliser » → pré-remplissage de la barre de saisie (`/tasks?template=`) — les workflows des captures (resume editor, cover letter, interview prep, scholarship finder, alumni finder, brand story, eng weekly review, PR digest, research→deck) sont tous présents |
 | 5 (barre ChatGPT) | ChatComposer : « + », pilule Modèle, micro, envoi |
 | 6 (Projets) | Recherche des tâches/projets dans le Task Center |
 | 7 (Remote) | (Connexions distantes : hors périmètre sécurité — les sessions live couvrent le pilotage à distance) |
