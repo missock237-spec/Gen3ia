@@ -139,6 +139,22 @@ export const PLAN_OFFERS: PlanOffer[] = [
     ],
   },
   {
+    // v4.1 — palier 5000 FCFA et plus (exigence produit) : comble l'écart
+    // Starter→Pro avec un crédit unitaire dégressif (5000/700 ≈ 7,1 XOF).
+    key: "plus",
+    name: "Plus",
+    price: 5000,
+    currency: "XOF",
+    credits: 700,
+    features: [
+      "700 crédits d'exécution",
+      "25 agents publiés",
+      "Mode vocal + pièces jointes multimédia",
+      "Marketplace (consultation avancée)",
+      "Support 48 h",
+    ],
+  },
+  {
     key: "pro",
     name: "Pro",
     price: 10000,

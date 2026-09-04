@@ -55,7 +55,7 @@ describe("i18n — organisation par domaine fonctionnel", () => {
       "auth", "dashboard", "agents", "tasks", "billing", "connectors", "knowledge",
       "memory", "marketplace", "skills", "tools", "apikeys", "sdk", "swarm",
       "webhooks", "watchdog", "traces", "finetune", "admin", "ads", "live",
-      "settings", "landing", "common", "docs",
+      "settings", "landing", "common", "docs", "terminal", "files", "voice", "input", "workflows",
     ]
     const present = new Set(files.map((f) => f.replace(".ts", "")))
     const missing = expected.filter((d) => !present.has(d))

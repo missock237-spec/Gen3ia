@@ -132,6 +132,19 @@ export async function apiPatch<T = Record<string, unknown>>(
   return data
 }
 
+/**
+ * Requête POST multipart/form-data typée (v4.1).
+ * Le Content-Type est laissé au navigateur (boundary généré automatiquement).
+ */
+export async function apiPostForm<T = Record<string, unknown>>(
+  url: string,
+  form: FormData
+): Promise<{ ok: boolean; error?: string } & T> {
+  const res = await fetch(url, { method: "POST", body: form })
+  const data = await res.json().catch(() => ({ ok: false, error: "Réponse invalide." }))
+  return data
+}
+
 export async function apiDelete(url: string): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch(url, { method: "DELETE" })
   return res.json().catch(() => ({ ok: false, error: "Réponse invalide." }))

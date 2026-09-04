@@ -57,9 +57,9 @@ describe("Chariow unique processeur (ADR-0007)", () => {
 })
 
 describe("Abonnements SaaS prépayés", () => {
-  test("trois plans alignés sur les offres Chariow", () => {
-    expect(SUBSCRIPTION_PLANS).toHaveLength(3)
-    expect(SUBSCRIPTION_PLANS.map((p) => p.key)).toEqual(["starter", "pro", "business"])
+  test("quatre plans alignés sur les offres Chariow (palier 5000 FCFA inclus)", () => {
+    expect(SUBSCRIPTION_PLANS).toHaveLength(4)
+    expect(SUBSCRIPTION_PLANS.map((p) => p.key)).toEqual(["starter", "plus", "pro", "business"])
     expect(SUBSCRIPTION_PLANS).toHaveLength(PLAN_OFFERS.length)
     for (const plan of SUBSCRIPTION_PLANS) {
       const offer = PLAN_OFFERS.find((o) => o.key === plan.key)

@@ -64,6 +64,9 @@ export const tasks = {
     "tasks.analysis.title": "Analyse de la demande",
     "tasks.analysis.intent": "Intention :",
     "tasks.analysis.goals": "Objectifs :",
+    "tasks.searchPlaceholder": "Rechercher des tâches…",
+    "tasks.searchEmpty": "Aucune tâche ne correspond à « {query} ».",
+    "tasks.newTask": "Nouvelle tâche",
   },
   en: {
     "tasks.explain.graph.title": "Step dependencies",
@@ -128,5 +131,8 @@ export const tasks = {
     "tasks.analysis.title": "Request analysis",
     "tasks.analysis.intent": "Intent:",
     "tasks.analysis.goals": "Goals:",
+    "tasks.searchPlaceholder": "Search tasks…",
+    "tasks.searchEmpty": "No task matches \"{query}\".",
+    "tasks.newTask": "New task",
   },
 };

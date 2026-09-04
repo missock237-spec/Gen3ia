@@ -30,7 +30,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
     openapi: "3.1.0",
     info: {
       title: "GEN3IA API",
-      version: "4.0.0",
+      version: "4.1.0",
       description:
         "API publique GEN3IA — plateforme d'agents IA.\n\n" +
         "Authentification : clé API `g3ia_live_...` via l'en-tête `Authorization: Bearer`.\n" +
@@ -522,6 +522,56 @@ export function buildOpenApiDocument(): Record<string, unknown> {
           },
           responses: { 200: { description: "Morceaux pertinents scorés", content: { "application/json": { schema: { type: "object" } } } } },
         },
+      },
+      "/api/workflows": {
+        get: {
+          summary: "Bibliothèque de workflows (catalogue + épingles)",
+          tags: ["Workflows"],
+          security: [{ cookieAuth: [] }],
+          responses: { 200: { description: "Catalogue + épingles de l'utilisateur" } },
+        },
+        post: {
+          summary: "Épingle / désépingle un workflow",
+          tags: ["Workflows"],
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { type: "object", properties: { workflowKey: { type: "string" }, pinned: { type: "boolean" } }, required: ["workflowKey", "pinned"] } } },
+          },
+          responses: { 200: { description: "Statut de l'épingle" }, 404: { description: "Workflow inconnu" } },
+        },
+      },
+      "/api/models": {
+        get: {
+          summary: "Modèles disponibles pour le sélecteur de la barre de saisie",
+          tags: ["Models"],
+          security: [{ cookieAuth: [] }],
+          responses: { 200: { description: "Liste des modèles du registre (sans secrets)" } },
+        },
+      },
+      "/api/voice/settings": {
+        get: { summary: "Préférences du mode vocal", tags: ["Voice"], security: [{ cookieAuth: [] }], responses: { 200: { description: "Personas, langue, préférences" } } },
+        put: { summary: "Met à jour les préférences vocales", tags: ["Voice"], security: [{ cookieAuth: [] }], responses: { 200: { description: "Préférences mises à jour" } } },
+      },
+      "/api/voice/transcribe": {
+        post: { summary: "Transcription ASR d'un audio (multipart)", tags: ["Voice"], security: [{ cookieAuth: [] }], responses: { 200: { description: "Texte transcrit" }, 503: { description: "ASR indisponible" } } },
+      },
+      "/api/voice/dictations": {
+        get: { summary: "Historique de dictée", tags: ["Voice"], security: [{ cookieAuth: [] }], responses: { 200: { description: "30 dernières dictées" } } },
+        delete: { summary: "Efface l'historique de dictée", tags: ["Voice"], security: [{ cookieAuth: [] }], responses: { 200: { description: "Historique effacé" } } },
+      },
+      "/api/chat/attachments": {
+        get: { summary: "Pièces jointes de chat (tous types)", tags: ["Chat"], security: [{ cookieAuth: [] }], responses: { 200: { description: "Liste des pièces jointes" } } },
+        post: { summary: "Import multimédia (PDF→RAG, audio→ASR, HF Bucket)", tags: ["Chat"], security: [{ cookieAuth: [] }], responses: { 200: { description: "Pièce jointe enregistrée" }, 413: { description: "Fichier trop volumineux" } } },
+        delete: { summary: "Supprime une pièce jointe", tags: ["Chat"], security: [{ cookieAuth: [] }], responses: { 200: { description: "Supprimée" } } },
+      },
+      "/api/terminal/sessions/{id}": {
+        get: { summary: "Historique d'une session terminal (lecture seule humaine)", tags: ["Terminal"], security: [{ cookieAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Session + commandes" }, 404: { description: "Introuvable" } } },
+        patch: { summary: "Clôture d'une session terminal (l'exécution est réservée aux agents)", tags: ["Terminal"], security: [{ cookieAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Session clôturée" } } },
+      },
+      "/api/agent-files/{id}": {
+        get: { summary: "Fichier d'agent (visualiseur de code : contenu + versions)", tags: ["AgentFiles"], security: [{ cookieAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Détail + versions" } } },
+        patch: { summary: "Décision HITL ou édition (nouvelle version humaine)", tags: ["AgentFiles"], security: [{ cookieAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Décision / version enregistrée" } } },
       },
       "/api/v1/jobs": {
         get: {

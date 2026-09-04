@@ -1043,6 +1043,18 @@ CREATE TABLE IF NOT EXISTS "ChatAttachment" (
     CONSTRAINT "ChatAttachment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "WorkflowPin" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "workflowKey" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "WorkflowPin_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "WorkflowPin_userId_workflowKey_key" ON "WorkflowPin"("userId", "workflowKey");
+
+CREATE INDEX IF NOT EXISTS "WorkflowPin_userId_idx" ON "WorkflowPin"("userId");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -2743,6 +2755,7 @@ ALTER TABLE "ChatAttachment" ADD CONSTRAINT "ChatAttachment_userId_fkey" FOREIGN
 const MIGRATION_DDL = `
 ALTER TABLE "Task" ADD COLUMN "version" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "Task" ADD COLUMN "totalRetries" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Task" ADD COLUMN "preferredModel" TEXT;
 `
 
 const globalForInit = globalThis as unknown as {

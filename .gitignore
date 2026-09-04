@@ -84,3 +84,7 @@ package-lock.json
 .prod-db-url.txt
 test-results/
 playwright-report/
+
+# E2E session states (artefacts locaux — jamais versionnés)
+tests/e2e/.v41-session.json
+tests/e2e/.session-user.json

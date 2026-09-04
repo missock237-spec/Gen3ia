@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n/dictionaries";
-import { Loader2, Layers, PlayCircle, RefreshCw } from "lucide-react";
+import { Loader2, Layers, PlayCircle, RefreshCw, Mic, MicOff } from "lucide-react";
+import { useDictation } from "@/components/chat/use-dictation";
 
 /**
  * Batch Tasks — exécution en série de multiples prompts (jusqu'à 50).
@@ -40,7 +41,11 @@ export default function BatchPage() {
   const [batches, setBatches] = useState<BatchView[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [prompts, setPrompts] = useState("");
+  const [prompts, setPrompts] = useState("")
+  // v4.1 — dictée vocale : chaque phrase transcrite devient une ligne du lot.
+  const dictation = useDictation((text) => {
+    setPrompts((p) => (p.trim() ? `${p}\n${text}` : text))
+  });
   const [name, setName] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ batch?: { items?: Array<{ id: string; prompt?: string; status: string; taskId?: string }> } } | null>(null);
@@ -141,6 +146,26 @@ export default function BatchPage() {
           className="bg-zinc-950 border-zinc-880 font-mono text-xs"
         />
         <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={dictation.toggle}
+            disabled={!dictation.supported}
+            className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+              dictation.listening
+                ? "bg-red-500/20 text-red-400 animate-pulse"
+                : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            }`}
+            aria-label={dictation.listening ? "Arrêter la dictée" : "Dicter"}
+            title={dictation.listening ? "Arrêter la dictée" : "Dicter (micro vocal)"}
+          >
+            {dictation.transcribing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : dictation.listening ? (
+              <MicOff className="h-3.5 w-3.5" />
+            ) : (
+              <Mic className="h-3.5 w-3.5" />
+            )}
+          </button>
           <span className="text-xs text-zinc-500">
             {t("batch.counter", { count: prompts.split("\n").filter((l) => l.trim()).length })}
           </span>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { ChatComposer } from "@/components/chat/chat-composer";
 import { useI18n } from "@/lib/i18n";
 import { LiveSignaling, ICE_SERVERS, type LiveSignal } from "@/lib/client/live-signaling";
 import {
@@ -778,11 +779,15 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
           </div>
         )}
       </div>
-      <div className={`mt-3 flex gap-2 ${compact ? "border-t border-zinc-800 pt-3" : ""}`}>
-        <Input
+      {/* v4.1 — barre de saisie enrichie : micro vocal, envoi, + (connecteurs/fichiers), modèle */}
+      <div className={`mt-3 ${compact ? "border-t border-zinc-800 pt-3" : ""}`}>
+        <ChatComposer
           value={chatInput}
-          onChange={(e) => setChatInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void sendChat()}
+          onChange={setChatInput}
+          onSend={async () => {
+            await sendChat()
+          }}
+          sendLabel={t("live.room.send")}
           placeholder={
             agentTarget === "agent"
               ? agentActive
@@ -790,19 +795,11 @@ export default function LiveRoomPage({ params }: { params: Promise<{ code: strin
                 : t("live.room.placeholder.agentOff")
               : t("live.room.placeholder.room")
           }
-          className="bg-zinc-950 border-zinc-800"
-          disabled={ended || (agentTarget === "agent" && agentBusy)}
-        />
-        <Button
-          size="sm"
-          variant="outline"
           disabled={ended || (agentTarget === "agent" ? agentBusy : !signalingReady)}
-          onClick={() => void sendChat()}
-          className={agentTarget === "agent" ? "border-emerald-800 text-emerald-300 hover:bg-emerald-950" : ""}
-        >
-          {agentTarget === "agent" ? <Sparkles className="h-4 w-4" /> : null}
-          {t("live.room.send")}
-        </Button>
+          busyPlaceholder={agentTarget === "agent" ? t("live.room.agentAnalyzing") : undefined}
+          rows={1}
+          showModelSelector={agentTarget === "agent"}
+        />
       </div>
     </div>
   )

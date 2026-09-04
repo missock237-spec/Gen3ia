@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/app/status-badge";
 import { useToast } from "@/hooks/use-toast";
+import { ChatComposer } from "@/components/chat/chat-composer";
 import { useI18n } from "@/lib/i18n";
 import { renderRich } from "@/lib/i18n/rich";
 import { apiPost, apiPatch, formatCredits, usePolling } from "@/lib/client/hooks";
@@ -112,9 +113,10 @@ export default function AgentDetailPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  async function sendTest() {
-    if (!agent || !input.trim() || testing) return
-    const message = input.trim()
+  async function sendTest(payload?: { text: string }) {
+    if (!agent || testing) return
+    const message = (payload?.text ?? input).trim()
+    if (!message) return
     setInput("")
     const history = messages.slice(-10)
     setMessages((m) => [...m, { role: "user", content: message }, { role: "assistant", content: "" }])
@@ -401,23 +403,20 @@ export default function AgentDetailPage() {
                 <div ref={chatEndRef} />
               </div>
 
-              <div className="mt-4 flex gap-2">
-                <Input
+              {/* v4.1 — barre de saisie enrichie : micro vocal, envoi, + (connecteurs/fichiers tous types), modèle */}
+              <div className="mt-4">
+                <ChatComposer
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault()
-                      void sendTest()
-                    }
+                  onChange={setInput}
+                  onSend={async (p) => {
+                    await sendTest({ text: p.text })
                   }}
                   placeholder={t("agents.test.inputPlaceholder")}
-                  className="bg-zinc-950 border-zinc-800 focus-visible:ring-emerald-500/40"
                   disabled={testing}
+                  sending={testing}
+                  busyPlaceholder={t("agents.test.generating")}
+                  rows={1}
                 />
-                <Button onClick={sendTest} disabled={testing || !input.trim()} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-                  {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
               </div>
             </CardContent>
           </Card>

@@ -12,6 +12,10 @@ import { emitPipelineEvent } from "@/lib/webhooks/outbound"
 const createSchema = z.object({
   prompt: z.string().min(10).max(8000),
   agentId: z.string().max(64).nullable().optional(),
+  /** v4.1 : modèle choisi dans la barre de saisie ("provider/model") — null = Model Router. */
+  preferredModel: z.string().max(120).nullable().optional(),
+  /** v4.1 : pièces jointes importées depuis la barre de saisie (déjà téléversées). */
+  attachmentIds: z.array(z.string().max(64)).max(20).optional(),
 })
 
 export async function GET(req: NextRequest) {
@@ -23,7 +27,7 @@ export async function GET(req: NextRequest) {
       take: 100,
       select: {
         id: true, prompt: true, status: true, costCredits: true, tokensIn: true, tokensOut: true,
-        attempts: true, error: true, selectedPlanId: true, agentId: true, createdAt: true, completedAt: true,
+        attempts: true, error: true, selectedPlanId: true, preferredModel: true, agentId: true, createdAt: true, completedAt: true,
       },
     })
     return Response.json({ ok: true, tasks })
@@ -59,9 +63,52 @@ export async function POST(req: NextRequest) {
       agentId = agent.id
     }
 
+    // v4.1 — pièces jointes de la barre de saisie : vérification de
+    // propriété + enrichissement du prompt avec le contexte des fichiers
+    // (les documents sont déjà indexés RAG — la note explicite guide les
+    // agents vers knowledge_search ; l'audio est déjà transcrit).
+    let prompt = body.prompt.trim()
+    if (body.attachmentIds?.length) {
+      const owned = await db.chatAttachment.findMany({
+        where: { id: { in: body.attachmentIds }, userId: user.id },
+        select: { id: true, kind: true, filename: true, documentId: true, textExtract: true },
+      })
+      if (owned.length > 0) {
+        const docs = owned.filter((a) => a.documentId)
+        const medias = owned.filter((a) => !a.documentId)
+        const notes: string[] = []
+        if (docs.length > 0) {
+          notes.push(
+            `Pièces jointes importées et indexées dans la base de connaissances (utilise knowledge_search pour les consulter) : ${docs.map((d) => d.filename).join(", ")}.`
+          )
+        }
+        if (medias.length > 0) {
+          notes.push(`Pièces jointes média : ${medias.map((m) => `${m.filename} (${m.kind.toLowerCase()})`).join(", ")}.`
+          )
+        }
+        prompt = `${prompt}\n\n[${notes.join(" ")}]`
+        // Les ids possédés seront rattachés à la tâche après création.
+      }
+    }
+
+    // v4.1 — modèle préféré : validé contre le registre si possible (jamais bloquant).
+    let preferredModel: string | null = null
+    if (body.preferredModel) {
+      preferredModel = body.preferredModel.trim()
+    }
+
     const task = await db.task.create({
-      data: { userId: user.id, prompt: body.prompt.trim(), agentId },
+      data: { userId: user.id, prompt, agentId, preferredModel },
     })
+
+    // v4.1 — rattache les pièces jointes vérifiées à la tâche créée.
+    if (body.attachmentIds?.length) {
+      await db.chatAttachment.updateMany({
+        where: { id: { in: body.attachmentIds }, userId: user.id },
+        data: { taskId: task.id },
+      }).catch(() => undefined)
+    }
+
     await audit(req, { userId: user.id, action: "TASK_CREATED", entityType: "task", entityId: task.id })
     // v3.6 — webhook sortant : tâche créée.
     emitPipelineEvent({

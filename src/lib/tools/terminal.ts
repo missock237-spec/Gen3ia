@@ -44,7 +44,10 @@ const SHELL = process.env.GEN3IA_TERMINAL_SHELL ?? "bash"
  * principal — mais d'arrêter net les commandes catastrophiques évidentes.
  */
 const DESTRUCTIVE_PATTERNS: Array<{ re: RegExp; reason: string }> = [
-  { re: /\brm\s+[^;|&]*\s-(?:[a-z]*r[a-z]*f|f[a-z]*r)[a-z]*\b\s+(?:\/|~|\$HOME|\/\*)/i, reason: "suppression récursive d'un répertoire racine" },
+  // v4.1 — correctif : la forme la plus courante (rm -rf /) passait le filtre
+  // (l'ancien motif exigeait un argument entre rm et le drapeau). Lookaheads
+  // pour rattraper aussi les drapeaux séparés (rm -r -f /).
+  { re: /\brm\b(?=[^;|&]*\s-[a-z]*r)(?=[^;|&]*\s-[a-z]*f)[^;|&]*\s(?:\/|~|\$HOME|\/\*|$)/i, reason: "suppression récursive d'un répertoire racine" },
   { re: /\b(?:mkfs(?:\.\w+)?|fdisk|parted|sfdisk)\b/i, reason: "manipulation de système de fichiers/périphériques" },
   { re: /\b(?:shutdown|reboot|halt|poweroff|init\s+[06])\b/i, reason: "arrêt/redémarrage du système" },
   { re: /\bdd\s+[^;|&]*\bof=\/dev\//i, reason: "écriture brute sur un périphérique" },

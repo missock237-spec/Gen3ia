@@ -1,17 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/app/status-badge";
+import { ChatComposer, type ChatComposerSubmit } from "@/components/chat/chat-composer";
+import { findWorkflow } from "@/lib/workflows/catalog";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 import { usePolling, apiPost, formatCredits } from "@/lib/client/hooks";
-import { Loader2, Plus, Zap, ChevronRight, Bot } from "lucide-react";
+import { Zap, ChevronRight, Bot, Search } from "lucide-react";
 
 interface TaskRow {
   id: string
@@ -28,16 +28,35 @@ export default function TasksPage() {
   const { toast } = useToast();
   const { t, lang } = useI18n();
   const router = useRouter();
-  const [prompt, setPrompt] = useState("");
   const [agentId, setAgentId] = useState("")
   const [creating, setCreating] = useState(false)
+  const [search, setSearch] = useState("")
+  // v4.1 — workflow pré-chargé depuis la bibliothèque (/tasks?template=key).
+  const [templatePrompt, setTemplatePrompt] = useState("")
   const { data, loading, reload } = usePolling<{ ok: boolean; tasks: TaskRow[] }>("/api/tasks", 5000)
   const { data: agentsData } = usePolling<{ ok: boolean; agents: { id: string; name: string; status: string }[] }>("/api/agents")
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const key = params.get("template")
+    if (!key) return
+    const workflow = findWorkflow(key)
+    if (!workflow) return
+    setTemplatePrompt(workflow.prompt[lang] ?? workflow.prompt.fr)
+    toast({ title: t("workflows.templateLoaded"), description: workflow.title[lang] ?? workflow.title.fr })
+    // Nettoie l'URL (le prompt reste dans la barre de saisie).
+    window.history.replaceState({}, "", "/tasks")
+  }, [lang, t])
+
   const tasks = data?.tasks ?? []
   const agents = (agentsData?.agents ?? []).filter((a) => a.status !== "ARCHIVED")
+  // v4.1 (captures) — recherche de projets/tâches.
+  const filtered = search.trim()
+    ? tasks.filter((task) => task.prompt.toLowerCase().includes(search.trim().toLowerCase()))
+    : tasks
 
-  async function createTask() {
+  async function createTask(payload: ChatComposerSubmit) {
+    const prompt = payload.text
     if (prompt.trim().length < 10) {
       toast({ title: t("tasks.errors.tooShort"), description: t("tasks.errors.tooShortDesc"), variant: "destructive" })
       return
@@ -47,10 +66,11 @@ export default function TasksPage() {
       const res = await apiPost<{ task: { id: string } }>("/api/tasks", {
         prompt: prompt.trim(),
         agentId: agentId || null,
+        preferredModel: payload.model,
+        attachmentIds: payload.attachments.map((a) => a.id),
       })
       if (!res.ok) throw new Error(res.error)
       toast({ title: t("tasks.launched.title"), description: t("tasks.launched.desc") })
-      setPrompt("")
       await reload()
       router.push(`/tasks/${res.task.id}`)
     } catch (err) {
@@ -77,11 +97,15 @@ export default function TasksPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+          {/* v4.1 — barre de saisie enrichie : micro vocal, envoi, + (connecteurs/fichiers tous types), modèle */}
+          <ChatComposer
+            defaultValue={templatePrompt}
+            onSend={createTask}
+            sending={creating}
+            sendLabel={t("tasks.launch")}
             placeholder={t("tasks.promptPlaceholder")}
-            className="min-h-[100px] bg-zinc-950 border-zinc-800 focus-visible:ring-emerald-500/40"
+            minLength={10}
+            rows={3}
           />
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 space-y-1.5">
@@ -97,16 +121,6 @@ export default function TasksPage() {
                 ))}
               </select>
             </div>
-            <div className="flex items-end">
-              <Button
-                onClick={createTask}
-                disabled={creating || prompt.trim().length < 10}
-                className="w-full sm:w-auto bg-emerald-500 text-zinc-950 hover:bg-emerald-400 font-semibold h-9"
-              >
-                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                <span className="ml-2">{t("tasks.launch")}</span>
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -114,19 +128,31 @@ export default function TasksPage() {
       {/* Liste */}
       <Card className="bg-zinc-900/40 border-zinc-800">
         <CardHeader>
-          <CardTitle className="text-base">{t("tasks.listTitle", { count: tasks.length })}</CardTitle>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <CardTitle className="text-base">{t("tasks.listTitle", { count: filtered.length })}</CardTitle>
+            {/* v4.1 (captures) — recherche des tâches */}
+            <div className="relative sm:w-72">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("tasks.searchPlaceholder")}
+                className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 pl-9 pr-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full bg-zinc-800/60" />)}</div>
-          ) : tasks.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-zinc-500">
               <Zap className="h-10 w-10 mx-auto mb-3 text-zinc-700" />
-              <p className="text-sm">{t("tasks.empty")}</p>
+              <p className="text-sm">{search.trim() ? t("tasks.searchEmpty", { query: search.trim() }) : t("tasks.empty")}</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {tasks.map((task) => (
+              {filtered.map((task) => (
                 <Link
                   key={task.id}
                   href={`/tasks/${task.id}`}

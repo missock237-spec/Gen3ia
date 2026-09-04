@@ -64,9 +64,12 @@ export function kindForMime(contentType: string, filename: string): AttachmentKi
 
 /** PDF → texte (pdf-parse, import direct pour éviter le mode debug). */
 async function extractPdfText(bytes: Buffer): Promise<string> {
-  // require dynamique : la lib est CommonJS et ne doit pas entrer dans
+  // import dynamique : la lib est CommonJS et ne doit pas entrer dans
   // le bundle client — résolue uniquement côté serveur Node.
-  const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (b: Buffer) => Promise<{ text: string }>
+  const mod = (await import("pdf-parse/lib/pdf-parse.js")) as unknown as {
+    default: (b: Buffer) => Promise<{ text: string }>
+  }
+  const pdfParse = mod.default ?? (mod as unknown as (b: Buffer) => Promise<{ text: string }>)
   const result = await pdfParse(bytes)
   return result.text ?? ""
 }

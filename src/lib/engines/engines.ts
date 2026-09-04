@@ -98,6 +98,8 @@ export interface PlannerInput {
   userId?: string
   taskId?: string
   agentId?: string
+  /** v4.1 — modèle choisi par l'utilisateur (barre de saisie enrichie). */
+  preferredModel?: string
 }
 
 export class PlannerEngine extends BaseEngine<PlannerInput, Plan[]> {
@@ -128,6 +130,7 @@ export class PlannerEngine extends BaseEngine<PlannerInput, Plan[]> {
         const r = await generatePlans(input.prompt, input.analysis, {
           previousFailure: input.previousFailure ?? retryCtx.previousError,
           memories: input.memories,
+          preferredModel: input.preferredModel,
           feedbackBlock: input.feedbackBlock,
           crossAgentBlock: input.crossAgentBlock,
           allowedTools: input.allowedTools,

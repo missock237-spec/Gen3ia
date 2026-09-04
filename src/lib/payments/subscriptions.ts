@@ -42,7 +42,7 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = PLAN_OFFERS.map((offer) =>
   monthlyPrice: offer.price,
   yearlyPrice: offer.price * 10,
   currency: offer.currency,
-  maxAgents: offer.key === "starter" ? 10 : offer.key === "pro" ? 50 : 200,
+  maxAgents: offer.key === "starter" ? 10 : offer.key === "plus" ? 25 : offer.key === "pro" ? 50 : 200,
   features: offer.features,
 }))
 
@@ -120,7 +120,12 @@ export async function activateSubscription(params: {
 
   // Le plan du compte suit l'abonnement actif (bonus fonctionnels : priorité
   // de file, couloir critique du pool de workers — cf. v3.6 performance).
-  const planKey = params.planKey === "business" ? "ENTERPRISE" : params.planKey === "pro" ? "PRO" : "FREE"
+  const planKey =
+    params.planKey === "business"
+      ? "ENTERPRISE"
+      : params.planKey === "pro" || params.planKey === "plus"
+        ? "PRO"
+        : "FREE"
   await db.user.update({
     where: { id: params.userId },
     data: { plan: planKey },

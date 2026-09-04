@@ -69,6 +69,14 @@ export async function GET(req: NextRequest) {
         multiModelPlans: true,
         vectorStore: activeBackend(),
         unifiedApi: ["/api/v1/chat", "/api/v1/models", "/api/v1/models/select", "/api/v1/embeddings", "/api/v1/files", "/api/v1/knowledge", "/api/v1/jobs"],
+        /** v4.1 — mise à jour entreprise (terminal agents, code viewer, saisie enrichie, workflows, vocal, plan 5000) */
+        agentTerminal: { execution: "agents-only", humanView: "read-only" },
+        codeViewer: { hitl: true, versions: true },
+        chatComposer: { voice: true, attachments: "all-types", connectors: true, modelSelector: true },
+        workflows: { catalog: true, pins: true },
+        voiceMode: { personas: 5, dictation: true, asr: true },
+        toolsPage: "settings#tools",
+        billingPlans: { tiers: [2000, 5000, 10000, 50000], processor: "chariow" },
       },
       time: new Date().toISOString(),
     })

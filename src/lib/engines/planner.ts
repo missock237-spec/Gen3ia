@@ -119,6 +119,10 @@ export async function generatePlans(
     userId?: string
     taskId?: string
     agentId?: string
+    /** v4.1 — modèle choisi par l'utilisateur dans la barre de saisie
+     * ("provider/model") : contrainte forte — tous les plans l'utilisent,
+     * la diversité A-E est neutralisée (choix explicite humain). */
+    preferredModel?: string
   }
 ): Promise<{ plans: Plan[]; tokensIn: number; tokensOut: number }> {
   const catalogKeys = availableToolKeys()
@@ -171,7 +175,15 @@ export async function generatePlans(
   }))
 
   // v4.0 — Phase 10 : diversité multi-modèles (un modèle par plan, si registre).
-  const diversified = await assignDiverseModels(prompt, plans, context)
+  // v4.1 — preferredModel (choix utilisateur) : prioritaire sur la diversité.
+  const diversified = context?.preferredModel
+    ? plans.map((p) => ({
+        ...p,
+        model: context.preferredModel,
+        rationale: p.rationale + ` Modèle imposé par l'utilisateur : ${context.preferredModel}.`,
+        steps: p.steps.map((s) => ({ ...s, model: context.preferredModel!.split("/").pop() })),
+      }))
+    : await assignDiverseModels(prompt, plans, context)
 
   return { plans: diversified, tokensIn: result.tokensIn, tokensOut: result.tokensOut }
 }

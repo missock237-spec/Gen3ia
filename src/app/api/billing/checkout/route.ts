@@ -22,7 +22,7 @@ import { audit } from "@/lib/engines/audit"
  */
 const checkoutSchema = z
   .object({
-    planKey: z.enum(["starter", "pro", "business"]).optional(),
+    planKey: z.enum(["starter", "plus", "pro", "business"]).optional(),
     credits: z.number().int().optional(),
   })
   .refine((b) => Boolean(b.planKey) !== Boolean(b.credits && b.credits > 0), {

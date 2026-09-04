@@ -25,7 +25,7 @@ import {
  *          conservés jusqu'au bout de la période payée).
  */
 const subscribeSchema = z.object({
-  planKey: z.enum(["starter", "pro", "business"]),
+  planKey: z.enum(["starter", "plus", "pro", "business"]),
   interval: z.enum(["monthly", "yearly"]),
 })
 

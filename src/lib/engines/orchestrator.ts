@@ -299,6 +299,8 @@ export async function advanceTask(
           userId: user.id,
           taskId: task.id,
           agentId: agent?.id ?? undefined,
+          // v4.1 — modèle choisi par l'utilisateur (barre de saisie enrichie).
+          preferredModel: task.preferredModel ?? undefined,
         }, ctx)
         if (execution.value.length === 0) {
           throw new EngineError("PLANNING_FAILED", "Le planificateur n'a produit aucun plan exploitable.")
@@ -471,7 +473,8 @@ export async function advanceTask(
             knowledgeContext,
             memories: memoryStrings,
             // v4.0 — Phase 10 : modèle dédié du plan (diversité A-E).
-            modelOverride: planModelId ?? undefined,
+            modelOverride: planModelId
+              ?? (task.preferredModel ? (task.preferredModel.includes("/") ? task.preferredModel.split("/").slice(1).join("/") : task.preferredModel) : undefined),
           },
           callbacks: {
             onStepStart: async (i, title) => {

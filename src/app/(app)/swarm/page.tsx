@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { ChatComposer } from "@/components/chat/chat-composer";
 import { useI18n } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import { Loader2, Users, Network, ChevronDown, ChevronUp, PlayCircle } from "lucide-react";
@@ -70,8 +71,9 @@ export default function SwarmPage() {
     void refresh();
   }, [refresh]);
 
-  async function launch() {
-    if (prompt.trim().length < 10) {
+  async function launch(payload?: { text: string }) {
+    const text = payload?.text ?? prompt
+    if (text.trim().length < 10) {
       toast({ title: t("swarm.errors.promptShort"), description: t("swarm.errors.promptShortDesc"), variant: "destructive" });
       return;
     }
@@ -80,7 +82,7 @@ export default function SwarmPage() {
       const res = await fetch("/api/swarm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, strategy }),
+        body: JSON.stringify({ prompt: text, strategy }),
       });
       const json = (await res.json()) as { ok: boolean; error?: string; sessionId?: string };
       if (json.ok) {
@@ -136,17 +138,19 @@ export default function SwarmPage() {
             <Users className="h-4 w-4" /> {t("swarm.debate")}
           </button>
         </div>
-        <Textarea
+        {/* v4.1 — barre de saisie enrichie : micro vocal, envoi, + (connecteurs/fichiers tous types), modèle */}
+        <ChatComposer
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={4}
+          onChange={setPrompt}
+          onSend={async (p) => {
+            await launch({ text: p.text })
+          }}
           placeholder={t("swarm.promptPlaceholder")}
-          className="bg-zinc-950 border-zinc-800"
+          minLength={10}
+          rows={3}
+          sending={running}
+          sendLabel={t("swarm.launch")}
         />
-        <Button onClick={() => void launch()} disabled={running} className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400">
-          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-          {t("swarm.launch")}
-        </Button>
       </div>
 
       {loading ? (

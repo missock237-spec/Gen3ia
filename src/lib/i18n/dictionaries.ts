@@ -23,9 +23,14 @@ import { webhooks } from "./dict/webhooks";
 import { watchdog } from "./dict/watchdog";
 import { traces } from "./dict/traces";
 import { finetune } from "./dict/finetune"
-import { workspace } from "./dict/workspace";
 import { admin } from "./dict/admin";
 import { docs } from "./dict/docs";
+import { terminal } from "./dict/terminal";
+import { files } from "./dict/files";
+import { voice } from "./dict/voice";
+import { input } from "./dict/input";
+import { workflows } from "./dict/workflows";
+
 
 /**
  * Dictionnaires bilingues GEN3IA — le français est la source de vérité
@@ -34,7 +39,7 @@ import { docs } from "./dict/docs";
 
 export type Lang = "fr" | "en";
 
-const DOMAINS = [common, nav, auth, landing, dashboard, live, agents, tasks, settings, billing, connectors, knowledge, memory, marketplace, skills, tools, apikeys, sdk, swarm, webhooks, batch, watchdog, traces, finetune, admin, ads, docs, workspace] as const;
+const DOMAINS = [common, nav, auth, landing, dashboard, live, agents, tasks, settings, billing, connectors, knowledge, memory, marketplace, skills, tools, apikeys, sdk, swarm, webhooks, batch, watchdog, traces, finetune, admin, ads, docs, terminal, files, voice, input, workflows] as const;
 
 function merge(lang: "fr" | "en"): Record<string, string> {
   const out: Record<string, string> = {};

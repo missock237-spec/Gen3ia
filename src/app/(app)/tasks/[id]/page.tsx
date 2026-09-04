@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/app/status-badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useDictation } from "@/components/chat/use-dictation";
 import { useI18n } from "@/lib/i18n";
 import { usePolling, apiPost, formatCredits, formatDate } from "@/lib/client/hooks";
 import { PipelineDag } from "@/components/tasks/pipeline-dag";
@@ -23,7 +24,7 @@ import {
   Loader2, CheckCircle2, XCircle, Clock, ChevronRight, ShieldAlert, FileCheck,
   Brain, GitBranch, Scale, Play, RefreshCcw, GraduationCap, Package, Coins,
   ListChecks, Pencil, Plus, Trash2, Sparkles, Image as ImageIcon, BarChart3,
-  Network, Send, Download, Bug, SlidersHorizontal, MessageSquare, TerminalSquare, FileCode2,
+  Network, Send, Download, Bug, SlidersHorizontal, MessageSquare, TerminalSquare, FileCode2, Mic, MicOff,
 } from "lucide-react";
 
 /** Contenu multimodal généré (image/diagramme/graphique) par la tâche. */
@@ -119,6 +120,10 @@ export default function TaskDetailPage() {
   
   // Chat Multimodal
   const [multimodalPrompt, setMultimodalPrompt] = useState("")
+  // v4.1 — dictée vocale pour le générateur multimédia.
+  const mediaDictation = useDictation((text) => {
+    setMultimodalPrompt((p) => (p ? `${p} ${text}` : text))
+  })
   const [multimodalType, setMultimodalType] = useState<"image" | "diagram" | "chart">("image")
   const [generatingMedia, setGeneratingMedia] = useState(false)
   const [generatedMediaList, setGeneratedMediaList] = useState<GeneratedMedia[]>([])
@@ -346,6 +351,26 @@ export default function TaskDetailPage() {
                 </div>
 
                 <div className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={mediaDictation.toggle}
+                    disabled={!mediaDictation.supported}
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors disabled:opacity-40 ${
+                      mediaDictation.listening
+                        ? "border-red-500/40 bg-red-500/10 text-red-400 animate-pulse"
+                        : "border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                    }`}
+                    aria-label={mediaDictation.listening ? "Arrêter la dictée" : "Dicter"}
+                    title={mediaDictation.listening ? "Arrêter la dictée" : "Dicter (micro vocal)"}
+                  >
+                    {mediaDictation.transcribing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : mediaDictation.listening ? (
+                      <MicOff className="h-4 w-4" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </button>
                   <Button
                     size="sm"
                     variant={multimodalType === "image" ? "default" : "outline"}

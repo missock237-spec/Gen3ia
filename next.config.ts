@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // v4.1 — la page outils est intégrée aux paramètres (mission) :
+  // redirection serveur permanente, aucun contenu dupliqué.
+  async redirects() {
+    return [{ source: "/tools", destination: "/settings#tools", permanent: false }];
+  },
   // v3.2 — audit qualité : le typage strict (tsconfig strict:true) doit FAIRE
   // ÉCHOUER le build en cas d'erreur de type. Aucune erreur ne passe en prod.
   typescript: {
