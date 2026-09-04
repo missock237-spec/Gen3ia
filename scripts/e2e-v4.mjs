@@ -56,7 +56,7 @@ async function main() {
 
   // ── 1. Health : version 4.0 + nouvelles features ──
   const health = await call("GET", "/api/health", null, 200)
-  check("health : version 4.0.0", health.json?.version === "4.0.0", `version=${health.json?.version}`)
+  check("health : version ≥ 4.0.0 (v4.1 en production)", /^4\./.test(String(health.json?.version ?? "")), `version=${health.json?.version}`)
   const feats = health.json?.features ?? {}
   check("health : bloc huggingFace (providers/endpoints/jobs/storage)", Boolean(feats.huggingFace))
   check("health : modelRegistry + learning", Boolean(feats.modelRegistry?.learning))
@@ -206,7 +206,7 @@ async function main() {
   const v4Paths = ["/api/v1/models", "/api/v1/models/select", "/api/v1/embeddings", "/api/v1/files", "/api/v1/knowledge", "/api/v1/jobs"]
   const documented = v4Paths.filter((p) => openapi?.paths?.[p])
   check("OpenAPI 3.1 : les 6 endpoints v4 documentés", documented.length === 6, `${documented.length}/6`)
-  check("OpenAPI : version 4.0.0", openapi?.info?.version === "4.0.0")
+  check("OpenAPI : version ≥ 4.0.0", /^4\./.test(String(openapi?.info?.version ?? "")), openapi?.info?.version)
 
   // ── 12. Non-régression pages clés ──
   for (const page of ["/dashboard", "/admin", "/tasks", "/knowledge", "/docs/api"]) {
