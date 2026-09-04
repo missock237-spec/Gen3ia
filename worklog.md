@@ -286,3 +286,33 @@ Stage Summary:
 - Le Model Router apprend de la performance RÉELLE (ModelPerformance → agrégats → scores) ; les 5 plans utilisent des modèles divers ; la facturation suit le fournisseur réellement utilisé
 - Limites documentées (docs/huggingface-setup.md §7) : HF Jobs natifs limités aux kinds datasets/training (kinds GEN3IA via worker interne, même contrat) ; Qdrant/pgvector dimensionnels par modèle ; fail-open json systématique
 - Restes utilisateur (inchangés + nouveaux) : GLM_API_KEY/HF_TOKEN sur Vercel (inférence réelle + couches HF), QDRANT_URL (optionnel), rotation des tokens GitHub exposés
+
+---
+Task ID: v4.1-entreprise
+Agent: main
+Task: Session du 2026-09-04/05 — mise à jour entreprise (mission utilisateur) : terminal agents, code viewer, saisie enrichie sur tous les chats, captures analysées, 5000 FCFA+, outils dans paramètres, déploiement + vérification intégrale
+
+Work Log:
+- Reprise du commit interrompu 2c974f9 (UUID) : audit complet — backend v4.1 déjà présent (terminal.ts 521 l, agent-files, chat-attachments, voice APIs, models API, Prisma 7 modèles, i18n workspace 232 l) ; UI et intégrations manquantes
+- Faux positif P0 identifié : « enuOpen » = artefact d'affichage du terminal (séquence [m mangée) — git blob, od -c et TSC confirment [menuOpen correct ; layout dark déjà présent
+- Terminal agents : CORRECTIF SÉCURITÉ RÉEL — rm -rf / contournait la blocklist (l'ancien motif exigeait un argument entre rm et le drapeau) → lookaheads rattrapant rm -rf /, rm -fr /etc, rm -r -f /, rm -rf ~, $HOME ; légitimes (rm -rf build/) préservés ; tests unitaires + vérification tsx
+- ChatComposer universel (src/components/chat/) : micro vocal (Web Speech + repli MediaRecorder → /api/voice/transcribe ASR réel), bouton envoyer, bouton + multifonction (connecteurs 1467 + fichiers TOUS types via /api/chat/attachments : PDF→RAG pdf-parse, audio→ASR, images/vidéos→HF Bucket), sélecteur Modèle (/api/models, 16 modèles, option Automatique) ; useDictation extrait pour batch/multimédia ; apiPostForm ajouté aux hooks
+- Intégration TOUS les chats : tâches (createTask payload + preferredModel + attachmentIds), console agent, salon live (compact), swarm, batch (dictée), multimédia page tâche (dictée)
+- preferredModel plomberie complète : Task.preferredModel (3 schémas + migration ALTER idempotente db-init), zod tâches, planner (priorité choix humain sur diversité A-E), engines.ts PlannerInput, executor override de repli, GET /api/tasks expose le champ
+- Captures (9 analysées VLM) : /workflows (17 modèles catégorisés, épinglage WorkflowPin persisté + DDL, pré-remplissage /tasks?template=, recherche) ; Mode vocal dans paramètres (5 personas carrousel + points, langue, historique dictée effaçable, conversations arrière-plan) ; recherche tâches ; sections paramètres avec ancres
+- Facturation : plan Plus 5000 XOF (700 crédits, 25 agents, 4 features) — Chariow UNIQUE ; échelle 2000<5000<10000<50000 ; enums zod checkout/subscription ; maxAgents 10<25<50<200
+- Outils → paramètres : ToolsCatalogCard (#tools), /tools redirection 307 next.config.ts (page supprimée), nav /settings#tools
+- i18n : dette de la session interrompue corrigée — workspace.ts scindé en 5 domaines (terminal 14, files 31, voice 27, input 26, workflows 9 clés) + clés tasks déplacées ; parité fr/en rétablie ; test domains mis à jour
+- OpenAPI 4.1.0 : 10 endpoints v4.1 documentés (workflows, models, voice×3, chat/attachments, terminal sessions, agent-files) ; health v4.1.0 (agentTerminal, codeViewer, chatComposer, workflows, voiceMode, toolsPage, billingPlans)
+- Version package.json 4.1.0 ; docs/architecture-v4.1.md complet
+- Tests : workspace-v41.test.ts (29 tests : sécurité terminal + régression rm -rf, intégration composer partout, workflows, plans, preferredModel, i18n domaines) — 400/400 ; tsc 0 ; eslint 0 ; build 90 pages
+- E2E v4.1 (scripts/e2e-v41.mjs, 77 contrôles) : local 77/77 puis production 77/77 — health 4.1.0, workflows 17 + épingles réelles + 9 workflows captures présents, voix (persona sage persisté, 400 propre sans fichier), pièces jointes (import document réel → kind DOCUMENT → RAG), preferredModel persisté + note d'attachement, terminal (404 propre, 405 POST, jamais executeTerminalCommand), /tools 307 → /settings#tools, 4 plans dont Plus 5000/700/25, registre v1 (Bearer, 16 modèles), OpenAPI 4.1.0 6/6
+- Playwright v41-ui.spec.ts (6 parcours, session partagée scripts/e2e-v41-session.mjs avec purge quota agents) : sections Mode vocal + Outils vérifiées après hydratation, redirection, composer complet (menu + : connecteurs/fichiers/images/vidéos/audio ; pilule Modèle avec Automatique ; micro ; envoi), workflows épinglage persistant rechargé, console agent enrichie — 6/6
+- Régressions : Playwright auth 3/3 + journeys 5/5 (catalogue 1467, credits min 50) ; E2E v4.0 36/38 (2 = version 4.0.0 attendue → 4.1.0, voulu) ; v3.6 TOUTES (script aligné : 4 plans, version ≥ 4) ; v3.5/v3.4 fonctionnel couvert (échecs = 429 rate-limit inscriptions/h de mon IP, pas des régressions — politique mdp 9 tests unitaires + Playwright, catalogue 1467 vérifié health/v36/journeys)
+- Git : commit 12f4736 (v4.1 complet + fix session file gitignoré) + 351847c (e2e v36 aligné) poussés ; Vercel : v4.1.0 déployée (~2 min 30)
+
+Stage Summary:
+- Production https://gen3ia.online v4.1.0 pleinement déployée et vérifiée (77 contrôles E2E v4.1 + 6 parcours Playwright + non-régressions v4.0/v3.6/v3.5/v3.4, 0 échec réel)
+- Les 7 exigences mission livrées : terminal agents-only (avec correctif sécurité rm -rf réel), code viewer HITL complet, saisie enrichie sur tous les chats, captures intégrées (workflows 17 + mode vocal + recherche), connecteurs 1467 (>300), plan 5000 FCFA via Chariow unique, outils dans paramètres
+- Correctif sécurité découvert par les nouveaux tests : blocklist rm renforcée (lookaheads drapeaux séparés)
+- Restes utilisateur (inchangés) : GLM_API_KEY/HF_TOKEN sur Vercel (inférence réelle + couches HF), AUTH_GITHUB/GOOGLE_* (login OAuth), rotation tokens GitHub/Vercel exposés historiquement
