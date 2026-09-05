@@ -1070,6 +1070,21 @@ model OAuthAppConfig {
   @@index([active])
 }
 
+
+// ---------------------------------------------------------------------------
+// v4.2 — Intégration Composio hébergée : secrets de plateforme (clé API).
+// La clé Composio (COMPOSIO_API_KEY) peut venir de l'environnement OU être
+// gérée par l'opérateur ici (chiffrée AES-256-GCM, jamais exposée au client).
+// ---------------------------------------------------------------------------
+model PlatformSecret {
+  id             String   @id @default(cuid())
+  key            String   @unique // ex. "composio" — nom logique du secret
+  encryptedValue String // valeur chiffrée AES-256-GCM (connectors/core/crypto)
+  meta           String? // JSON non sensible : { source, hint, toolkitCount }
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
 // ---------------------------------------------------------------------------
 // v3.4 — Mode live : sessions de partage d'écran temps réel (WebRTC P2P)
 // ---------------------------------------------------------------------------

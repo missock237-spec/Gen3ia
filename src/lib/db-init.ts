@@ -820,6 +820,17 @@ CREATE TABLE IF NOT EXISTS "OAuthAppConfig" (
     "updatedAt" DATETIME NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS "PlatformSecret" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "key" TEXT NOT NULL,
+    "encryptedValue" TEXT NOT NULL,
+    "meta" TEXT,
+    "createdBy" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "PlatformSecret_key_key" ON "PlatformSecret"("key");
+
 CREATE TABLE IF NOT EXISTS "LiveSession" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "code" TEXT NOT NULL,
@@ -2162,6 +2173,19 @@ CREATE TABLE IF NOT EXISTS "OAuthAppConfig" (
 
     CONSTRAINT "OAuthAppConfig_pkey" PRIMARY KEY ("id")
 );
+
+CREATE TABLE IF NOT EXISTS "PlatformSecret" (
+    "id" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "encryptedValue" TEXT NOT NULL,
+    "meta" TEXT,
+    "createdBy" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PlatformSecret_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "PlatformSecret_key_key" ON "PlatformSecret"("key");
 
 CREATE TABLE IF NOT EXISTS "LiveSession" (
     "id" TEXT NOT NULL,

@@ -10,6 +10,7 @@ import { tasks } from "./dict/tasks";
 import { settings } from "./dict/settings";
 import { billing } from "./dict/billing";
 import { connectors } from "./dict/connectors";
+import { composio } from "./dict/composio";
 import { knowledge } from "./dict/knowledge";
 import { memory } from "./dict/memory";
 import { marketplace } from "./dict/marketplace";
@@ -39,7 +40,7 @@ import { workflows } from "./dict/workflows";
 
 export type Lang = "fr" | "en";
 
-const DOMAINS = [common, nav, auth, landing, dashboard, live, agents, tasks, settings, billing, connectors, knowledge, memory, marketplace, skills, tools, apikeys, sdk, swarm, webhooks, batch, watchdog, traces, finetune, admin, ads, docs, terminal, files, voice, input, workflows] as const;
+const DOMAINS = [common, nav, auth, landing, dashboard, live, agents, tasks, settings, billing, connectors, composio, knowledge, memory, marketplace, skills, tools, apikeys, sdk, swarm, webhooks, batch, watchdog, traces, finetune, admin, ads, docs, terminal, files, voice, input, workflows] as const;
 
 function merge(lang: "fr" | "en"): Record<string, string> {
   const out: Record<string, string> = {};

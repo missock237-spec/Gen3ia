@@ -8,6 +8,12 @@ import {
   initiateConnection,
 } from "@/lib/connectors/core/connections"
 import { appAvailability, ensureCatalogApps } from "@/lib/connectors/apps"
+import {
+  authorizeComposioApp,
+  composioConnectable,
+  ensureComposioToolkits,
+  isComposioConfigured,
+} from "@/lib/connectors/composio/provider"
 
 const initiateSchema = z.object({
   appSlug: z.string().min(1),
@@ -26,6 +32,8 @@ const directSchema = z.object({
 /**
  * POST /api/connectors/connect
  * - body { appSlug } → démarre un flux OAuth (retourne redirectUrl) ;
+ * - body { appSlug } + app gérée Composio → autorisation one-click
+ *   hébergée (mode COMPOSIO, redirectUrl Composio) — v4.2 ;
  * - body { appSlug, token, … } → connexion directe (import de token
  *   ou identifiants Basic) sans redirection.
  */
@@ -62,14 +70,45 @@ export async function POST(req: NextRequest) {
       throw new ApiError(400, "Corps de requête invalide : appSlug requis.")
     }
     const app = getApp(parsed.data.appSlug)
-    if (!app) throw new ApiError(404, `Application inconnue : ${parsed.data.appSlug}`)
-    const availability = appAvailability(app)
+    const composioEnabled = await isComposioConfigured()
+    if (composioEnabled) {
+      // Rafraîchit la liste live des toolkits managés (cache 10 min).
+      await ensureComposioToolkits().catch(() => undefined)
+    }
+    if (!app) {
+      // App non résolue localement mais gérée Composio : flux hébergé.
+      if (composioEnabled && composioConnectable(parsed.data.appSlug)) {
+        const result = await authorizeComposioApp(user.id, parsed.data.appSlug)
+        return jsonOk({
+          mode: "COMPOSIO",
+          redirectUrl: result.redirectUrl,
+          requestId: result.requestId,
+          expect: result.redirectUrl ? "COMPOSIO_REDIRECT" : "COMPOSIO_PENDING",
+          appSlug: parsed.data.appSlug,
+        })
+      }
+      throw new ApiError(404, `Application inconnue : ${parsed.data.appSlug}`)
+    }
+    const availability = appAvailability(app, { composioEnabled })
     if (!availability.connectable) {
       throw new ApiError(
         503,
         `« ${app.name} » n'est pas connectable : ${availability.reason ?? "configuration serveur absente"}`
       )
     }
+
+    // 2b. Mode COMPOSIO : autorisation one-click via la plateforme hébergée.
+    if (availability.mode === "COMPOSIO") {
+      const result = await authorizeComposioApp(user.id, parsed.data.appSlug)
+      return jsonOk({
+        mode: "COMPOSIO",
+        redirectUrl: result.redirectUrl,
+        requestId: result.requestId,
+        expect: result.redirectUrl ? "COMPOSIO_REDIRECT" : "COMPOSIO_PENDING",
+        appSlug: parsed.data.appSlug,
+      })
+    }
+
     if (availability.mode === "TOKEN_IMPORT" && !app.oauth2 && !app.oauth1) {
       throw new ApiError(
         400,

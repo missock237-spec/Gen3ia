@@ -128,6 +128,23 @@ export function getCatalogTools(slug: string): { tools: CatalogTool[]; triggers:
 }
 
 // ─────────────────────────────────────────────────────────────
+// Apps gérées Composio (auth OAuth opérée par la plateforme)
+// ─────────────────────────────────────────────────────────────
+
+/** Ensemble des slugs dont au moins un schéma d'auth est géré par Composio. */
+const COMPOSIO_MANAGED = new Set<string>(
+  APPS.filter((a) => (a.composioManaged ?? []).length > 0).map((a) => a.slug)
+)
+
+/**
+ * Slugs du catalogue gérés par Composio (OAuth managé) — base statique
+ * utilisée quand la liste live (`toolkits.list`) n'est pas encore chargée.
+ */
+export function composioManagedSlugs(): Set<string> {
+  return COMPOSIO_MANAGED
+}
+
+// ─────────────────────────────────────────────────────────────
 // Disponibilité « prêt à connecter » (modèle Composio managé)
 // ─────────────────────────────────────────────────────────────
 

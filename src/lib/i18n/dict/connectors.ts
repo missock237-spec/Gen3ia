@@ -107,6 +107,7 @@ export const connectors = {
     "connectors.catalog.toolsRange": "Outils {from}–{to} sur {total}",
     "connectors.catalog.footer": "Catalogue Composio (MIT) — intégration locale GEN3IA. Les exécutions passent par le moteur de connecteurs chiffré de la plateforme.",
     "connectors.catalog.notActivated": "Cette application n'est pas encore activée par l'opérateur de la plateforme.",
+
   },
   en: {
     "connectors.title": "Connectors",
@@ -214,5 +215,6 @@ export const connectors = {
     "connectors.catalog.toolsRange": "Tools {from}–{to} of {total}",
     "connectors.catalog.footer": "Composio catalog (MIT) — local GEN3IA integration. Executions go through the platform's encrypted connector engine.",
     "connectors.catalog.notActivated": "This app has not been activated by the platform operator yet.",
+
   },
 };

@@ -27,6 +27,7 @@ import {
   Wrench,
   Zap,
   Hourglass,
+  Cloud,
 } from "lucide-react";
 
 /**
@@ -34,6 +35,9 @@ import {
  * L'utilisateur clique « Connecter » et autorise son compte : c'est tout.
  * Le flux OAuth utilise les identifiants de la plateforme (registre
  * opérateur), jamais ceux de l'utilisateur.
+ *
+ * v4.2 — statut COMPOSIO : apps gérées par la plateforme Composio,
+ * connectables en un clic via le SDK officiel (badge « 1-clic »).
  */
 
 interface CatalogItem {
@@ -45,8 +49,9 @@ interface CatalogItem {
   authSchemes: string[];
   toolCount: number;
   triggerCount: number;
-  status: string; // OAUTH_READY | KEY_IMPORT | COMING_SOON
+  status: string; // OAUTH_READY | COMPOSIO | KEY_IMPORT | COMING_SOON
   credSource: string | null;
+  composio?: boolean;
   native: boolean;
 }
 
@@ -61,6 +66,12 @@ interface CatalogDetail {
     credSource: string | null;
     inRegistry: boolean;
     docsUrl: string | null;
+    composio?: {
+      enabled: boolean;
+      connectable: boolean;
+      connected: boolean;
+      connection: { id: string; status: string; accountHint: string | null; connectedAt: string } | null;
+    };
   };
   tools: Array<{ slug: string; name: string; description: string | null }>;
   toolsTotal: number;
@@ -75,6 +86,11 @@ const STATUS_META: Record<string, { labelKey: TranslationKey; cls: string; icon:
     labelKey: "connectors.catalog.statusOauth",
     cls: "border-emerald-700/50 text-emerald-300",
     icon: <PlugZap className="h-3.5 w-3.5" />,
+  },
+  COMPOSIO: {
+    labelKey: "composio.catalog.status",
+    cls: "border-emerald-600/60 text-emerald-300",
+    icon: <Cloud className="h-3.5 w-3.5" />,
   },
   KEY_IMPORT: {
     labelKey: "connectors.catalog.statusKey",
@@ -117,7 +133,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
   const { toast } = useToast();
   const { t } = useI18n();
   const [items, setItems] = useState<CatalogItem[]>([]);
-  const [stats, setStats] = useState<{ apps: number; tools: number; triggers: number; categories: Array<{ name: string; count: number }>; oauthApps: number } | null>(null);
+  const [stats, setStats] = useState<{ apps: number; tools: number; triggers: number; categories: Array<{ name: string; count: number }>; oauthApps: number; composio?: { configured: boolean; toolkitCount: number; toolkitSource: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -210,6 +226,13 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
         await load();
         return;
       }
+      if (json.ok && json.mode === "COMPOSIO") {
+        // Déjà connecté côté Composio (aucune redirection nécessaire).
+        toast({ title: t("connectors.toast.saved"), description: t("connectors.toast.savedDesc", { app: app.name }) });
+        onConnected?.();
+        await load();
+        return;
+      }
       toast({
         title: t("connectors.toast.connectFailed"),
         description: json.error ?? t("connectors.catalog.notActivated"),
@@ -236,7 +259,15 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
           { label: t("connectors.catalog.apps"), value: stats?.apps ?? "…", icon: <Layers className="h-4 w-4 text-emerald-400" /> },
           { label: t("connectors.catalog.tools"), value: stats?.tools?.toLocaleString("fr-FR") ?? "…", icon: <Wrench className="h-4 w-4 text-emerald-400" /> },
           { label: t("connectors.catalog.triggers"), value: stats?.triggers?.toLocaleString("fr-FR") ?? "…", icon: <Zap className="h-4 w-4 text-emerald-400" /> },
-          { label: t("connectors.catalog.categories"), value: stats?.categories.length ?? "…", icon: <Layers className="h-4 w-4 text-emerald-400" /> },
+          {
+            label: t("connectors.catalog.categories"),
+            value: stats?.categories.length ?? "…",
+            icon: stats?.composio?.configured ? (
+              <Cloud className="h-4 w-4 text-emerald-400" />
+            ) : (
+              <Layers className="h-4 w-4 text-emerald-400" />
+            ),
+          },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
             <div className="flex items-center gap-2 text-zinc-400 text-xs">{s.icon}{s.label}</div>
@@ -288,7 +319,7 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {items.map((app) => {
             const meta = STATUS_META[app.status] ?? STATUS_META.COMING_SOON;
-            const ready = app.status === "OAUTH_READY";
+            const ready = app.status === "OAUTH_READY" || app.status === "COMPOSIO";
             return (
               <div
                 key={app.slug}
@@ -317,8 +348,8 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                 </div>
                 <Button
                   size="sm"
-                  disabled={busy === app.slug || app.status !== "OAUTH_READY"}
-                  title={app.status !== "OAUTH_READY" ? t("connectors.oauthOnly") : undefined}
+                  disabled={busy === app.slug || (app.status !== "OAUTH_READY" && app.status !== "COMPOSIO")}
+                  title={app.status !== "OAUTH_READY" && app.status !== "COMPOSIO" ? t("connectors.oauthOnly") : undefined}
                   onClick={() => void connect(app)}
                   className={`mt-3 w-full ${ready ? "bg-emerald-500 text-zinc-950 hover:bg-emerald-400" : "bg-zinc-800 text-zinc-400"}`}
                 >
@@ -403,11 +434,18 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                   )}
                   {detail.connectivity.connectable ? (
                     <Badge variant="outline" className="border-emerald-700/50 text-emerald-300">
-                      {t("connectors.catalog.oauthReady")}
+                      {detail.connectivity.mode === "COMPOSIO"
+                        ? t("composio.catalog.status")
+                        : t("connectors.catalog.oauthReady")}
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="border-zinc-700 text-zinc-400">
                       {detail.connectivity.reason ?? t("connectors.catalog.operatorRequired")}
+                    </Badge>
+                  )}
+                  {detail.connectivity.composio?.connected && (
+                    <Badge variant="outline" className="gap-1 border-emerald-600/60 text-emerald-300">
+                      <Cloud className="h-3 w-3" /> {t("composio.catalog.badge")}
                     </Badge>
                   )}
                   {detail.connectivity.credSource === "ADMIN" && (
@@ -417,12 +455,19 @@ export function CatalogSection({ onConnected }: { onConnected?: () => void }) {
                   )}
                 </div>
                 <Button
-                  disabled={busy === detail.app.slug || !detail.connectivity.connectable}
+                  disabled={
+                    busy === detail.app.slug ||
+                    detail.connectivity.composio?.connected === true ||
+                    (!detail.connectivity.connectable &&
+                      !(detail.connectivity.composio?.connectable ?? false))
+                  }
                   onClick={() => void connect(detail.app)}
                   className="mt-3 w-full bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
                 >
                   {busy === detail.app.slug ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : detail.connectivity.composio?.connected ? (
+                    <CheckCircle2 className="h-4 w-4" />
                   ) : (
                     t("connectors.catalog.connectAccount")
                   )}

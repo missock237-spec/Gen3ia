@@ -338,6 +338,41 @@ export interface ActionExecutionRequest {
   agentId?: string | null;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Clés d'outils connector (partagées local + Composio hébergé)
+// Déplacées ici (module sans dépendance) : le provider Composio et
+// le toolset les utilisent sans dépendance circulaire.
+// ─────────────────────────────────────────────────────────────
+
+/** Préfixe réservé des outils connector. */
+export const CONNECTOR_TOOL_PREFIX = "connector_";
+
+/** Clé d'outil canonique d'une action (ex: connector_github_create_issue). */
+export function connectorToolKey(appSlug: string, actionSlug: string): string {
+  return `${CONNECTOR_TOOL_PREFIX}${appSlug}_${actionSlug}`;
+}
+
+/** Parse une clé d'outil connector → { app, action } (null sinon). */
+export function parseConnectorToolKey(
+  key: string
+): { appSlug: string; actionSlug: string } | null {
+  if (!key.startsWith(CONNECTOR_TOOL_PREFIX)) return null;
+  const rest = key.slice(CONNECTOR_TOOL_PREFIX.length);
+  const separator = rest.indexOf("_");
+  if (separator <= 0) return null;
+  return { appSlug: rest.slice(0, separator), actionSlug: rest.slice(separator + 1) };
+}
+
+/** Outil LLM exposé par le moteur connectors (format registre GEN3IA). */
+export interface ConnectorTool {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  dangerous: boolean;
+  parameters: Record<string, { type: string; description: string; required: boolean }>;
+}
+
 export interface ActionExecutionResponse {
   ok: boolean;
   status: number;

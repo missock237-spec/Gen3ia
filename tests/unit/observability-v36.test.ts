@@ -49,6 +49,9 @@ beforeAll(async () => {
   await ensureSchema()
   await db.systemConfig.deleteMany({})
   await db.engineRun.deleteMany({})
+  // Déterminisme inter-exécutions : les alertes persistées (dédup 15 min)
+  // d'une exécution précédente ne doivent pas gonfler les compteurs.
+  await db.anomalyAlert.deleteMany({})
   // Deux fournisseurs pour tester le filtrage de bascule (zai réel via
   // /etc/.z-ai-config + openrouter fictif).
   process.env.OPENROUTER_API_KEY = "sk-or-test-v36"

@@ -62,3 +62,32 @@ export {
   type ConnectorTool,
 } from "./core/toolset"
 export { getApp, listApps, getAction, appAvailability, requiresRedirect } from "./apps"
+export type { AvailabilityContext, AppAvailability } from "./apps"
+export {
+  // v4.2 — Intégration Composio hébergée (SDK @composio/core)
+  resolveComposioKey,
+  isComposioConfigured,
+  setComposioKey,
+  clearComposioKey,
+  invalidateComposioKeyCache,
+  composioUserId,
+  COMPOSIO_SECRET_KEY,
+} from "./composio/client"
+export {
+  composioStatus,
+  composioConnectable,
+  ensureComposioToolkits,
+  authorizeComposioApp,
+  listComposioConnections,
+  getActiveComposioConnection,
+  deleteComposioConnection,
+  executeComposioAction,
+  composioToolsForToolkit,
+  composioToolsForUser,
+  invalidateComposioCaches,
+} from "./composio/provider"
+export type {
+  ComposioStatus,
+  ComposioConnectionView,
+  ComposioAuthorizeResult,
+} from "./composio/provider"

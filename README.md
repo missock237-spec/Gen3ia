@@ -139,6 +139,25 @@ Les outils `code_runner`, `http_fetch` et `composio_execute` sont **sensibles** 
 - **Vérification E2E réelle** : `BASE_URL=… GITHUB_TOKEN=ghp_… node scripts/connectors-verify.mjs` (appel authentifié à api.github.com, catalogue, erreurs propres).
 - Page UI `/connectors` : catalogue, connexion, console d'exécution d'action. API : `/api/connectors/*`.
 
+## ☁️ Composio Cloud — 300+ apps en un clic (v4.2, ADR-0016)
+
+Intégration du **SDK officiel `@composio/core`** en complément du moteur local : avec une clé
+API Composio, les ~300 apps gérées par leur plateforme deviennent connectables **en un clic**
+(OAuth opéré par Composio, aucun identifiant local), et leurs outils s'exécutent par les agents
+via le même registre (`connector_<app>_<ACTION>`).
+
+- **Clé API** : `COMPOSIO_API_KEY` (env, prioritaire) **ou** panneau admin de la page
+  Connecteurs (clé chiffrée AES-256-GCM en base, table `PlatformSecret`, rotation à chaud).
+  Obtention : [dashboard.composio.dev](https://dashboard.composio.dev) → Settings → API Keys
+  (gratuit pour développer).
+- **Priorités** : OAuth local préconfiguré > Composio managé > import de token ;
+  exécution : connexion locale active d'abord (secrets GEN3IA), relay Composio ensuite.
+- **Sécurité** : la clé n'est jamais exposée au client ; vues de connexions sanitisées
+  (id `cpc_`, statut, indice de compte) ; chaque appel réseau borné (15 s) ; span OTel.
+- **API** : `POST /api/connectors/connect` (mode `COMPOSIO`), `GET /api/connectors/connections`
+  (fusion locale + hébergée), `GET/POST/DELETE /api/admin/composio` (gestion de la clé, admin).
+- Sans clé : comportement strictement inchangé (moteur local seul).
+
 ## 🧭 Model Router (v4.0 — intelligent et apprenant)
 
 Routage en deux niveaux, sans jamais coupler le cœur à un fournisseur :

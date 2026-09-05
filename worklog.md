@@ -317,3 +317,31 @@ Stage Summary:
 - Les 7 exigences mission livrées : terminal agents-only (avec correctif sécurité rm -rf réel), code viewer HITL complet, saisie enrichie sur tous les chats, captures intégrées (workflows 17 + mode vocal + recherche), connecteurs 1467 (>300), plan 5000 FCFA via Chariow unique, outils dans paramètres
 - Correctif sécurité découvert par les nouveaux tests : blocklist rm renforcée (lookaheads drapeaux séparés)
 - Restes utilisateur (inchangés) : GLM_API_KEY/HF_TOKEN sur Vercel (inférence réelle + couches HF), AUTH_GITHUB/GOOGLE_* (login OAuth), rotation tokens GitHub/Vercel exposés historiquement
+
+---
+Task ID: 42
+Agent: main
+Task: Intégration Composio Cloud officielle — clone repo, installation @composio/core + @composio/vercel + ai, obtention de la clé, adaptation au projet (mission utilisateur)
+
+Work Log:
+- Repo déjà cloné et synchronisé avec origin (main, clean) — vérification fetch
+- Installation : @composio/core@0.18.1, @composio/vercel@0.12.0, ai@7.0.93 (bun, lockfile préservé)
+- Audit complet du SDK installé (types + dist) : Composio/toolkits/tools/connectedAccounts, formats wire v3.1 réels (snake_case), pagination, exigence de version de toolkit à l'exécution — zéro API inventée
+- Prisma : modèle PlatformSecret (clé API chiffrée AES-256-GCM) dans les 3 schémas + DDL non destructif db-init (SQLite + PG), table créée et vérifiée
+- Nouveau module src/lib/connectors/composio/ : client.ts (résolution clé env > DB, instance SDK cachée par clé, timeouts 15 s, clé jamais exposée) + provider.ts (statut live toolkits managés cache 10 min + repli statique 121 apps, authorize one-click, connexions sanitisées id cpc_ cache 30 s, exécution tools.execute version épinglée, outils convertis au registre GEN3IA, anti-doublon apps locales)
+- Branchement toolset : executeAction relay Composio quand aucune connexion locale (priorité locale préservée), connectorToolsForUser fusion sans doublon ; clés d'outils déplacées dans core/types (cycle de dépendance éliminé)
+- appAvailability : mode COMPOSIO (priorité env OAuth local > Composio > token import)
+- Routes : connect (mode COMPOSIO + guard composioConnectable), connections (fusion provider local/composio), connections/[id] (suppression cpc_*), catalog (statut COMPOSIO par app + statut global), apps (dispo + connexions composito), catalog/[slug] (composio connecté), admin/composio (GET/POST/DELETE, requireAdmin)
+- UI : composio-card.tsx (statut, formulaire clé admin, connexions hébergées + déconnexion), badge « 1-clic (Composio) » catalogue, page connecteurs ; i18n FR/EN dans domaine dédié dict/composio.ts (plafond 120 clés respecté après scission)
+- .env.example : COMPOSIO_API_KEY + COMPOSIO_BASE_URL documentés
+- Tests : tests/unit/connectors-composio.test.ts (24 tests, stubs wire v3.1 réels) — 424/424 suite complète verte
+- Corrections d'échecs préexistants : dérive API_V1_ENDPOINTS vs spec OpenAPI (12 → 20 endpoints documentés), déterminisme alerting (nettoyage anomalyAlert en beforeAll)
+- E2E navigateur (agent-browser) : login, carte Composio rendue, formulaire admin (clé chiffrée, badge Active, 121 apps), badge catalogue 1-clic, guards 401/403 vérifiés, aucune erreur console
+- Validation chaîne réelle : l'API Composio répond au bac à sable (401 Invalid API key sur clé factice, dégradation propre) — la clé réelle doit être créée par le propriétaire du compte Composio (dashboard.composio.dev → Settings → API Keys), le CLI legacy login étant décommissionné (410)
+- Docs : ADR-0016-composio-cloud.md + section README « Composio Cloud »
+- Nettoyage complet de l'état de test (clé supprimée, rôle user restauré, cookies supprimés)
+
+Stage Summary:
+- 300+ apps gérées Composio connectables en un clic dès qu'une clé valide est fournie (env ou panneau admin chiffré) ; comportement local inchangé sans clé
+- 8 fichiers modifiés, 5 fichiers créés, 24 nouveaux tests ; tsc 0 erreur, lint 0 erreur, 424/424 tests, E2E navigateur vert
+- Prochaine étape pour l'utilisateur : créer la clé sur dashboard.composio.dev et la coller dans le panneau admin Connecteurs (ou COMPOSIO_API_KEY sur Vercel), puis re-vérifier en production

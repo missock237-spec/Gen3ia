@@ -33,6 +33,7 @@ import {
   Info,
 } from "lucide-react";
 import { CatalogSection } from "@/components/connectors/catalog-section";
+import { ComposioCard } from "@/components/connectors/composio-card";
 
 interface ActionParamView {
   name: string;
@@ -253,6 +254,9 @@ export default function ConnectorsPage() {
           {t("connectors.connectedCount", { connected: connectedCount, total: apps.length })}
         </Badge>
       </div>
+
+      {/* v4.2 — Intégration Composio Cloud (SDK officiel, 300+ apps en un clic). */}
+      <ComposioCard onConnectionsChanged={reloadAll} />
 
       {/* v3.4 — Catalogue complet (1467 apps, modèle Composio managé). */}
       <CatalogSection onConnected={reloadAll} />

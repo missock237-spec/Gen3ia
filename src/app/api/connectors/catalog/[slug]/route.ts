@@ -4,6 +4,10 @@ import { requireUser } from "@/lib/auth/guards"
 import { getCatalogApp, getCatalogTools, searchCatalog } from "@/lib/connectors/catalog"
 import { OAUTH_ENDPOINTS } from "@/lib/connectors/catalog/endpoints"
 import { ensureCatalogApps, appAvailability, getApp } from "@/lib/connectors/apps"
+import {
+  getActiveComposioConnection,
+  isComposioConfigured,
+} from "@/lib/connectors/composio/provider"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -11,13 +15,14 @@ export const runtime = "nodejs"
 /**
  * GET /api/connectors/catalog/[slug]
  * Détail d'une app : métadonnées + outils + déclencheurs + connectivité.
+ * v4.2 : connectivité Composio (mode COMPOSIO + connexion active hébergée).
  */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   return handleRoute(req, async () => {
-    await requireUser(req)
+    const user = await requireUser(req)
     await ensureCatalogApps()
 
     const { slug } = await params
@@ -27,7 +32,11 @@ export async function GET(
     const { tools, triggers } = getCatalogTools(slug)
     const endpoints = OAUTH_ENDPOINTS[slug] ?? null
     const resolved = getApp(slug)
-    const availability = resolved ? appAvailability(resolved) : null
+    const composioEnabled = await isComposioConfigured()
+    const availability = resolved ? appAvailability(resolved, { composioEnabled }) : null
+    const composioConnection = composioEnabled
+      ? await getActiveComposioConnection(user.id, slug).catch(() => null)
+      : null
 
     // Pagination des outils si demandée.
     const url = new URL(req.url)
@@ -59,6 +68,20 @@ export async function GET(
         credSource: resolved?.oauth2?.clientId ? (availability?.envConfigured ? "ENV" : "ADMIN") : null,
         inRegistry: endpoints !== null,
         docsUrl: endpoints?.docsUrl ?? null,
+        // v4.2 — Composio : connexion one-click / connexion hébergée active.
+        composio: {
+          enabled: composioEnabled,
+          connectable: composioConnection !== null || (composioEnabled && (app.composioManaged ?? []).length > 0),
+          connected: composioConnection !== null,
+          connection: composioConnection
+            ? {
+                id: composioConnection.id,
+                status: composioConnection.status,
+                accountHint: composioConnection.accountHint,
+                connectedAt: composioConnection.createdAt,
+              }
+            : null,
+        },
       },
       tools: toolsPage,
       toolsTotal: tools.length,

@@ -7,6 +7,7 @@
 
 import type { AppDefinition, ActionSpec } from "../core/types"
 import { isRedirectableAuthScheme } from "../core/types"
+import { composioConnectable } from "../composio/provider"
 import { githubApp } from "./github"
 import { slackApp } from "./slack"
 import { gmailApp, calendarApp } from "./google"
@@ -67,20 +68,32 @@ export interface AppAvailability {
   /** L'app est pré-configurée par variables d'environnement. */
   envConfigured: boolean
   /** Mode de connexion suggéré. */
-  mode: "OAUTH" | "TOKEN_IMPORT" | "CREDENTIALS" | "UNAVAILABLE"
+  mode: "OAUTH" | "COMPOSIO" | "TOKEN_IMPORT" | "CREDENTIALS" | "UNAVAILABLE"
   /** Variables d'environnement attendues (affichage UI). */
   requiredEnvVars: string[]
   reason?: string
+}
+
+/** Contexte de résolution de disponibilité (v4.2 — Composio hébergé). */
+export interface AvailabilityContext {
+  /** Intégration Composio configurée (clé API présente). */
+  composioEnabled?: boolean
 }
 
 /**
  * Vérifie si une app est prête à être connectée. Priorité :
  * 1. OAuth2 préconfiguré (env) → mode OAUTH ;
  * 2. OAuth1 préconfiguré (env) → mode OAUTH ;
- * 3. import de token utilisateur → TOKEN_IMPORT ;
- * 4. identifiants fournis à la connexion → CREDENTIALS.
+ * 3. app gérée Composio et intégration configurée → mode COMPOSIO
+ *    (connexion en un clic, OAuth opéré par Composio — aucun
+ *    identifiant local requis) ;
+ * 4. import de token utilisateur → TOKEN_IMPORT ;
+ * 5. identifiants fournis à la connexion → CREDENTIALS.
  */
-export function appAvailability(app: AppDefinition): AppAvailability {
+export function appAvailability(
+  app: AppDefinition,
+  ctx: AvailabilityContext = {}
+): AppAvailability {
   if (app.authScheme === "OAUTH2" && app.oauth2) {
     const ok = app.oauth2.clientId.length > 0 && app.oauth2.clientSecret.length > 0
     if (ok) {
@@ -91,6 +104,16 @@ export function appAvailability(app: AppDefinition): AppAvailability {
     const ok = app.oauth1.consumerKey.length > 0 && app.oauth1.consumerSecret.length > 0
     if (ok) {
       return { connectable: true, envConfigured: true, mode: "OAUTH", requiredEnvVars: [] }
+    }
+  }
+  // v4.2 — App gérée par Composio : connexion en un clic sans identifiants locaux.
+  if (ctx.composioEnabled && composioConnectable(app.slug)) {
+    return {
+      connectable: true,
+      envConfigured: false,
+      mode: "COMPOSIO",
+      requiredEnvVars: [],
+      reason: "Connexion en un clic via Composio (OAuth managé)",
     }
   }
   // 1. Import de token utilisateur : toujours possible dès que

@@ -10,6 +10,13 @@ import { getAppUrl } from "@/lib/config"
  *  - /docs/api (Swagger UI interactif maison — essai réel des endpoints).
  */
 
+/**
+ * Endpoints publics documentés dans la spécification OpenAPI 3.1.
+ * Contrat anti-dérive : la liste et doc.paths doivent coïncider
+ * exactement (test dx-v36). v4.1 : 12 routes /api/v1 + 8 routes
+ * publiques complémentaires (workflows, models, voice, multimodal,
+ * terminal agent, fichiers d'agent).
+ */
 export const API_V1_ENDPOINTS = [
   "/api/v1/chat",
   "/api/v1/task",
@@ -23,6 +30,14 @@ export const API_V1_ENDPOINTS = [
   "/api/v1/files",
   "/api/v1/knowledge",
   "/api/v1/jobs",
+  "/api/workflows",
+  "/api/models",
+  "/api/voice/settings",
+  "/api/voice/transcribe",
+  "/api/voice/dictations",
+  "/api/chat/attachments",
+  "/api/terminal/sessions/{id}",
+  "/api/agent-files/{id}",
 ] as const
 
 export function buildOpenApiDocument(): Record<string, unknown> {
