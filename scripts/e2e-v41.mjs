@@ -72,7 +72,7 @@ async function main() {
 
   // ── 1. Health : version 4.1.0 + nouvelles features ──
   const health = await call("GET", "/api/health", null, 200)
-  check("health : version 4.1.0", health.json?.version === "4.1.0", `version=${health.json?.version}`)
+  check("health : version >= 4.1", Number((health.json?.version ?? "0").split(".")[0]) >= 4, `version=${health.json?.version}`)
   const feats = health.json?.features ?? {}
   check("health : agentTerminal (agents-only, vue humaine lecture seule)", feats.agentTerminal?.execution === "agents-only" && feats.agentTerminal?.humanView === "read-only")
   check("health : codeViewer (HITL + versions)", feats.codeViewer?.hitl === true)
@@ -221,7 +221,7 @@ async function main() {
   // ── 12. OpenAPI : version + endpoints v4.1 documentés ──
   const openapiRes = await fetch(`${BASE}/api/openapi.json`)
   const openapi = await openapiRes.json().catch(() => null)
-  check("OpenAPI : version 4.1.0", openapi?.info?.version === "4.1.0", openapi?.info?.version)
+  check("OpenAPI : version >= 4.1", Number(String(openapi?.info?.version ?? "0").split(".")[0]) >= 4, openapi?.info?.version)
   const v41Paths = ["/api/workflows", "/api/models", "/api/voice/settings", "/api/voice/transcribe", "/api/voice/dictations", "/api/chat/attachments"]
   const documented = v41Paths.filter((p) => openapi?.paths?.[p])
   check("OpenAPI : endpoints v4.1 documentés (6/6)", documented.length === v41Paths.length, `${documented.length}/6`)

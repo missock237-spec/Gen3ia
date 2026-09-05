@@ -38,6 +38,12 @@ export const API_V1_ENDPOINTS = [
   "/api/chat/attachments",
   "/api/terminal/sessions/{id}",
   "/api/agent-files/{id}",
+  "/api/connectors/executions",
+  "/api/connectors/executions/{id}",
+  "/api/connectors/executions/{id}/confirm",
+  "/api/connectors/permissions",
+  "/api/connectors/permissions/{id}",
+  "/api/connectors/discover",
 ] as const
 
 export function buildOpenApiDocument(): Record<string, unknown> {
@@ -45,7 +51,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
     openapi: "3.1.0",
     info: {
       title: "GEN3IA API",
-      version: "4.1.0",
+      version: "4.3.0",
       description:
         "API publique GEN3IA — plateforme d'agents IA.\n\n" +
         "Authentification : clé API `g3ia_live_...` via l'en-tête `Authorization: Bearer`.\n" +
@@ -63,6 +69,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       { name: "Models", description: "Registre de modèles + routage intelligent (v4.0)" },
       { name: "Intelligence", description: "Embeddings et Knowledge Base RAG (v4.0)" },
       { name: "Compute", description: "Fichiers HF Bucket et jobs longs Hugging Face (v4.0)" },
+      { name: "Connectors", description: "Action Gateway : exécutions gardées, permissions, découverte d'outils (v4.3)" },
     ],
     components: {
       securitySchemes: {
@@ -587,6 +594,99 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       "/api/agent-files/{id}": {
         get: { summary: "Fichier d'agent (visualiseur de code : contenu + versions)", tags: ["AgentFiles"], security: [{ cookieAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Détail + versions" } } },
         patch: { summary: "Décision HITL ou édition (nouvelle version humaine)", tags: ["AgentFiles"], security: [{ cookieAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Décision / version enregistrée" } } },
+      },
+      "/api/connectors/executions": {
+        get: {
+          summary: "Historique des exécutions d'actions connecteurs (Action Gateway v4.3)",
+          tags: ["Connectors"],
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            { name: "status", in: "query", schema: { type: "string", enum: ["PENDING", "CONFIRMATION_REQUIRED", "RUNNING", "SUCCESS", "VERIFIED", "FAILED", "REJECTED", "EXPIRED"] } },
+            { name: "appSlug", in: "query", schema: { type: "string" } },
+            { name: "taskId", in: "query", schema: { type: "string" } },
+            { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 25 } },
+          ],
+          responses: { 200: { description: "Exécutions (risque, statut, vérification, trace)" } },
+        },
+      },
+      "/api/connectors/executions/{id}": {
+        get: {
+          summary: "Détail d'une exécution : facteurs de risque, permission, vérification, trace",
+          tags: ["Connectors"],
+          security: [{ cookieAuth: [] }],
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: { 200: { description: "Détail complet" }, 404: { description: "Introuvable" } },
+        },
+      },
+      "/api/connectors/executions/{id}/confirm": {
+        post: {
+          summary: "HITL au niveau action : approuve/refuse une demande de confirmation",
+          description: "approved=true exécute l'action (params chiffrés déchiffrés, plafond CRITICAL couvert par CETTE approbation) ; remember crée une permission persistante. Fail-closed sur expiration.",
+          tags: ["Connectors"],
+          security: [{ cookieAuth: [] }],
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["approved"],
+                  properties: {
+                    approved: { type: "boolean" },
+                    remember: { type: "string", enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+                    reason: { type: "string", maxLength: 500 },
+                  },
+                },
+              },
+            },
+          },
+          responses: { 200: { description: "Résultat de l'exécution (ou rejet)" }, 409: { description: "Déjà résolue / expirée" } },
+        },
+      },
+      "/api/connectors/permissions": {
+        get: { summary: "Permissions connecteurs de l'utilisateur (motifs, plafonds)", tags: ["Connectors"], security: [{ cookieAuth: [] }], responses: { 200: { description: "Liste des permissions" } } },
+        post: {
+          summary: "Accorde/met à jour une permission (ALLOW plafonné ou DENY)",
+          tags: ["Connectors"],
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["appSlug", "actionPattern", "effect", "riskFloor"],
+                  properties: {
+                    appSlug: { type: "string", maxLength: 64 },
+                    actionPattern: { type: "string", maxLength: 128, description: "github.* · github.create_issue · *.send_email · *" },
+                    effect: { type: "string", enum: ["ALLOW", "DENY"] },
+                    riskFloor: { type: "string", enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+                    note: { type: "string", maxLength: 300 },
+                    expiresInDays: { type: "integer", minimum: 1, maximum: 365 },
+                  },
+                },
+              },
+            },
+          },
+          responses: { 200: { description: "Permission enregistrée" }, 400: { description: "Motif invalide" } },
+        },
+      },
+      "/api/connectors/permissions/{id}": {
+        delete: { summary: "Révoque une permission", tags: ["Connectors"], security: [{ cookieAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { 200: { description: "Révoquée" }, 404: { description: "Introuvable" } } },
+      },
+      "/api/connectors/discover": {
+        get: {
+          summary: "Tool Discovery : apps et actions classées pour une tâche",
+          tags: ["Connectors"],
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            { name: "q", in: "query", required: true, schema: { type: "string", minLength: 2, maxLength: 300 } },
+            { name: "limitApps", in: "query", schema: { type: "integer", minimum: 3, maximum: 12 } },
+            { name: "limitTools", in: "query", schema: { type: "integer", minimum: 5, maximum: 60 } },
+          ],
+          responses: { 200: { description: "Apps + actions (risque, connexion)" } },
+        },
       },
       "/api/v1/jobs": {
         get: {
