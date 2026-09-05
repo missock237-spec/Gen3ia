@@ -4,6 +4,7 @@ import { chatJSON } from "@/lib/ai/structured"
 import { creditsForTokens } from "@/lib/ai/router"
 import { runTool, getToolCatalog, isToolDangerous, type ToolResult } from "@/lib/tools/registry"
 import { connectorToolsForUser } from "@/lib/connectors/core/toolset"
+import { parseConnectorToolKey } from "@/lib/connectors/core/types"
 import { getBreaker } from "@/lib/reliability/breaker"
 import { AppError } from "@/lib/errors"
 import type {
@@ -239,24 +240,46 @@ export async function executePlan(
         }
 
         const args = (decision.data.args ?? {}) as Record<string, unknown>
+        const connectorKey = parseConnectorToolKey(toolKey)
+        /** v4.3 — pré-autorisation amont transmise à l'Action Gateway :
+         * la décision binaire locale (HITL du plan / réglage utilisateur)
+         * AFFINE le plafond de risque ; le moteur de permissions tranche
+         * en dernier (une lecture n'est jamais bloquée, une suppression
+         * CRITICAL sans accord explicite devient une demande de
+         * confirmation traçable au lieu d'un refus muet). */
+        let preAuthorized: boolean | undefined
         if (isToolDangerous(toolKey)) {
           const authorized = await callbacks.authorizeDangerousTool?.(toolKey, args)
           if (authorized === false) {
-            observations.push(`OBSERVATION : l'opération sensible « ${toolKey} » a été REFUSÉE par la politique de sécurité.`)
-            messages.push({ role: "assistant", content: decision.raw.slice(0, 1000) })
-            messages.push({
-              role: "user",
-              content: `OBSERVATION : l'opération sensible « ${toolKey} » a été refusée par la politique de sécurité. Trouve une autre approche SANS cet outil, ou clôture l'étape en expliquant la limite.`,
-            })
-            continue
+            if (connectorKey) {
+              preAuthorized = false
+            } else {
+              observations.push(`OBSERVATION : l'opération sensible « ${toolKey} » a été REFUSÉE par la politique de sécurité.`)
+              messages.push({ role: "assistant", content: decision.raw.slice(0, 1000) })
+              messages.push({
+                role: "user",
+                content: `OBSERVATION : l'opération sensible « ${toolKey} » a été refusée par la politique de sécurité. Trouve une autre approche SANS cet outil, ou clôture l'étape en expliquant la limite.`,
+              })
+              continue
+            }
+          } else if (authorized === true) {
+            preAuthorized = true
           }
         }
 
         // v3.1 : appel d'outil protégé par son circuit breaker dédié.
+        // v4.3 : chaîne de trace complète (plan + étape) vers l'Action Gateway.
         let result: ToolResult
         try {
           result = await getBreaker(`tool:${toolKey}`).run(() =>
-            runTool(toolKey, args, { userId: ctx.userId, agentId: ctx.agentId, taskId: ctx.taskId })
+            runTool(toolKey, args, {
+              userId: ctx.userId,
+              agentId: ctx.agentId,
+              taskId: ctx.taskId,
+              planId: plan.id,
+              stepIndex: i,
+              preAuthorized,
+            })
           )
         } catch (breakerErr) {
           if (breakerErr instanceof AppError && breakerErr.code === "RETRY_BUDGET_EXCEEDED") {

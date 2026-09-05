@@ -113,14 +113,16 @@ describe("connectors/toolset — dispatch runTool (voie agent)", () => {
   })
 
   test("requête POST avec paramètres body correctement sérialisés", async () => {
-    let captured: { url: string; method: string; body: string; auth: string } | null = null
+    // v4.3 — Action Gateway : après le POST, la vérification read-back
+    // relit l'issue créée (GET /issues/7) — deux appels attendus.
+    const calls: Array<{ url: string; method: string; body: string; auth: string }> = []
     globalThis.fetch = (async (input: any, init?: any) => {
-      captured = {
+      calls.push({
         url: String(input),
         method: init.method,
         body: String(init.body),
         auth: init.headers.Authorization,
-      }
+      })
       return new Response(JSON.stringify({ number: 7, html_url: "https://github.com/x/y/issues/7" }), {
         status: 201,
         headers: { "Content-Type": "application/json" },
@@ -133,12 +135,16 @@ describe("connectors/toolset — dispatch runTool (voie agent)", () => {
       { userId, agentId: null }
     )
     expect(result.ok).toBe(true)
-    expect(captured?.url).toBe("https://api.github.com/repos/acme/app/issues")
-    expect(captured?.method).toBe("POST")
-    expect(captured?.auth).toBe("Bearer ghp_integration_test")
-    const body = JSON.parse(captured?.body ?? "{}")
+    // Appel 1 : création (POST avec body sérialisé).
+    expect(calls[0]?.url).toBe("https://api.github.com/repos/acme/app/issues")
+    expect(calls[0]?.method).toBe("POST")
+    expect(calls[0]?.auth).toBe("Bearer ghp_integration_test")
+    const body = JSON.parse(calls[0]?.body ?? "{}")
     expect(body.title).toBe("Problème détecté")
     expect(body.body).toBe("Détail auto")
+    // Appel 2 : relecture de vérification (read-back get_issue).
+    expect(calls[1]?.url).toBe("https://api.github.com/repos/acme/app/issues/7")
+    expect(calls[1]?.method).toBe("GET")
   })
 
   test("échec HTTP de l'app cible → ok=false avec erreur (pas de faux succès)", async () => {

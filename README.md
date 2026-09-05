@@ -158,6 +158,39 @@ via le même registre (`connector_<app>_<ACTION>`).
   (fusion locale + hébergée), `GET/POST/DELETE /api/admin/composio` (gestion de la clé, admin).
 - Sans clé : comportement strictement inchangé (moteur local seul).
 
+## 🛡 Action Gateway — permissions · risque · vérification · audit (v4.3, ADR-0017)
+
+Couche de décision unique par laquelle passe **toute exécution d'action connecteur**
+(agents, console, SDK, confirmations) :
+
+```
+Agent / Console → Risk Engine → Permission Engine → Exécution (local → Composio)
+                → Result Verification (read-back) → Audit immuable → Résultat
+```
+
+- **Risk Engine** : score 0-100 à facteurs explicites (méthode HTTP, verbe du slug
+  — compatible slugs Composio `GMAIL_SEND_EMAIL` —, catégorie finance, diffusion
+  massive, montants). Niveaux LOW / MEDIUM / HIGH / CRITICAL.
+- **Permissions** : motifs `app.action`, `app.*`, `*.action`, `*` — ALLOW (avec
+  plafond de risque) ou **DENY prioritaire**, expiration, provenance (USER/ADMIN/HITL).
+  Défaut sans permission : plafond MEDIUM (lectures et écritures standard).
+- **HITL au niveau action** : risque au-dessus du plafond → demande de confirmation
+  persistée (params chiffrés AES-256-GCM, TTL fail-closed) — approuvable/refusable
+  depuis la page Connecteurs, avec « toujours autoriser jusqu'à NIVEAU » (permission
+  persistante). CRITICAL exige toujours un accord explicite.
+- **Tool Discovery** : le planner reçoit les actions réellement connectées de
+  l'utilisateur (clés exactes `connector_<app>_<action>` + niveau de risque) ;
+  `GET /api/connectors/discover?q=...` expose la même recherche.
+- **Result Verification** : contrôles de forme + **read-back** (relecture de la
+  ressource créée via l'action GET jumelle : issue GitHub, page Notion, carte
+  Trello, issue Jira, dépôt GitHub).
+- **Traçabilité** : chaque exécution persistée (`ConnectorExecution`) avec la
+  chaîne `requestId → taskId → planId → stepIndex → executionId` + entrée
+  `CONNECTOR_EXECUTED` dans la **chaîne d'audit immuable** (hash chaîné).
+- **API** : `POST /api/connectors/execute` (champs enrichis), `GET
+  /api/connectors/executions[/:id]`, `POST /api/connectors/executions/:id/confirm`,
+  `GET/POST /api/connectors/permissions`, `DELETE /:id`.
+
 ## 🧭 Model Router (v4.0 — intelligent et apprenant)
 
 Routage en deux niveaux, sans jamais coupler le cœur à un fournisseur :

@@ -77,6 +77,16 @@ export async function GET(req: NextRequest) {
         voiceMode: { personas: 5, dictation: true, asr: true },
         toolsPage: "settings#tools",
         billingPlans: { tiers: [2000, 5000, 10000, 50000], processor: "chariow" },
+        /** v4.3 — Action Gateway (ADR-0017) */
+        actionGateway: {
+          riskEngine: "LOW|MEDIUM|HIGH|CRITICAL",
+          permissions: "app/action patterns (ALLOW/DENY, plafond de risque)",
+          hitl: "confirmation au niveau action (TTL fail-closed)",
+          verification: "shape + read-back (pairs d'actions GET jumelles)",
+          audit: "chaîne immuable + ConnectorExecution persistés",
+          trace: "requestId→taskId→planId→stepIndex→executionId",
+          toolDiscovery: "planner + /api/connectors/discover",
+        },
       },
       time: new Date().toISOString(),
     })

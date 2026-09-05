@@ -163,6 +163,11 @@ export interface ToolContext {
   userId: string
   agentId?: string | null
   taskId?: string | null
+  /** v4.3 — Action Gateway : traçabilité complète de l'appel. */
+  planId?: string | null
+  stepIndex?: number | null
+  /** v4.3 — approbation amont (HITL du plan) — le gateway affine. */
+  preAuthorized?: boolean
 }
 
 // ---------- Implementations ----------
@@ -560,7 +565,16 @@ export async function runTool(
     default: {
       // Outils connector (actions d'app connectées : GitHub, Slack, Notion…).
       if (parseConnectorToolKey(key)) {
-        const result = await runConnectorTool(key, args, { userId: ctx.userId, agentId: ctx.agentId })
+        // v4.3 — chaîne de trace complète (taskId, planId, stepIndex)
+        // + pré-autorisation transmises à l'Action Gateway.
+        const result = await runConnectorTool(key, args, {
+          userId: ctx.userId,
+          agentId: ctx.agentId,
+          taskId: ctx.taskId,
+          planId: ctx.planId,
+          stepIndex: ctx.stepIndex,
+          preAuthorized: ctx.preAuthorized,
+        })
         return {
           ok: result.ok,
           output: result.ok ? result.output : `${result.error ? `${result.error}\n` : ""}${result.output}`,

@@ -6,6 +6,9 @@ import { creditsForTokens } from "@/lib/ai/router"
 import { searchKnowledge } from "@/lib/rag/retriever"
 import { recallMemories } from "@/lib/memory/store"
 import { getToolCatalog, listAvailableToolKeys } from "@/lib/tools/registry"
+import { parseConnectorToolKey } from "@/lib/connectors/core/types"
+import { assessToolKeyRisk, isPlanRiskyTool } from "@/lib/connectors/gateway/risk-engine"
+import { checkConnectorPermission } from "@/lib/connectors/gateway/permissions"
 import { runEngine, type EngineContext } from "./sdk"
 import { engines, recordOrchestratorRun } from "./engines"
 import { feedbackSnapshot, plannerFeedbackBlock } from "./feedback"
@@ -400,9 +403,14 @@ export async function advanceTask(
         }
 
         // Validation pré-exécution : opération sensible → approbation humaine.
+        // v4.3 — les outils CONNECTOR participent enfin à cette détection :
+        // risque HIGH/CRITICAL du Risk Engine (envoi, suppression…) au lieu
+        // du catalogue statique seul (les clés connector_* n'y figurent pas).
         const selected = plans.find((p) => p.id === evaluation.value.selectedPlanId)
         const dangerousTools = (selected?.requiredTools ?? []).filter((t) =>
-          getToolCatalog().find((c) => c.key === t)?.dangerous
+          parseConnectorToolKey(t)
+            ? isPlanRiskyTool(t)
+            : getToolCatalog().find((c) => c.key === t)?.dangerous ?? false
         )
         if (
           selected?.requiresHumanConfirmation ||
@@ -454,6 +462,12 @@ export async function advanceTask(
         const selected = plans.find((p) => p.id === task.selectedPlanId) ?? plans[0]
         if (!selected) throw new EngineError("EXECUTION_FAILED", "Aucun plan sélectionné pour l'exécution.")
 
+        // v4.3 — HITL du plan déjà scellé (approbation donnée) : les outils
+        // sensibles du plan approuvé sont pré-autorisés (plafond HIGH via le
+        // gateway ; CRITICAL exige toujours permission ou confirmation).
+        const sealedApproval = parseJsonField<{ approved?: boolean }>(task.pendingApproval, {})
+        const humanApprovalGiven = sealedApproval.approved === true
+
         const meter: TokenMeter = { tokensIn: 0, tokensOut: 0 }
         let checkpointSteps: ExecutionLogEntry[] = []
         // v4.0 — Phase 9 : le modèle DÉDIÉ du plan sélectionné guide l'exécution.
@@ -497,7 +511,30 @@ export async function advanceTask(
               meter.model = model ?? meter.model
             },
             // v3.1 : HITL déjà donné (approbation du plan) OU confirmations désactivées.
-            authorizeDangerousTool: () => settings.confirmDangerousOps === false,
+            // v4.3 — outils connector : décision par le moteur de permissions
+            // (plafond par permission) — le Risk Engine et le gateway gardent
+            // la main en dernier ressort ; un DENY explicite ne se contourne pas.
+            authorizeDangerousTool: async (toolKey: string) => {
+              if (settings.confirmDangerousOps === false) return true
+              const connector = parseConnectorToolKey(toolKey)
+              if (connector) {
+                // HITL du plan déjà approuvé → couvert (fail-open maîtrisé).
+                if (humanApprovalGiven) return true
+                const risk = assessToolKeyRisk(toolKey)
+                const check = await checkConnectorPermission(
+                  user.id,
+                  connector.appSlug,
+                  connector.actionSlug,
+                  risk.level,
+                  false
+                ).catch(() => null)
+                return check?.decision === "ALLOW"
+              }
+              // Statique (non connector) : confirmations actives → non
+              // pré-autorisé (l'executor applique le refus binaire,
+              // comportement v3.1 inchangé pour les outils statiques).
+              return false
+            },
             // v3.1 : checkpoint mi-exécution — un crash ne perd plus les étapes.
             onCheckpoint: async (partial) => {
               checkpointSteps = partial.steps
@@ -1101,9 +1138,14 @@ export async function resolvePlanApproval(
   await db.task.update({ where: { id: taskId }, data: { selectedPlanId: selected.id } })
 
   // Opérations sensibles → HITL après sélection manuelle (défense en profondeur).
+  // v4.3 — détection étendue aux outils connector (Risk Engine).
   const owner = await db.user.findUnique({ where: { id: userId }, select: { settings: true } })
   const settings = { ...DEFAULT_USER_SETTINGS, ...parseJsonField(owner?.settings ?? "{}", {}) }
-  const dangerousTools = selected.requiredTools.filter((t) => getToolCatalog().find((c) => c.key === t)?.dangerous)
+  const dangerousTools = selected.requiredTools.filter((t) =>
+    parseConnectorToolKey(t)
+      ? isPlanRiskyTool(t)
+      : getToolCatalog().find((c) => c.key === t)?.dangerous ?? false
+  )
   if (selected.requiresHumanConfirmation || (dangerousTools.length > 0 && settings.confirmDangerousOps !== false)) {
     const updated = await db.task.findUniqueOrThrow({ where: { id: taskId } })
     await transitionTask(updated, "WAITING_FOR_HUMAN", {

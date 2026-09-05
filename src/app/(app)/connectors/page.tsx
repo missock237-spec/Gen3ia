@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { CatalogSection } from "@/components/connectors/catalog-section";
 import { ComposioCard } from "@/components/connectors/composio-card";
+import { GatewaySection } from "@/components/connectors/gateway-section";
 
 interface ActionParamView {
   name: string;
@@ -226,9 +227,16 @@ export default function ConnectorsPage() {
         output: string;
         error: string | null;
         latencyMs: number;
+        // v4.3 — Action Gateway.
+        executionStatus?: string;
+        risk?: { level: string; score: number };
+        executionId?: string;
       };
+      const riskLine = json.risk
+        ? `Risque : ${json.risk.level} (${json.risk.score}/100) · ${json.executionStatus ?? ""}\n`
+        : "";
       setExecResult(
-        `${json.ok ? t("connectors.console.ok") : t("connectors.console.fail")} HTTP ${json.status} — ${json.latencyMs} ms\n${
+        `${json.ok ? t("connectors.console.ok") : t("connectors.console.fail")} HTTP ${json.status} — ${json.latencyMs} ms\n${riskLine}${
           json.error ? `${t("connectors.console.errorPrefix", { error: json.error })}\n` : ""
         }${json.output}`
       );
@@ -257,6 +265,9 @@ export default function ConnectorsPage() {
 
       {/* v4.2 — Intégration Composio Cloud (SDK officiel, 300+ apps en un clic). */}
       <ComposioCard onConnectionsChanged={reloadAll} />
+
+      {/* v4.3 — Action Gateway : permissions, risque, exécutions vérifiées, découverte. */}
+      <GatewaySection />
 
       {/* v3.4 — Catalogue complet (1467 apps, modèle Composio managé). */}
       <CatalogSection onConnected={reloadAll} />

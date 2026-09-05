@@ -254,6 +254,7 @@ CREATE TABLE IF NOT EXISTS "Task" (
     "plans" TEXT,
     "planScores" TEXT,
     "selectedPlanId" TEXT,
+    "preferredModel" TEXT,
     "executionLog" TEXT,
     "verification" TEXT,
     "correctionLog" TEXT,
@@ -829,7 +830,51 @@ CREATE TABLE IF NOT EXISTS "PlatformSecret" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "PlatformSecret_key_key" ON "PlatformSecret"("key");
+
+CREATE TABLE IF NOT EXISTS "ConnectorPermission" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "appSlug" TEXT NOT NULL,
+    "actionPattern" TEXT NOT NULL,
+    "effect" TEXT NOT NULL,
+    "riskFloor" TEXT NOT NULL,
+    "source" TEXT NOT NULL DEFAULT 'USER',
+    "createdBy" TEXT,
+    "note" TEXT,
+    "expiresAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "ConnectorExecution" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "appSlug" TEXT NOT NULL,
+    "actionSlug" TEXT NOT NULL,
+    "provider" TEXT NOT NULL DEFAULT 'LOCAL',
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "riskLevel" TEXT NOT NULL,
+    "riskScore" INTEGER,
+    "riskReasons" TEXT,
+    "permission" TEXT,
+    "paramsRedacted" TEXT,
+    "paramsEncrypted" TEXT,
+    "resultSummary" TEXT,
+    "resultData" TEXT,
+    "verification" TEXT,
+    "error" TEXT,
+    "httpStatus" INTEGER,
+    "latencyMs" INTEGER,
+    "connectionId" TEXT,
+    "agentId" TEXT,
+    "taskId" TEXT,
+    "planId" TEXT,
+    "stepIndex" INTEGER,
+    "requestId" TEXT,
+    "confirmedBy" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "completedAt" DATETIME
+);
 
 CREATE TABLE IF NOT EXISTS "LiveSession" (
     "id" TEXT NOT NULL PRIMARY KEY,
@@ -1062,10 +1107,6 @@ CREATE TABLE IF NOT EXISTS "WorkflowPin" (
     CONSTRAINT "WorkflowPin_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "WorkflowPin_userId_workflowKey_key" ON "WorkflowPin"("userId", "workflowKey");
-
-CREATE INDEX IF NOT EXISTS "WorkflowPin_userId_idx" ON "WorkflowPin"("userId");
-
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -1242,6 +1283,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS "OAuthAppConfig_appSlug_key" ON "OAuthAppConfi
 
 CREATE INDEX IF NOT EXISTS "OAuthAppConfig_active_idx" ON "OAuthAppConfig"("active");
 
+CREATE UNIQUE INDEX IF NOT EXISTS "PlatformSecret_key_key" ON "PlatformSecret"("key");
+
+CREATE INDEX IF NOT EXISTS "ConnectorPermission_userId_idx" ON "ConnectorPermission"("userId");
+
+CREATE INDEX IF NOT EXISTS "ConnectorPermission_userId_appSlug_idx" ON "ConnectorPermission"("userId", "appSlug");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ConnectorPermission_userId_appSlug_actionPattern_key" ON "ConnectorPermission"("userId", "appSlug", "actionPattern");
+
+CREATE INDEX IF NOT EXISTS "ConnectorExecution_userId_createdAt_idx" ON "ConnectorExecution"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ConnectorExecution_taskId_idx" ON "ConnectorExecution"("taskId");
+
+CREATE INDEX IF NOT EXISTS "ConnectorExecution_appSlug_actionSlug_createdAt_idx" ON "ConnectorExecution"("appSlug", "actionSlug", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ConnectorExecution_status_createdAt_idx" ON "ConnectorExecution"("status", "createdAt");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "LiveSession_code_key" ON "LiveSession"("code");
 
 CREATE INDEX IF NOT EXISTS "LiveSession_status_createdAt_idx" ON "LiveSession"("status", "createdAt");
@@ -1299,6 +1356,10 @@ CREATE INDEX IF NOT EXISTS "DictationEntry_userId_createdAt_idx" ON "DictationEn
 CREATE INDEX IF NOT EXISTS "ChatAttachment_userId_createdAt_idx" ON "ChatAttachment"("userId", "createdAt");
 
 CREATE INDEX IF NOT EXISTS "ChatAttachment_taskId_idx" ON "ChatAttachment"("taskId");
+
+CREATE INDEX IF NOT EXISTS "WorkflowPin_userId_idx" ON "WorkflowPin"("userId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "WorkflowPin_userId_workflowKey_key" ON "WorkflowPin"("userId", "workflowKey");
 `
 // @generated-db-ddl:sqlite:end
 
@@ -1557,6 +1618,7 @@ CREATE TABLE IF NOT EXISTS "Task" (
     "plans" TEXT,
     "planScores" TEXT,
     "selectedPlanId" TEXT,
+    "preferredModel" TEXT,
     "executionLog" TEXT,
     "verification" TEXT,
     "correctionLog" TEXT,
@@ -2185,7 +2247,55 @@ CREATE TABLE IF NOT EXISTS "PlatformSecret" (
 
     CONSTRAINT "PlatformSecret_pkey" PRIMARY KEY ("id")
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "PlatformSecret_key_key" ON "PlatformSecret"("key");
+
+CREATE TABLE IF NOT EXISTS "ConnectorPermission" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "appSlug" TEXT NOT NULL,
+    "actionPattern" TEXT NOT NULL,
+    "effect" TEXT NOT NULL,
+    "riskFloor" TEXT NOT NULL,
+    "source" TEXT NOT NULL DEFAULT 'USER',
+    "createdBy" TEXT,
+    "note" TEXT,
+    "expiresAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ConnectorPermission_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "ConnectorExecution" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "appSlug" TEXT NOT NULL,
+    "actionSlug" TEXT NOT NULL,
+    "provider" TEXT NOT NULL DEFAULT 'LOCAL',
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "riskLevel" TEXT NOT NULL,
+    "riskScore" INTEGER,
+    "riskReasons" TEXT,
+    "permission" TEXT,
+    "paramsRedacted" TEXT,
+    "paramsEncrypted" TEXT,
+    "resultSummary" TEXT,
+    "resultData" TEXT,
+    "verification" TEXT,
+    "error" TEXT,
+    "httpStatus" INTEGER,
+    "latencyMs" INTEGER,
+    "connectionId" TEXT,
+    "agentId" TEXT,
+    "taskId" TEXT,
+    "planId" TEXT,
+    "stepIndex" INTEGER,
+    "requestId" TEXT,
+    "confirmedBy" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "completedAt" TIMESTAMP(3),
+
+    CONSTRAINT "ConnectorExecution_pkey" PRIMARY KEY ("id")
+);
 
 CREATE TABLE IF NOT EXISTS "LiveSession" (
     "id" TEXT NOT NULL,
@@ -2425,6 +2535,15 @@ CREATE TABLE IF NOT EXISTS "ChatAttachment" (
     CONSTRAINT "ChatAttachment_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE IF NOT EXISTS "WorkflowPin" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "workflowKey" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "WorkflowPin_pkey" PRIMARY KEY ("id")
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "User_githubId_key" ON "User"("githubId");
@@ -2601,6 +2720,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS "OAuthAppConfig_appSlug_key" ON "OAuthAppConfi
 
 CREATE INDEX IF NOT EXISTS "OAuthAppConfig_active_idx" ON "OAuthAppConfig"("active");
 
+CREATE UNIQUE INDEX IF NOT EXISTS "PlatformSecret_key_key" ON "PlatformSecret"("key");
+
+CREATE INDEX IF NOT EXISTS "ConnectorPermission_userId_idx" ON "ConnectorPermission"("userId");
+
+CREATE INDEX IF NOT EXISTS "ConnectorPermission_userId_appSlug_idx" ON "ConnectorPermission"("userId", "appSlug");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "ConnectorPermission_userId_appSlug_actionPattern_key" ON "ConnectorPermission"("userId", "appSlug", "actionPattern");
+
+CREATE INDEX IF NOT EXISTS "ConnectorExecution_userId_createdAt_idx" ON "ConnectorExecution"("userId", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ConnectorExecution_taskId_idx" ON "ConnectorExecution"("taskId");
+
+CREATE INDEX IF NOT EXISTS "ConnectorExecution_appSlug_actionSlug_createdAt_idx" ON "ConnectorExecution"("appSlug", "actionSlug", "createdAt");
+
+CREATE INDEX IF NOT EXISTS "ConnectorExecution_status_createdAt_idx" ON "ConnectorExecution"("status", "createdAt");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "LiveSession_code_key" ON "LiveSession"("code");
 
 CREATE INDEX IF NOT EXISTS "LiveSession_status_createdAt_idx" ON "LiveSession"("status", "createdAt");
@@ -2658,6 +2793,10 @@ CREATE INDEX IF NOT EXISTS "DictationEntry_userId_createdAt_idx" ON "DictationEn
 CREATE INDEX IF NOT EXISTS "ChatAttachment_userId_createdAt_idx" ON "ChatAttachment"("userId", "createdAt");
 
 CREATE INDEX IF NOT EXISTS "ChatAttachment_taskId_idx" ON "ChatAttachment"("taskId");
+
+CREATE INDEX IF NOT EXISTS "WorkflowPin_userId_idx" ON "WorkflowPin"("userId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "WorkflowPin_userId_workflowKey_key" ON "WorkflowPin"("userId", "workflowKey");
 
 ALTER TABLE "ModelCapability" ADD CONSTRAINT "ModelCapability_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "AIModel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -2772,6 +2911,8 @@ ALTER TABLE "VoiceSettings" ADD CONSTRAINT "VoiceSettings_userId_fkey" FOREIGN K
 ALTER TABLE "DictationEntry" ADD CONSTRAINT "DictationEntry_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "ChatAttachment" ADD CONSTRAINT "ChatAttachment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "WorkflowPin" ADD CONSTRAINT "WorkflowPin_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 `
 // @generated-db-ddl:postgres:end
 

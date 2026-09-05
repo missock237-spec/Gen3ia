@@ -231,11 +231,29 @@ function toConnectorTool(appSlug: string, action: ActionSpec): ConnectorTool {
   }
 }
 
-/** Exécution dispatchée depuis le registre d'outils global. */
+/**
+ * Exécution dispatchée depuis le registre d'outils global.
+ *
+ * v4.3 — Action Gateway : l'appel passe par la couche de décision
+ * (Risk Engine → Permission Engine → exécution → vérification → audit)
+ * avant d'atteindre executeAction. Le contrat ne change pas : jamais de
+ * throw vers la boucle d'outils de l'agent.
+ *
+ * Import DYNAMIQUE du gateway : aucun cycle statique
+ * toolset → gateway → toolset (le gateway importe executeAction).
+ */
 export async function runConnectorTool(
   key: string,
   args: Record<string, unknown>,
-  ctx: { userId: string; agentId?: string | null }
+  ctx: {
+    userId: string
+    agentId?: string | null
+    taskId?: string | null
+    planId?: string | null
+    stepIndex?: number | null
+    /** Approbation amont (HITL du plan / réglage) — le gateway affine. */
+    preAuthorized?: boolean
+  }
 ): Promise<ActionExecutionResponse> {
   const parsed = parseConnectorToolKey(key)
   const failure = (error: string): ActionExecutionResponse => ({
@@ -253,23 +271,32 @@ export async function runConnectorTool(
   if (!parsed) {
     return failure(`Clé d'outil connector invalide : ${key}`)
   }
-  // v3.6 — OTel : span d'appel externe Composio (app + action + statut).
+  // v3.6 — OTel : span d'appel externe (app + action + statut).
+  // v4.3 — le span englobe désormais TOUT le pipeline du gateway.
   const span = otelStart("composio.action", {
     "composio.app": parsed.appSlug,
     "composio.action": parsed.actionSlug,
     "composio.user_id": ctx.userId,
   })
   try {
-    const result = await executeAction({
+    const { executeGuardedAction } = await import("../gateway/gateway")
+    const result = await executeGuardedAction({
       userId: ctx.userId,
-      agentId: ctx.agentId ?? null,
       appSlug: parsed.appSlug,
       actionSlug: parsed.actionSlug,
       params: args,
+      agentId: ctx.agentId ?? null,
+      taskId: ctx.taskId ?? null,
+      planId: ctx.planId ?? null,
+      stepIndex: ctx.stepIndex ?? null,
+      preAuthorized: ctx.preAuthorized,
+      source: "AGENT",
     })
     otelEnd(span, result.ok ? "OK" : "ERROR", {
       "http.status_code": result.status,
       "composio.latency_ms": result.latencyMs,
+      "gateway.risk_level": result.risk.level,
+      "gateway.execution_status": result.executionStatus,
     })
     return result
   } catch (err) {

@@ -1085,6 +1085,73 @@ model PlatformSecret {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+// ---------------------------------------------------------------------------
+// v4.3 — Action Gateway (ADR-0017) : permissions par app/action et
+// enregistrements d'exécution persistés avec chaîne de trace
+// requestId → taskId → planId → stepIndex → executionId.
+// Tables volontairement SANS relation Prisma (ajout non destructif pur :
+// aucun modèle existant n'est modifié, aucune migration des données).
+// ---------------------------------------------------------------------------
+
+// Autorisation utilisateur : quelle app/action un utilisateur autorise,
+// jusqu'à quel niveau de risque (plafond), avec quel effet (ALLOW/DENY).
+model ConnectorPermission {
+  id            String    @id @default(cuid())
+  userId        String
+  appSlug       String // "*" = toutes les apps
+  actionPattern String // "*" | "app.*" | "app.action" | "*.action" (glob à 2 segments)
+  effect        String // ALLOW | DENY (DENY prioritaire sur ALLOW)
+  riskFloor     String // LOW | MEDIUM | HIGH | CRITICAL — plafond couvert par la permission
+  source        String    @default("USER") // USER | ADMIN | HITL | POLICY
+  createdBy     String?
+  note          String?
+  expiresAt     DateTime? // null = permanente
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, appSlug, actionPattern])
+  @@index([userId])
+  @@index([userId, appSlug])
+}
+
+// Journal d'exécution de chaque action connecteur (agent ou manuelle) :
+// décision de permission, évaluation de risque, résultat, vérification.
+model ConnectorExecution {
+  id             String    @id @default(cuid())
+  userId         String
+  appSlug        String
+  actionSlug     String
+  provider       String    @default("LOCAL") // LOCAL | COMPOSIO | NONE
+  status         String    @default("PENDING") // PENDING | CONFIRMATION_REQUIRED | RUNNING | SUCCESS | VERIFIED | FAILED | REJECTED | EXPIRED
+  riskLevel      String // LOW | MEDIUM | HIGH | CRITICAL
+  riskScore      Int?
+  riskReasons    String? // JSON string[] — facteurs de risque
+  permission     String? // JSON { decision, floor, source, reason }
+  paramsRedacted String? // JSON masqué (secrets ***), tronqué — jamais de secret
+  paramsEncrypted String? // params réels chiffrés AES-256-GCM — UNIQUEMENT les demandes
+                           // de confirmation (résolu puis effacé après usage)
+  resultSummary  String? // sortie LLM tronquée
+  resultData     String? // JSON de preuve tronqué (ids, urls — pas de secret)
+  verification   String? // JSON VerificationReport { verified, strategy, checks[] }
+  error          String?
+  httpStatus     Int?
+  latencyMs      Int?
+  connectionId   String? // id local ou cpc_* Composio
+  agentId        String?
+  taskId         String?
+  planId         String?
+  stepIndex      Int?
+  requestId      String? // identifiant de corrélation complet
+  confirmedBy    String? // email de l'approbateur (flux de confirmation)
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  @@index([userId, createdAt])
+  @@index([taskId])
+  @@index([appSlug, actionSlug, createdAt])
+  @@index([status, createdAt])
+}
 // ---------------------------------------------------------------------------
 // v3.4 — Mode live : sessions de partage d'écran temps réel (WebRTC P2P)
 // ---------------------------------------------------------------------------

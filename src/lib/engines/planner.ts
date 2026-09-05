@@ -2,6 +2,7 @@ import { z } from "zod"
 import { chatJSON } from "@/lib/ai/structured"
 import { getToolCatalog } from "@/lib/tools/registry"
 import { selectModelDiversity } from "@/lib/ai/router-v2"
+import { discoverySnapshotForUser, type DiscoverySnapshot } from "@/lib/connectors/gateway/tool-discovery"
 import type { Plan, PlanId, PlanStep, PromptAnalysis } from "./types"
 
 /**
@@ -98,6 +99,9 @@ Règles strictes :
 - "steps" : 1 à 8 étapes concrètes, chacune avec un "detail" exploitable (le moteur exécutera littéralement ces étapes).
 - "tool" : une seule valeur parmi __TOOLS__ — uniquement si l'étape en a réellement besoin.
 - "requiredTools" : union des tools des étapes.
+- Outils "connector_<app>_<action>" (si listés dans les APPS CONNECTÉES) : actions réelles sur les applications de l'utilisateur (Gmail, GitHub, Slack, Notion…). Cite la clé EXACTEMENT telle que fournie. Si aucune clé connector n'est listée, n'invente PAS d'outil connector.
+- Les actions connector marquées [RISQUE HIGH/CRITICAL] (envoi, publication, suppression) exigent une confirmation humaine : cite l'outil dans "requiredTools" ET mets "requiresHumanConfirmation": true — n'élimine pas le plan pour autant, la confirmation fait partie du flux.
+- Varie les outils entre les plans quand plusieurs options existent (ex: un plan via Gmail, un autre via la recherche web, un autre via Slack).
 - "requiresHumanConfirmation" : true si le plan implique une opération sensible (exécution de code externe, requête HTTP sortante, action irréversible).
 - "estimatedCostCredits" : coût estimé en crédits (1 crédit ≈ 1000 tokens de sortie).
 - "successProbability" : ta probabilité honnête de réussite (0.05 à 0.95).
@@ -126,9 +130,37 @@ export async function generatePlans(
   }
 ): Promise<{ plans: Plan[]; tokensIn: number; tokensOut: number }> {
   const catalogKeys = availableToolKeys()
-  const tools = (context?.allowedTools ?? catalogKeys).filter((t) =>
-    catalogKeys.includes(t)
+
+  // v4.3 — Tool Discovery : instantané des actions connecteurs RÉELLEMENT
+  // disponibles pour cet utilisateur (apps connectées + filtrage par les
+  // outils autorisés de l'agent). Le planner connaît enfin les clés
+  // connector_* exécutables — avant, il ne connaissait que le catalogue
+  // statique (ADR-0014) et les actions n'arrivaient qu'à l'exécution.
+  let snapshot: DiscoverySnapshot | null = null
+  if (context?.userId) {
+    snapshot = await discoverySnapshotForUser(
+      context.userId,
+      analysis,
+      context?.allowedTools ?? [],
+      prompt
+    ).catch(() => null)
+  }
+  const snapshotKeys = snapshot?.keys ?? []
+
+  // Outils exposés au LLM : statiques autorisés + outils connector
+  // découverts (clés exactes) — les motifs (connectors, connector:<app>)
+  // ne sont pas des clés citables et restent exclus de la liste.
+  const allowedList = context?.allowedTools ?? catalogKeys
+  const tools = allowedList.filter(
+    (t) => catalogKeys.includes(t) || snapshotKeys.includes(t)
   )
+
+  const connectorBlock = snapshot && (snapshot.toolLines.length > 0 || snapshot.appHints.length > 0)
+    ? `\nAPPS CONNECTÉES — actions exécutables MAINTENANT (clés exactes à citer telles quelles dans "tool" et "requiredTools") :
+${snapshot.toolLines.slice(0, 24).join("\n")}
+${snapshot.appHints.length > 0 ? `\nAPPS CONNECTABLES pertinentes non connectées (mentionne-les dans "risks" si la demande l'exige) : ${snapshot.appHints.join(" ; ")}\n` : ""}`
+    : ""
+
   const failureBlock = context?.previousFailure
     ? `\nATTENTION — une tentative précédente a échoué : ${context.previousFailure}\nLe plan qui a échoué doit être remplacé par une stratégie différente.\n`
     : ""
@@ -151,6 +183,7 @@ export async function generatePlans(
             memoryBlock +
             feedbackBlock +
             crossAgentBlock +
+            connectorBlock +
             `\nSquelette (respecte exactement ces clés, plans A à E) :\n${PLANS_SKELETON}\n\nProduis les 5 plans (A-E) en JSON.`,
         },
       ],
